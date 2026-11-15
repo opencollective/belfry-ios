@@ -124,6 +124,7 @@ struct PullDownPanel: View {
     let openDetails: () -> Void
     let showMessage: (String) -> Void
     @State private var drag: CGFloat = 0
+    @State private var mounted = false
 
     var body: some View {
         GeometryReader { geo in
@@ -132,30 +133,39 @@ struct PullDownPanel: View {
             let base: CGFloat = level == .full ? full : level == .short ? short : 0
             let h = max(0, min(full, base + drag))
             ZStack(alignment: .top) {
-                if level != .closed || drag != 0 {
-                    Color.black.opacity(0.25 * min(1, h / max(1, short)))
-                        .ignoresSafeArea(edges: .bottom)
-                        .contentShape(Rectangle())
-                        .onTapGesture { close() }
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityLabel("Close")
-                        .transition(.opacity)
-                }
-                if level != .closed {
-                    VStack(spacing: 0) {
+                // both stay in the tree while they animate (inserting them mid-animation drew the
+                // backdrop at its final place before the panel got there)
+                Color.black.opacity(level == .closed && drag == 0 ? 0 : 0.25 * min(1, h / max(1, short)))
+                    .ignoresSafeArea(edges: .bottom)
+                    .contentShape(Rectangle())
+                    .onTapGesture { close() }
+                    .allowsHitTesting(level != .closed)
+                    .accessibilityHidden(level == .closed)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityLabel("Close")
+                VStack(spacing: 0) {
+                    if mounted {
                         PullDownList(id: id, topic: $topic, close: close, openDetails: openDetails, showMessage: showMessage)
                             .frame(maxHeight: .infinity)
                         handle(short: short, full: full)
                     }
-                    .frame(height: h, alignment: .top)
-                    .background(Color(uiColor: .systemGroupedBackground))
-                    .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 24, bottomTrailingRadius: 24, style: .continuous))
-                    .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
-                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
+                .frame(height: h, alignment: .top)
+                .background(Color(uiColor: .systemGroupedBackground))
+                .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 24, bottomTrailingRadius: 24, style: .continuous))
+                .shadow(color: .black.opacity(h > 0 ? 0.15 : 0), radius: 12, y: 6)
+                .opacity(h > 0 ? 1 : 0)
+                .accessibilityHidden(level == .closed)
             }
         }
         .allowsHitTesting(level != .closed)
+        .onAppear { mounted = level != .closed }
+        .onChange(of: level) { _, l in
+            if l != .closed { mounted = true } else {
+                // the list goes once the panel has gone up
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if level == .closed { mounted = false } }
+            }
+        }
     }
 
     private func handle(short: CGFloat, full: CGFloat) -> some View {
