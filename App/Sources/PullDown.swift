@@ -428,7 +428,7 @@ struct MediaThumb: View {
     let media: Media
     var all: [Media] = []
     var body: some View {
-        AsyncImage(url: URL(string: media.url)) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.12) }
+        CachedImage(url: URL(string: media.url)) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.12) }
             .contentShape(Rectangle())
             .onTapGesture {
                 let urls = (all.isEmpty ? [media] : all).map(\.url)

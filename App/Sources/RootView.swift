@@ -16,6 +16,35 @@ enum SidebarItem: Hashable {
     case settings
 }
 
+extension SidebarItem {
+    var key: String {
+        switch self {
+        case .channel(let id): return "c:" + id
+        case .messages: return "messages"
+        case .mentions: return "mentions"
+        case .requests, .members: return "members"
+        case .events: return "events"
+        case .settings: return "settings"
+        }
+    }
+
+    /// The screen a stored key names (a channel only while it is still there).
+    init?(key: String, groups: [Channel]) {
+        switch key {
+        case "messages": self = .messages
+        case "mentions": self = .mentions
+        case "members": self = .members
+        case "events": self = .events
+        case "settings": self = .settings
+        default:
+            guard key.hasPrefix("c:") else { return nil }
+            let id = String(key.dropFirst(2))
+            guard groups.isEmpty || groups.contains(where: { $0.id == id }) else { return nil }
+            self = .channel(id)
+        }
+    }
+}
+
 struct SearchTarget: Hashable { let channel: String; let message: String }
 struct EventKey: Identifiable { let key: String; var id: String { key } }
 
@@ -64,7 +93,11 @@ struct RootView: View {
             if selection == .channel(id) { path = NavigationPath() } else { selection = .channel(id) }
             closeDrawer()
         }
-        .onChange(of: selection) { _, _ in path = NavigationPath() }
+        .onChange(of: selection) { _, v in
+            path = NavigationPath()
+            // offline first: the next start opens here, from disk, before any network work
+            if let v, !model.isDemo { UserDefaults.standard.set(v.key, forKey: AppModel.perAccount("belfry-last-screen")) }
+        }
         .onChange(of: model.messageAuthor) { _, pk in
             guard let pk else { return }
             model.messageAuthor = nil
@@ -89,8 +122,12 @@ struct RootView: View {
         .sheet(item: Binding(get: { model.openGroup.map { GroupKey(id: $0) } }, set: { model.openGroup = $0?.id })) { k in
             GroupPage(id: k.id)
         }
-        .sheet(item: Binding(get: { model.openProfile.map { ProfileKey(pubkey: $0) } }, set: { model.openProfile = $0?.pubkey })) { k in
-            ProfileView(pubkey: k.pubkey)
+        // a profile slides in on the main screen's stack (Contacts), never a bottom sheet
+        .onChange(of: model.openProfile) { _, pk in
+            guard let pk else { return }
+            model.openProfile = nil
+            closeDrawer()
+            path.append(ProfileKey(pubkey: pk))
         }
         .sheet(item: Binding(get: { model.guestReading ? nil : model.pendingInvite }, set: { if $0 == nil { model.pendingInvite = nil } })) { inv in
             JoinWithAccountSheet(invite: inv)
@@ -128,6 +165,9 @@ struct RootView: View {
             Button("OK") { model.website = nil }
         }
         .onAppear {
+            if selection == nil, !model.isDemo, let k = UserDefaults.standard.string(forKey: AppModel.perAccount("belfry-last-screen")) {
+                selection = SidebarItem(key: k, groups: model.groups)
+            }
             if selection == nil { selection = firstChannel() }
             applyLaunchScreen()
             // a guest link's channel, set while the loading screen stood here
@@ -154,6 +194,7 @@ struct RootView: View {
 
     private var detail: some View {
         NavigationStack(path: $path) {
+            SwiftUI.Group {
             switch selection {
             case .channel(let id): ChannelView(id: id, focus: focus?.channel == id ? focus?.message : nil).id(id)
             case .messages: MessagesView()
@@ -165,6 +206,8 @@ struct RootView: View {
             case nil: ContentUnavailableView("Pick a channel", systemImage: "number", description: Text("Your community's channels are in the list."))
                     .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
             }
+            }
+            .navigationDestination(for: ProfileKey.self) { k in ProfileView(pubkey: k.pubkey, pushed: true) }
         }
         .environment(\.openConversation) { conv in
             var p = NavigationPath()
@@ -216,6 +259,12 @@ struct RootView: View {
         case "group":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openGroup = "pod-seed-swap-5e1d" }
+        case "mycard":
+            selection = .members
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openProfile = model.me }
+        case "rolepicker":
+            selection = .members
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openProfile = Demo.signer("dev").pubkey }
         case "profile":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openProfile = Demo.signer("ana").pubkey }
@@ -406,7 +455,7 @@ struct ChannelDrawer: View {
         VStack(spacing: 0) {
             header
             if let cover = model.config.branding?.cover, !cover.isEmpty, let u = URL(string: cover) {
-                AsyncImage(url: u) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.1) }
+                CachedImage(url: u) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.1) }
                     .frame(height: 96).frame(maxWidth: .infinity).clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .padding(.horizontal, 16).padding(.bottom, 8)
@@ -498,7 +547,7 @@ struct ChannelDrawer: View {
         let brand = model.config.branding
         return HStack(spacing: 10) {
             if let logo = brand?.logo, !logo.isEmpty, let url = URL(string: logo) {
-                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.15) }
+                CachedImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.15) }
                     .frame(width: 32, height: 32).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .accessibilityHidden(true)
             }
@@ -779,7 +828,7 @@ struct Avatar: View {
         ZStack {
             Circle().fill(color)
             if let pic = p?.picture, let url = URL(string: pic), pic.hasPrefix("https://") {
-                AsyncImage(url: url) { img in img.resizable().scaledToFill() } placeholder: { initials(name) }
+                CachedImage(url: url) { img in img.resizable().scaledToFill() } placeholder: { initials(name) }
                     .clipShape(Circle())
             } else {
                 initials(name)

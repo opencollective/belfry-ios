@@ -7,6 +7,11 @@ struct BelfryApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @Environment(\.scenePhase) private var scenePhase
 
+    init() {
+        // offline first: what was fetched once stays on the phone (images also in ImageCache)
+        URLCache.shared = URLCache(memoryCapacity: 32 * 1024 * 1024, diskCapacity: 512 * 1024 * 1024)
+    }
+
     var body: some Scene {
         WindowGroup {
             SwiftUI.Group {

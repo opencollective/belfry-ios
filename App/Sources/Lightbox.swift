@@ -52,7 +52,7 @@ struct ZoomablePhoto: View {
     @State private var lastOffset: CGSize = .zero
 
     var body: some View {
-        AsyncImage(url: url) { phase in
+        CachedImage(url: url) { phase in
             switch phase {
             case .success(let img): img.resizable().scaledToFit()
             case .failure: Image(systemName: "photo").font(.largeTitle).foregroundStyle(.white.opacity(0.6))

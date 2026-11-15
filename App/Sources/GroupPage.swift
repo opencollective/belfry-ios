@@ -10,10 +10,12 @@ struct GroupKey: Identifiable, Hashable { let id: String }
 
 struct GroupPage: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.showProfile) private var showProfile
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openChannel) private var openChannel
     let id: String
     @State private var asking = false
+    @State private var shownProfile: ProfileKey?
 
     var body: some View {
         let _ = model.version
@@ -45,7 +47,7 @@ struct GroupPage: View {
                     Section {
                         if g.members.isEmpty { Text("Nobody yet.").foregroundStyle(.secondary) }
                         ForEach(Array(g.members).sorted { model.name($0) < model.name($1) }, id: \.self) { p in
-                            Button { model.openProfile = p } label: {
+                            Button { shownProfile = ProfileKey(pubkey: p) } label: {
                                 HStack(spacing: 10) {
                                     Avatar(pubkey: p, size: 32)
                                     Text(model.name(p)).foregroundStyle(.primary)
@@ -75,6 +77,7 @@ struct GroupPage: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .sheet(isPresented: $asking) { if let g { PodApplySheet(group: g) } }
+            .navigationDestination(item: $shownProfile) { ProfileView(pubkey: $0.pubkey, pushed: true) }
         }
         .presentationDetents([.medium, .large])
         .solidSheet()

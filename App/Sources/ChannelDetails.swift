@@ -60,7 +60,7 @@ struct ChannelDetails: View {
                 }
             }
             .sheet(isPresented: $invite) { InviteSheet(id: id) }
-            .sheet(item: $profile) { ProfileView(pubkey: $0.pubkey) }
+            .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true) }
             .onAppear {
                 switch model.launch.screen {
                 case "members": tab = .members

@@ -73,6 +73,7 @@ public final class DirectMessages: @unchecked Sendable {
                 ((e.kind == 1059 && e.tags.contains { $0.first == "p" && $0.count > 1 && $0[1] == me }) || e.kind == 4)
         }.sorted { $0.createdAt > $1.createdAt }
         var changed = false
+        var done = 0
         for e in todo {
             do {
                 var d: Dm?
@@ -95,8 +96,11 @@ public final class DirectMessages: @unchecked Sendable {
                     items[d.rid] = n
                 }
                 seen.insert(e.id)
+                done += 1
                 lock.unlock()
                 changed = true
+                // kept as it goes: a restart never asks the signer again for what was opened
+                if done % 20 == 0 { save() }
             } catch {
                 if "\(error)".contains("timeout") { break } // the signer is away: next time
                 lock.lock(); seen.insert(e.id); lock.unlock()

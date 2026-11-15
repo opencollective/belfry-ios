@@ -18,7 +18,7 @@ struct EventPage: View {
     @State private var error: String?
 
     var body: some View {
-        if pushed { page } else { NavigationStack { page }.presentationDetents([.large]) }
+        if pushed { page } else { NavigationStack { page.profileStack() }.presentationDetents([.large]) }
     }
 
     private var page: some View {
@@ -49,6 +49,7 @@ struct EventPage: View {
 
 struct EventPageBody: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.showProfile) private var showProfile
     let e: CalEvent
     let api: ApiEvent?
     let openChat: () -> Void
@@ -71,7 +72,7 @@ struct EventPageBody: View {
         List {
             Section {
                 if let c = e.cover, let u = URL(string: c), c.hasPrefix("https://") {
-                    AsyncImage(url: u) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.1) }
+                    CachedImage(url: u) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.1) }
                         .frame(height: 170).clipped().listRowInsets(EdgeInsets())
                 }
                 VStack(alignment: .leading, spacing: 8) {
@@ -117,7 +118,7 @@ struct EventPageBody: View {
             if !e.hosts.isEmpty {
                 Section("Hosts") {
                     ForEach(Array(e.hosts).sorted(), id: \.self) { pk in
-                        Button { model.openProfile = pk } label: {
+                        Button { OpenProfile(env: showProfile, model: model)(pk) } label: {
                             HStack { Avatar(pubkey: pk, size: 26); Text(api?.hosts.first { $0.first == pk }?.last.flatMap { $0.isEmpty ? nil : $0 } ?? model.name(pk)) }
                         }
                         .buttonStyle(.plain)
@@ -688,7 +689,7 @@ struct EventRow: View {
         let d = model.derive
         HStack(spacing: 10) {
             if let c = e.cover, let u = URL(string: c), c.hasPrefix("https://") {
-                AsyncImage(url: u) { $0.resizable().scaledToFill() } placeholder: { DateChip(at: e.start) }
+                CachedImage(url: u) { $0.resizable().scaledToFill() } placeholder: { DateChip(at: e.start) }
                     .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 DateChip(at: e.start)

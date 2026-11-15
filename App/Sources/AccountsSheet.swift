@@ -75,7 +75,7 @@ struct AccountFace: View {
             Circle().fill(color)
             Text(String((name.isEmpty ? "?" : name).prefix(1)).uppercased()).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
             if picture.hasPrefix("https://"), let u = URL(string: picture) {
-                AsyncImage(url: u) { $0.resizable().scaledToFill() } placeholder: { Color.clear }.clipShape(Circle())
+                CachedImage(url: u) { $0.resizable().scaledToFill() } placeholder: { Color.clear }.clipShape(Circle())
             }
         }
         .frame(width: 40, height: 40)
