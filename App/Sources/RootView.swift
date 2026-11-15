@@ -156,7 +156,7 @@ struct RootView: View {
             case .channel(let id): ChannelView(id: id, focus: focus?.channel == id ? focus?.message : nil).id(id)
             case .messages: MessagesView()
             case .mentions: MentionsView()
-            case .requests: RequestsView()
+            case .requests: MembersDirectory()
             case .members: MembersDirectory()
             case nil: ContentUnavailableView("Pick a channel", systemImage: "number", description: Text("Your community's channels are in the list."))
                     .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
@@ -208,6 +208,7 @@ struct RootView: View {
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
         case "pod": selection = .channel("pod-seed-swap-5e1d")
+        case "pullempty": selection = .channel("kitchen-7d10")
         case "group":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openGroup = "pod-seed-swap-5e1d" }
@@ -420,16 +421,11 @@ struct ChannelDrawer: View {
                     }
                     Section {
                         if !d.amGuest {
-                            let asking = model.belfryRequests
-                            let waiting = asking.filter { !$0.vouched }.count
-                            DrawerRow(icon: "person.3", title: "Members",
-                                      detail: asking.isEmpty ? "Everyone in \(model.config.name)" : "\(asking.count) asking to join · vouch",
-                                      badge: waiting, on: current == .members) { select(.members) }
-                        }
-                        if model.showRequests {
+                            // Members first; what waits for me sits at the top of it (web 98c33fc)
                             let n = model.requestCount
-                            DrawerRow(icon: "tray", title: "Requests", detail: n > 0 ? "\(n) waiting for you" : "People and agents asking to join",
-                                      badge: n, on: current == .requests) { select(.requests) }
+                            DrawerRow(icon: "person.3", title: "Members",
+                                      detail: n > 0 ? "\(n) \(n == 1 ? "request" : "requests") waiting for you" : "Everyone in \(model.config.name)",
+                                      badge: n, on: current == .members || current == .requests) { select(.members) }
                         }
                         DrawerRow(icon: "calendar", title: "Upcoming events",
                                   detail: nextLine,

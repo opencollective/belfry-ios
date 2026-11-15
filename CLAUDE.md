@@ -145,7 +145,7 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   behind `#if compiler(>=6.2)` + `if #available(iOS 26, *)`, material before (`Theme.swift`:
   `glass(in:)`, `topBar`, `bottomBar`).
 - iPhone layout = the web's phone layout (2026-11-15): the open screen (channel, Messages,
-  @Mentions, Requests) with ☰ (count of unread DMs + new mentions + requests) and a left drawer
+  @Mentions, Members with the requests on top) with ☰ (count of unread DMs + new mentions + requests) and a left drawer
   under it (`DrawerContainer` + `ChannelDrawer` in RootView: edge swipe at the stack's root, the
   page slides right, shade, drag / tap to close). iPad: the same list as a split view's sidebar.
 - The channel line pulls down FROM THE TOP (`PullDownPanel`: short and full levels, handle drag,

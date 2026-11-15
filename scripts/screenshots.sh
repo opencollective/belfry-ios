@@ -55,10 +55,13 @@ shot 44-drawer drawer light
 shot 45-drawer-dark drawer dark
 shot 46-pulldown-dark pulldown dark
 shot 47-pulldown-full pullfull light
+shot 47b-pulldown-full-dark pullfull dark
+shot 47c-pulldown-empty pullempty light
+shot 47d-pulldown-empty-dark pullempty dark
 shot 48-invite-dark invite dark
 shot 49-mentions mentions light
 shot 54-group group light
-shot 55-requests requests light
+shot 55-members-requests requests light
 shot 56-log log light
 shot 57-settings settings light
 shot 58-members directory light

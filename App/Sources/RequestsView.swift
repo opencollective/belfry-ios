@@ -1,15 +1,16 @@
 import BelfryCore
 import SwiftUI
 
-// Requests (web Requests.tsx, docs/membership.md): the first row of the channel list, its count
-// also on ☰. Agents asking to join (belfry admins: "Let it in as my agent" / Decline), people
+// Requests (web Requests.tsx `RequestSections`, 98c33fc, docs/membership.md): the sections at the
+// top of Members when something waits (no screen of their own any more; their count is on
+// Members in the drawer and on ☰). Agents asking to join (belfry admins: "Let it in as my agent" / Decline), people
 // asking to join the belfry (admins accept or decline; members vouch while the belfry accepts
 // by vouches) and requests to every group I run (Accept / Decline) or am in when it accepts by
 // vouches. Askers' words are shown as plain text.
 
-struct RequestsView: View {
+struct RequestSections: View {
     @EnvironmentObject var model: AppModel
-    @State private var error: String?
+    @Binding var error: String?
 
     var body: some View {
         let _ = model.version
@@ -17,7 +18,7 @@ struct RequestsView: View {
         let admin = d.isCommunityAdmin
         let vouching = model.membership.accept == "vouches"
         let groups = d.groupRequests()
-        List {
+        SwiftUI.Group {
             if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
             if admin && !model.agentRequests.isEmpty {
                 Section("Agents asking to join · \(model.agentRequests.count)") {
@@ -90,17 +91,7 @@ struct RequestsView: View {
                     .buttonStyle(.plain)
                 }
             }
-            if model.requestCount == 0 {
-                ContentUnavailableView("Nothing waiting", systemImage: "tray",
-                                       description: Text("People and agents asking to join show here, and requests to the groups you run."))
-                    .listRowBackground(Color.clear)
-            }
         }
-        .navigationTitle("Requests")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
-        .task { await model.loadRequests(force: true) }
-        .refreshable { await model.loadRequests(force: true); await model.refresh() }
     }
 
     private func vouchLine(_ who: [String], _ needed: Int) -> String {

@@ -1,9 +1,10 @@
 import BelfryCore
 import SwiftUI
 
-// Members (web Directory.tsx, 8f0ccb8): everyone in the belfry, their own agents under them,
-// opened from Members at the top of the drawer. First, anyone asking to join, so members can
-// vouch for them (the admins decide, or enough vouches: the belfry's Membership settings).
+// Members (web Directory.tsx, 8f0ccb8 / 98c33fc): the first row of the drawer. At its top, only
+// when something waits, the request sections (agents asking to join, people asking to join the
+// belfry, requests to my groups: RequestsView.swift); then everyone in the belfry, their own
+// agents under them, with search.
 
 struct MembersDirectory: View {
     @EnvironmentObject var model: AppModel
@@ -15,33 +16,10 @@ struct MembersDirectory: View {
 
     var body: some View {
         let _ = model.version
-        let admin = model.derive.isCommunityAdmin
-        let asking = model.belfryRequests
         let shown = filtered()
         List {
-            if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
-            if !asking.isEmpty {
-                Section {
-                    ForEach(asking) { p in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(verbatim: p.name.isEmpty ? "Someone" : p.name).font(.body.weight(.semibold))
-                            if admin, let e = p.email { Text(verbatim: e).font(.footnote).foregroundStyle(.secondary) }
-                            if !p.motivation.isEmpty { Text(verbatim: p.motivation).font(.subheadline).foregroundStyle(.secondary) }
-                            if p.vouches > 0 { Text("\(p.vouches) \(p.vouches == 1 ? "vouch" : "vouches")").font(.footnote).foregroundStyle(.secondary) }
-                            HStack {
-                                BusyButton(p.vouched ? "Take back my vouch" : "Vouch") { error = await model.vouchApplication(p.id, on: !p.vouched) }
-                                    .buttonStyle(.bordered)
-                                if admin {
-                                    BusyButton("Accept") { error = await model.decideApplication(p.id, approve: true) }.buttonStyle(.brand)
-                                    BusyButton("Decline", role: .destructive) { error = await model.decideApplication(p.id, approve: false) }.buttonStyle(.bordered)
-                                }
-                            }
-                            .controlSize(.small)
-                        }
-                        .padding(.vertical, 2)
-                    }
-                } header: { Text("Asking to join · \(asking.count)") } footer: { Text(rule) }
-            }
+            // what waits for me, only when something does (web 98c33fc)
+            RequestSections(error: $error)
             Section {
                 if list == nil { HStack { if failed { Text("The list could not be loaded.") } else { ProgressView(); Text("Loading…") } }.foregroundStyle(.secondary) }
                 ForEach(shown) { m in
