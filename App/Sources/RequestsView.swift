@@ -66,7 +66,7 @@ struct RequestsView: View {
                     }
                 } header: { Text("Asking to join \(model.config.name) · \(model.belfryRequests.count)") }
             }
-            ForEach(groups, id: \.group.id) { x in
+            ForEach(groups) { x in
                 Section {
                     ForEach(x.list, id: \.id) { a in
                         let mineToRun = x.group.admins.contains(model.me)

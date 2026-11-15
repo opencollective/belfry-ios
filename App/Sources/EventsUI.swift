@@ -268,6 +268,7 @@ struct ApplySheet: View {
             }
         }
         .presentationDetents([.medium])
+        .solidSheet()
     }
 }
 
@@ -364,6 +365,7 @@ struct CancelEventSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .solidSheet()
     }
 }
 
@@ -596,6 +598,7 @@ struct TicketFormSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .solidSheet()
     }
 }
 

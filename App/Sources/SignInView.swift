@@ -39,6 +39,7 @@ private struct AddressScreen: View {
     @State private var error: String?
     /// An older belfry (no session API): the main button opens the browser sign-in.
     @State private var offerBrowser = false
+    @State private var scanning = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -101,11 +102,22 @@ private struct AddressScreen: View {
                     }
                     .disabled(model.busy)
                 }
+                Button { hideKeyboard(); scanning = true } label: {
+                    ActionRow(icon: "qrcode.viewfinder", title: "Scan an invitation", detail: "The QR code someone shows you")
+                }
+                .buttonStyle(.plain)
+                .disabled(model.busy)
                 Button { model.startDemo() } label: {
                     ActionRow(icon: "person.2", title: "Try the demo", detail: "A made-up community. Everything in it stays on this device.")
                 }
                 .buttonStyle(.plain)
                 .disabled(model.busy)
+            }
+        }
+        .sheet(isPresented: $scanning) {
+            InviteScanner { url in
+                scanning = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { model.handle(url: url) }
             }
         }
         .onAppear {

@@ -103,7 +103,7 @@ public extension Derive {
 
     /// Who a log line is by: the relay signs joins and channel changes itself, so its key reads as the community.
     func logWho(_ groupId: String, _ pubkey: String) -> String {
-        if pubkey != me, pubkey == metaAuthors[groupId], !ctx.communityName.isEmpty { return ctx.communityName }
+        if pubkey != me, pubkey == metaAuthors[groupId] || pubkey == ctx.groupsKey, !ctx.communityName.isEmpty { return ctx.communityName }
         return displayName(pubkey)
     }
 }

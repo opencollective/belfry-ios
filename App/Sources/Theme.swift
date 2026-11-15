@@ -73,6 +73,12 @@ extension ButtonStyle where Self == BrandButtonStyle {
 }
 
 extension View {
+    /// A sheet that can stop half way: opaque, as before iOS 26 (a half-height sheet of glass lets
+    /// the feed show through its rows and reads badly).
+    func solidSheet() -> some View {
+        presentationBackground(Color(uiColor: .systemGroupedBackground))
+    }
+
     /// The iOS 26 glass behind a control (a circle, a capsule…), material before iOS 26.
     @ViewBuilder func glass<S: Shape>(in shape: S, interactive: Bool = false) -> some View {
         #if compiler(>=6.2)

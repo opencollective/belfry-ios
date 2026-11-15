@@ -77,6 +77,7 @@ struct GroupPage: View {
             .sheet(isPresented: $asking) { if let g { PodApplySheet(group: g) } }
         }
         .presentationDetents([.medium, .large])
+        .solidSheet()
         .presentationDragIndicator(.visible)
     }
 

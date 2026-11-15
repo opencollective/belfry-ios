@@ -54,8 +54,11 @@ and gestures are untested in the real world. XCTest covers the core (BelfryCore)
 
 | Web feature | Status | Notes |
 |---|---|---|
-| Channel list, Messages with unread count, "All events", "Your events" | done | `NavigationSplitView` sidebar (iOS idiom for the web's drawer); pod shapes; event chats only under "Your events". |
-| One summary line under the channel name + pull-down (Pinned, Coming up, To decide, To do, Pods, Topics, people) | done | SPEC 19.13 priority and counts, core-tested. The pull-down is a sheet with detents (SPEC 16). Day labels fixed English, 24 h. |
+| Phone layout: ☰ with a count (unread DMs + new @mentions + requests) → the channel drawer from the LEFT (web Phone.tsx / drawer.ts) | done (2026-11-15) | `DrawerContainer`: the page slides right (snappy 250 / 200 ms), shade, tap or drag left to close, edge swipe from the left at the stack's root (not over a pushed thread, where the swipe is the system's back). iPad keeps a split view with the same list as its sidebar. The finger-following feel is untested on a device. |
+| Drawer content: the belfry's name (admins: opens Belfry settings) + logo + cover, search all channels, Requests, Upcoming events, @Mentions, Direct messages, Public channels / Members only (admins' order), groups nested under their channel, Your events, Create a channel, you at the bottom (→ Me) | done | Order: 30078 `belfry:channel-order` by a belfry admin (core-tested); public = the channel's web page on and `visibility: public` (core-tested). Admins reorder within each section (Order of the channels); moving across sections (a visibility change) is the web's. |
+| @Mentions screen (web Mentions.tsx) | done | Messages and replies that tag me or name my npub, newest first; a tap opens the message (or its thread); opening marks them seen (the badge counts newer ones). Core-tested. |
+| One summary line under the channel name + pull-down FROM THE TOP (Pinned, Coming up, To decide, To do, Groups, Topics, people; description first) | done | SPEC 19.13 priority and counts, core-tested. `PullDownPanel` over the feed under the line: short level (55 %) and full level, handle drag snaps (up past the short level closes), tap outside closes; the title's chevron and a drag down on the line open it. Day labels fixed English, 24 h. |
+| Channel header: #name and its visibility line ("Public · <domain>/<slug>" / "Members only", globe / lock) | done | Two lines in the navigation bar's title. |
 | Pod marks (polygon, one side per member; circle from 13) | done | Sidebar, header, cards, pull-down. |
 | Back buttons never push | done | NavigationStack pops only. |
 | Large screens: thread in a third column | not yet | Threads open as a pushed screen on iPad too. |
@@ -80,7 +83,9 @@ and gestures are untested in the real world. XCTest covers the core (BelfryCore)
 | Announcements (admins), marked | done | |
 | Join lines (guest / agent / member's agent, invited by, not saved; hidden when removed without writing) | done | |
 | "Created a pod / a proposal / an event" + cards | done | Pod, proposal, event, member e-mail, inbox card, sent-as-channel. |
-| ＋ menu: Photo, To-do, Event, Pod, Proposal, Announcement | done | Drop box links are in channel info → Files. |
+| Composer (iMessage's shape, 2026-11-15) | done | A glass ＋ circle the height of the field, on its centre line (44 pt target); the field a capsule that grows to 6 lines with Send inside its trailing edge (filled when there is something to send); glass on iOS 26, bordered before; haptic on send; the feed scrolls to the bottom. Drafts per channel and thread on the device. |
+| ＋ menu: Photo, Todo, Event, Proposal, Group, Announcement | done | A native `Menu` with icons (iMessage's). Drop box links are in channel info → Files. Meeting / Audio: see below. |
+| Message menu | done | Held message → the native context menu: four quick reactions + More in a row, then Reply, Open thread, Edit, Copy text (checkmark haptic), Copy link, Message the author, Pin, Turn into a todo, Propose as the website, Delete (opens the confirmation showing the message). |
 | Seen events (6 h) and "active this month" | done | |
 | Search (this channel / all, accent-folded, marks, opens on the message with a flash) | done | |
 

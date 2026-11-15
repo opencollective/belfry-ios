@@ -98,6 +98,13 @@ public extension Derive {
     }
 }
 
+/// The requests to one group that I can act on.
+public struct GroupRequests: Identifiable, Hashable, Sendable {
+    public let group: Group
+    public let list: [Application]
+    public var id: String { group.id }
+}
+
 // ---- vouches (docs/membership.md "Groups that accept by vouches") ------------------------------
 
 public extension Derive {
@@ -132,8 +139,8 @@ public extension Derive {
         return []
     }
 
-    func groupRequests() -> [(group: Group, list: [Application])] {
-        groups().map { ($0, groupRequestsFor($0)) }.filter { !$0.1.isEmpty }
+    func groupRequests() -> [GroupRequests] {
+        groups().map { GroupRequests(group: $0, list: groupRequestsFor($0)) }.filter { !$0.list.isEmpty }
     }
 
     /// Group requests waiting for me (admins: all; vouchers: the ones I haven't vouched for).

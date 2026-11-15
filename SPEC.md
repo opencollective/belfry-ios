@@ -1069,6 +1069,250 @@ belfry. The contract is the module docstring of `services/onboarding/belfry_onbo
     service `sh.belfry.app.session.keys`), `App/Sources/SignInView.swift` (`AddressScreen`,
     `CodeScreen`, `CodeBoxes`), `AppModel+SignIn.swift`; tests `NativeSignInTests`.
 
+### 19.21 Web changes of 2026-11-11 / 12 as the Android app reads them (chat-source c6579a0)
+
+Short, for the iPhone app to port; the web's code is the reference for each.
+
+- **A to-do being worked on now.** Kind 2101 with `action` = `working` is a heartbeat (agents
+  send one every 2 minutes while busy), `idle` ends it. Per person, the latest heartbeat counts,
+  on the task it names, and only while that person is the task's assignee: `beat` = its time. A
+  to-do `isWorking` when not done and `now - beat < 300`. The stretch began at the first
+  heartbeat of the run (a `working` after `idle` / `done`, or more than 300 s after the task's
+  last heartbeat, starts a new one): the ring fills clockwise with its minutes (6° a minute, a
+  sliver at least), "1h", "2h" inside past an hour; the text says "X is working on it · 14 min"
+  ("1 h 05" past an hour). No to-do mark on the message any more.
+- **Drafts.** Unsent text per composer, on the device only: key `c:<group id>` (a channel),
+  `t:<root id>` (a thread); `{text (≤ 20 000), picked: [[name, pubkey]], chans: [["#Name",
+  "nostr:naddr…"]], at}`; older than 30 days = none; an empty box removes it. Not while editing a
+  message.
+- **A channel's shown e-mail address** = `slugify(name)` (lower case, NFKD without marks, runs of
+  anything but `a-z0-9` → `-`, trimmed, 40) when exactly one channel has that slug or that id
+  without its `-xxxx` tail (`-[0-9a-z]{3,8}$`); else the full id. Answers go out as the full id.
+- **Visibility and the web page**: one NIP-78 event per channel on the groups relay, `d` =
+  `belfry:web:<channel>`, `h`, `t` = `belfry-web`, content `{"on", "slug", "visibility":
+  "public"|"members", "posts"?}`; the latest by a channel admin or by the key that signed the
+  channel's first 39000 counts. A slug must be ≥ 2 characters, not one of the belfry's own paths
+  (the web's `WEB_RESERVED`), not another channel's page.
+- **Branding**: belfry.json `branding` `{logo, cover, primary, secondary}` (https addresses,
+  `#rrggbb`; anything else = not set); `POST <api>/branding` (NIP-98, admins) with any of the
+  four ("" clears) answers the four as saved; errors `not_admin`, `invalid`, `no_key`. Primary =
+  the accent (text on it white or near-black by luminance > 0.4), secondary = count badges, the
+  logo before the community's name, the cover (96 pt high) at the top of the channel list.
+- **Staying connected**: when the app comes to the foreground, ask each relay something tiny
+  (`{"kinds":[39000],"limit":1}`); no EOSE in 6 s = the socket is dead: drop it and reconnect.
+  A live subscription the relay CLOSED (not a refusal, not `auth-required`) is opened again
+  after 2 s. A publish without an answer drops the socket. A stalled outbox retries after 1.5,
+  3, 6, then every 12 s. A signer request without an answer is asked once more on a fresh
+  connection (10 s each). A queued item that was tried says "Sending again…" while the groups
+  relay is connected, "Waiting for connection…" when it is not.
+- **The line and the pull-down**: the line's fallback is "N members"; its counts are events,
+  proposals, pods, photos, then to-dos (done/total). The pull-down starts with the first
+  non-empty line of the description (Markdown marks removed, 200 characters).
+
+### 19.22 Engine rule: a snapshot built on the one before (Android)
+
+`World(events, outbox, ctx, prev)`: when the log is `prev`'s plus only *everyday* events (kind
+9 without `pod` / `proposal` / `a` tags or an event address, 7, 1111, a `seen:` 30078, 2100–2103,
+all in an ordinary channel; 1059 and 4 anywhere), the outbox's unsent items are the same and the
+context is equal, the per-channel views of the channels nothing arrived in, and profiles,
+extras, calendar and proposals, are `prev`'s own objects. Anything else: everything is worked out
+again. `World.feedKey(channel)` is equal across such snapshots for an untouched channel; the
+channel screen draws its rows from the snapshot it has until the key changes. The result must be
+identical with and without `prev` (`WorldCarryTest`: 400 random steps compared view by view).
+
+### 19.23 The second pass of 2026-11-12 (chat-source c6579a0, collective-belfry 60c82bf)
+
+For the iPhone app to port; the web's code is the reference for each.
+
+- **Form drafts** (web `useFormDraft`, 5ccc71f). A new event, proposal, todo, channel and meeting
+  keep their fields on the device until sent: store key `form:<key>`, value
+  `{"at": <unix s>, "v": {field: text}}`, thirty days. Keys: `event:<visibility>`,
+  `proposal:<parent>`, `todo:<channel>`, `channel`, `meeting:<channel>`. Not for an edit, not
+  for a proposal made from a request. The fields as the form opened are not written; only what
+  changes after. Sending forgets them.
+- **An edit and the channel's draft.** Editing borrows the message box. When the edit is sent
+  or cancelled, empty the box *while the edit is still open*, then end the edit: the draft's
+  keeper is paused during an edit, so it never takes the emptied box for an emptied draft, and
+  the channel's own draft comes back into the box.
+- **"Todo"**, not "To-do", in everything a person reads ("New todo", "Turn into a todo", "Add a
+  todo…", "made a todo", the Todos tab). The to-do mark on a message is gone (the ⏳ / ☑️
+  reactions say it); the web's own code has no clock reaction besides ⏰ in the emoji picker.
+- **Photo viewer.** Pinch zooms (1× to 5×), one finger moves a zoomed photo, a double tap zooms
+  to 2.5× on the spot tapped and back, a pull down of more than 120 pt closes (the black fades
+  with the pull). Zoomed: no page turn; a single tap shows the photo whole before it closes.
+- **The pull-down's second level** (web ChannelHeader level 2, ChannelLine `full`). Three
+  levels: closed, open, all the way. The handle steps closed → open → all the way → closed; a
+  drag down goes a level further, up a level back; "More" and "All todos" go all the way; back
+  goes one level up. All the way = the same summary, as tall as the feed: the latest 20 todos
+  (newest first; open ones, then done ones; a done one can be reopened) with "Add a todo…",
+  12 photos as a mosaic, up to 24 faces with names, then About in its compact form (the whole
+  description when it has more than one line, Invite people · Settings, a pod's Leave / Join,
+  the e-mail line, the web page, the id). Order of the summary: description, parent, pinned,
+  coming up, to decide, to do, pods, photos, members and its links (All members, N files,
+  Todos, Log, More), topics.
+- **Channel info** (web ChannelInfo.tsx). Tabs About, Members, Todos, Files, Log. A gear in the
+  top bar for the channel's admins opens the settings. About has no boxes: description;
+  "**active/members** active members · Invite" (faces of the six most recently active; a tap
+  opens Members); a pod: "Pod in <parent> · closed: apply, admins admit | open: any member
+  joins", its question, Leave pod / Join pod; "✉️ Members can e-mail **<slug>@<domain>**: their
+  mail shows as their message." (inbox on: "Anyone can e-mail …: mails land here as cards, and
+  the channel's admins answer as the channel."); "Public | Members only · web page:
+  <domain>/<slug>"; "Channel id <id>".
+- **Log.** Every event with the channel's `h`, newest first, at most 1000, a section per day,
+  the days as chips that jump. A line: an icon, **who** what, a short detail, the time; a tap
+  unfolds the whole detail, the full date and "Go there". Who = the member's name, or the
+  community's name for the key that signed the channel's 39000 (the relay). Words by kind
+  (Android: `core/model/ChannelLog.kt`, tested line by line):
+  9 → "posted a message" 💬 (with `pod`: "created a pod" ⬡; `proposal`: "made a proposal" 📄;
+  imeta `m audio/…`: "posted a recording" 🎙; `image/…`: "posted a photo" / "posted N photos"
+  🖼; other imeta: "posted a file" 📎; `mail-from`: "an e-mail came in" ✉️); 1111 "replied in a
+  thread" ↩️; 1010 "edited a message" ✏️; 7 "reacted" (its emoji when ≤ 4 UTF-16 units and not
+  "+", else 👍); 5 / 9005 "deleted something" 🗑 (`k` = 7: "took back a reaction"); 2100 "made a
+  todo" ☑️; 2101 by `action`: claim "took a todo", unclaim "let go of a todo", done "marked a
+  todo done" ✅, undone "reopened a todo", delete "deleted a todo" (working / idle: no line);
+  2103 "commented on a todo"; 9000 "added someone" 👋 (a `p` with role admin: "made someone an
+  admin"); 9001 "removed someone" 🚪; 9021 "asked to join" 🙋; 9022 "left" 🚪; 9002 "changed the
+  channel" ⚙️; 9007 "created the channel" ✨; 1985 by its `l`: pinned / unpinned 📌 "pinned |
+  unpinned a message", attended ✅ "checked someone in", absent "marked someone not there",
+  saved "saved their account", member "became a member", cancelled "cancelled the event",
+  scheduled "reopened the event", assigned "assigned a mail", done "closed a mail", open
+  "reopened a mail", `L` = `#t` "changed the pinned topics", else "labelled something <l>" 🏷;
+  30078 "changed a setting" ⚙️ (`d` = `seen:…`: no line); 31922 / 31923 "set the event" 📅 (`t`
+  = meeting: "set the meeting" 👥); 31925 "answered going | can't go | maybe"; anything else
+  "kind <n>" •. "Go there": the message in the channel (9, 1010, 7 and labels with an `e`), the
+  thread (1111: its `E`), the Todos tab (2100–2103), the Members tab (9000, 9001).
+- **Developer mode** (Me, for people who administer something; a flag on the device): in the
+  Log a channel's admins get "Inspect the Nostr event": the event as indented JSON, and Copy.
+- **Meetings** (web core/meetings.ts, ui/Meeting.tsx; 78d7424, 2215f2a, 6029788). ＋ → Meeting
+  (not for guests). A meeting is a Belfry event (19.18) whose NIP-52 event also carries
+  `["t","meeting"]`, `["channel",<the channel it was made from>]` and one
+  `["p",<pubkey>,"","invited"]` per person invited; visibility `members`; no slug. Its chat
+  `ev-<d>` is made `closed` (no ticket) and each member invited is put in it:
+  `9000 [["h","ev-<d>"],["p",<pubkey>,"member"]]` by the maker. **Every later version of the
+  event must keep those three kinds of tags** (an edit from the event form included).
+  - Form: topic (≤ 200), people, when (the next full hour), how long (30, 45, 60, 90, 120 min;
+    "45 min", "1 h", "1 h 30"), where (default: the place of my last meeting, else of my last
+    event; chips: the last five meeting places; "Add a video link" = a Jitsi link from the
+    topic). People: a grid of faces, the 12 first of: most recently active in the channel,
+    then in its parent, then their members, never me; a tap picks or unpicks. "+" asks "Name or
+    e-mail", lists up to six members whose name matches ("Already here:"), then asks for the
+    other of the two (optional). An address alone takes the part before its @ as the name.
+  - People who are not on the belfry: after the meeting's events are queued,
+    `POST <api>/meeting-guests {"channel":"ev-<d>","name","email"?}` (NIP-98, a member who is an
+    admin of that chat) → `{"pubkey","held"?,"member"?}`; the belfry puts them in the chat
+    (a 9000 with `invited-by`, `name`, and `unsaved` when there is no e-mail). Tried up to six
+    times, 1 s to 5 s apart, while the belfry answers `no_channel`, `not_host`, `signer` or
+    there is no connection (the chat may not be on the relay yet). Then one new version of the
+    event with their `p … invited` tags. Errors (fixed messages): 422 `invalid`, 403 `not_host`
+    / `guest`, 404 `no_channel`, 409 `unsupported`, 503 `signer`.
+  - On the event's page, under when and where: "People · N · M there": the maker, the invited
+    and whoever answered; under each name "There", else their RSVP, else "Host", else
+    "Invited", plus "· account held by you" for a name-only account I made (a guest join in
+    that chat with `unsaved`, `invited-by` = me). A host sees per person a button "Confirm"
+    ("Check in" from an hour before the start; "✓ There" once marked): kind 1985 in the chat,
+    `[["h",<chat>],["L","belfry/attendance"],["l","attended"|"absent","belfry/attendance"],
+    ["p",<pubkey>],["a",<coord>]]`; the latest label per person by a host counts. Hosts also
+    add someone by name (the call above, then 9000 + a new version) and "Hand over" an account
+    they hold: `POST <api>/meeting-guests/transfer {"pubkey","email"}` → `{"transferred":true}`
+    (409 `not_yours` / `has_email` / `taken`).
+  - Elsewhere: the page's subtitle "Meeting · members only"; rows say "Meeting" and "N people"
+    (maker + invited + who answered) instead of "N going"; "Your events" includes meetings I am
+    invited to; made from a channel's ＋, its URL goes into that channel's message box.
+- **Audio in messages** (59c4b10). An attachment whose imeta `m` starts with `audio/` is a
+  player in the feed: play / pause, position / length, one at a time, nothing fetched before
+  play. The web records Opus in WebM (Chrome, Firefox) or AAC in MP4 (Safari): play both.
+  Recording on Android: 19.25.
+
+### 19.24 Several accounts on one device (Android, 2026-11-12)
+
+Not in the web chat (a browser profile holds one account). For the iPhone app to port.
+
+- **An account** is one identity in one belfry: id `<pubkey hex>@<domain>`. Two identities in
+  one belfry are two accounts; so is the same person in two belfries. The demo is an account.
+- **Everything is kept per account**, named after the account's *slot* (`""`, `a2`, `a3`…; a
+  numbered slot is never given twice): the saved session (session key, bunker URL, community
+  document, guest state) under `session` / `session@<slot>`, the push device key K under
+  `push-key` / `push-key@<slot>`, and a store of its own (event log, outbox with its files,
+  drafts, settings, last channel): `belfry.db` / `belfry-<slot>.db`. The list itself
+  (`accounts`: current id, next slot number, and per account id, slot, domain, pubkey, and what
+  the switcher shows: name, address, community name, picture, guest) holds no secret.
+- **Migration.** A device with the one saved session of earlier versions gets a list of one
+  account in the empty slot, whose names are the old ones. Nothing is moved or signed again:
+  the person stays signed in, queued outbox items stay queued. An entry whose saved session
+  cannot be read is dropped when it is opened.
+- **Signing in** to an identity that is on the device keeps its slot and store (a new session
+  key replaces the old); a new one gets an emptied store. It becomes the open account.
+- **One account is live**: switching stops the open session (relays, subscriptions, signer
+  connection) and starts the other from its store. A non-open account's outbox waits until it
+  is opened. (A client may do better; say so.)
+- **The switcher** is behind "you" at the drawer's bottom-left: the accounts (face, name,
+  `name@domain` or "Guest · community" or the community's name; a check on the open one; a dot
+  when a notification came for it since it was last open), "Add an account", "Me". Add an
+  account = the sign-in screen over the app with a back arrow (address + code, browser, scan
+  an invitation, demo); the open account is untouched until the new one is in.
+- **Push.** Each account registers the device with its own belfry: the same APNs/FCM token, its
+  own K. A payload is tried with each account's K; the one that opens it says whose it is (the
+  tap rule of 19.19 then uses that account's domain). The notification carries the account id;
+  a tap opens that account first, then the target. With several accounts the notification
+  names the account (its address, else its community). Because a belfry keeps one owner per
+  token, one account per belfry registers: the open one, else the first; the open account
+  registers first, the others once per launch through a short-lived signer connection.
+  Signing out removes that account's row; the token itself is deleted with the last account.
+- **Links.** A guest link (`chat.<domain>/join/<token>`), opened or scanned: no account in that
+  belfry → the join screen, adding an account ("Already have an account? Sign in" leads to Add
+  an account and the link is offered after); one account there → it is opened if needed and
+  offered "Join with your account?"; several → "Join with which account?", then the same. An
+  event link opens in an account of its belfry (the open one first); none: a fixed message.
+- **Sign out** signs out of the open account only (revoke, wipe its store, forget its session
+  and K) and opens the next account in the list (the one after it, else the one before); the
+  sign-in screen only when none is left.
+
+**Scan an invitation** (same date). On the sign-in screen, a row opens a camera scanner. The
+camera permission is asked there. Only a QR code whose text the guest-link parser takes
+(`https://chat.<domain>/join/<token>`, `/#/join/` too; at most 512 characters) counts; it then
+goes exactly where an opened link goes. Anything else: the fixed text "This isn’t a Belfry
+invitation." for three seconds, scanning goes on. No text of a code is ever shown. Android:
+CameraX + ZXing, no Play services.
+
+### 19.25 Audio recording (Android, 2026-11-12; web 59c4b10 `core/recorder.ts`, `ui/Recorder.tsx`)
+
+What is posted is the web's: a kind 9 message in the channel (or the event's chat) with content
+`🎙 Recording · <clock>` (+ ` · N parts`), the files as attachments through the outbox (imeta
+`url`, `m`, `size`, `x`, `alt <file name>`; the URLs appended to the content). Clock: `m:ss`,
+`h:mm:ss`. File names: `recording-YYYY-MM-DD-HHMM[-partN].<ext>` in the device's time zone.
+
+- **Format.** Record AAC-LC, one channel, 32 kHz, 48 kbit/s as ADTS (`.aac`): frames with their
+  own headers, written as they come, so a file cut anywhere is whole up to its last full frame.
+  Never record straight to MP4 (its index is written at the end; a cut file does not play).
+  To post, make an `.m4a` (`audio/mp4`) from the frames without re-encoding, per part, in one
+  go: `ftyp` (M4A / mp42 / isom), `moov` first (mvhd, one trak: tkhd, mdhd with timescale =
+  sample rate, hdlr `soun`, smhd, dref, stsd/mp4a/esds with the 2-byte AudioSpecificConfig,
+  stts one entry of 1024, stsc 32 frames a chunk, stsz, stco), then `mdat`. `tools/adts2m4a.py`
+  is that writer; `core/src/test/resources/audio/` holds a sample and its expected output. If
+  making it fails, post the `.aac` (`audio/aac`). iOS may record AAC in a CAF or ADTS file the
+  same way, or use fragmented MP4, as long as a kill loses seconds only.
+- **Parts.** 30 minutes each (56 250 frames; about 11 MB; Blossom takes 25 MB), each a file
+  that plays alone. Up to three parts: one message. More: one message a part, content
+  `🎙 Recording · <clock of the whole> · part K of N`.
+- **Rules** (`core/audio/Recorder.kt`, `RecorderTest`): one recording at a time. Pause / resume
+  by the person. An interruption (a call, an alarm: transient loss of audio focus) pauses and it
+  resumes by itself when that ends, unless the person paused meanwhile. Another app taking the
+  audio for good pauses until the person resumes. Not started under 50 MB free; stopped and
+  kept under 15 MB. A microphone error stops and keeps. Each has a fixed text (`RecNotice`).
+- **Keeping it going.** Android: a foreground service of type `microphone` started while the
+  app is in front, with Pause / Resume and Stop in its notification, and a partial wake lock.
+  The microphone permission is asked at Start. iOS: the `audio` background mode.
+- **At the end** (not in an event's own chat, `ev-…`, where it is posted at once): "Which event
+  or meeting was it?": Belfry events not cancelled that start within 12 h and ended less than
+  36 h ago, the one going on first, then the nearest, six at most; or the channel it was
+  started in. (The web also offers "New meeting…"; Android does not yet.)
+- **Left on the device.** Each recording has a small state file (id, account, channel, start,
+  recorded ms, state). One not posted is offered in the chat, above the message box: "An
+  unfinished recording · <clock> · <day>", "Post it" / "Discard" (Discard asks). One whose
+  state still says recording was cut short: its length is measured from its frames. A
+  recording is deleted from the device only once the outbox holds its files.
+
+
 ### 19.26 Guest mode: opening an invitation reads the channel at once (2026-11-12)
 
 (collective-belfry `docs/guests.md` "Opening it: guest mode", `guests.py`; web village-app
@@ -1178,3 +1422,28 @@ of 19.4 for people who have no account on that belfry. Joining with an account (
     a write refused inside another sheet (channel details, an event page) opens it only once that
     sheet is closed. Tests `GuestModeTests`. Demo: `-guest opening|feed|join|code` (code 123456;
     `taken@example.org` answers `taken`, moved).
+
+### 19.27 The iPhone app's look and the web's latest (iOS, 2026-11-15)
+
+Not protocol; how the iPhone app follows the web chat's phone layout, for anyone comparing.
+
+- **Drawer.** ☰ (count: unread DMs + new @mentions + requests) or a swipe from the left edge
+  (at the root of the screen's stack) slides the page right and shows the channel list under it:
+  the belfry's name (its admins: opens Belfry settings), its logo and cover (`branding`), search
+  over all channels, Requests (when something waits or I decide things), Upcoming events,
+  @Mentions, Direct messages, Public channels and Members only in the admins' order
+  (`belfry:channel-order`), groups nested under the channel they were made in, Your events, and
+  me at the bottom (Me). The page dims; a tap on it or a drag to the left closes.
+- **Pull-down.** The channel's one line pulls down from the top (short level, full level; the
+  handle follows a finger and snaps; up past the short level or a tap outside closes). The
+  description comes first, then the visibility line.
+- **Composer.** iMessage's shape: a ＋ circle the height of the field on its centre line, the
+  field a capsule growing to six lines with Send inside it. ＋ is the system menu with icons.
+- **Message menu.** Holding a message opens the system's context menu: four quick reactions and
+  More in a row, then the web's message menu; Delete opens the confirmation showing the message.
+- **Look.** Neutral (ink on white, near-white on black) unless `branding.primary` is set: then
+  that colour tints buttons and links, with white or near-black text on it (luminance > 0.4).
+- **Group page, Requests, Roles, Membership, Branding** follow collective-belfry
+  `docs/membership.md`, `docs/roles.md`; vouches in groups are kind 1985 `belfry/vouch`
+  (core-tested).
+

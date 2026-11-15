@@ -102,6 +102,7 @@ struct MessageActions: View {
             }
         }
         .presentationDetents(confirmDelete ? Set([PresentationDetent.medium]) : Set([PresentationDetent.medium, .large]))
+        .solidSheet()
         .presentationDragIndicator(.visible)
         .sheet(isPresented: $moreEmoji) {
             EmojiPicker { e in
@@ -176,6 +177,7 @@ struct EmojiPicker: View {
             .padding()
         }
         .presentationDetents([.medium])
+        .solidSheet()
     }
 }
 
@@ -221,6 +223,7 @@ struct EditSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .solidSheet()
     }
 
     var initial: String { model.derive.unsubstituteChannels(m.text).text }

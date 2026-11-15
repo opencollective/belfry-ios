@@ -30,6 +30,7 @@ struct Composer: View {
     @State private var photoPicker = false
     @State private var create: CreateKind?
     @State private var makeEvent = false
+    @State private var recording = false
     @State private var notes = [String: String]()
     @FocusState private var focused: Bool
 
@@ -111,6 +112,7 @@ struct Composer: View {
                         .font(.body)
                         .lineLimit(1...6)
                         .focused($focused)
+                        .accessibilityIdentifier("composer-field")
                         .padding(.leading, 14).padding(.trailing, 6)
                         .padding(.vertical, 8)
                         .frame(minHeight: Composer.height)
@@ -141,6 +143,7 @@ struct Composer: View {
         .photosPicker(isPresented: $photoPicker, selection: $photos, maxSelectionCount: 6, matching: .images)
         .sheet(item: $create) { k in CreateSheet(kind: k, parent: group) }
         .sheet(isPresented: $makeEvent) { EventFormSheet(editing: nil, channel: group) }
+        .sheet(isPresented: $recording) { RecorderSheet(group: group) }
     }
 
     static let height: CGFloat = 38
@@ -177,6 +180,9 @@ struct Composer: View {
                     Button { choose(.create(.proposal)) } label: { Label("Proposal", systemImage: "doc.text") }
                     Button { choose(.create(.pod)) } label: { Label("Group", systemImage: "hexagon") }
                 }
+                Section {
+                    Button { choose(.audio) } label: { Label("Audio recording", systemImage: "mic") }
+                }
             }
             if canAnnounce {
                 Section {
@@ -203,6 +209,7 @@ struct Composer: View {
         case .announcement: announce = true; focused = true
         case .create(let k): create = k
         case .event: makeEvent = true
+        case .audio: recording = true
         }
     }
 
@@ -290,7 +297,7 @@ struct OutsiderNote: View {
 }
 
 enum CreateKind: String, Identifiable { case todo, pod, proposal; var id: String { rawValue } }
-enum AddChoice { case photo, announcement, event, create(CreateKind) }
+enum AddChoice { case photo, announcement, event, audio, create(CreateKind) }
 
 /// Unsent text on this phone, per channel and per thread (and per form).
 enum Drafts {
@@ -418,6 +425,7 @@ struct CreateSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .solidSheet()
     }
 
     private var formKey: String { "\(kind.rawValue):\(parent)" }

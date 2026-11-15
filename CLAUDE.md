@@ -9,7 +9,7 @@ don't guess. The Android app (opencollective/belfry-android) is a second reading
 
 `vectors/` is the contract shared with Android: keep both repos' files identical (copy, don't
 edit one side). SPEC.md differs from Android's only in the paragraph that opens section 19 and the (iOS) notes
-that end 19.19, 19.20 and 19.26 (Android's 19.21 to 19.25 are not ported yet). `vectors/guestmode.json` is Android's.
+that end 19.19, 19.20 and 19.26, and the iOS-only 19.27 (Android's 19.21 to 19.25 copied 2026-11-15; what the iPhone app does of them is in PARITY.md). `vectors/guestmode.json` is Android's.
 
 ## Layout
 
@@ -67,10 +67,13 @@ This Linux box has no Xcode. Push and let GitHub Actions build (`gh run watch`, 
 --log`, `gh run download <id> -n screenshots`):
 
 - `core`: `swift test` on macos-15 (Xcode 16.4, Swift 6.1). Core is Swift language mode 5.
-- `app`: `xcodegen generate`, `xcodebuild … -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO
+- `app` (macos-26, Xcode 26): `xcodegen generate`, `xcodebuild … build-for-testing -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO
   -skipPackagePluginValidation build` (P256K uses a build-tool plugin), then
   `scripts/screenshots.sh` boots a simulator and captures the screens in demo mode → artifact
-  `screenshots`.
+  `screenshots`; then the UI tests (`App/UITests/MenuShots.swift`, target `BelfryUITests`) tap
+  what only a touch opens (the ＋ menu, a held message's menu, the drawer by swipe, typing) and
+  write `50-…`–`53-…` PNGs in light and dark (`TEST_RUNNER_SHOTS_DIR`). Keep expressions small:
+  Xcode 26 gives up type-checking long `+` chains of optional strings (move them into functions).
 - `testflight`: runs on main only when these repository secrets exist (Xavier adds them):
   `APPLE_TEAM_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (App Store Connect API key with
   App Manager or Admin role; contents of the .p8). Signing is automatic through the API key
@@ -93,8 +96,15 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
 - Every button locks the moment it is tapped and shows progress until its work is done: use
   `BusyButton` / `ActionButtonRow` (Kit.swift), never a bare `Button { Task { … } }` for work.
   A double tap never sends twice.
-- Menus and sheets are Discord-style grouped lists with a line icon (`ActionRow`), not stacked
-  bordered buttons and not `.contextMenu`. Discord is the reference.
+- Menus are lists with an icon per row. Since 2026-11-15 (the owner, after the first TestFlight:
+  "compare with iMessage or WhatsApp… they don't feel native") they are the system's own: the
+  composer's ＋ is a `Menu` of `Label`s, a held message opens `.contextMenu` (`MessageMenu`:
+  quick reactions in a `ControlGroup`, then the web's message menu); the full sheet list
+  (`MessageActions`) stays for "More reactions" and the delete confirmation. Sheets are
+  `List`/`Form` sections with native rows; no hand-made pills (`.buttonStyle(.brand)` for the
+  filled button, `.bordered`, `ShareLink`, `CopyRow`).
+- Copy gives feedback (a checkmark + the success haptic, `CopyRow`). The keyboard goes down
+  before any sheet opens (`hideKeyboard()`).
 - No horizontal scrolling of a screen. A back button never pushes.
 - Text fields ≥ 16 pt (`.font(.body)`).
 - Never render text from a URL (a link gives only its domain and token / link); server errors →
@@ -129,10 +139,22 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   `BelfryAPI.signed` / `SyncEngine.signedRequest`, or check the gate itself. Automatic writes
   (seen marks, push registration) are skipped while reading, not refused (a refusal opens the
   Join sheet).
-- iOS 17+. NavigationSplitView; channel details as a sheet with medium/large detents (web: custom
-  pull-down) and the channel line's pull-down as a sheet too; the message menu as a sheet list (not
-  `.contextMenu`); `.searchable`; `ShareLink`; CoreImage
-  QR; `.refreshable` re-subscribes. Platform differences are listed in SPEC section 16.
+- iOS 17+, built with the iOS 26 SDK (Xcode 26 in CI): glass (`.glassEffect`, `safeAreaBar`)
+  behind `#if compiler(>=6.2)` + `if #available(iOS 26, *)`, material before (`Theme.swift`:
+  `glass(in:)`, `topBar`, `bottomBar`).
+- iPhone layout = the web's phone layout (2026-11-15): the open screen (channel, Messages,
+  @Mentions, Requests) with ☰ (count of unread DMs + new mentions + requests) and a left drawer
+  under it (`DrawerContainer` + `ChannelDrawer` in RootView: edge swipe at the stack's root, the
+  page slides right, shade, drag / tap to close). iPad: the same list as a split view's sidebar.
+- The channel line pulls down FROM THE TOP (`PullDownPanel`: short and full levels, handle drag,
+  tap outside) as on the web, not a bottom sheet. Channel info stays a sheet (tabs About,
+  Members, Todos, Files, Log, Settings).
+- Look: neutral like the web's Belfry theme (ink on white / near-white on black) unless
+  belfry.json `branding.primary` is set; then that colour is the tint (`Theme`, `Color.brand`,
+  `Theme.onAccent` for text on it, `Theme.toggle` for switches: system green when neutral).
+- Composer: iMessage's shape (`Composer.height` 38 pt: the ＋ circle, the capsule field, Send
+  inside it). Drafts per channel (`c:<id>`) and thread (`t:<group>:<root>`) and per form
+  (`Drafts`, UserDefaults; cleared on sign-out).
 - SQLite instead of SwiftData: plain tables, same shape as the web's IndexedDB, no schema magic.
 - Relay events are signature-checked before storage; seals always.
 - Never render text from a URL; server errors are mapped to fixed messages by their `error` code.

@@ -95,6 +95,7 @@ struct RoleForm: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .solidSheet()
     }
 
     private func save() async {

@@ -125,7 +125,7 @@ struct ChannelView: View {
                 VStack(spacing: 0) {
                     ChannelLineBar(id: id, topic: topic, open: { togglePull() }, showAll: { withAnimation { topic = nil } },
                                    review: { details = true }, pulled: pull != .closed, pull: { openPull() })
-                    if model.offerPush { PushOffer() }
+                    if model.offerPush && pull == .closed { PushOffer() }
                     if let g, g.isEvent, let e = d.eventOfGroup(id) {
                         Button { model.openEvent = e.coord } label: {
                             HStack(spacing: 8) {
@@ -467,6 +467,7 @@ struct NewThreadSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .solidSheet()
     }
 }
 
@@ -519,5 +520,6 @@ struct PodApplySheet: View {
             }
         }
         .presentationDetents([.medium])
+        .solidSheet()
     }
 }

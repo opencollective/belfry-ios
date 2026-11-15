@@ -61,15 +61,6 @@ struct MessageRow: View {
                         }
                     }
                 }
-                if let todo {
-                    BusyButton {
-                        model.todo(todo, in: group, todo.done ? "undone" : "done")
-                    } label: {
-                        Chip(text: d.todoChip(todo), icon: todo.done ? "checkmark.square" : "square", tint: todo.done ? .green : .brand)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint(todo.done ? "Marks it as not done" : "Ticks it off")
-                }
                 if !reactions.isEmpty {
                     ReactionBar(reactions: reactions) { emoji in model.toggleReaction(emoji, on: m, in: group); tapped += 1 }
                 }
@@ -358,6 +349,8 @@ struct MediaView: View {
             .accessibilityLabel(media.name ?? "Photo")
             .accessibilityAddTraits(.isButton)
             .accessibilityHint("Opens the photo")
+        } else if media.mime.hasPrefix("audio/") {
+            AudioRow(media: media)
         } else if media.mime.hasPrefix("image/") {
             Label(media.name ?? "Photo", systemImage: "photo").foregroundStyle(.secondary)
         } else if let url = URL(string: media.url), url.scheme == "https" {

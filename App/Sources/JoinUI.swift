@@ -44,5 +44,6 @@ struct JoinWithAccountSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .solidSheet()
     }
 }

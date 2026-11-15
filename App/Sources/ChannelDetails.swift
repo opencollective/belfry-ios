@@ -28,7 +28,7 @@ struct ChannelDetails: View {
             List {
                 Section {
                     Picker("Tab", selection: $tab) {
-                        ForEach(InfoTab.allCases.filter { $0 != .settings || admin }, id: \.self) { Text($0.rawValue).tag($0) }
+                        ForEach(InfoTab.allCases.filter { $0 != .settings }, id: \.self) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.segmented)
                     .listRowBackground(Color.clear)
@@ -50,7 +50,15 @@ struct ChannelDetails: View {
             }
             .navigationTitle(g.map { $0.isPod ? $0.name : "# " + $0.name } ?? id)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                if admin {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { tab = tab == .settings ? .about : .settings } label: { Image(systemName: tab == .settings ? "gearshape.fill" : "gearshape") }
+                            .accessibilityLabel("Channel settings")
+                    }
+                }
+            }
             .sheet(isPresented: $invite) { InviteSheet(id: id) }
             .sheet(item: $profile) { ProfileView(pubkey: $0.pubkey) }
             .onAppear {
@@ -310,6 +318,7 @@ struct LabelsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .solidSheet()
     }
 }
 

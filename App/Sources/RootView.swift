@@ -281,11 +281,11 @@ struct DrawerContainer<Drawer: View, Main: View>: View {
             let x = max(0, min(width, (open ? width : 0) + drag))
             let p = x / width
             ZStack(alignment: .leading) {
-                drawer()
-                    .frame(width: width)
-                    .offset(x: (p - 1) * width * 0.25)
-                    .opacity(p > 0 ? 1 : 0)
-                    .accessibilityHidden(!open)
+                if p > 0 || open {
+                    drawer()
+                        .frame(width: width)
+                        .offset(x: (p - 1) * width * 0.25)
+                }
                 main()
                     .frame(width: geo.size.width)
                     .allowsHitTesting(!open && !dragging)
@@ -304,10 +304,14 @@ struct DrawerContainer<Drawer: View, Main: View>: View {
                     .shadow(color: .black.opacity(0.18 * p), radius: 16)
                     .offset(x: x)
                 if !open && edgeSwipe {
+                    // a thin strip on the left edge, clear of the top bar (☰) and the composer (＋)
                     Color.clear
-                        .frame(width: 22)
+                        .frame(width: 14)
+                        .frame(maxHeight: .infinity)
                         .contentShape(Rectangle())
                         .gesture(openDrag(width))
+                        .padding(.top, 110)
+                        .padding(.bottom, 130)
                         .accessibilityHidden(true)
                 }
             }
@@ -723,6 +727,7 @@ struct NewChannelSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .solidSheet()
     }
 }
 

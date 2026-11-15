@@ -57,7 +57,7 @@ final class MenuShots: XCTestCase {
 
     func testKeyboardComposer() {
         let app = launch("composer")
-        let field = app.textFields.firstMatch.exists ? app.textFields.firstMatch : app.textViews.firstMatch
+        let field = app.descendants(matching: .any).matching(identifier: "composer-field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         field.tap()
         field.typeText("Hello from the demo")
