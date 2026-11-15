@@ -77,7 +77,8 @@ jobs:
     name: TestFlight (only with signing secrets)
     needs: [core, app]
     if: github.ref == 'refs/heads/main'
-    runs-on: macos-15
+    # App Store Connect only takes builds made with the iOS 26 SDK (Xcode 26) or later
+    runs-on: macos-26
     timeout-minutes: 60
     env:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -100,7 +101,9 @@ jobs:
         if: steps.check.outputs.ok == 'true'
         run: |
           set -euo pipefail
-          sudo xcode-select -s "$XCODE"
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -v -i beta | sort -V | tail -1)
+          [ -n "$XCODE" ] || { echo "no Xcode 26 on this runner"; ls /Applications | grep -i xcode; exit 1; }
+          sudo xcode-select -s "$XCODE" && xcodebuild -version
           brew install xcodegen && xcodegen generate
           mkdir -p private_keys
           echo "$ASC_KEY_P8" > "private_keys/AuthKey_${ASC_KEY_ID}.p8"
