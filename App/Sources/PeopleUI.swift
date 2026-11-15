@@ -34,7 +34,7 @@ extension View {
 }
 
 /// Opens PK's profile where the tap happened: the sheet's own stack, else the main screen's.
-struct OpenProfile {
+@MainActor struct OpenProfile {
     let env: ((String) -> Void)?
     let model: AppModel
     func callAsFunction(_ pk: String) { if let env { env(pk) } else { model.openProfile = pk } }
