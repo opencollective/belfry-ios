@@ -144,6 +144,26 @@ enum Demo {
         }
         evs.append(ev(ps["emma"]!, 9021, now - day, [["h", "ev-" + dd2], ["ticket", dd2 + ":help"]], "Two spades and a quiche"))
         evs.append(ev(you, 9, now - 2 * day + 20, [["h", "garden-3f2a"], ["a", "31923:\(me):\(dd2)", "wss://relay.demo.belfry.sh"]], "Work day next week, by application: https://demo.belfry.sh/events/\(dd2)"))
+        // a meeting I made from #general (SPEC 19.23): Ana and Ben invited, Ana checked in, Lou
+        // added by name (an account I hold), starting in half an hour
+        let md = "2026-mtg001"
+        var mf = MeetingForm(topic: "Budget 2027 review", start: (now / 1800 + 1) * 1800)
+        mf.people = [ps["ana"]!.pubkey, ps["ben"]!.pubkey]
+        mf.minutes = 45
+        mf.place = "Community hall, room 2"
+        mf.tz = TimeZone.current.identifier
+        for (i, dr) in Meetings.create(mf, channel: "general", d: md, me: me, groupsRelay: "wss://groups-relay.demo.belfry.sh").enumerated() {
+            evs.append(ev(you, dr.kind, now - 7200 + i, dr.tags, dr.content))
+        }
+        let lou = signer("lou-meeting").pubkey
+        evs.append(ev(groupsKey, 9000, now - 7100, [["h", "ev-" + md], ["p", lou, "member"], ["guest", ""], ["invited-by", me], ["name", "Lou"], ["unsaved", "1"]]))
+        let mcoord = "31923:\(me):\(md)"
+        if let v = Meetings.create(mf, channel: "general", d: md, me: me, groupsRelay: "wss://groups-relay.demo.belfry.sh").first(where: { $0.target == .main }) {
+            evs.append(ev(you, v.kind, now - 7000, v.tags + [["p", lou, "", "invited"]], v.content))
+        }
+        evs.append(ev(you, 1985, now - 600, [["h", "ev-" + md], ["L", Meetings.attendanceNS], ["l", "attended", Meetings.attendanceNS], ["p", ps["ana"]!.pubkey], ["a", mcoord]]))
+        evs.append(ev(ps["ben"]!, 31925, now - 3000, [["d", "m1"], ["a", mcoord], ["status", "tentative"], ["p", me]]))
+        evs.append(ev(you, 9, now - 6900, [["h", "general"], ["a", mcoord, "wss://relay.demo.belfry.sh"]], "Meeting: https://demo.belfry.sh/events/\(md)"))
         let gardenRef = Nip19.naddr(Nip19.Addr(kind: 39000, pubkey: relay.pubkey, identifier: "garden-3f2a", relays: ["wss://groups-relay.demo.belfry.sh"])) ?? ""
         msg(ps["ben"]!, "general", now - 4000, "Seed talk carries on in nostr:\(gardenRef) 🌱")
         let ann = Actions.postMessage("general", text: "The hall is closed on Sunday for cleaning.", announce: true)

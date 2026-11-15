@@ -31,6 +31,7 @@ struct Composer: View {
     @State private var create: CreateKind?
     @State private var makeEvent = false
     @State private var recording = false
+    @State private var meeting = false
     @State private var notes = [String: String]()
     @FocusState private var focused: Bool
     /// The field's one-line height, and so the ＋ circle's: grows with Dynamic Type.
@@ -146,6 +147,10 @@ struct Composer: View {
         .sheet(item: $create) { k in CreateSheet(kind: k, parent: group) }
         .sheet(isPresented: $makeEvent) { EventFormSheet(editing: nil, channel: group) }
         .sheet(isPresented: $recording) { RecorderSheet(group: group) }
+        .sheet(isPresented: $meeting) { MeetingFormSheet(channel: group) }
+        .onChange(of: model.launchMeetingForm) { _, on in
+            if on, !compact, !threadMode { model.launchMeetingForm = false; meeting = true }
+        }
     }
 
     static let height: CGFloat = 38
@@ -179,6 +184,7 @@ struct Composer: View {
             if !guest {
                 Section {
                     Button { choose(.event) } label: { Label("Event", systemImage: "calendar") }
+                    Button { choose(.meeting) } label: { Label("Meeting", systemImage: "person.2") }
                     Button { choose(.create(.proposal)) } label: { Label("Proposal", systemImage: "doc.text") }
                     Button { choose(.create(.pod)) } label: { Label("Group", systemImage: "hexagon") }
                 }
@@ -212,6 +218,7 @@ struct Composer: View {
         case .create(let k): create = k
         case .event: makeEvent = true
         case .audio: recording = true
+        case .meeting: meeting = true
         }
     }
 
@@ -299,7 +306,7 @@ struct OutsiderNote: View {
 }
 
 enum CreateKind: String, Identifiable { case todo, pod, proposal; var id: String { rawValue } }
-enum AddChoice { case photo, announcement, event, audio, create(CreateKind) }
+enum AddChoice { case photo, announcement, event, audio, meeting, create(CreateKind) }
 
 /// Unsent text on this phone, per channel and per thread (and per form).
 enum Drafts {

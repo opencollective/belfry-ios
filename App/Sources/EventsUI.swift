@@ -73,6 +73,7 @@ struct EventPageBody: View {
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     Text(e.title).font(.title2.bold())
+                    if e.meeting { Label("Meeting · members only", systemImage: "person.2").font(.subheadline).foregroundStyle(.secondary) }
                     EventLine(e: e, state: state, people: people, host: host)
                 }
             }
@@ -85,8 +86,9 @@ struct EventPageBody: View {
                 ForEach(e.links, id: \.self) { l in
                     if let u = URL(string: l) { Link(destination: u) { Label("Join on \(Actions.meetingLabel(l))", systemImage: "video") } }
                 }
-                if e.isNew { Label("\(e.going) going", systemImage: "person.2") }
+                if e.isNew && !e.meeting { Label("\(e.going) going", systemImage: "person.2") }
             }
+            if e.meeting { MeetingPeopleSection(e: e) }
             if d.isOpen(e, now: now) && !host {
                 Section("Your place") {
                     switch state {
@@ -640,6 +642,20 @@ struct EventsList: View {
 struct EventRow: View {
     @EnvironmentObject var model: AppModel
     let e: CalEvent
+
+    /// "Meeting · Going · 4 people" / "Going · 12 going".
+    func rowLine(_ d: Derive) -> String {
+        var parts = [String]()
+        if e.meeting { parts.append("Meeting") }
+        if let s = d.stateLabel(e) { parts.append(s) }
+        if e.meeting {
+            let n = d.meetingCount(e)
+            parts.append(n == 1 ? "1 person" : "\(n) people")
+        } else if e.going > 0 {
+            parts.append("\(e.going) going")
+        }
+        return parts.joined(separator: " · ")
+    }
     var body: some View {
         let d = model.derive
         HStack(spacing: 10) {
@@ -654,7 +670,7 @@ struct EventRow: View {
                 Text(d.lineDay(e.start, now: .now) + " · " + d.lineWhen(e)).font(.caption).foregroundStyle(.secondary)
                 HStack(spacing: 6) {
                     if e.status == .cancelled { Chip(text: "Cancelled", tint: .red) }
-                    Text([d.stateLabel(e), e.going > 0 ? "\(e.going) going" : nil].compactMap { $0 }.joined(separator: " · ")).font(.caption2).foregroundStyle(.secondary)
+                    Text(rowLine(d)).font(.caption2).foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 0)
