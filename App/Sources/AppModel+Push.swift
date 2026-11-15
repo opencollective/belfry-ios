@@ -166,13 +166,15 @@ struct PushOffer: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "bell.badge").foregroundStyle(Color.brand)
-            Text("Get a notification when someone mentions you, replies or writes to you.").font(.footnote)
+            Text("Get notified of mentions, replies and messages.").font(.footnote)
             Spacer(minLength: 4)
             BusyButton("Turn on") { await model.turnOnPush() }.buttonStyle(.brand).controlSize(.small)
-            Button { model.dismissPushOffer() } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).accessibilityLabel("Not now")
+            Button { model.dismissPushOffer() } label: { Image(systemName: "xmark").font(.footnote.weight(.semibold)).foregroundStyle(.secondary) }
+                .buttonStyle(.borderless).accessibilityLabel("Not now")
         }
-        .padding(.horizontal).padding(.vertical, 8)
-        .background(.bar)
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .glass(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 12).padding(.vertical, 4)
     }
 }
 

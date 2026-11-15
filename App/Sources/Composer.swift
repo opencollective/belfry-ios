@@ -33,6 +33,8 @@ struct Composer: View {
     @State private var recording = false
     @State private var notes = [String: String]()
     @FocusState private var focused: Bool
+    /// The field's one-line height, and so the ＋ circle's: grows with Dynamic Type.
+    @ScaledMetric(relativeTo: .body) private var h: CGFloat = 38
 
     var body: some View {
         let d = model.derive
@@ -115,10 +117,10 @@ struct Composer: View {
                         .accessibilityIdentifier("composer-field")
                         .padding(.leading, 14).padding(.trailing, 6)
                         .padding(.vertical, 8)
-                        .frame(minHeight: Composer.height)
+                        .frame(minHeight: h)
                     sendButton.padding(4)
                 }
-                .composerField()
+                .composerField(radius: h / 2)
             }
         }
         .padding(.horizontal, compact ? 0 : 12)
@@ -156,7 +158,7 @@ struct Composer: View {
             Image(systemName: "arrow.up")
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(canSend ? Theme.onAccent : Color.secondary)
-                .frame(width: Composer.height - 8, height: Composer.height - 8)
+                .frame(width: h - 8, height: h - 8)
                 .background(canSend ? Theme.accent : Color.secondary.opacity(0.18), in: Circle())
                 .padding(4).contentShape(Circle()).padding(-4) // a 38 pt target around a 30 pt mark
         }
@@ -193,7 +195,7 @@ struct Composer: View {
             Image(systemName: "plus")
                 .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(.primary)
-                .frame(width: Composer.height, height: Composer.height)
+                .frame(width: h, height: h)
                 .glass(in: Circle(), interactive: true)
                 .padding(3).contentShape(Circle()).padding(-3) // 44 pt target
         }
@@ -326,17 +328,17 @@ enum Drafts {
 
 extension View {
     /// The message field: a glass capsule on iOS 26, a bordered one before.
-    @ViewBuilder func composerField() -> some View {
+    @ViewBuilder func composerField(radius: CGFloat = Composer.height / 2) -> some View {
         #if compiler(>=6.2)
         if #available(iOS 26, *) {
-            self.glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: Composer.height / 2, style: .continuous))
+            self.glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: radius, style: .continuous))
         } else {
-            self.background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: Composer.height / 2, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Composer.height / 2, style: .continuous).stroke(Color(uiColor: .separator)))
+            self.background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).stroke(Color(uiColor: .separator)))
         }
         #else
-        self.background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: Composer.height / 2, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Composer.height / 2, style: .continuous).stroke(Color(uiColor: .separator)))
+        self.background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).stroke(Color(uiColor: .separator)))
         #endif
     }
 

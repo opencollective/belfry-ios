@@ -21,9 +21,16 @@ public extension Derive {
 
     func webPage(_ g: Group?) -> WebPage? {
         guard let g else { return nil }
-        let relayKey = events.first { $0.kind == 39000 && $0.tag("d") == g.id }?.pubkey
-        let own = events.filter {
-            $0.kind == 30078 && $0.tag("d") == Derive.webD + g.id && $0.tag("h") == g.id && (g.admins.contains($0.pubkey) || $0.pubkey == relayKey)
+        if let c = webCache[g.id] { return c }
+        let w = computeWebPage(g)
+        webCache[g.id] = w
+        return w
+    }
+
+    private func computeWebPage(_ g: Group) -> WebPage? {
+        let relayKey = metaAuthors[g.id]
+        let own = (webEvents[Derive.webD + g.id] ?? []).filter {
+            $0.tag("h") == g.id && (g.admins.contains($0.pubkey) || $0.pubkey == relayKey)
         }.sorted(by: Derive.byTime)
         guard let last = own.last else { return nil }
         let c = (try? JSONSerialization.jsonObject(with: Data((last.content.isEmpty ? "{}" : last.content).utf8))) as? [String: Any] ?? [:]

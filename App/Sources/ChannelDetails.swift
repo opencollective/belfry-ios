@@ -249,6 +249,7 @@ struct MembersTab: View {
                             HStack(spacing: 6) {
                                 Text(r.pubkey == model.me ? "You" : r.name).font(.subheadline.weight(.semibold))
                                 if r.isAdmin { Chip(text: "admin") }
+                                if let role = model.roles.label(of: r.pubkey), role.lowercased() != "admin" { Chip(text: role) }
                                 if let k = d.kindLabel(r.pubkey) { Chip(text: k.lowercased(), tint: .brand) }
                                 else if let c = r.guest?.chip { Chip(text: c, tint: .brand) }
                             }
@@ -275,6 +276,7 @@ struct MembersTab: View {
         .sheet(item: Binding(get: { labeling.map { ProfileKey(pubkey: $0) } }, set: { labeling = $0?.pubkey })) { k in
             LabelsSheet(id: id, pubkey: k.pubkey)
         }
+        .task { await model.loadRoles() }
     }
 }
 

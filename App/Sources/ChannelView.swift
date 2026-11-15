@@ -275,7 +275,10 @@ struct ChannelView: View {
         guard !didLaunch else { return }
         didLaunch = true
         switch model.launch.screen {
-        case "thread": pendingThreadLaunch = true
+        case "thread":
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                if let root = model.derive.threadsInOrder(id).max(by: { $0.info.count < $1.info.count })?.root { thread = ThreadRoute(group: id, root: root) }
+            }
         case "details", "members", "todos", "files", "log": details = true
         case "invite": invite = true
         case "pulldown", "proposal": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }

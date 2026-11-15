@@ -1168,6 +1168,13 @@ public final class Derive {
     public static func listIdFor(_ groupId: String) -> String { String(Crypto.sha256("osv-village:" + groupId).hex.prefix(16)) }
 
     private var tasksCache = [String: [TodoTask]]()
+    /// Channels.swift: each channel's web settings, worked out once per snapshot.
+    var webCache = [String: WebPage?]()
+    lazy var webEvents: [String: [NostrEvent]] = {
+        var out = [String: [NostrEvent]]()
+        for e in events where e.kind == 30078 { if let d = e.tag("d"), d.hasPrefix("belfry:web:") { out[d, default: []].append(e) } }
+        return out
+    }()
 
     public func tasks(_ groupId: String) -> [TodoTask] {
         if let c = tasksCache[groupId] { return c }

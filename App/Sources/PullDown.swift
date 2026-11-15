@@ -316,8 +316,36 @@ struct PullDownList: View {
                         }
                     }
                 }
+                let photos = Array(d.files(id).filter(\.isImage).prefix(12))
+                if !photos.isEmpty {
+                    Section("Photos") {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 4), spacing: 4) {
+                            ForEach(photos, id: \.url) { m in
+                                Color.clear.aspectRatio(1, contentMode: .fit)
+                                    .overlay { MediaThumb(media: m, all: photos) }
+                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            }
+                        }
+                        .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+                    }
+                }
                 TopicsSection(id: id, topic: $topic) { dismiss() }
                 Section {
+                    if !f.active.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(f.active.prefix(24), id: \.pubkey) { a in
+                                    Button { model.openProfile = a.pubkey } label: {
+                                        VStack(spacing: 4) {
+                                            Avatar(pubkey: a.pubkey, size: 40)
+                                            Text(model.name(a.pubkey)).font(.caption2).lineLimit(1).frame(width: 56)
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
                     Button { openDetails() } label: {
                         ActionRow(icon: "person.2", title: peopleLine(f.active.count), detail: "Members, files, todos and settings")
                     }
@@ -325,6 +353,23 @@ struct PullDownList: View {
         }
         .listStyle(.insetGrouped)
         .contentMargins(.top, 4, for: .scrollContent)
+    }
+}
+
+/// A photo filling its cell; a tap opens the lightbox.
+struct MediaThumb: View {
+    @EnvironmentObject var model: AppModel
+    let media: Media
+    var all: [Media] = []
+    var body: some View {
+        AsyncImage(url: URL(string: media.url)) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.12) }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                let urls = (all.isEmpty ? [media] : all).map(\.url)
+                model.lightbox = Lightbox(urls: urls, index: urls.firstIndex(of: media.url) ?? 0)
+            }
+            .accessibilityLabel(media.name ?? "Photo")
+            .accessibilityAddTraits(.isButton)
     }
 }
 

@@ -40,6 +40,7 @@ struct ProfileView: View {
                                 ForEach(Array(Set(joins.compactMap(\.chip))).sorted(), id: \.self) { Chip(text: $0, tint: .brand) }
                             }
                             if d.isBelfryAdmin(pubkey) { Chip(text: "admin of the belfry") }
+                            if let role = model.roles.label(of: pubkey), role.lowercased() != "admin" { Chip(text: role, icon: "person.badge.key") }
                         }
                         if !me && !d.isGuest(model.me) {
                             Button { dismiss(); model.messageAuthor = pubkey } label: { Label("Message", systemImage: "envelope") }
@@ -78,6 +79,7 @@ struct ProfileView: View {
                         }
                         if d.isCommunityAdmin && d.agentOwner(pubkey) == nil {
                             AdminSwitch(pubkey: pubkey) { error = $0 }
+                            RolePicker(pubkey: pubkey) { error = $0 }
                         }
                     }
                 }
@@ -93,7 +95,48 @@ struct ProfileView: View {
             .task {
                 await model.revalidateConfig()
                 await model.askWhois([pubkey])
+                await model.loadRoles()
             }
+        }
+    }
+}
+
+/// A member's role (docs/roles.md), for the belfry's admins: a native menu of the roles. A saved
+/// guest given a role becomes a member with it; errors are fixed words per code.
+struct RolePicker: View {
+    @EnvironmentObject var model: AppModel
+    let pubkey: String
+    let report: (String?) -> Void
+    @State private var busy = false
+
+    var body: some View {
+        let current = model.roles.members[pubkey] ?? (model.derive.isGuest(pubkey) ? nil : Role.member)
+        Menu {
+            ForEach(model.roles.roles) { r in
+                Button { set(r.id) } label: {
+                    if r.id == current { Label(r.label, systemImage: "checkmark") } else { Text(r.label) }
+                }
+            }
+        } label: {
+            HStack {
+                ActionRow(icon: "person.badge.key", title: "Role", detail: model.roles.role(current)?.label ?? (model.derive.isGuest(pubkey) ? "Guest: no role yet" : "Member"))
+                if busy { ProgressView().controlSize(.small) }
+            }
+        }
+        .disabled(busy || model.derive.isAgent(pubkey))
+    }
+
+    private func set(_ role: String) {
+        guard !busy else { return }
+        busy = true
+        Task {
+            if model.engine?.localOnly == true {
+                model.roles.members[pubkey] = role
+            } else {
+                do { try await model.api.setMemberRole(pubkey, role: role); await model.loadRoles(force: true); report(nil) }
+                catch let e as ApiError { report(e.message) } catch { report(BelfryAPI.network) }
+            }
+            busy = false
         }
     }
 }
