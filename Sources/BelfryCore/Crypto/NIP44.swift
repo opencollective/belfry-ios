@@ -95,8 +95,13 @@ public enum ChaCha20 {
 
     static func words(_ d: Data) -> [UInt32] {
         let b = [UInt8](d)
-        return stride(from: 0, to: b.count, by: 4).map {
-            UInt32(b[$0]) | UInt32(b[$0 + 1]) << 8 | UInt32(b[$0 + 2]) << 16 | UInt32(b[$0 + 3]) << 24
+        // spelled out step by step: Xcode 26's type checker times out on the one-line form
+        return stride(from: 0, to: b.count, by: 4).map { (i: Int) -> UInt32 in
+            let b0: UInt32 = UInt32(b[i])
+            let b1: UInt32 = UInt32(b[i + 1]) << 8
+            let b2: UInt32 = UInt32(b[i + 2]) << 16
+            let b3: UInt32 = UInt32(b[i + 3]) << 24
+            return b0 | b1 | b2 | b3
         }
     }
 
