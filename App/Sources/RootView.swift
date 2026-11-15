@@ -12,6 +12,8 @@ enum SidebarItem: Hashable {
     case mentions
     case requests
     case members
+    case events
+    case settings
 }
 
 struct SearchTarget: Hashable { let channel: String; let message: String }
@@ -156,8 +158,10 @@ struct RootView: View {
             case .channel(let id): ChannelView(id: id, focus: focus?.channel == id ? focus?.message : nil).id(id)
             case .messages: MessagesView()
             case .mentions: MentionsView()
-            case .requests: RequestsView()
+            case .requests: MembersDirectory()
             case .members: MembersDirectory()
+            case .events: EventsScreen()
+            case .settings: BelfrySettings(screen: true)
             case nil: ContentUnavailableView("Pick a channel", systemImage: "number", description: Text("Your community's channels are in the list."))
                     .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
             }
@@ -208,6 +212,7 @@ struct RootView: View {
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
         case "pod": selection = .channel("pod-seed-swap-5e1d")
+        case "pullempty": selection = .channel("kitchen-7d10")
         case "group":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openGroup = "pod-seed-swap-5e1d" }
@@ -225,7 +230,7 @@ struct RootView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { account = true }
         case "members", "todos", "files", "log": selection = .channel(generalId)
         case "proposal": selection = .channel("prop-quiet-hours-after-22-00-7f3a2b")
-        case "events": DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.showEvents = "" }
+        case "events": selection = .events
         case "eventhost":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openEvent = "2026-gwday1" }
@@ -248,7 +253,7 @@ struct RootView: View {
         case "settings":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { model.launchSettings = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { selection = .settings; closeDrawer() }
         case "search":
             selection = .channel(generalId)
             model.drawerQuery = "ladder"
@@ -420,20 +425,15 @@ struct ChannelDrawer: View {
                     }
                     Section {
                         if !d.amGuest {
-                            let asking = model.belfryRequests
-                            let waiting = asking.filter { !$0.vouched }.count
-                            DrawerRow(icon: "person.3", title: "Members",
-                                      detail: asking.isEmpty ? "Everyone in \(model.config.name)" : "\(asking.count) asking to join · vouch",
-                                      badge: waiting, on: current == .members) { select(.members) }
-                        }
-                        if model.showRequests {
+                            // Members first; what waits for me sits at the top of it (web 98c33fc)
                             let n = model.requestCount
-                            DrawerRow(icon: "tray", title: "Requests", detail: n > 0 ? "\(n) waiting for you" : "People and agents asking to join",
-                                      badge: n, on: current == .requests) { select(.requests) }
+                            DrawerRow(icon: "person.3", title: "Members",
+                                      detail: n > 0 ? "\(n) \(n == 1 ? "request" : "requests") waiting for you" : "Everyone in \(model.config.name)",
+                                      badge: n, on: current == .members || current == .requests) { select(.members) }
                         }
                         DrawerRow(icon: "calendar", title: "Upcoming events",
                                   detail: nextLine,
-                                  on: false) { model.showEvents = "" }
+                                  on: current == .events) { select(.events) }
                         DrawerRow(icon: "at", title: "@Mentions", detail: "Where people named you, in every channel",
                                   badge: model.newMentions, on: current == .mentions) { select(.mentions) }
                         DrawerRow(icon: "envelope", title: "Direct messages",
@@ -504,7 +504,7 @@ struct ChannelDrawer: View {
             }
             if model.derive.isCommunityAdmin {
                 // the belfry's admins: its name opens the settings, as in Discord
-                Button { hideKeyboard(); settings = true } label: {
+                Button { hideKeyboard(); select(.settings) } label: {
                     HStack(spacing: 4) {
                         Text(model.config.name).font(.title2.bold()).lineLimit(1).minimumScaleFactor(0.7)
                         Image(systemName: "chevron.down").font(.footnote.weight(.bold)).foregroundStyle(.secondary)

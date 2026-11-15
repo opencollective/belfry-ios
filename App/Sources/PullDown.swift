@@ -106,61 +106,68 @@ enum PullLevel { case closed, short, full }
 
 extension View {
     /// The line's bar: iOS 26 lets the scroll edge effect show it; before, a bar material.
-    @ViewBuilder func lineBackground() -> some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26, *) { self } else { self.background(.bar).overlay(alignment: .bottom) { Divider() } }
-        #else
-        self.background(.bar).overlay(alignment: .bottom) { Divider() }
-        #endif
+    func lineBackground() -> some View {
+        background(.bar).overlay(alignment: .bottom) { Divider() }
     }
 }
 
-/// The panel that comes down from the line: a short level and a full one; the handle follows the
-/// finger and snaps to the nearest level (up past the short one closes it).
+/// The panel that comes down from under the navigation bar (one surface with it): a short level
+/// and a full one; the handle follows the finger and snaps (up past the short level closes it).
+/// Backdrop and panel stay in the tree while they animate (drawer fix 4c549e1).
 struct PullDownPanel: View {
     let id: String
     @Binding var level: PullLevel
     @Binding var topic: String?
-    let openDetails: () -> Void
+    let openDetails: (InfoTab) -> Void
+    let invite: () -> Void
     let showMessage: (String) -> Void
     @State private var drag: CGFloat = 0
+    @State private var contentH: CGFloat = 0
 
     var body: some View {
         GeometryReader { geo in
-            let full = geo.size.height - 24
-            let short = min(full, max(260, geo.size.height * 0.55))
+            // the panel's colour also fills the navigation bar's area above it (one surface)
+            let top = max(0, geo.frame(in: .global).minY)
+            // the panel is as tall as its rows when they are few (an empty channel: four rows)
+            let natural = contentH > 0 ? contentH + 24 : .infinity
+            let full = min(geo.size.height - 24, natural)
+            let short = min(full, max(200, geo.size.height * 0.5))
             let base: CGFloat = level == .full ? full : level == .short ? short : 0
             let h = max(0, min(full, base + drag))
             ZStack(alignment: .top) {
-                if level != .closed || drag != 0 {
-                    Color.black.opacity(0.25 * min(1, h / max(1, short)))
-                        .ignoresSafeArea(edges: .bottom)
-                        .contentShape(Rectangle())
-                        .onTapGesture { close() }
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityLabel("Close")
-                        .transition(.opacity)
+                Color.black.opacity(level == .closed && drag == 0 ? 0 : 0.18 * min(1, h / max(1, short)))
+                    .ignoresSafeArea(edges: .bottom)
+                    .contentShape(Rectangle())
+                    .onTapGesture { close() }
+                    .allowsHitTesting(level != .closed)
+                    .accessibilityHidden(level == .closed)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityLabel("Close")
+                PDSurface.color.frame(height: top).offset(y: -top)
+                    .opacity(level == .closed ? 0 : 1)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                VStack(spacing: 0) {
+                    // always there (measured, clipped to nothing while closed): nothing pops in
+                    PullDownList(id: id, topic: $topic, full: level == .full, close: close, openDetails: openDetails, invite: invite, showMessage: showMessage)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                    handle(short: short, full: full)
                 }
-                if level != .closed {
-                    VStack(spacing: 0) {
-                        PullDownList(id: id, topic: $topic, close: close, openDetails: openDetails, showMessage: showMessage)
-                            .frame(maxHeight: .infinity)
-                        handle(short: short, full: full)
-                    }
-                    .frame(height: h, alignment: .top)
-                    .background(Color(uiColor: .systemGroupedBackground))
-                    .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 24, bottomTrailingRadius: 24, style: .continuous))
-                    .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
+                .frame(height: h, alignment: .top)
+                .frame(maxWidth: .infinity)
+                .background(PDSurface.color)
+                .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 14, bottomTrailingRadius: 14, style: .continuous))
+                .overlay(alignment: .bottom) { Divider().opacity(h > 0 ? 1 : 0) }
+                .accessibilityHidden(level == .closed)
             }
         }
         .allowsHitTesting(level != .closed)
+        .onPreferenceChange(PDHeightKey.self) { contentH = $0 }
     }
 
     private func handle(short: CGFloat, full: CGFloat) -> some View {
-        Capsule().fill(Color.secondary.opacity(0.5)).frame(width: 40, height: 5)
-            .frame(maxWidth: .infinity, minHeight: 28)
+        Capsule().fill(Color.secondary.opacity(0.45)).frame(width: 36, height: 5)
+            .frame(maxWidth: .infinity, minHeight: 24)
             .contentShape(Rectangle())
             .gesture(DragGesture(coordinateSpace: .global)
                 .onChanged { v in drag = v.translation.height }
@@ -180,15 +187,78 @@ struct PullDownPanel: View {
     private func close() { withAnimation(.snappy(duration: 0.25)) { level = .closed; drag = 0 } }
 }
 
+/// One plain row of the pull-down (system metrics: 44 pt, a 28 pt symbol column, body title,
+/// a secondary value, a chevron where it navigates).
+struct PDRow<Icon: View>: View {
+    @ViewBuilder let icon: () -> Icon
+    let title: String
+    var subtitle: String? = nil
+    var value: String? = nil
+    var chevron = true
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                icon().font(.body).foregroundStyle(.secondary).frame(width: 28)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.body).foregroundStyle(.primary).lineLimit(2)
+                    if let subtitle { Text(subtitle).font(.footnote).foregroundStyle(.secondary).lineLimit(1) }
+                }
+                Spacer(minLength: 8)
+                if let value { Text(value).font(.body).foregroundStyle(.secondary).monospacedDigit() }
+                if chevron { Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary) }
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 44)
+            .padding(.vertical, subtitle == nil ? 0 : 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+extension PDRow where Icon == Image {
+    init(symbol: String, title: String, subtitle: String? = nil, value: String? = nil, chevron: Bool = true, action: @escaping () -> Void) {
+        self.init(icon: { Image(systemName: symbol) }, title: title, subtitle: subtitle, value: value, chevron: chevron, action: action)
+    }
+}
+
+enum PDSurface {
+    static let color = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? .secondarySystemBackground : .systemBackground })
+}
+
+struct PDHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// A hairline inset to the rows' text.
+struct PDDivider: View {
+    var body: some View { Divider().padding(.leading, 56) }
+}
+
+/// A small uppercase label over a section of several rows (as in Settings).
+struct PDHeader: View {
+    let text: String
+    var body: some View {
+        Text(text.uppercased()).font(.footnote).foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 4)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
 struct PullDownList: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.openChannel) private var openChannel
     let id: String
     @Binding var topic: String?
+    var full = false
     let close: () -> Void
-    let openDetails: () -> Void
+    let openDetails: (InfoTab) -> Void
+    let invite: () -> Void
     let showMessage: (String) -> Void
-    @State private var newTodo = ""
 
     private func dismiss() { close() }
 
@@ -198,161 +268,157 @@ struct PullDownList: View {
         let now = Int.now
         let f = d.channelFacts(id, now: now)
         let g = f.group
-        List {
+        let allTodos = d.tasks(id)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
                 if let about = g?.about, !about.isEmpty {
-                    Section {
-                        MarkdownText(text: about).font(.subheadline).lineLimit(6)
-                        Text(d.visibilityLine(g)).font(.footnote).foregroundStyle(.secondary)
-                    }
+                    MarkdownText(text: about).font(.subheadline).foregroundStyle(.primary)
+                        .lineLimit(full ? nil : 3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
                 }
                 if let g, let p = g.parent, let parent = model.group(p) {
-                    Section {
-                        Button { dismiss(); openChannel(p, nil) } label: {
-                            ActionRow(icon: "arrow.up.left", title: "\(g.isProposal ? "Proposal" : "Group") in \(parent.isPod ? parent.name : "#" + parent.name)")
-                        }
-                    }
+                    PDRow(symbol: "arrow.up.left", title: (g.isProposal ? "Proposal in " : "Group in ") + (parent.isPod ? parent.name : "#" + parent.name)) { dismiss(); openChannel(p, nil) }
+                    PDDivider()
                 }
-                if let p = f.own { ProposalSection(p: p) }
+                if let p = f.own { ProposalBlock(p: p); PDDivider() }
                 if let g, g.isPod, d.canAdmin(g), !g.applications.isEmpty {
-                    Section("\(g.applications.count) asking to join") {
-                        ForEach(g.applications, id: \.pubkey) { a in
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack { Avatar(pubkey: a.pubkey, size: 28); Text(model.name(a.pubkey)).font(.subheadline.weight(.semibold)) }
-                                if !a.answer.isEmpty { Text(a.answer).font(.subheadline).foregroundStyle(.secondary) }
-                                HStack {
-                                    BusyButton("Let in") { model.admit(id, a.pubkey) }.buttonStyle(.brand)
-                                    BusyButton("Decline", role: .destructive) { model.declineApplicant(id, a.pubkey) }.buttonStyle(.bordered)
-                                }
-                                .controlSize(.small)
-                            }
-                        }
-                    }
+                    PDRow(symbol: "person.crop.circle.badge.questionmark", title: "Asking to join", value: "\(g.applications.count)") { dismiss(); model.openGroup = id }
+                    PDDivider()
                 }
                 if !f.pins.isEmpty {
-                    Section("Pinned") {
-                        ForEach(f.pins) { m in
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(spacing: 6) {
-                                    Avatar(pubkey: m.pubkey, size: 20)
-                                    Text(model.name(m.pubkey)).font(.caption.weight(.semibold))
-                                    Text(Format.day(m.at)).font(.caption2).foregroundStyle(.secondary)
-                                }
-                                Text(d.pinLine(m)).font(.subheadline).lineLimit(3)
-                                HStack(spacing: 16) {
-                                    Button("Show in the channel") { showMessage(m.id) }
-                                    if !model.hiddenPins.contains(m.id) { Button("Got it, hide") { model.hidePin(m.id) } }
-                                }
-                                .font(.caption.weight(.semibold))
-                                .buttonStyle(.borderless)
-                            }
-                        }
+                    if f.pins.count > 1 { PDHeader(text: "Pinned") }
+                    ForEach(f.pins) { m in
+                        PDRow(symbol: "pin", title: d.pinLine(m), subtitle: model.name(m.pubkey) + " · " + Format.day(m.at)) { showMessage(m.id) }
+                        PDDivider()
                     }
                 }
                 if !f.events.isEmpty {
-                    Section("Coming up") {
-                        ForEach(f.events.prefix(3)) { e in
-                            Button { dismiss(); model.openEvent = e.coord } label: {
-                                HStack(spacing: 10) {
-                                    DateChip(at: e.start)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(e.title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                                        Text(d.lineDay(e.start, now: now) + " · " + d.lineWhen(e)).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    if let s = d.stateLabel(e) { Chip(text: s, tint: .brand) } else if e.status != .cancelled { Chip(text: "RSVP", tint: .brand) }
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        if f.events.count > 3 {
-                            Button { dismiss(); model.showEvents = id } label: { ActionRow(icon: "calendar", title: "All \(f.events.count) events") }
-                        }
+                    let shown = Array(f.events.prefix(full ? 3 : 1))
+                    if shown.count > 1 { PDHeader(text: "Coming up") }
+                    ForEach(shown) { e in
+                        PDRow(symbol: "calendar", title: e.title, subtitle: d.lineDay(e.start, now: now) + " · " + d.lineWhen(e), value: d.stateLabel(e)) { dismiss(); model.openEvent = e.coord }
+                        PDDivider()
+                    }
+                    if f.events.count > shown.count {
+                        PDRow(symbol: "calendar.badge.clock", title: "All events", value: "\(f.events.count)") { dismiss(); model.showEvents = id }
+                        PDDivider()
                     }
                 }
                 if !f.proposals.isEmpty {
-                    Section("To decide") {
-                        ForEach(f.proposals) { p in
-                            Button { dismiss(); openChannel(p.groupId, nil) } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(p.title).font(.subheadline.weight(.semibold))
-                                        Text(p.status.label).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    if p.votingNow { Chip(text: d.myVote(p) == nil ? "Vote" : "Voted", tint: d.myVote(p) == nil ? .brand : .secondary) }
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
+                    if f.proposals.count > 1 { PDHeader(text: "To decide") }
+                    ForEach(f.proposals) { p in
+                        PDRow(symbol: "doc.text", title: p.title, subtitle: p.status.label, value: p.votingNow ? (d.myVote(p) == nil ? "Vote" : "Voted") : nil) { dismiss(); openChannel(p.groupId, nil) }
+                        PDDivider()
                     }
                 }
-                Section("To do") {
-                    ForEach(f.todos.prefix(4)) { t in TodoRow(t: t, group: id) }
-                    if f.todos.count > 4 {
-                        Button { openDetails() } label: { ActionRow(icon: "checklist", title: "All \(f.todos.count) todos") }
-                    }
-                    HStack {
-                        TextField("Add a todo", text: $newTodo).font(.body)
-                        BusyButton {
-                            model.addTodo(newTodo, in: id)
-                            newTodo = ""
-                        } label: { Image(systemName: "plus.circle.fill") }
-                        .disabled(newTodo.jsTrim().isEmpty)
-                        .accessibilityLabel("Add the todo")
-                    }
+                if !allTodos.isEmpty {
+                    PDRow(symbol: "checklist", title: "Todos", value: "\(allTodos.filter(\.done).count) of \(allTodos.count) done") { openDetails(.todos) }
+                    PDDivider()
                 }
                 if !f.pods.isEmpty {
-                    Section("Groups") {
-                        ForEach(f.pods) { p in
-                            Button { dismiss(); openChannel(p.id, nil) } label: {
-                                HStack(spacing: 10) {
-                                    ChannelGlyph(group: p, size: 22)
-                                    Text(p.name).font(.subheadline.weight(.semibold))
-                                    Spacer()
-                                    Text("\(p.members.count) \(p.members.count == 1 ? "member" : "members")").font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
+                    if f.pods.count > 1 { PDHeader(text: "Groups") }
+                    ForEach(f.pods) { p in
+                        PDRow(icon: { PodShape(members: p.members.count).stroke(Color.secondary, lineWidth: 1.5).frame(width: 20, height: 20) },
+                              title: p.name, value: "\(p.members.count)") { dismiss(); openChannel(p.id, nil) }
+                        PDDivider()
                     }
                 }
-                let photos = Array(d.files(id).filter(\.isImage).prefix(12))
-                if !photos.isEmpty {
-                    Section("Photos") {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 4), spacing: 4) {
+                if full {
+                    let photos = Array(d.files(id).filter(\.isImage).prefix(12))
+                    if !photos.isEmpty {
+                        PDHeader(text: "Photos")
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 4), spacing: 3) {
                             ForEach(photos, id: \.url) { m in
                                 Color.clear.aspectRatio(1, contentMode: .fit)
                                     .overlay { MediaThumb(media: m, all: photos) }
-                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                             }
                         }
-                        .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
+                        .padding(.horizontal, 16).padding(.bottom, 8)
                     }
+                    TopicRows(id: id, topic: $topic) { dismiss() }
                 }
-                TopicsSection(id: id, topic: $topic) { dismiss() }
-                Section {
-                    if !f.active.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
-                                ForEach(f.active.prefix(24), id: \.pubkey) { a in
-                                    Button { model.openProfile = a.pubkey } label: {
-                                        VStack(spacing: 4) {
-                                            Avatar(pubkey: a.pubkey, size: 40)
-                                            Text(model.name(a.pubkey)).font(.caption2).lineLimit(1).frame(width: 56)
-                                        }
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                    }
-                    Button { openDetails() } label: {
-                        ActionRow(icon: "person.2", title: peopleLine(f.active.count), detail: "Members, files, todos and settings")
-                    }
+                if !model.guestReading {
+                    PDRow(symbol: "person.badge.plus", title: "Invite someone") { invite() }
+                    PDDivider()
                 }
+                PDRow(symbol: "person.2", title: "Members", value: "\(g?.members.count ?? 0)") { openDetails(.members) }
+                PDDivider()
+                PDRow(symbol: "info.circle", title: "Channel info") { openDetails(.about) }
+            }
+            .padding(.bottom, 4)
+            .background(GeometryReader { g in Color.clear.preference(key: PDHeightKey.self, value: g.size.height) })
         }
-        .listStyle(.insetGrouped)
-        .contentMargins(.top, 4, for: .scrollContent)
+        .scrollBounceBehavior(.basedOnSize)
+    }
+}
+
+/// A proposal's own state in its pull-down: title, status, the vote while it is open.
+struct ProposalBlock: View {
+    @EnvironmentObject var model: AppModel
+    let p: Proposal
+    @State private var revise = false
+    var body: some View {
+        let d = model.derive
+        let mine = d.myVote(p)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(p.title).font(.headline)
+            Text("\(p.status.label) · version \(p.version) · by \(model.name(p.author))").font(.footnote).foregroundStyle(.secondary)
+            if p.votingNow {
+                Text("\(p.tally["yes"] ?? 0) yes · \(p.tally["no"] ?? 0) no · \(p.tally["abstain"] ?? 0) abstain").font(.footnote).foregroundStyle(.secondary)
+                HStack {
+                    ForEach(Proposal.voteOptions, id: \.id) { o in
+                        if mine == o.id {
+                            BusyButton(o.label) { model.vote(p, o.id) }.buttonStyle(.brand)
+                        } else {
+                            BusyButton(o.label) { model.vote(p, o.id) }.buttonStyle(.bordered)
+                        }
+                    }
+                }
+                .controlSize(.small)
+            }
+            if let w = p.website, let link = websitePreviewLink(w, domain: model.config.domain), let u = URL(string: link) {
+                Link(destination: u) { Label("Preview this version", systemImage: "safari") }.font(.subheadline)
+            }
+            HStack(spacing: 16) {
+                if d.canDecide(p) {
+                    Menu {
+                        ForEach(ProposalStatus.allCases.filter { $0 != p.status }, id: \.self) { s in Button(s.label) { model.setStatus(p, s) } }
+                    } label: { Label("Status", systemImage: "flag") }
+                }
+                if p.author == model.me { Button { revise = true } label: { Label("New version", systemImage: "doc.badge.plus") } }
+            }
+            .font(.subheadline)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .sheet(isPresented: $revise) { ReviseProposalSheet(p: p) }
+    }
+}
+
+/// The channel's topics as rows (full level): tap filters the channel.
+struct TopicRows: View {
+    @EnvironmentObject var model: AppModel
+    let id: String
+    @Binding var topic: String?
+    let done: () -> Void
+    var body: some View {
+        let d = model.derive
+        let pinned = d.pinnedTopics(id).filter { $0 != Derive.announcement }
+        let counts = d.topicCounts(id)
+        let list = pinned.map { t in (t, counts.first { $0.topic == t }?.count ?? 0) } + counts.filter { !pinned.contains($0.topic) }.prefix(8).map { ($0.topic, $0.count) }
+        if !list.isEmpty || d.hasAnnouncements(id) {
+            PDHeader(text: "Topics")
+            if d.hasAnnouncements(id) {
+                PDRow(symbol: "megaphone", title: "Announcements") { topic = Derive.announcement; done() }
+                PDDivider()
+            }
+            ForEach(list, id: \.0) { t in
+                PDRow(symbol: pinned.contains(t.0) ? "pin" : "number", title: "#" + t.0, value: "\(t.1)") { topic = t.0; done() }
+                PDDivider()
+            }
+        }
     }
 }
 

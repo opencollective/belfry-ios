@@ -12,14 +12,19 @@ struct EventPage: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openChannel) private var openChannel
     let key: String
+    /// Pushed on a screen's stack (Events): no stack of its own, no Done.
+    var pushed = false
     @State private var remote: ApiEvent?
     @State private var error: String?
 
     var body: some View {
+        if pushed { page } else { NavigationStack { page }.presentationDetents([.large]) }
+    }
+
+    private var page: some View {
         let _ = model.version
         let d = model.derive
-        NavigationStack {
-            SwiftUI.Group {
+        return SwiftUI.Group {
                 if let e = d.eventByKey(key) {
                     EventPageBody(e: e, api: nil) { dismiss(); openChannel(e.groupId, nil) }
                 } else if let r = remote {
@@ -31,7 +36,7 @@ struct EventPage: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar { if !pushed { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } } }
             .task {
                 guard d.eventByKey(key) == nil else { return }
                 switch await model.remoteEvent(key) {
@@ -39,8 +44,6 @@ struct EventPage: View {
                 case .failure(let e): error = e.message
                 }
             }
-        }
-        .presentationDetents([.large])
     }
 }
 
@@ -604,10 +607,27 @@ struct TicketFormSheet: View {
     }
 }
 
+struct EventRoute: Hashable { let key: String }
+
+/// Events of one channel, as a sheet (from a channel's pull-down).
 struct EventsList: View {
-    @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let channel: String?
+    var body: some View {
+        NavigationStack {
+            EventsScreen(channel: channel, sheet: true)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
+/// Events (the drawer's Upcoming events): an open screen like a channel: ☰, "Events", ＋; the
+/// Upcoming / Mine / Hosting / Past picker under the bar, then the events edge to edge; a tap
+/// pushes the event's page.
+struct EventsScreen: View {
+    @EnvironmentObject var model: AppModel
+    var channel: String? = nil
+    var sheet = false
     @State private var tab: EventsTab = .upcoming
     @State private var make = false
 
@@ -615,27 +635,35 @@ struct EventsList: View {
         let _ = model.version
         let d = model.derive
         let list = d.eventsIn(tab, now: .now, channel: channel)
-        NavigationStack {
-            List {
-                Picker("Show", selection: $tab) {
-                    ForEach(EventsTab.allCases, id: \.self) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                if list.isEmpty { Text(tab.empty).foregroundStyle(.secondary) }
-                ForEach(list) { e in
-                    Button { model.openEvent = e.coord } label: { EventRow(e: e) }.buttonStyle(.plain)
-                }
+        List {
+            if list.isEmpty {
+                ContentUnavailableView(tab.label, systemImage: "calendar", description: Text(tab.empty))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
-            .navigationTitle(channel.flatMap { model.group($0)?.name }.map { "Events in \($0)" } ?? "All events")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-                if !d.amGuest {
-                    ToolbarItem(placement: .topBarLeading) { Button { make = true } label: { Label("New event", systemImage: "plus") } }
-                }
+            ForEach(list) { e in
+                NavigationLink(value: EventRoute(key: e.coord)) { EventRow(e: e) }
             }
-            .sheet(isPresented: $make) { EventFormSheet(editing: nil, channel: nil) }
         }
+        .listStyle(.plain)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Picker("Show", selection: $tab) {
+                ForEach(EventsTab.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .background(.bar)
+        }
+        .navigationDestination(for: EventRoute.self) { r in EventPage(key: r.key, pushed: true) }
+        .navigationTitle(channel.flatMap { model.group($0)?.name }.map { "Events in \($0)" } ?? "Events")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !sheet { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
+            if !d.amGuest {
+                ToolbarItem(placement: .topBarTrailing) { Button { make = true } label: { Image(systemName: "plus") }.accessibilityLabel("New event") }
+            }
+        }
+        .sheet(isPresented: $make) { EventFormSheet(editing: nil, channel: channel) }
     }
 }
 

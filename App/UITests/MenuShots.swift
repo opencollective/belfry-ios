@@ -39,10 +39,13 @@ final class MenuShots: XCTestCase {
 
     func testMessageMenu() {
         let app = launch("feed")
-        let msg = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "read it tonight")).firstMatch
+        // a message row of the feed (the drawer, kept in the tree, holds the same words in a preview)
+        let msg = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == 'message-row' AND label CONTAINS %@", "read it tonight")).firstMatch
         XCTAssertTrue(msg.waitForExistence(timeout: 10))
+        XCTAssertTrue(msg.isHittable, "the message row is not on screen")
         msg.press(forDuration: 1.2)
-        sleep(2)
+        XCTAssertTrue(app.buttons["Reply"].waitForExistence(timeout: 4), "the message's menu did not open")
+        sleep(1)
         shot("51-message-menu")
     }
 

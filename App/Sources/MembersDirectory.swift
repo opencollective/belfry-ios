@@ -1,46 +1,25 @@
 import BelfryCore
 import SwiftUI
 
-// Members (web Directory.tsx, 8f0ccb8): everyone in the belfry, their own agents under them,
-// opened from Members at the top of the drawer. First, anyone asking to join, so members can
-// vouch for them (the admins decide, or enough vouches: the belfry's Membership settings).
+// Members (web Directory.tsx, 8f0ccb8 / 98c33fc): the first row of the drawer. At its top, only
+// when something waits, the request sections (agents asking to join, people asking to join the
+// belfry, requests to my groups: RequestsView.swift); then everyone in the belfry, their own
+// agents under them, with search.
 
 struct MembersDirectory: View {
     @EnvironmentObject var model: AppModel
     @State private var query = ""
     @State private var list: [DirMember]?
     @State private var failed = false
+    @State private var demo = false
     @State private var error: String?
 
     var body: some View {
         let _ = model.version
-        let admin = model.derive.isCommunityAdmin
-        let asking = model.belfryRequests
         let shown = filtered()
         List {
-            if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
-            if !asking.isEmpty {
-                Section {
-                    ForEach(asking) { p in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(verbatim: p.name.isEmpty ? "Someone" : p.name).font(.body.weight(.semibold))
-                            if admin, let e = p.email { Text(verbatim: e).font(.footnote).foregroundStyle(.secondary) }
-                            if !p.motivation.isEmpty { Text(verbatim: p.motivation).font(.subheadline).foregroundStyle(.secondary) }
-                            if p.vouches > 0 { Text("\(p.vouches) \(p.vouches == 1 ? "vouch" : "vouches")").font(.footnote).foregroundStyle(.secondary) }
-                            HStack {
-                                BusyButton(p.vouched ? "Take back my vouch" : "Vouch") { error = await model.vouchApplication(p.id, on: !p.vouched) }
-                                    .buttonStyle(.bordered)
-                                if admin {
-                                    BusyButton("Accept") { error = await model.decideApplication(p.id, approve: true) }.buttonStyle(.brand)
-                                    BusyButton("Decline", role: .destructive) { error = await model.decideApplication(p.id, approve: false) }.buttonStyle(.bordered)
-                                }
-                            }
-                            .controlSize(.small)
-                        }
-                        .padding(.vertical, 2)
-                    }
-                } header: { Text("Asking to join · \(asking.count)") } footer: { Text(rule) }
-            }
+            // what waits for me, only when something does (web 98c33fc)
+            RequestSections(error: $error)
             Section {
                 if list == nil { HStack { if failed { Text("The list could not be loaded.") } else { ProgressView(); Text("Loading…") } }.foregroundStyle(.secondary) }
                 ForEach(shown) { m in
@@ -52,7 +31,7 @@ struct MembersDirectory: View {
                             .padding(.leading, 28)
                     }
                 }
-            } header: { Text(list.map { "\($0.count) in \(model.config.name)" } ?? model.config.name) }
+            } header: { Text(list == nil ? model.config.name : "\(shown.count) in \(model.config.name)") }
         }
         .navigationTitle("Members")
         .navigationBarTitleDisplayMode(.inline)
@@ -80,9 +59,16 @@ struct MembersDirectory: View {
 
     private func filtered() -> [DirMember] {
         let q = query.jsTrim().lowercased()
-        return (list ?? []).filter { m in
+        return (demo ? demoList() : (list ?? [])).filter { m in
             q.isEmpty || name(m.pubkey, m.name).lowercased().contains(q) || m.agents.contains { name($0.pubkey, $0.name).lowercased().contains(q) }
         }.sorted { name($0.pubkey, $0.name).localizedCaseInsensitiveCompare(name($1.pubkey, $1.name)) == .orderedAscending }
+    }
+
+    /// The demo: who is in its channels (worked out live: the demo's events arrive after launch).
+    private func demoList() -> [DirMember] {
+        let d = model.derive
+        let keys = Set(model.groups.flatMap(\.members)).filter { !d.isGuest($0) && d.agentOwner($0) == nil }
+        return keys.map { k in DirMember(pubkey: k, name: "", role: nil, agents: model.config.agents.filter { $0.value == k }.map { (pubkey: $0.key, name: "") }) }
     }
 
     private func row(_ pk: String, _ fallback: String, size: CGFloat, detail: String?, role: String?) -> some View {
@@ -102,9 +88,8 @@ struct MembersDirectory: View {
         await model.loadRequests(force: true)
         await model.loadRoles()
         if model.engine?.localOnly == true {
-            let d = model.derive
-            let keys = Set(model.groups.flatMap(\.members)).filter { !d.isGuest($0) && d.agentOwner($0) == nil }
-            list = keys.map { k in DirMember(pubkey: k, name: "", role: nil, agents: model.config.agents.filter { $0.value == k }.map { (pubkey: $0.key, name: "") }) }
+            demo = true
+            list = []
         } else {
             do { list = try await model.api.directory() } catch { failed = true }
         }

@@ -145,11 +145,20 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   behind `#if compiler(>=6.2)` + `if #available(iOS 26, *)`, material before (`Theme.swift`:
   `glass(in:)`, `topBar`, `bottomBar`).
 - iPhone layout = the web's phone layout (2026-11-15): the open screen (channel, Messages,
-  @Mentions, Requests) with ☰ (count of unread DMs + new mentions + requests) and a left drawer
+  @Mentions, Members with the requests on top) with ☰ (count of unread DMs + new mentions + requests) and a left drawer
   under it (`DrawerContainer` + `ChannelDrawer` in RootView: edge swipe at the stack's root, the
   page slides right, shade, drag / tap to close). iPad: the same list as a split view's sidebar.
-- The channel line pulls down FROM THE TOP (`PullDownPanel`: short and full levels, handle drag,
-  tap outside) as on the web, not a bottom sheet. Channel info stays a sheet (tabs About,
+- Every row of the drawer opens an open screen (☰ top left, the row highlighted), never a
+  sheet: channels, Members (requests on top), Events (`EventsScreen`, events pushed on the
+  stack), @Mentions, Direct messages, Belfry settings. Sheets are for short tasks started from
+  a screen (invite, a new event, editing a profile).
+- Views inside animated containers stay in the tree (opacity / allowsHitTesting /
+  accessibilityHidden), never inserted mid-animation (drawer shade fix 4c549e1, pull-down).
+- The channel line pulls down FROM THE TOP (`PullDownPanel`: one surface with the navigation
+  bar, plain system rows `PDRow`: description, pinned, coming up, to decide, Todos "n of m
+  done", groups, then Invite someone / Members / Channel info; short and full levels, handle
+  drag, tap outside) as on the web, not a bottom sheet. The channel header's right side is
+  search only (Invite lives in the pull-down). Channel info stays a sheet (tabs About,
   Members, Todos, Files, Log, Settings).
 - Look: neutral like the web's Belfry theme (ink on white / near-white on black) unless
   belfry.json `branding.primary` is set; then that colour is the tint (`Theme`, `Color.brand`,

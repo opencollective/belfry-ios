@@ -15,6 +15,8 @@ struct ChannelView: View {
     var focus: String?
     @State private var openThreads = Set<String>()
     @State private var pull: PullLevel = .closed
+    @State private var detailsTab: InfoTab = .about
+    @State private var composerH: CGFloat = 0
     @State private var details = false
     @State private var invite = false
     @State private var search = false
@@ -74,7 +76,8 @@ struct ChannelView: View {
                             }
                         }
                     }
-                    Color.clear.frame(height: 1).id("bottom")
+                    // the composer's height below the last row: scrolling to the end stops above it
+                    Color.clear.frame(height: 1).padding(.bottom, composerH).id("bottom")
                 }
                 .padding(.vertical, 8)
             }
@@ -98,7 +101,7 @@ struct ChannelView: View {
             .onChange(of: scrollTarget) { _, t in if let t { jump(to: t, proxy); scrollTarget = nil } }
             .onChange(of: model.openThread) { _, _ in takeThread() }
             .onDisappear { if model.visibleChannel == id { model.visibleChannel = nil } }
-            .bottomBar {
+            .bottomBar(height: $composerH) {
                 VStack(spacing: 0) {
                 if model.guestReading {
                     // guest mode: reading only; Join opens the sheet (SPEC 19.26)
@@ -117,11 +120,6 @@ struct ChannelView: View {
                 }
                 }
                 }
-            }
-            .overlay(alignment: .top) {
-                PullDownPanel(id: id, level: $pull, topic: $topic,
-                              openDetails: { closePull(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { details = true } },
-                              showMessage: { mid in closePull(); scrollTarget = mid })
             }
             .topBar {
                 VStack(spacing: 0) {
@@ -149,6 +147,13 @@ struct ChannelView: View {
                 }
             }
         }
+        // the pull-down: one surface with the navigation bar, over the line and the feed
+        .overlay(alignment: .top) {
+            PullDownPanel(id: id, level: $pull, topic: $topic,
+                          openDetails: { tab in closePull(); detailsTab = tab; DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { details = true } },
+                          invite: { closePull(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { invite = true } },
+                          showMessage: { mid in closePull(); scrollTarget = mid })
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -174,9 +179,6 @@ struct ChannelView: View {
             ToolbarItem(placement: .topBarLeading) { DrawerButton() }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button { search = true } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("Search")
-                if !model.guestReading {
-                    Button { invite = true } label: { Image(systemName: "person.badge.plus") }.accessibilityLabel("Invite people")
-                }
             }
         }
         .navigationDestination(item: $thread) { r in ThreadView(group: r.group, rootId: r.root, focusReply: r.reply) }
@@ -194,7 +196,7 @@ struct ChannelView: View {
         // no keyboard over a sheet
         .onChange(of: details || invite || search || podAsk || actionsFor != nil || editing != nil) { _, open in if open { hideKeyboard() } }
         .sheet(isPresented: $details) {
-            ChannelDetails(id: id) { g in
+            ChannelDetails(id: id, go: { g in
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                     switch g {
                     case .message(let mid): scrollTarget = mid
@@ -202,7 +204,7 @@ struct ChannelView: View {
                     default: break
                     }
                 }
-            }
+            }, tab: detailsTab)
         }
         .sheet(isPresented: $invite) { InviteSheet(id: id) }
         .sheet(isPresented: $search) {
@@ -282,6 +284,7 @@ struct ChannelView: View {
                 if let root = model.derive.threadsInOrder(id).max(by: { $0.info.count < $1.info.count })?.root { thread = ThreadRoute(group: id, root: root) }
             }
         case "details", "members", "todos", "files", "log": details = true
+        case "pullempty": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }
         case "invite": invite = true
         case "pulldown", "proposal": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }
         case "pullfull": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { withAnimation(.snappy) { pull = .full } }

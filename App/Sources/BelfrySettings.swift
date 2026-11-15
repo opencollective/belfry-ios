@@ -8,10 +8,15 @@ import SwiftUI
 struct BelfrySettings: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    /// An open screen from the drawer (☰, no Done) rather than a sheet.
+    var screen = false
     @State private var ordering = false
 
     var body: some View {
-        NavigationStack {
+        if screen { content } else { NavigationStack { content } }
+    }
+
+    private var content: some View {
             List {
                 Section {
                     NavigationLink { BrandingSettings() } label: { Label("Branding", systemImage: "paintpalette") }
@@ -22,9 +27,11 @@ struct BelfrySettings: View {
             }
             .navigationTitle(model.config.name)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar {
+                if screen { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
+                else { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            }
             .sheet(isPresented: $ordering) { ChannelOrderSheet() }
-        }
     }
 }
 
