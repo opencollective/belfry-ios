@@ -77,7 +77,7 @@ struct ChannelView: View {
                         }
                     }
                     // the composer's height below the last row: scrolling to the end stops above it
-                    Color.clear.frame(height: 1).padding(.bottom, composerH).id("bottom")
+                    Color.clear.frame(height: 1).padding(.bottom, max(0, composerH - 56)).id("bottom")
                 }
                 .padding(.vertical, 8)
             }
