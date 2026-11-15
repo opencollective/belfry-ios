@@ -88,10 +88,12 @@ extension AppModel {
     func didRegister(token: Data) async {
         guard phase == .ready, !isDemo, engine != nil, !guestReading else { return } // guest mode: registered after joining
         let domain = config.domain
-        var key = PushKeyStore.load(group: keychainGroup).flatMap { $0.domain == domain ? $0.key : nil }
+        // each account has its own K (SPEC 19.24); the same APNs token is registered by each
+        let slot = Keychain.slot
+        var key = PushKeyStore.load(group: keychainGroup, slot: slot).flatMap { $0.domain == domain ? $0.key : nil }
         if key == nil {
             let k = Push.newKey()
-            PushKeyStore.save(domain: domain, key: k, group: keychainGroup)
+            PushKeyStore.save(domain: domain, key: k, group: keychainGroup, slot: slot)
             key = k
         }
         UserDefaults.standard.set(token.hex, forKey: "belfry-push-token")
@@ -105,9 +107,12 @@ extension AppModel {
 
     /// Sign-out: this device leaves the belfry's push list (before the session is revoked).
     func removePushDevice() async {
+        let slot = Keychain.slot
+        let last = accounts.accounts.filter { $0.slot != slot }.isEmpty
         defer {
-            PushKeyStore.clear(group: keychainGroup)
-            UserDefaults.standard.removeObject(forKey: "belfry-push-token")
+            PushKeyStore.clear(group: keychainGroup, slot: slot)
+            // the token itself goes with the last account
+            if last { UserDefaults.standard.removeObject(forKey: "belfry-push-token") }
         }
         guard !isDemo, !guestReading, let hex = UserDefaults.standard.string(forKey: "belfry-push-token"), let token = Data(hex: hex) else { return }
         try? await api.removePushDevice(token: token)
@@ -115,6 +120,10 @@ extension AppModel {
 
     /// A tap on a notification: the channel at the message, or Messages, only for this belfry.
     func openPush(_ info: [AnyHashable: Any]) {
+        // a notification for another account on this phone: that account first, then the target
+        if let slot = info["account"] as? String, slot != Keychain.slot, accounts.entry(slot) != nil {
+            switchAccount(slot)
+        }
         guard phase == .ready, (info["domain"] as? String) == config.domain else { return }
         switch Push.route(info["url"] as? String, domain: config.domain) {
         case .channel(let id, let message): pushOpen = PushOpen(channel: id, message: message)

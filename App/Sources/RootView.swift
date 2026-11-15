@@ -31,6 +31,8 @@ struct RootView: View {
     @State private var selection: SidebarItem?
     @State private var newChannel = false
     @State private var account = false
+    /// The accounts on this phone (behind "you" at the drawer's bottom, SPEC 19.24).
+    @State private var switcher = false
     @State private var notifications = false
     @State private var focus: SearchTarget?
     @State private var visibility = NavigationSplitViewVisibility.automatic
@@ -43,6 +45,12 @@ struct RootView: View {
             .sheet(isPresented: $model.joinAsked) { JoinSheet() }
             .sheet(isPresented: $newChannel) { NewChannelSheet { id in selection = .channel(id) } }
             .sheet(isPresented: $account) { AccountSheet() }
+            .sheet(isPresented: $switcher) {
+                AccountsSheet { switcher = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { account = true } }
+            }
+            .fullScreenCover(isPresented: $model.addingAccount) {
+                SignInView(domainHint: nil, onCancel: { model.cancelAddingAccount() })
+            }
             .sheet(isPresented: $notifications) { NavigationStack { NotificationsView() } }
     }
 
@@ -166,7 +174,7 @@ struct RootView: View {
                           closeDrawer()
                       },
                       newChannel: { hideKeyboard(); newChannel = true },
-                      account: { hideKeyboard(); account = true },
+                      account: { hideKeyboard(); switcher = true },
                       open: { target in
                           focus = target
                           selection = .channel(target.channel)
@@ -207,6 +215,9 @@ struct RootView: View {
         case "notifications":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { notifications = true }
+        case "accounts":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { switcher = true }
         case "editprofile", "me":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { account = true }

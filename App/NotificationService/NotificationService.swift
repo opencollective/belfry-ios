@@ -15,14 +15,16 @@ final class NotificationService: UNNotificationServiceExtension {
         let mutable = (request.content.mutableCopy() as? UNMutableNotificationContent) ?? UNMutableNotificationContent()
         content = mutable
         let group = Bundle.main.object(forInfoDictionaryKey: "BelfryKeychainGroup") as? String
-        if let b = request.content.userInfo["b"] as? String, let stored = PushKeyStore.load(group: group),
-           let c = Push.open(b, key: stored.key), c.domain == stored.domain {
+        // every account on this phone has its own K (SPEC 19.24): the one that opens `b` says whose it is
+        if let b = request.content.userInfo["b"] as? String, let hit = Push.openAny(b, keys: PushKeyStore.loadAll(group: group)) {
+            let c = hit.content
             mutable.title = c.title
             mutable.body = c.body
             mutable.threadIdentifier = c.threadId
             var info = mutable.userInfo
             info["b"] = nil
             info["domain"] = c.domain
+            info["account"] = hit.slot
             info["type"] = c.type
             if let ch = c.channel { info["channel"] = ch }
             // a NIP-17 self-copy of a DM this phone just sent: no sound, no banner (dropping it

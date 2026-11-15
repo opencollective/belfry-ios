@@ -67,7 +67,11 @@ final class AppModel: ObservableObject {
     /// The drawer's search field (all channels).
     @Published var drawerQuery = ""
     /// When I last opened @Mentions (the badge counts the ones after).
-    @Published var mentionsSeenAt = UserDefaults.standard.integer(forKey: "belfry-mentions-seen")
+    @Published var mentionsSeenAt = UserDefaults.standard.integer(forKey: AppModel.perAccount("belfry-mentions-seen"))
+    /// The accounts on this device (SPEC 19.24, AppModel+Accounts).
+    @Published var accounts = AccountList()
+    /// "Add an account": the sign-in over the app; the open account stays until the new one is in.
+    @Published var addingAccount = false
     private var cachedMentions: (Int, [NostrEvent])?
     var mentions: [NostrEvent] {
         if let c = cachedMentions, c.0 == version { return c.1 }
@@ -78,7 +82,7 @@ final class AppModel: ObservableObject {
     var newMentions: Int { mentions.prefix(99).filter { $0.createdAt > mentionsSeenAt }.count }
     func markMentionsSeen() {
         mentionsSeenAt = Int.now
-        UserDefaults.standard.set(mentionsSeenAt, forKey: "belfry-mentions-seen")
+        UserDefaults.standard.set(mentionsSeenAt, forKey: AppModel.perAccount("belfry-mentions-seen"))
     }
     /// Redraws everything when the belfry's colour changes (Theme).
     var brandKey: String { config.branding?.primary ?? "" }
@@ -139,7 +143,7 @@ final class AppModel: ObservableObject {
         } else if launch.signin != nil {
             // a screenshot of screen 1
             pendingInvite = nil
-        } else if let s = Keychain.load() {
+        } else if let s = restoreAccounts() {
             open(s)
         } else {
             pendingCode = nativeFlow.pending
@@ -209,7 +213,7 @@ final class AppModel: ObservableObject {
             let token = try await flow.exchange(code: code)
             guard BunkerURL(token.bunkerURL) != nil else { throw SignIn.Failure.refused }
             let s = StoredSession(domain: domain, bunkerURL: token.bunkerURL, clientSecret: Keys.generateSecret().hex, pubkey: token.pubkey)
-            Keychain.save(s)
+            store(s)
             config = cfg
             open(s, config: cfg)
         } catch let f as SignIn.Failure {
@@ -222,12 +226,14 @@ final class AppModel: ObservableObject {
     }
 
     func open(_ s: StoredSession, config cfg: BelfryConfig? = nil) {
+        if engine != nil { closeLive() } // another account was open (added or switched to)
         session = s
+        mentionsSeenAt = UserDefaults.standard.integer(forKey: AppModel.perAccount("belfry-mentions-seen"))
         let db: Database
         if s.demo {
             db = (try? .memory())!
         } else {
-            db = (try? Database(path: AppModel.dbURL(s.domain).path)) ?? (try! .memory())
+            db = (try? Database(path: AppModel.dbURL(s.domain, slot: Keychain.slot).path)) ?? (try! .memory())
         }
         config = cfg ?? db.get("config", as: BelfryConfig.self) ?? .defaults(domain: s.domain)
         db.set("config", config)
@@ -266,6 +272,7 @@ final class AppModel: ObservableObject {
         if !s.demo {
             Task {
                 if let bs = signer as? BunkerSigner, s.pubkey == nil, let pk = try? await bs.ensurePubkey() { db.set("pubkey", pk) }
+                if let pk = s.pubkey ?? db.get("pubkey", as: String.self) { self.accountKnown(pk) }
                 await self.revalidateConfig(force: true)
                 if let k = db.get("groups-key", as: String.self) { self.groupsKey = k }
                 if let k = await Discovery.nip05(name: "_groups", domain: s.domain) {
@@ -276,6 +283,7 @@ final class AppModel: ObservableObject {
                 await self.askWhois()
                 await d.loadBridge()
                 self.updateAddress()
+                self.describeAccount()
                 await d.process()
             }
         }
@@ -324,11 +332,15 @@ final class AppModel: ObservableObject {
         else if isDemo { dms.myAddress = "you@\(config.domain)" }
     }
 
+    /// Signs out of the open account only (its session, store, drafts, push key are forgotten) and
+    /// opens the next one on the device; the sign-in screen only when none is left.
     func signOut() {
         engine?.stop()
         if let b = engine?.signer as? BunkerSigner { b.disconnect() }
-        Drafts.clearAll()
+        let slot = Keychain.slot
+        let wasDemo = session?.demo ?? false
         if let s = session, !s.demo {
+            Drafts.clearAll()
             let cfg = config
             Task.detached {
                 var req = URLRequest(url: URL(string: cfg.revoke)!, timeoutInterval: 3)
@@ -337,12 +349,35 @@ final class AppModel: ObservableObject {
                 req.httpBody = try? JSONSerialization.data(withJSONObject: ["client_id": SignIn.clientId])
                 _ = try? await URLSession.shared.data(for: req)
             }
-            try? FileManager.default.removeItem(at: AppModel.dbURL(s.domain))
+            try? FileManager.default.removeItem(at: AppModel.dbURL(s.domain, slot: slot))
+            UserDefaults.standard.removeObject(forKey: AppModel.perAccount("belfry-mentions-seen"))
+            // the demo is not in the list and has no Keychain item: never clear the real account's
+            Keychain.clear(slot: slot)
         }
-        try? FileManager.default.removeItem(at: AppModel.attachmentsDir)
-        Keychain.clear()
         nativeFlow.cancel()
         pendingCode = nil
+        resetLive()
+        var next: AccountEntry?
+        if !wasDemo {
+            next = accounts.remove(slot)
+            saveAccounts()
+        } else {
+            next = accounts.open
+        }
+        if let next, let s = Keychain.load(slot: next.slot) {
+            Keychain.slot = next.slot
+            open(s)
+            return
+        }
+        // the last one: the files waiting in the outbox went with it
+        try? FileManager.default.removeItem(at: AppModel.attachmentsDir)
+        Keychain.slot = ""
+        phase = .signedOut
+        version += 1
+    }
+
+    /// Forgets what the open session held in memory (its engine, caches, guest state).
+    func resetLive() {
         engine = nil
         dms = nil
         session = nil
@@ -352,9 +387,9 @@ final class AppModel: ObservableObject {
         whoisAsked = []
         cachedGroups = nil
         cachedProfiles = nil
+        cachedMentions = nil
         guestReading = false
         joinAsked = false
-        phase = .signedOut
         version += 1
     }
 
@@ -364,7 +399,7 @@ final class AppModel: ObservableObject {
         return u
     }
 
-    static func dbURL(_ domain: String) -> URL { supportDir.appendingPathComponent("belfry-\(domain).sqlite") }
+    static func dbURL(_ domain: String, slot: String) -> URL { supportDir.appendingPathComponent(AccountList.dbName(domain: domain, slot: slot)) }
 
     static var attachmentsDir: URL {
         let u = supportDir.appendingPathComponent("attachments", isDirectory: true)

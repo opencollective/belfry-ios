@@ -115,48 +115,101 @@ public enum Push {
 
 /// Where K is kept: the keychain, in an access group the app and its extension share (falls back
 /// to the app's own group when the shared one isn't available, e.g. an unsigned simulator build).
+/// One K per account (SPEC 19.24): account "device-key" (slot "") or "device-key@<slot>", value
+/// "<domain> <base64 K>".
 public enum PushKeyStore {
     static let service = "sh.belfry.app.push"
     static let account = "device-key"
 
-    static func query(_ group: String?) -> [String: Any] {
-        var q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+    public static func accountName(_ slot: String) -> String { slot.isEmpty ? account : account + "@" + slot }
+
+    /// The slot a keychain account name stands for; nil for anything else.
+    public static func slot(ofAccount a: String) -> String? {
+        if a == account { return "" }
+        return a.hasPrefix(account + "@") ? String(a.dropFirst(account.count + 1)) : nil
+    }
+
+    static func query(_ group: String?, slot: String = "") -> [String: Any] {
+        var q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: accountName(slot)]
         if let group, !group.isEmpty { q[kSecAttrAccessGroup as String] = group }
         return q
     }
 
     /// Saves "<domain> <base64 K>".
-    public static func save(domain: String, key: Data, group: String?) {
+    public static func save(domain: String, key: Data, group: String?, slot: String = "") {
         let value = Data((domain + " " + key.base64EncodedString()).utf8)
-        clear(group: group)
-        var q = query(group)
+        clear(group: group, slot: slot)
+        var q = query(group, slot: slot)
         q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         q[kSecValueData as String] = value
         if SecItemAdd(q as CFDictionary, nil) != errSecSuccess, group != nil {
-            var plain = query(nil)
+            var plain = query(nil, slot: slot)
             plain[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
             plain[kSecValueData as String] = value
             SecItemAdd(plain as CFDictionary, nil)
         }
     }
 
-    public static func load(group: String?) -> (domain: String, key: Data)? {
+    /// "<domain> <base64 K>" → its parts (K must be 32 bytes).
+    public static func parse(_ s: String) -> (domain: String, key: Data)? {
+        let parts = s.split(separator: " ", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let k = Data(base64Encoded: parts[1]), k.count == 32 else { return nil }
+        return (parts[0], k)
+    }
+
+    public static func load(group: String?, slot: String = "") -> (domain: String, key: Data)? {
         for g in [group, nil] {
-            var q = query(g)
+            var q = query(g, slot: slot)
             q[kSecReturnData as String] = true
             q[kSecMatchLimit as String] = kSecMatchLimitOne
             var out: CFTypeRef?
             guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data,
-                  let s = String(data: d, encoding: .utf8) else { continue }
-            let parts = s.split(separator: " ", maxSplits: 1).map(String.init)
-            if parts.count == 2, let k = Data(base64Encoded: parts[1]), k.count == 32 { return (parts[0], k) }
+                  let s = String(data: d, encoding: .utf8), let p = parse(s) else { continue }
+            return p
         }
         return nil
     }
 
-    public static func clear(group: String?) {
-        SecItemDelete(query(group) as CFDictionary)
-        if group != nil { SecItemDelete(query(nil) as CFDictionary) }
+    /// Every account's K on this device (the extension tries each).
+    public static func loadAll(group: String?) -> [PushKey] {
+        var out = [PushKey]()
+        for g in [group, nil] {
+            var q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                    kSecReturnData as String: true, kSecReturnAttributes as String: true, kSecMatchLimit as String: kSecMatchLimitAll]
+            if let g, !g.isEmpty { q[kSecAttrAccessGroup as String] = g }
+            var items: CFTypeRef?
+            guard SecItemCopyMatching(q as CFDictionary, &items) == errSecSuccess, let list = items as? [[String: Any]] else { continue }
+            for item in list {
+                guard let a = item[kSecAttrAccount as String] as? String, let slot = slot(ofAccount: a),
+                      let d = item[kSecValueData as String] as? Data, let s = String(data: d, encoding: .utf8), let p = parse(s),
+                      !out.contains(where: { $0.slot == slot }) else { continue }
+                out.append(PushKey(slot: slot, domain: p.domain, key: p.key))
+            }
+        }
+        return out
+    }
+
+    public static func clear(group: String?, slot: String = "") {
+        SecItemDelete(query(group, slot: slot) as CFDictionary)
+        if group != nil { SecItemDelete(query(nil, slot: slot) as CFDictionary) }
+    }
+}
+
+/// One account's K.
+public struct PushKey: Hashable, Sendable {
+    public let slot: String
+    public let domain: String
+    public let key: Data
+    public init(slot: String, domain: String, key: Data) { self.slot = slot; self.domain = domain; self.key = key }
+}
+
+public extension Push {
+    /// The account a payload is for: the first K that opens it and whose domain it names.
+    static func openAny(_ b: String, keys: [PushKey]) -> (slot: String, content: PushContent)? {
+        for k in keys {
+            if let c = open(b, key: k.key), c.domain == k.domain { return (k.slot, c) }
+        }
+        return nil
     }
 }
 

@@ -301,7 +301,9 @@ enum AddChoice { case photo, announcement, event, audio, create(CreateKind) }
 
 /// Unsent text on this phone, per channel and per thread (and per form).
 enum Drafts {
-    static func key(_ k: String) -> String { "belfry-draft:" + k }
+    /// Per account (SPEC 19.24): slot "" keeps the earlier prefix.
+    static var prefix: String { Keychain.slot.isEmpty ? "belfry-draft:" : "belfry-draft@" + Keychain.slot + ":" }
+    static func key(_ k: String) -> String { prefix + k }
     static func get(_ k: String) -> String? {
         let v = UserDefaults.standard.string(forKey: key(k))
         return v?.isEmpty == false ? v : nil
@@ -320,7 +322,7 @@ enum Drafts {
     }
     /// Signing out forgets every draft.
     static func clearAll() {
-        for k in UserDefaults.standard.dictionaryRepresentation().keys where k.hasPrefix("belfry-draft:") { UserDefaults.standard.removeObject(forKey: k) }
+        for k in UserDefaults.standard.dictionaryRepresentation().keys where k.hasPrefix(prefix) { UserDefaults.standard.removeObject(forKey: k) }
     }
 }
 

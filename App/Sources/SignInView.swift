@@ -10,6 +10,8 @@ struct SignInView: View {
     @EnvironmentObject var model: AppModel
     /// A guest link's domain: the placeholder names it.
     var domainHint: String?
+    /// "Add an account" (SPEC 19.24): over the app, with Cancel; the open account stays meanwhile.
+    var onCancel: (() -> Void)? = nil
 
     var body: some View {
         NavigationStack {
@@ -18,7 +20,7 @@ struct SignInView: View {
                     if let pending = model.pendingCode {
                         CodeScreen(pending: pending)
                     } else {
-                        AddressScreen(domainHint: domainHint)
+                        AddressScreen(domainHint: domainHint, adding: onCancel != nil)
                     }
                 }
                 .padding(24)
@@ -26,6 +28,11 @@ struct SignInView: View {
                 .frame(maxWidth: .infinity)
             }
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if let onCancel {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onCancel) }
+                }
+            }
         }
     }
 }
@@ -34,6 +41,7 @@ struct SignInView: View {
 private struct AddressScreen: View {
     @EnvironmentObject var model: AppModel
     var domainHint: String?
+    var adding = false
     @AppStorage("last-address") private var address = ""
     @State private var auth = WebAuth()
     @State private var error: String?
@@ -107,11 +115,13 @@ private struct AddressScreen: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(model.busy)
-                Button { model.startDemo() } label: {
-                    ActionRow(icon: "person.2", title: "Try the demo", detail: "A made-up community. Everything in it stays on this device.")
+                if !adding {
+                    Button { model.startDemo() } label: {
+                        ActionRow(icon: "person.2", title: "Try the demo", detail: "A made-up community. Everything in it stays on this device.")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.busy)
                 }
-                .buttonStyle(.plain)
-                .disabled(model.busy)
             }
         }
         .sheet(isPresented: $scanning) {
