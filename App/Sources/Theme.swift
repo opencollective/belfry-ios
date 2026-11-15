@@ -107,17 +107,11 @@ extension View {
         #endif
     }
 
-    /// A bar under the navigation bar that takes part in the scroll edge effect on iOS 26.
-    @ViewBuilder func topBar<V: View>(@ViewBuilder _ content: () -> V) -> some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26, *) {
-            self.safeAreaBar(edge: .top, spacing: 0, content: content)
-        } else {
-            self.safeAreaInset(edge: .top, spacing: 0, content: content)
-        }
-        #else
-        self.safeAreaInset(edge: .top, spacing: 0, content: content)
-        #endif
+    /// The bar under the navigation bar (the channel's line, the event bar): a plain safe-area
+    /// inset. (iOS 26's safeAreaBar made scrolling to the last message stop short of it, the last
+    /// row behind the composer.)
+    func topBar<V: View>(@ViewBuilder _ content: () -> V) -> some View {
+        safeAreaInset(edge: .top, spacing: 0, content: content)
     }
 
     /// The composer's place: a plain safe-area inset (scrolling to the last message keeps it above
