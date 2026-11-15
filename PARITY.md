@@ -162,6 +162,16 @@ and gestures are untested in the real world. XCTest covers the core (BelfryCore)
 | Co-host link used by someone new (e-mail first, then the link again) | done, never run live | `email_needed` → save-account card says why; after the code, the link is used with the account. |
 | Prices, payments, check-in | not in v1 | Neither on the web. |
 
+## Several accounts (SPEC 19.24; not in the web chat)
+
+| Item | Status | Notes |
+|---|---|---|
+| Accounts per identity and belfry, slots, migration of the one session of earlier versions | done, never run on a device | Core-tested (`AccountsTests`). Slot "" keeps the earlier Keychain item, database and defaults names: the migration writes the list only. |
+| Switcher behind "you" at the drawer's bottom: accounts (face, name, address or "Guest · community", a check), Add an account, Me | done | A sheet list (screenshot 62); switching stops the open session and opens the other from its store. |
+| Add an account | done, never run live | The sign-in (address + code, browser, scan) over the app with Cancel; the open account runs until the new one is in. Opening a guest link while adding uses the open account (Android asks "which account"): not yet. |
+| Sign out of the open account only, then the next | done | Sign-in screen only when none is left. |
+| Push per account | done, never run on a device | One K per account; each registers the same token when open; the extension finds the account whose K opens the payload and a tap opens that account first. Android's "the notification names the account" and the per-account dot in the switcher: not yet. A non-open account's outbox waits until it is opened (as Android). |
+
 ## Not in the web chat, or out of scope
 
 | Item | Status | Notes |

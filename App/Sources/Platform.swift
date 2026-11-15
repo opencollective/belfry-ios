@@ -10,25 +10,28 @@ import UIKit
 
 enum Keychain {
     static let service = "sh.belfry.app.session"
+    /// The open account's slot (SPEC 19.24): its session is "session" ("") or "session@<slot>".
+    static var slot = ""
 
-    static func save(_ s: StoredSession) {
+    static func save(_ s: StoredSession, slot: String? = nil) {
         guard let data = try? JSONEncoder().encode(s) else { return }
-        clear()
+        let account = AccountList.sessionKey(slot ?? Keychain.slot)
+        clear(slot: slot)
         let q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: "session",
+            kSecAttrAccount as String: account,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
             kSecValueData as String: data,
         ]
         SecItemAdd(q as CFDictionary, nil)
     }
 
-    static func load() -> StoredSession? {
+    static func load(slot: String? = nil) -> StoredSession? {
         let q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: "session",
+            kSecAttrAccount as String: AccountList.sessionKey(slot ?? Keychain.slot),
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
@@ -37,8 +40,10 @@ enum Keychain {
         return try? JSONDecoder().decode(StoredSession.self, from: data)
     }
 
-    static func clear() {
-        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service]
+    /// Forgets one account's session (the others stay).
+    static func clear(slot: String? = nil) {
+        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                kSecAttrAccount as String: AccountList.sessionKey(slot ?? Keychain.slot)]
         SecItemDelete(q as CFDictionary)
     }
 }
