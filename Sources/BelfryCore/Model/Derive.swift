@@ -378,6 +378,8 @@ public final class Derive {
     // ---- indexes -------------------------------------------------------------------------------
 
     public private(set) lazy var sortedEvents: [NostrEvent] = events.sorted(by: Derive.byTime)
+    /// The ids in this snapshot (to tell what the next one adds).
+    public private(set) lazy var idSet: Set<String> = Set(events.map(\.id))
 
     private lazy var byH: [String: [NostrEvent]] = {
         var out = [String: [NostrEvent]]()
@@ -986,6 +988,15 @@ public final class Derive {
 
     /// The feed with layout hints (SPEC 19.7): day separators, blocks.
     public func feedRows(_ groupId: String, topic: String? = nil, openThreads: Set<String> = []) -> [FeedRow] {
+        let key = groupId + "|" + (topic ?? "") + "|" + openThreads.sorted().joined(separator: ",")
+        if let c = feedRowsCache[key] { return c }
+        let rows = computeFeedRows(groupId, topic: topic, openThreads: openThreads)
+        feedRowsCache[key] = rows
+        return rows
+    }
+    private var feedRowsCache = [String: [FeedRow]]()
+
+    private func computeFeedRows(_ groupId: String, topic: String?, openThreads: Set<String>) -> [FeedRow] {
         let g = group(groupId)
         var out = [FeedRow]()
         var prev: FeedItem?
@@ -1168,6 +1179,36 @@ public final class Derive {
     public static func listIdFor(_ groupId: String) -> String { String(Crypto.sha256("osv-village:" + groupId).hex.prefix(16)) }
 
     private var tasksCache = [String: [TodoTask]]()
+
+    /// A snapshot built on the one before (SPEC 19.22): when what arrived is only everyday events
+    /// (messages without cards, reactions, replies, todos, seen marks, DMs) and the context is the
+    /// same, the channels nothing arrived in keep the previous snapshot's worked-out views.
+    public func carry(from prev: Derive, newEvents: [NostrEvent]) {
+        guard prev.ctx == ctx, !newEvents.isEmpty, newEvents.count < 500 else { return }
+        var touched = Set<String>()
+        for e in newEvents {
+            switch e.kind {
+            case 1059, 4: continue
+            case 9:
+                if e.tag("pod") != nil || e.tag("proposal") != nil || e.tag("a") != nil || e.content.contains("/events/") { return }
+            case 7, 1111, 2100, 2101, 2102, 2103: break
+            case 30078: if !(e.tag("d") ?? "").hasPrefix("seen:") { return }
+            default: return
+            }
+            guard let h = e.tag("h") else { return }
+            touched.insert(h)
+        }
+        func keep<V>(_ from: [String: V], _ into: inout [String: V]) { for (k, v) in from where !touched.contains(k) && into[k] == nil { into[k] = v } }
+        keep(prev.messagesCache, &messagesCache)
+        keep(prev.reactionsCache, &reactionsCache)
+        keep(prev.repliesCache, &repliesCache)
+        keep(prev.threadsCache, &threadsCache)
+        keep(prev.joinsCache, &joinsCache)
+        keep(prev.pinnedCache, &pinnedCache)
+        keep(prev.tasksCache, &tasksCache)
+        keep(prev.sortedByH, &sortedByH)
+        for (k, v) in prev.feedRowsCache where !touched.contains(String(k.prefix { $0 != "|" })) && feedRowsCache[k] == nil { feedRowsCache[k] = v }
+    }
     /// Channels.swift: each channel's web settings, worked out once per snapshot.
     var webCache = [String: WebPage?]()
     lazy var webEvents: [String: [NostrEvent]] = {

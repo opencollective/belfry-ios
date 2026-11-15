@@ -82,3 +82,23 @@ final class PerformanceTests: XCTestCase {
         XCTAssertLessThan(ms, 3000)
     }
 }
+
+final class CarryTests: XCTestCase {
+    /// A snapshot built on the one before gives the same views as one built from scratch.
+    func testCarryGivesTheSameFeed() {
+        let me = String(repeating: "a", count: 64)
+        let log = PerformanceTests.bigLog(me: me)
+        let prev = Derive(events: log, me: me)
+        _ = prev.feedRows("channel-3"); _ = prev.feedRows("channel-7")
+        let fresh = [NostrEvent(id: String(repeating: "e", count: 64), pubkey: me, createdAt: 1_770_000_000, kind: 9, tags: [["h", "channel-3"]], content: "new")]
+        let next = Derive(events: log + fresh, me: me)
+        let t = Date()
+        next.carry(from: prev, newEvents: fresh)
+        let rows7 = next.feedRows("channel-7"), rows3 = next.feedRows("channel-3")
+        print("perf: carry + feedRows(7) + feedRows(3) \(Int(Date().timeIntervalSince(t) * 1000)) ms")
+        let scratch = Derive(events: log + fresh, me: me)
+        XCTAssertEqual(rows7.map(\.id), scratch.feedRows("channel-7").map(\.id))
+        XCTAssertEqual(rows3.map(\.id), scratch.feedRows("channel-3").map(\.id))
+        XCTAssertEqual(rows3.count, prev.feedRows("channel-3").count + 1)
+    }
+}
