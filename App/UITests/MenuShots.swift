@@ -44,7 +44,8 @@ final class MenuShots: XCTestCase {
         XCTAssertTrue(msg.waitForExistence(timeout: 10))
         XCTAssertTrue(msg.isHittable, "the message row is not on screen")
         msg.press(forDuration: 1.2)
-        sleep(2)
+        XCTAssertTrue(app.buttons["Reply"].waitForExistence(timeout: 4), "the message's menu did not open")
+        sleep(1)
         shot("51-message-menu")
     }
 

@@ -120,15 +120,9 @@ extension View {
         #endif
     }
 
-    @ViewBuilder func bottomBar<V: View>(@ViewBuilder _ content: () -> V) -> some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26, *) {
-            self.safeAreaBar(edge: .bottom, spacing: 0, content: content)
-        } else {
-            self.safeAreaInset(edge: .bottom, spacing: 0, content: content)
-        }
-        #else
-        self.safeAreaInset(edge: .bottom, spacing: 0, content: content)
-        #endif
+    /// The composer's place: a plain safe-area inset (scrolling to the last message keeps it above
+    /// the composer; with iOS 26's safeAreaBar the last row ended up behind it).
+    func bottomBar<V: View>(@ViewBuilder _ content: () -> V) -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0, content: content)
     }
 }
