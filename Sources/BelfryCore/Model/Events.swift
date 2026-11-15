@@ -65,6 +65,12 @@ public struct CalEvent: Hashable, Sendable, Identifiable {
     /// Read from the belfry's API (a guest can't read the community relay).
     public var remote = false
     public var goingCount = 0
+    /// A meeting (web core/meetings.ts): ["t","meeting"] on the event.
+    public var meeting = false
+    /// The people a meeting invites (["p", key, "", "invited"]).
+    public var invited: [String] = []
+    /// The channel a meeting was made from (["channel", id]).
+    public var originChannel: String?
 
     public var id: String { coord }
     public var going: Int { goingCount }
@@ -344,6 +350,13 @@ extension Derive {
                 creator: creator, hosts: hosts, cover: (e.tag("image") ?? "").isEmpty ? nil : e.tag("image"),
                 visibility: Visibility.of(e.tag("visibility")), slug: (e.tag("slug") ?? "").isEmpty ? nil : e.tag("slug"),
                 status: status, statusReason: reason, versions: hostVersions)
+            base.meeting = e.hasTag("t", "meeting")
+            if base.meeting {
+                var inv = [String]()
+                for t in e.tags where t.count >= 4 && t[0] == "p" && t[3] == "invited" && isHex64(t[1]) && !inv.contains(t[1]) { inv.append(t[1]) }
+                base.invited = inv
+                base.originChannel = e.tag("channel")
+            }
             if isNew {
                 base.goingKeys = goingList(base, EventLinks.people(inGroupSorted(groupId)))
             } else {
@@ -466,7 +479,7 @@ extension Derive {
     public func yourEvents(now: Int) -> [CalEvent] {
         let since = now - 30 * 86400
         let keep: Set<MyState> = [.host, .ticket, .maybe, .applied, .waitlist]
-        return calendar.filter { $0.isNew && endOf($0) >= since && ($0.hosts.contains(me) || keep.contains(myState($0))) }
+        return calendar.filter { $0.isNew && endOf($0) >= since && ($0.hosts.contains(me) || keep.contains(myState($0)) || ($0.meeting && $0.invited.contains(me))) }
     }
 
     /// The `a` tags of the events a text links to (those this device knows).

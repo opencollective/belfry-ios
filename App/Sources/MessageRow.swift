@@ -272,7 +272,11 @@ struct EventCardView: View {
                             HStack(spacing: 6) {
                                 if e.status == .cancelled { Chip(text: "Cancelled", tint: .red) }
                                 if let s = d.stateLabel(e) { Chip(text: s, tint: .brand) }
-                                if e.going > 0 { Text("\(e.going) going").font(.caption2).foregroundStyle(.secondary) }
+                                if e.meeting {
+                                    Text("Meeting · \(d.meetingCount(e)) people").font(.caption2).foregroundStyle(.secondary)
+                                } else if e.going > 0 {
+                                    Text("\(e.going) going").font(.caption2).foregroundStyle(.secondary)
+                                }
                             }
                         }
                         Spacer(minLength: 0)

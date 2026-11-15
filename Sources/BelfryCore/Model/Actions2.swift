@@ -329,8 +329,10 @@ public enum EventActions {
     }
 
     /// A host's new version (rule B), and the group's name / picture when they changed.
-    public static func edit(_ e: CalEvent, _ n: EventForm, group g: Group?, groupsRelay: String) -> [Draft] {
-        let (kind, tags) = versionTags(e.d, n, groupsRelay: groupsRelay, extra: e.status == .cancelled ? [["status", "cancelled"]] : [])
+    public static func edit(_ e: CalEvent, _ n: EventForm, group g: Group?, groupsRelay: String, more: [Tag] = []) -> [Draft] {
+        // a meeting's own tags stay on every version: what it is, where it was made, who is invited
+        let keep = Meetings.keptTags(e.ev)
+        let (kind, tags) = versionTags(e.d, n, groupsRelay: groupsRelay, extra: (e.status == .cancelled ? [["status", "cancelled"]] : []) + keep + more)
         var out = [Draft(.main, kind: kind, content: n.description, tags: tags)]
         if let g, g.name != n.title.jsTrim() || (!(n.cover ?? "").isEmpty && g.picture != n.cover) {
             out.append(Draft(kind: 9002, tags: [["h", e.groupId], ["name", n.title.jsTrim()], ["about", g.about]] + ((n.cover ?? "").isEmpty ? [] : [["picture", n.cover!]])))

@@ -579,6 +579,7 @@ final class AppModel: ObservableObject {
     @Published var launchDelete = false
     @Published var launchAdd = false
     @Published var launchSettings = false
+    @Published var launchMeetingForm = false
     @Published var launchEventForm = false
 
     // ---- pins I hid on this phone ("Got it, hide"; at most 200; SPEC 19.10) ---------------------
