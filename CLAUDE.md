@@ -85,7 +85,9 @@ proposal under vote, two Belfry events, a channel reference, an announcement, gu
 agent), local-only. `-screen <name>` opens a screen for the screenshot job (`scripts/
 screenshots.sh` lists them: feed, thread, details, invite, messages, conversation, mail, search,
 channels, pulldown, menu, delete, edit, threadscreen, chsearch, add, pod, proposal, event,
-profile, editprofile, me, members, todos, files, events, eventhost, eventform). `-join` (no
+profile, editprofile, me, members, todos, files, events, eventhost, eventform, and since
+2026-11-15 composer, drawer, pullfull, mentions, group, requests, log, settings). In the demo Sam
+is an admin of the belfry (settings, roles, requests show). `-join` (no
 `-demo`) opens a demo guest link signed out (the loading screen, then guest mode). `-guest
 opening|feed|join|code` shows guest mode's screens (the loading screen; #general read as a
 guest; the Join sheet; its code step), demo code 123456. `-signin code` / `-signin older`

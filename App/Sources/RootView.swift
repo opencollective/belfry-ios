@@ -451,7 +451,7 @@ struct ChannelDrawer: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.immediately)
-            .refreshable { await model.refresh(); await model.loadRequests() }
+            .refreshable { await model.refresh(); await model.loadRequests(force: true) }
             .task { await model.loadRequests() }
             Divider()
             me

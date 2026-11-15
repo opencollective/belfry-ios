@@ -29,7 +29,6 @@ struct BelfryApp: App {
             }
             .environmentObject(model)
             .tint(Theme.accent)
-            .id(model.brandKey)
             .onOpenURL { model.handle(url: $0) }
             .onAppear {
                 AppDelegate.model = model

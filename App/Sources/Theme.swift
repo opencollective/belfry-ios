@@ -79,6 +79,21 @@ extension View {
         presentationBackground(Color(uiColor: .systemGroupedBackground))
     }
 
+    /// A bar over the feed (the event's bar, Join, the one-type-of-post bar…): a glass card on
+    /// iOS 26, the bar material across before.
+    @ViewBuilder func floatingBar() -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26, *) {
+            self.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .padding(.horizontal, 12).padding(.vertical, 4)
+        } else {
+            self.background(.bar)
+        }
+        #else
+        self.background(.bar)
+        #endif
+    }
+
     /// The iOS 26 glass behind a control (a circle, a capsule…), material before iOS 26.
     @ViewBuilder func glass<S: Shape>(in shape: S, interactive: Bool = false) -> some View {
         #if compiler(>=6.2)

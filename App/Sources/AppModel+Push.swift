@@ -173,8 +173,7 @@ struct PushOffer: View {
                 .buttonStyle(.borderless).accessibilityLabel("Not now")
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
-        .glass(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .padding(.horizontal, 12).padding(.vertical, 4)
+        .floatingBar()
     }
 }
 

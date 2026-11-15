@@ -60,6 +60,7 @@ final class AppModel: ObservableObject {
     @Published var belfryRequests = [BelfryRequest]()
     @Published var agentRequests = [AgentRequest]()
     var demoRequestsSeeded = false
+    var requestsAt: Date?
     /// Photos full screen (a message's photos, swiped through).
     @Published var lightbox: Lightbox?
     /// A group's page to show (its card in the parent channel).

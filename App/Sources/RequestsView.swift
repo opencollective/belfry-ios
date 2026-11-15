@@ -99,8 +99,8 @@ struct RequestsView: View {
         .navigationTitle("Requests")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
-        .task { await model.loadRequests() }
-        .refreshable { await model.loadRequests(); await model.refresh() }
+        .task { await model.loadRequests(force: true) }
+        .refreshable { await model.loadRequests(force: true); await model.refresh() }
     }
 
     private func vouchLine(_ who: [String], _ needed: Int) -> String {

@@ -137,7 +137,7 @@ struct ChannelView: View {
                                 Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
                             }
                             .padding(.horizontal).padding(.vertical, 7)
-                            .background(.bar)
+                            .floatingBar()
                         }
                         .buttonStyle(.plain)
                     }
@@ -421,7 +421,7 @@ struct OnlyBar: View {
             .buttonStyle(.brand).controlSize(.small)
         }
         .padding(.horizontal).padding(.vertical, 10)
-        .background(.bar)
+        .floatingBar()
         .sheet(isPresented: $thread) { NewThreadSheet(group: id) }
         .sheet(item: $proposal) { k in CreateSheet(kind: k, parent: id) }
         .sheet(isPresented: $event) { EventFormSheet(editing: nil, channel: id) }
@@ -494,7 +494,7 @@ struct PodJoinBar: View {
             }
         }
         .padding(.horizontal).padding(.vertical, 8)
-        .background(.bar)
+        .floatingBar()
     }
 }
 

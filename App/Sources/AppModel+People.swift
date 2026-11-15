@@ -93,7 +93,9 @@ extension AppModel {
 
     /// What the belfry has waiting for me: people asking to join (admins; members while vouching)
     /// and agents asking to join (admins). Group requests come from the relay (Derive).
-    func loadRequests() async {
+    func loadRequests(force: Bool = false) async {
+        if !force, let at = requestsAt, Date().timeIntervalSince(at) < 60 { return }
+        requestsAt = Date()
         await loadMembership()
         let admin = derive.isCommunityAdmin
         if engine?.localOnly == true {
@@ -123,7 +125,7 @@ extension AppModel {
 
     func decideApplication(_ id: Int, approve: Bool) async -> String? {
         if engine?.localOnly == true { belfryRequests.removeAll { $0.id == id }; return nil }
-        defer { Task { await loadRequests() } }
+        defer { Task { await loadRequests(force: true) } }
         do { try await api.decideApplication(id, approve: approve); belfryRequests.removeAll { $0.id == id }; return nil }
         catch let e as ApiError { return e.message } catch { return BelfryAPI.network }
     }
@@ -133,14 +135,14 @@ extension AppModel {
             belfryRequests = belfryRequests.map { $0.id == id ? BelfryRequest(id: $0.id, name: $0.name, motivation: $0.motivation, created: $0.created, vouches: max(0, $0.vouches + (on ? 1 : -1)), vouched: on, email: $0.email) : $0 }
             return nil
         }
-        defer { Task { await loadRequests() } }
+        defer { Task { await loadRequests(force: true) } }
         do { _ = try await api.vouchApplication(id, on: on); return nil }
         catch let e as ApiError { return e.message } catch { return BelfryAPI.network }
     }
 
     func decideAgentRequest(_ id: Int, approve: Bool) async -> String? {
         if engine?.localOnly == true { agentRequests.removeAll { $0.id == id }; return nil }
-        defer { Task { await loadRequests() } }
+        defer { Task { await loadRequests(force: true) } }
         do { try await api.decideAgentRequest(id, approve: approve); agentRequests.removeAll { $0.id == id }; return nil }
         catch let e as ApiError { return e.message } catch { return BelfryAPI.network }
     }

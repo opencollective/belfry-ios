@@ -73,7 +73,7 @@ struct GuestBar: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
-        .background(.bar)
+        .floatingBar()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Guest mode")
     }
