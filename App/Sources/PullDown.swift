@@ -289,16 +289,16 @@ struct PullDownList: View {
                 Section("To do") {
                     ForEach(f.todos.prefix(4)) { t in TodoRow(t: t, group: id) }
                     if f.todos.count > 4 {
-                        Button { openDetails() } label: { ActionRow(icon: "checklist", title: "All \(f.todos.count) to-dos") }
+                        Button { openDetails() } label: { ActionRow(icon: "checklist", title: "All \(f.todos.count) todos") }
                     }
                     HStack {
-                        TextField("Add a to-do", text: $newTodo).font(.body)
+                        TextField("Add a todo", text: $newTodo).font(.body)
                         BusyButton {
                             model.addTodo(newTodo, in: id)
                             newTodo = ""
                         } label: { Image(systemName: "plus.circle.fill") }
                         .disabled(newTodo.jsTrim().isEmpty)
-                        .accessibilityLabel("Add the to-do")
+                        .accessibilityLabel("Add the todo")
                     }
                 }
                 if !f.pods.isEmpty {
@@ -319,7 +319,7 @@ struct PullDownList: View {
                 TopicsSection(id: id, topic: $topic) { dismiss() }
                 Section {
                     Button { openDetails() } label: {
-                        ActionRow(icon: "person.2", title: peopleLine(f.active.count), detail: "Members, files, to-dos and settings")
+                        ActionRow(icon: "person.2", title: peopleLine(f.active.count), detail: "Members, files, todos and settings")
                     }
                 }
         }
@@ -344,7 +344,10 @@ struct TodoRow: View {
             .accessibilityLabel(t.done ? "Done. Mark as not done" : "Tick off")
             VStack(alignment: .leading, spacing: 2) {
                 Text(t.title).font(.subheadline).strikethrough(t.done)
-                Text(model.derive.todoWho(t)).font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    if t.isWorking(now: Int.now), let since = t.workingSince { WorkingRing(since: since) }
+                    Text(model.derive.todoWho(t)).font(.caption).foregroundStyle(.secondary)
+                }
             }
             Spacer()
             if !t.done {
@@ -354,6 +357,24 @@ struct TodoRow: View {
                     BusyButton("I'll do it") { model.todo(t, in: group, "claim") }.font(.caption).buttonStyle(.borderless)
                 }
             }
+        }
+    }
+}
+
+/// Someone is on this todo now: a ring filling clockwise with the minutes of the current
+/// stretch, "1h", "2h"… in it past an hour (web d6cfae1).
+struct WorkingRing: View {
+    let since: Int
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { ctx in
+            let mins = max(0, (Int(ctx.date.timeIntervalSince1970) - since) / 60)
+            ZStack {
+                Circle().stroke(Color.secondary.opacity(0.25), lineWidth: 2)
+                Circle().trim(from: 0, to: CGFloat(mins % 60) / 60).stroke(Color.green, style: StrokeStyle(lineWidth: 2, lineCap: .round)).rotationEffect(.degrees(-90))
+                if mins >= 60 { Text("\(mins / 60)h").font(.system(size: 7, weight: .bold)) }
+            }
+            .frame(width: 16, height: 16)
+            .accessibilityLabel("Being worked on for \(mins) minutes")
         }
     }
 }
@@ -373,6 +394,16 @@ struct ProposalSection: View {
                 if !p.summary.isEmpty { Text(p.summary).font(.subheadline) }
             }
             if !p.text.isEmpty { MarkdownText(text: p.text).font(.subheadline) }
+            if let w = p.website {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let link = websitePreviewLink(w, domain: model.config.domain), let u = URL(string: link) {
+                        Link(destination: u) { Label("Preview this version", systemImage: "safari") }
+                    }
+                    Text(p.status == .passed ? "Passed: it is (or is about to be) live at \(model.config.domain)."
+                         : "A new version of \(model.config.domain): it goes live once a belfry admin marks this proposal Passed.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
             if p.votingNow {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("\(p.tally["yes"] ?? 0) yes · \(p.tally["no"] ?? 0) no · \(p.tally["abstain"] ?? 0) abstain").font(.footnote).foregroundStyle(.secondary)

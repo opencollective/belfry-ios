@@ -292,3 +292,27 @@ public extension BelfryAPI {
     /// Ask Belfry to count a group's vouches at once (it also does every few minutes).
     func checkGroupRequests(_ channel: String) async { _ = try? await signed(base + "/group-requests/check", method: "POST", json: ["channel": channel]) }
 }
+
+// ---- branding (web src/core/branding.ts; Android SPEC 19.21) ----------------------------------
+
+public extension BelfryAPI {
+    static let brandingErrors = [
+        "not_admin": "Only admins of the belfry can change its look.",
+        "invalid": "A logo or cover must be an https address; colours like #1e40af.",
+        "no_key": "This belfry has no key of its own yet.",
+    ]
+
+    /// The branding as the belfry has it now (`GET /branding`, no auth).
+    func branding() async throws -> Branding {
+        let a = try await plain(base + "/branding")
+        guard a.ok, let b = a.body else { throw BelfryAPI.fail(a, BelfryAPI.brandingErrors, "Could not read the branding.") }
+        return Branding.clean(b)
+    }
+
+    /// An admin changes any of the fields ("" clears one); answers them as saved.
+    func saveBranding(_ change: [String: String]) async throws -> Branding {
+        let a = try await signed(base + "/branding", method: "POST", json: change)
+        guard a.ok, let b = a.body else { throw BelfryAPI.fail(a, BelfryAPI.brandingErrors, "The branding could not be saved just now.") }
+        return Branding.clean(b)
+    }
+}

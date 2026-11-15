@@ -28,7 +28,7 @@ struct GroupPage: View {
                                 ChannelGlyph(group: g, size: 28)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(g.name).font(.title3.bold())
-                                    Text("Group" + (parent.map { " in \($0.isPod ? "" : "#")\($0.name)" } ?? "") + " · " + (g.closed ? "by request" : "open to members"))
+                                    Text(subtitle(g, parent))
                                         .font(.footnote).foregroundStyle(.secondary)
                                 }
                             }
@@ -58,7 +58,8 @@ struct GroupPage: View {
                         }
                         let others = g.admins.filter { !g.members.contains($0) }
                         if !others.isEmpty {
-                            Text("Also run by " + others.map(model.name).joined(separator: ", ") + ".").font(.footnote).foregroundStyle(.secondary)
+                            let names: String = others.map { model.name($0) }.joined(separator: ", ")
+                            Text("Also run by \(names).").font(.footnote).foregroundStyle(.secondary)
                         }
                     } header: { Text("Who’s in · \(g.members.count)") }
                     if model.derive.canAdmin(g), !g.applications.isEmpty {
@@ -77,6 +78,14 @@ struct GroupPage: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+
+    private func subtitle(_ g: Channel, _ parent: Channel?) -> String {
+        var s = "Group"
+        if let p = parent { s += " in " + (p.isPod ? p.name : "#" + p.name) }
+        s += " · "
+        s += g.closed ? "by request" : "open to members"
+        return s
     }
 
     @ViewBuilder private func action(_ g: Channel) -> some View {

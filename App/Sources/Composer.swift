@@ -17,6 +17,8 @@ struct Composer: View {
     var topic: String?
     /// Changes when something asks for the box (Reply in a thread's menu).
     var focusTrigger = 0
+    /// Where unsent text is kept on this phone (per channel, per thread; web f845d47).
+    var draftKey: String?
     let onSend: (String, [Attachment], Bool) -> Void
     @State private var text = ""
     @State private var picked = [(name: String, pubkey: String)]()
@@ -129,11 +131,13 @@ struct Composer: View {
             if let v, !compact, !threadMode { text = text.isEmpty ? v + " " : text + " " + v; model.composerPrefill[group] = nil }
         }
         .onAppear {
+            if let k = draftKey, text.isEmpty, let saved = Drafts.get(k) { text = saved }
             if autoFocus { focused = true }
             if !compact && !threadMode && model.launchEventForm { model.launchEventForm = false; makeEvent = true }
         }
         .onChange(of: photos) { _, items in load(items) }
         .onChange(of: focusTrigger) { _, _ in focused = true }
+        .onChange(of: text) { _, t in if let k = draftKey { Drafts.set(k, t) } }
         .photosPicker(isPresented: $photoPicker, selection: $photos, maxSelectionCount: 6, matching: .images)
         .sheet(item: $create) { k in CreateSheet(kind: k, parent: group) }
         .sheet(isPresented: $makeEvent) { EventFormSheet(editing: nil, channel: group) }
@@ -165,7 +169,7 @@ struct Composer: View {
         return Menu {
             Section {
                 Button { choose(.photo) } label: { Label("Photo", systemImage: "photo.on.rectangle") }
-                Button { choose(.create(.todo)) } label: { Label("To-do", systemImage: "checklist") }
+                Button { choose(.create(.todo)) } label: { Label("Todo", systemImage: "checklist") }
             }
             if !guest {
                 Section {
@@ -188,7 +192,7 @@ struct Composer: View {
                 .padding(3).contentShape(Circle()).padding(-3) // 44 pt target
         }
         .menuOrder(.fixed)
-        .accessibilityLabel("Add a photo, a to-do, an event, a proposal…")
+        .accessibilityLabel("Add a photo, a todo, an event, a proposal…")
         .accessibilityIdentifier("composer-add")
     }
 
@@ -233,6 +237,7 @@ struct Composer: View {
         let t = ChannelRefs.substitute(Mentions.substitute(typed, picked: picked), picked: refs)
         onSend(t, attachments, canAnnounce && announce)
         text = ""
+        if let k = draftKey { Drafts.set(k, "") }
         picked = []
         refs = []
         attachments = []
@@ -287,6 +292,31 @@ struct OutsiderNote: View {
 enum CreateKind: String, Identifiable { case todo, pod, proposal; var id: String { rawValue } }
 enum AddChoice { case photo, announcement, event, create(CreateKind) }
 
+/// Unsent text on this phone, per channel and per thread (and per form).
+enum Drafts {
+    static func key(_ k: String) -> String { "belfry-draft:" + k }
+    static func get(_ k: String) -> String? {
+        let v = UserDefaults.standard.string(forKey: key(k))
+        return v?.isEmpty == false ? v : nil
+    }
+    static func set(_ k: String, _ v: String) {
+        if v.isEmpty { UserDefaults.standard.removeObject(forKey: key(k)) } else { UserDefaults.standard.set(v, forKey: key(k)) }
+    }
+    /// A form's fields (new event, proposal, to-do, channel, thread) as JSON.
+    static func getForm(_ k: String) -> [String: String] {
+        guard let s = get("form:" + k), let d = s.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: String] else { return [:] }
+        return o
+    }
+    static func setForm(_ k: String, _ v: [String: String]) {
+        let empty = v.values.allSatisfy { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        set("form:" + k, empty ? "" : (try? JSONSerialization.data(withJSONObject: v)).flatMap { String(data: $0, encoding: .utf8) } ?? "")
+    }
+    /// Signing out forgets every draft.
+    static func clearAll() {
+        for k in UserDefaults.standard.dictionaryRepresentation().keys where k.hasPrefix("belfry-draft:") { UserDefaults.standard.removeObject(forKey: k) }
+    }
+}
+
 extension View {
     /// The message field: a glass capsule on iOS 26, a bordered one before.
     @ViewBuilder func composerField() -> some View {
@@ -325,6 +355,8 @@ struct CreateSheet: View {
     @Environment(\.openChannel) private var openChannel
     let kind: CreateKind
     let parent: String
+    /// "Propose as the website": the version's nsite ref and who made it (web 6d267c1).
+    var website: (ref: String, by: String)? = nil
     @State private var title = ""
     @State private var about = ""
     @State private var text = ""
@@ -364,7 +396,19 @@ struct CreateSheet: View {
                     }
                 }
             }
-            .navigationTitle(kind == .todo ? "New to-do" : kind == .pod ? "New group" : "New proposal")
+            .onAppear {
+                if let w = website, title.isEmpty {
+                    title = "A new version of the website"
+                    about = "By \(w.by)"
+                    text = "Preview it: \(websitePreviewLink(w.ref, domain: model.config.domain) ?? w.ref)\n\nWhat changes:\n- "
+                    status = .feedback
+                    return
+                }
+                let f = Drafts.getForm(formKey)
+                if title.isEmpty { title = f["title"] ?? ""; about = f["about"] ?? ""; text = f["text"] ?? ""; prompt = f["prompt"] ?? "" }
+            }
+            .onChange(of: [title, about, text, prompt]) { _, v in if website == nil { Drafts.setForm(formKey, ["title": v[0], "about": v[1], "text": v[2], "prompt": v[3]]) } }
+            .navigationTitle(kind == .todo ? "New todo" : kind == .pod ? "New group" : "New proposal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -376,8 +420,11 @@ struct CreateSheet: View {
         .presentationDetents([.medium, .large])
     }
 
+    private var formKey: String { "\(kind.rawValue):\(parent)" }
+
     func make() {
         let t = title.jsTrim()
+        Drafts.setForm(formKey, [:])
         switch kind {
         case .todo:
             model.addTodo(t, in: parent)
@@ -387,7 +434,7 @@ struct CreateSheet: View {
             dismiss()
             openChannel(id, nil)
         case .proposal:
-            let id = model.createProposal(NewProposal(title: t, summary: about.jsTrim(), text: text.jsTrim(), status: status), parent: parent)
+            let id = model.createProposal(NewProposal(title: t, summary: about.jsTrim(), text: text.jsTrim(), status: status, website: website?.ref), parent: parent)
             dismiss()
             openChannel(id, nil)
         }

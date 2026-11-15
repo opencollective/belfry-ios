@@ -48,8 +48,7 @@ struct InviteSheet: View {
                         LinkPicker(people: $people, linkDays: $linkDays, onlyOne: n == 1 && people == 50)
                     } label: {
                         LabeledContent("Link") {
-                            Text("\(n == 1 ? "One person" : "Up to 50 people"), \(linkDays == 1 ? "1 day" : linkDays == 7 ? "1 week" : "1 month")")
-                                .multilineTextAlignment(.trailing)
+                            Text(linkLine(n)).multilineTextAlignment(.trailing)
                         }
                     }
                 }
@@ -83,6 +82,12 @@ struct InviteSheet: View {
     }
 
     private var key: String { "\(who)|\(people)|\(linkDays)" }
+
+    private func linkLine(_ n: Int) -> String {
+        let who = n == 1 ? "One person" : "Up to 50 people"
+        let days = linkDays == 1 ? "1 day" : linkDays == 7 ? "1 week" : "1 month"
+        return who + ", the link works for " + days
+    }
 
     private var qr: some View {
         VStack(spacing: 10) {
@@ -161,10 +166,7 @@ struct JoinsAsPicker: View {
             }
             if let agents, agents.limit > 0 {
                 Section {
-                    choice(.agent, title: "My own agent",
-                           detail: agents.room > 0 || who == .agent
-                               ? "For your AI agent: it joins as a member and stays for as long as you are one. Everyone sees it is yours."
-                               : "You have \(agents.limit == 1 ? "your agent" : "your \(agents.limit) agents") already. Remove one from its profile to bring another.")
+                    choice(.agent, title: "My own agent", detail: agentLine(agents))
                         .disabled(agents.room <= 0 && who != .agent)
                 }
             }
@@ -191,6 +193,14 @@ struct JoinsAsPicker: View {
         }
         .navigationTitle("Joins as")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func agentLine(_ agents: MyAgents) -> String {
+        if agents.room > 0 || who == .agent {
+            return "For your AI agent: it joins as a member and stays for as long as you are one. Everyone sees it is yours."
+        }
+        let have = agents.limit == 1 ? "your agent" : "your \(agents.limit) agents"
+        return "You have \(have) already. Remove one from its profile to bring another."
     }
 
     private func choice(_ w: JoinsAs, title: String, detail: String? = nil, badge: String? = nil) -> some View {

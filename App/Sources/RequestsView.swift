@@ -77,8 +77,7 @@ struct RequestsView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack(spacing: 8) { Avatar(pubkey: a.pubkey, size: 28); Text(model.name(a.pubkey)).font(.subheadline.weight(.semibold)) }
                                 if !a.answer.isEmpty { Text(verbatim: a.answer).font(.subheadline).foregroundStyle(.secondary) }
-                                Text("\(who.count) of \(x.group.vouches) \(x.group.vouches == 1 ? "vouch" : "vouches")" + (who.isEmpty ? "" : " · " + who.map(model.name).joined(separator: ", ")))
-                                    .font(.footnote).foregroundStyle(.secondary)
+                                Text(vouchLine(who, x.group.vouches)).font(.footnote).foregroundStyle(.secondary)
                                 BusyButton(who.contains(model.me) ? "Take back my vouch" : "Vouch") { model.vouch(x.group, a, on: !who.contains(model.me)) }
                                     .buttonStyle(.bordered).controlSize(.small)
                             }
@@ -102,5 +101,14 @@ struct RequestsView: View {
         .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
         .task { await model.loadRequests() }
         .refreshable { await model.loadRequests(); await model.refresh() }
+    }
+
+    private func vouchLine(_ who: [String], _ needed: Int) -> String {
+        var s = "\(who.count) of \(needed) \(needed == 1 ? "vouch" : "vouches")"
+        if !who.isEmpty {
+            let names: String = who.map { model.name($0) }.joined(separator: ", ")
+            s += " · " + names
+        }
+        return s
     }
 }

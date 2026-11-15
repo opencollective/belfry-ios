@@ -98,3 +98,71 @@ final class RequestsTests: XCTestCase {
         XCTAssertEqual(d.groupRequestCount(), 1)
     }
 }
+
+final class TodoWorkingTests: XCTestCase {
+    func testHeartbeatAndStretch() {
+        let me = String(repeating: "a", count: 64)
+        let list = Derive.listIdFor("general")
+        var n = 0
+        func ev(_ kind: Int, _ at: Int, _ tags: [Tag], _ c: String = "") -> NostrEvent {
+            n += 1
+            return NostrEvent(id: String(format: "%064x", 8000 + n), pubkey: me, createdAt: at, kind: kind, tags: tags, content: c)
+        }
+        let t = ev(2100, 100, [["t", list], ["h", "general"]], "Fix the gate")
+        let evs = [t,
+                   ev(2101, 110, [["t", list], ["e", t.id], ["action", "claim"]]),
+                   ev(2101, 120, [["t", list], ["e", t.id], ["action", "working"]]),
+                   ev(2101, 300, [["t", list], ["e", t.id], ["action", "working"]]),
+                   ev(2101, 2000, [["t", list], ["e", t.id], ["action", "working"]])]
+        let d = Derive(events: evs, me: me)
+        let task = d.tasks("general")[0]
+        XCTAssertEqual(task.beat, 2000)
+        XCTAssertEqual(task.workingSince, 2000) // a gap over 5 minutes starts a new stretch
+        XCTAssertTrue(task.isWorking(now: 2100))
+        XCTAssertFalse(task.isWorking(now: 2400))
+    }
+}
+
+final class WebsiteProposalTests: XCTestCase {
+    func testWebsiteTagsAndPreview() {
+        let me = String(repeating: "a", count: 64)
+        let npub = Bech32.npub(String(repeating: "c", count: 64))!
+        let ref = "nsite:\(npub)/spring"
+        let (group, drafts) = Actions.createProposal(NewProposal(title: "A new version of the website", status: .feedback, website: ref),
+                                                     parent: "website", me: me, groupsRelay: "wss://g", mainRelay: "wss://m", now: 100, x: "abc123")
+        XCTAssertTrue(group.hasPrefix("prop-"))
+        let article = drafts.first { $0.kind == 30023 }!
+        XCTAssertTrue(article.tags.contains(["website", ref]))
+        XCTAssertTrue(article.tags.contains(["t", "website"]))
+        XCTAssertTrue(drafts.first { $0.kind == 9 }!.tags.contains(["website", ref]))
+        XCTAssertEqual(websitePreviewLink(ref, domain: "x.org"), "https://preview.x.org/p/\(npub)@spring")
+        XCTAssertNil(websitePreviewLink("https://evil", domain: "x.org"))
+    }
+}
+
+final class ChannelLogTests: XCTestCase {
+    func testWords() {
+        let pk = String(repeating: "b", count: 64)
+        func words(_ kind: Int, _ tags: [Tag], _ c: String = "") -> String? {
+            let e = NostrEvent(id: String(repeating: "1", count: 64), pubkey: pk, createdAt: 100, kind: kind, tags: [["h", "g"]] + tags, content: c)
+            return ChannelLog.item(e, titles: [:], name: { _ in "X" }).map { $0.icon + " " + $0.text }
+        }
+        XCTAssertEqual(words(9, [], "Hello   there"), "💬 posted a message")
+        XCTAssertEqual(words(9, [["pod", "pod-x"]]), "⬡ created a group")
+        XCTAssertEqual(words(9, [["imeta", "url https://x/a.jpg", "m image/jpeg"], ["imeta", "url https://x/b.jpg", "m image/png"]]), "🖼 posted 2 photos")
+        XCTAssertEqual(words(9, [["imeta", "url https://x/a.m4a", "m audio/mp4"]]), "🎙 posted a recording")
+        XCTAssertEqual(words(7, [["e", "m1"]], "+"), "👍 reacted")
+        XCTAssertEqual(words(7, [["e", "m1"]], "🎉"), "🎉 reacted")
+        XCTAssertEqual(words(5, [["e", "r"], ["k", "7"]]), "🗑 took back a reaction")
+        XCTAssertEqual(words(2101, [["e", "t"], ["action", "done"]]), "✅ marked a todo done")
+        XCTAssertNil(words(2101, [["e", "t"], ["action", "working"]]))
+        XCTAssertNil(words(30078, [["d", "seen:g"]]))
+        XCTAssertEqual(words(9000, [["p", pk, "admin"]]), "👋 made someone an admin")
+        XCTAssertEqual(words(1985, [["L", "#t"], ["l", "x", "#t"]]), "# changed the pinned topics")
+        XCTAssertEqual(words(31923, [["t", "meeting"]]), "👥 set the meeting")
+        XCTAssertEqual(words(31925, [["status", "declined"]]), "📅 answered can't go")
+        XCTAssertEqual(words(4242, []), "• kind 4242")
+        XCTAssertEqual(ChannelLog.short("a  b\n c", 80), "a b c")
+        XCTAssertEqual(ChannelLog.short(String(repeating: "x", count: 100), 10), String(repeating: "x", count: 9) + "…")
+    }
+}

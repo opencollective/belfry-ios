@@ -83,14 +83,8 @@ struct MessageActions: View {
                                 }
                             }
                             if !isReply && d.canMakeTodo(group, m) {
-                                ActionButtonRow(icon: "checklist", title: "Turn into a to-do", detail: d.todoTitle(m)) {
+                                ActionButtonRow(icon: "checklist", title: "Turn into a todo", detail: d.todoTitle(m)) {
                                     model.makeTodo(m, in: group)
-                                    dismiss()
-                                }
-                            }
-                            if let ref = nsiteRef(m.text), d.isCommunityAdmin {
-                                ActionButtonRow(icon: "globe", title: "Make this the website") {
-                                    model.website = await model.publishWebsite(ref: ref, message: m.id)
                                     dismiss()
                                 }
                             }
@@ -316,6 +310,8 @@ struct MessageMenuHandlers {
     var edit: (Message) -> Void
     /// The full list (more reactions, the delete confirmation showing the message).
     var sheet: (Message, _ delete: Bool) -> Void
+    /// "Propose as the website" on a message with an nsite link.
+    var proposeSite: ((Message) -> Void)? = nil
 }
 
 struct MessageMenuKey: EnvironmentKey { static let defaultValue: MessageMenuHandlers? = nil }
@@ -379,12 +375,10 @@ struct MessageMenu: View {
                     Button { model.pin(m, in: group, !on) } label: { Label(on ? "Unpin from the channel" : "Pin to the channel", systemImage: on ? "pin.slash" : "pin") }
                 }
                 if !isReply && d.canMakeTodo(group, m) {
-                    Button { model.makeTodo(m, in: group) } label: { Label("Turn into a to-do", systemImage: "checklist") }
+                    Button { model.makeTodo(m, in: group) } label: { Label("Turn into a todo", systemImage: "checklist") }
                 }
-                if let ref = MessageActions.nsiteRef(m.text), d.isCommunityAdmin {
-                    Button {
-                        Task { model.website = await model.publishWebsite(ref: ref, message: m.id) }
-                    } label: { Label("Make this the website", systemImage: "globe") }
+                if MessageActions.nsiteRef(m.text) != nil, !d.amGuest, let propose = h.proposeSite {
+                    Button { propose(m) } label: { Label("Propose as the website", systemImage: "globe") }
                 }
             }
         }

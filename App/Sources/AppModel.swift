@@ -60,6 +60,8 @@ final class AppModel: ObservableObject {
     @Published var belfryRequests = [BelfryRequest]()
     @Published var agentRequests = [AgentRequest]()
     var demoRequestsSeeded = false
+    /// Photos full screen (a message's photos, swiped through).
+    @Published var lightbox: Lightbox?
     /// A group's page to show (its card in the parent channel).
     @Published var openGroup: String?
     /// The drawer's search field (all channels).
@@ -325,6 +327,7 @@ final class AppModel: ObservableObject {
     func signOut() {
         engine?.stop()
         if let b = engine?.signer as? BunkerSigner { b.disconnect() }
+        Drafts.clearAll()
         if let s = session, !s.demo {
             let cfg = config
             Task.detached {
@@ -377,7 +380,8 @@ final class AppModel: ObservableObject {
                               reading: reader ? true : nil, guestChannel: reader ? generalId : nil)
         var cfg = BelfryConfig.defaults(domain: "demo.belfry.sh")
         cfg.name = "Riverside Commons"
-        cfg.admins = []
+        // Sam administers the demo belfry (settings, roles, requests show); the reader doesn't
+        cfg.admins = reader ? [] : [(try! LocalSigner(secret: Demo.meSecret)).pubkey]
         open(s, config: cfg)
         groupsKey = Demo.signer("groups").pubkey
         if reader { joinedChannel = generalId }
@@ -393,6 +397,20 @@ final class AppModel: ObservableObject {
         engine?.enqueue(Actions.postMessage(group, text: text, topic: topic, announce: announce, eventTags: tags), attachments: attachments)
     }
 
+    /// The admins' order of the channel list.
+    func setChannelOrder(_ ids: [String]) { engine?.enqueue(Actions.channelOrder(ids)) }
+
+    /// A post in a threads-only channel: a bold title line and the details, with a `subject` tag
+    /// (as the web's New thread, so the channel's page and the chat read it the same).
+    func postThread(title: String, text: String, in group: String, attachments: [Attachment] = []) {
+        let t = String(title.jsTrim().split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(140))
+        guard !t.isEmpty else { return }
+        let body = "**\(t)**" + (text.jsTrim().isEmpty ? "" : "\n\n" + text.jsTrim())
+        var d = Actions.postMessage(group, text: body)
+        d.tags.append(["subject", t])
+        engine?.enqueue(d, attachments: attachments)
+    }
+
     /// Edit my own message or thread reply (kind 1010; SPEC 19.1).
     func edit(_ m: Message, in group: String, text: String) {
         guard derive.canEdit(m) else { return }
@@ -403,7 +421,7 @@ final class AppModel: ObservableObject {
         engine?.enqueue(Actions.pinMessage(group, messageId: m.id, pin: on))
     }
 
-    /// "Turn into a to-do" (SPEC 19.11).
+    /// "Turn into a todo" (SPEC 19.11).
     func makeTodo(_ m: Message, in group: String) {
         guard derive.canMakeTodo(group, m) else { return }
         engine?.enqueue(Actions.addTask(group, title: derive.todoTitle(m), from: m.id))
@@ -560,6 +578,7 @@ final class AppModel: ObservableObject {
     /// Screenshots: open the delete confirmation / the ＋ menu once.
     @Published var launchDelete = false
     @Published var launchAdd = false
+    @Published var launchSettings = false
     @Published var launchEventForm = false
 
     // ---- pins I hid on this phone ("Got it, hide"; at most 200; SPEC 19.10) ---------------------

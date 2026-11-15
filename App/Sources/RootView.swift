@@ -10,6 +10,7 @@ enum SidebarItem: Hashable {
     case channel(String)
     case messages
     case mentions
+    case requests
 }
 
 struct SearchTarget: Hashable { let channel: String; let message: String }
@@ -38,6 +39,7 @@ struct RootView: View {
 
     var body: some View {
         withSheets
+            .fullScreenCover(item: $model.lightbox) { LightboxView(box: $0) }
             .sheet(isPresented: $model.joinAsked) { JoinSheet() }
             .sheet(isPresented: $newChannel) { NewChannelSheet { id in selection = .channel(id) } }
             .sheet(isPresented: $account) { AccountSheet() }
@@ -145,6 +147,7 @@ struct RootView: View {
             case .channel(let id): ChannelView(id: id, focus: focus?.channel == id ? focus?.message : nil).id(id)
             case .messages: MessagesView()
             case .mentions: MentionsView()
+            case .requests: RequestsView()
             case nil: ContentUnavailableView("Pick a channel", systemImage: "number", description: Text("Your community's channels are in the list."))
                     .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
             }
@@ -207,7 +210,7 @@ struct RootView: View {
         case "editprofile", "me":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { account = true }
-        case "members", "todos", "files": selection = .channel(generalId)
+        case "members", "todos", "files", "log": selection = .channel(generalId)
         case "proposal": selection = .channel("prop-quiet-hours-after-22-00-7f3a2b")
         case "events": DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.showEvents = "" }
         case "eventhost":
@@ -221,6 +224,11 @@ struct RootView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openEvent = "repair-cafe" }
         case "messages", "conversation", "mail": selection = .messages
         case "mentions": selection = .mentions
+        case "requests": selection = .requests
+        case "settings":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { model.launchSettings = true }
         case "search":
             selection = .channel(generalId)
             model.drawerQuery = "ladder"
@@ -236,7 +244,7 @@ struct DrawerButton: View {
     @Environment(\.openDrawer) private var openDrawer
     var body: some View {
         if let openDrawer {
-            let n = model.unreadDMs + model.newMentions
+            let n = model.unreadDMs + model.newMentions + model.requestCount
             Button(action: openDrawer) {
                 Image(systemName: "line.3.horizontal")
                     .overlay(alignment: .topTrailing) {
@@ -352,14 +360,25 @@ struct ChannelDrawer: View {
     let account: () -> Void
     let open: (SearchTarget) -> Void
     @FocusState private var searching: Bool
+    @State private var ordering = false
+    @State private var settings = false
 
     var body: some View {
         let _ = model.version
         let d = model.derive
         let s = d.channelSections()
         let next = d.eventsIn(.upcoming, now: .now, channel: nil).first
+        let nextLine: String = next.map { d.lineDay($0.start, now: .now) + " · " + $0.title } ?? "Upcoming, yours, the ones you host"
+        let dmLine: String = "And e-mail" + (d.myAddress.map { " · " + $0 } ?? "")
         VStack(spacing: 0) {
             header
+            if let cover = model.config.branding?.cover, !cover.isEmpty, let u = URL(string: cover) {
+                AsyncImage(url: u) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.1) }
+                    .frame(height: 96).frame(maxWidth: .infinity).clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, 16).padding(.bottom, 8)
+                    .accessibilityHidden(true)
+            }
             searchField
             List {
                 if !model.drawerQuery.isEmpty {
@@ -372,13 +391,18 @@ struct ChannelDrawer: View {
                         }
                     }
                     Section {
+                        if model.showRequests {
+                            let n = model.requestCount
+                            DrawerRow(icon: "tray", title: "Requests", detail: n > 0 ? "\(n) waiting for you" : "People and agents asking to join",
+                                      badge: n, on: current == .requests) { select(.requests) }
+                        }
                         DrawerRow(icon: "calendar", title: "Upcoming events",
-                                  detail: next.map { d.lineDay($0.start, now: .now) + " · " + $0.title } ?? "Upcoming, yours, the ones you host",
+                                  detail: nextLine,
                                   on: false) { model.showEvents = "" }
                         DrawerRow(icon: "at", title: "@Mentions", detail: "Where people named you, in every channel",
                                   badge: model.newMentions, on: current == .mentions) { select(.mentions) }
                         DrawerRow(icon: "envelope", title: "Direct messages",
-                                  detail: "And e-mail" + (d.myAddress.map { " · " + $0 } ?? ""),
+                                  detail: dmLine,
                                   badge: model.unreadDMs, on: current == .messages) { select(.messages) }
                     }
                     if !s.pub.isEmpty {
@@ -413,17 +437,25 @@ struct ChannelDrawer: View {
                     Section {
                         Button(action: newChannel) { Label("Create a channel", systemImage: "plus") }
                             .listRowBackground(Color.clear)
+                        if d.isCommunityAdmin {
+                            Button { hideKeyboard(); ordering = true } label: { Label("Order of the channels", systemImage: "arrow.up.arrow.down") }
+                                .listRowBackground(Color.clear)
+                        }
                     }
                 }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.immediately)
-            .refreshable { await model.refresh() }
+            .refreshable { await model.refresh(); await model.loadRequests() }
+            .task { await model.loadRequests() }
             Divider()
             me
         }
         .background(Color(uiColor: inDrawer ? .secondarySystemBackground : .systemBackground).ignoresSafeArea())
+        .sheet(isPresented: $ordering) { ChannelOrderSheet() }
+        .sheet(isPresented: $settings) { BelfrySettings() }
+        .onChange(of: model.launchSettings) { _, on in if on { model.launchSettings = false; settings = true } }
         .toolbar(.hidden, for: .navigationBar)
     }
 
@@ -435,8 +467,20 @@ struct ChannelDrawer: View {
                     .frame(width: 32, height: 32).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .accessibilityHidden(true)
             }
-            Text(model.config.name).font(.title2.bold()).lineLimit(1).minimumScaleFactor(0.7)
-                .accessibilityAddTraits(.isHeader)
+            if model.derive.isCommunityAdmin {
+                // the belfry's admins: its name opens the settings, as in Discord
+                Button { hideKeyboard(); settings = true } label: {
+                    HStack(spacing: 4) {
+                        Text(model.config.name).font(.title2.bold()).lineLimit(1).minimumScaleFactor(0.7)
+                        Image(systemName: "chevron.down").font(.footnote.weight(.bold)).foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(model.config.name) settings")
+            } else {
+                Text(model.config.name).font(.title2.bold()).lineLimit(1).minimumScaleFactor(0.7)
+                    .accessibilityAddTraits(.isHeader)
+            }
             Spacer(minLength: 8)
             Button(action: newChannel) {
                 Image(systemName: "plus").font(.body.weight(.semibold)).frame(width: 36, height: 36).glass(in: Circle(), interactive: true)
@@ -713,5 +757,51 @@ struct Avatar: View {
         let palette: [Color] = [.blue, .teal, .indigo, .orange, .pink, .green, .purple, .brown]
         let n = pubkey.utf8.prefix(6).reduce(0) { $0 &+ Int($1) }
         return palette[n % palette.count]
+    }
+}
+
+/// The belfry's admins put the channels in order (web order.ts: 30078 d=belfry:channel-order).
+/// Within Public and Members only; moving a channel across changes who reads it, which is its
+/// own setting on the web (not here).
+struct ChannelOrderSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var pub = [Channel]()
+    @State private var members = [Channel]()
+    @State private var loaded = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if !pub.isEmpty {
+                    Section("Public channels") {
+                        ForEach(pub) { g in Label(g.name, systemImage: "globe") }
+                            .onMove { pub.move(fromOffsets: $0, toOffset: $1) }
+                    }
+                }
+                Section {
+                    ForEach(members) { g in Label(g.name, systemImage: "number") }
+                        .onMove { members.move(fromOffsets: $0, toOffset: $1) }
+                } header: { Text("Members only") } footer: { Text("Everyone sees the channels in this order.") }
+            }
+            .environment(\.editMode, .constant(.active))
+            .navigationTitle("Order of the channels")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    BusyButton("Save") {
+                        model.setChannelOrder((pub + members).map(\.id))
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                guard !loaded else { return }
+                loaded = true
+                let s = model.derive.channelSections()
+                pub = s.pub; members = s.members
+            }
+        }
     }
 }

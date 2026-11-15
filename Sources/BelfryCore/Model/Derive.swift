@@ -318,6 +318,14 @@ public struct TodoTask: Hashable, Sendable, Identifiable {
     public var comments: [TaskComment] = []
     /// The message it was made from ("Turn into a to-do"): its `q` tag.
     public let source: String?
+    /// The assignee's latest `working` heartbeat (2101 action working), while it is theirs.
+    public var beat: Int?
+    /// When the current working stretch began (the ring fills with its minutes).
+    public var workingSince: Int?
+
+    public static let beatFresh = 300
+    /// Someone is on it now: not done, a heartbeat in the last 5 minutes (web isWorking).
+    public func isWorking(now: Int) -> Bool { !done && beat.map { now - $0 < TodoTask.beatFresh } ?? false }
 }
 
 public struct MemberRow: Hashable, Sendable, Identifiable {
@@ -1166,6 +1174,8 @@ public final class Derive {
         let listId = Derive.listIdFor(groupId)
         var tasks = [String: TodoTask]()
         var order = [String]()
+        var beats = [String: (task: String, at: Int)]() // per person: their latest heartbeat
+        var stretch = [String: (start: Int, last: Int)]() // per task + person: the current working stretch
         for e in sortedEvents where (2100...2103).contains(e.kind) && e.tag("t") == listId {
             if e.kind == 2100 {
                 let title = e.content.jsTrim().sliceUnits(300)
@@ -1182,10 +1192,24 @@ public final class Derive {
                 case "undone": t.done = false
                 case "delete":
                     if e.pubkey == t.author { tasks[tid] = nil; order.removeAll { $0 == tid }; continue }
+                case "working":
+                    beats[e.pubkey] = (tid, e.createdAt)
+                    let k = tid + e.pubkey
+                    if let s = stretch[k], e.createdAt - s.last < TodoTask.beatFresh { stretch[k] = (s.start, e.createdAt) } else { stretch[k] = (e.createdAt, e.createdAt) }
+                case "idle":
+                    if beats[e.pubkey]?.task == tid { beats[e.pubkey] = nil }
+                    stretch[tid + e.pubkey] = nil
                 default: break
                 }
+                if e.tag("action") == "done" { stretch[tid + e.pubkey] = nil }
                 tasks[tid] = t
             }
+        }
+        for (p, b) in beats {
+            guard var t = tasks[b.task], t.assignee == p else { continue }
+            t.beat = b.at
+            t.workingSince = stretch[b.task + p]?.start ?? b.at
+            tasks[b.task] = t
         }
         let out = order.compactMap { tasks[$0] }
         tasksCache[groupId] = out

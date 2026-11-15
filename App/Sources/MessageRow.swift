@@ -38,6 +38,7 @@ struct MessageRow: View {
                 if first {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(d.nameOver(m)).font(.subheadline.weight(.semibold)).lineLimit(1).onTapGesture { model.openProfile = m.ev.pubkey }
+                        AgentTag(pubkey: m.ev.pubkey)
                         Text(Format.time(m.ev.createdAt)).font(.caption).foregroundStyle(.secondary)
                         if announce { Label("Announcement", systemImage: "megaphone").font(.caption2.weight(.semibold)).foregroundStyle(Color.brand) }
                         if pinned { Image(systemName: "pin").font(.caption2).foregroundStyle(.secondary).accessibilityLabel("Pinned") }
@@ -50,7 +51,7 @@ struct MessageRow: View {
                 if !m.eventRefs.isEmpty {
                     ForEach(m.eventRefs, id: \.self) { r in EventCardView(ref: r) }
                 }
-                ForEach(m.media, id: \.url) { media in MediaView(media: media) }
+                ForEach(m.media, id: \.url) { media in MediaView(media: media, all: m.media) }
                 if let e = m.edited { Text("edited").font(.caption2).foregroundStyle(.secondary).accessibilityLabel("Edited \(Format.ago(e))") }
                 let extra = d.extraTopics(m, openTopic: openTopic)
                 if !extra.isEmpty {
@@ -115,6 +116,20 @@ struct MessageRow: View {
         .accessibilityElement(children: .combine)
         .messageMenu(m, group: group, handlers: menu, guest: model.guestReading, hold: onHold)
         .accessibilityHint("Touch and hold for actions")
+    }
+}
+
+/// Next to an agent's name wherever it writes (web 683c974): "<member>'s agent" or "Agent".
+struct AgentTag: View {
+    @EnvironmentObject var model: AppModel
+    let pubkey: String
+    var body: some View {
+        let d = model.derive
+        if let owner = d.agentOwner(pubkey) {
+            Chip(text: owner == model.me ? "Your agent" : "\(model.realNameOrKey(owner))'s agent", icon: "sparkles")
+        } else if d.isAgent(pubkey) {
+            Chip(text: "Agent", icon: "sparkles")
+        }
     }
 }
 
@@ -319,7 +334,10 @@ struct ReactionBar: View {
 }
 
 struct MediaView: View {
+    @EnvironmentObject var model: AppModel
     let media: Media
+    /// The message's media: the lightbox swipes through its photos.
+    var all: [Media] = []
     var body: some View {
         if media.mime.hasPrefix("image/"), let url = URL(string: media.url), url.scheme == "https" || url.scheme == "http" {
             AsyncImage(url: url) { phase in
@@ -330,8 +348,16 @@ struct MediaView: View {
                 }
             }
             .frame(maxWidth: 280, maxHeight: 280, alignment: .leading)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                let photos = (all.isEmpty ? [media] : all).filter { $0.mime.hasPrefix("image/") }.map(\.url)
+                hideKeyboard()
+                model.lightbox = Lightbox(urls: photos, index: photos.firstIndex(of: media.url) ?? 0)
+            }
             .accessibilityLabel(media.name ?? "Photo")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint("Opens the photo")
         } else if media.mime.hasPrefix("image/") {
             Label(media.name ?? "Photo", systemImage: "photo").foregroundStyle(.secondary)
         } else if let url = URL(string: media.url), url.scheme == "https" {
@@ -392,12 +418,13 @@ struct ReplyRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(model.name(r.ev.pubkey)).font(.caption.weight(.semibold))
+                    AgentTag(pubkey: r.ev.pubkey)
                     Text(Format.time(r.ev.createdAt)).font(.caption2).foregroundStyle(.secondary)
                     if r.edited != nil { Text("edited").font(.caption2).foregroundStyle(.secondary) }
                     if let p = model.pending(r.id) { Text(p.stateText).font(.caption2).foregroundStyle(p.status == .failed ? .red : .secondary) }
                 }
                 if !r.text.isEmpty { MarkdownText(text: r.text).font(.subheadline) }
-                ForEach(r.media, id: \.url) { MediaView(media: $0) }
+                ForEach(r.media, id: \.url) { MediaView(media: $0, all: r.media) }
             }
             Spacer(minLength: 0)
         }

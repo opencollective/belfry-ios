@@ -43,7 +43,7 @@ struct MentionsView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(model.name(e.pubkey)).font(.subheadline.weight(.semibold)).lineLimit(1)
-                    Text(g.map { $0.isPod ? $0.name : "#" + $0.name } ?? "#" + h).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                    Text(place(g, h)).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                     if e.kind == 1111 { Text("in a thread").font(.footnote).foregroundStyle(.secondary) }
                     Spacer(minLength: 4)
                     Text(Format.short(e.createdAt)).font(.footnote).foregroundStyle(.secondary)
@@ -54,6 +54,11 @@ struct MentionsView: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
+    }
+
+    private func place(_ g: Channel?, _ h: String) -> String {
+        guard let g else { return "#" + h }
+        return g.isPod ? g.name : "#" + g.name
     }
 
     /// nostr:npub… as @Name, channel addresses as #name, no Markdown marks, one line.

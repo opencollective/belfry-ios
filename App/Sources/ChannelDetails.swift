@@ -8,12 +8,14 @@ import SwiftUI
 // sheet: someone who is here already, the member link, a guest link (1 / 50 people; 1 day /
 // 1 week / 1 month), "My own agent".
 
-enum InfoTab: String, CaseIterable { case about = "About", members = "Members", todos = "To-dos", files = "Files", settings = "Settings" }
+enum InfoTab: String, CaseIterable { case about = "About", members = "Members", todos = "Todos", files = "Files", log = "Log", settings = "Settings" }
 
 struct ChannelDetails: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let id: String
+    /// "Go there" from the Log: a message or a thread in the channel.
+    var go: (LogGo) -> Void = { _ in }
     @State var tab: InfoTab = .about
     @State private var invite = false
     @State private var profile: ProfileKey?
@@ -36,6 +38,13 @@ struct ChannelDetails: View {
                 case .members: MembersTab(id: id) { profile = ProfileKey(pubkey: $0) }
                 case .todos: TodosTab(id: id)
                 case .files: FilesTab(id: id)
+                case .log: LogTab(id: id) { g in
+                    switch g {
+                    case .todos: tab = .todos
+                    case .members: tab = .members
+                    default: dismiss(); go(g)
+                    }
+                }
                 case .settings: SettingsTab(id: id)
                 }
             }
@@ -49,6 +58,7 @@ struct ChannelDetails: View {
                 case "members": tab = .members
                 case "todos": tab = .todos
                 case "files": tab = .files
+                case "log": tab = .log
                 default: break
                 }
             }
@@ -58,6 +68,49 @@ struct ChannelDetails: View {
             }
         }
         .presentationDetents([.large])
+    }
+}
+
+/// Everything that happened in the channel, newest first, a section per day (SPEC 19.23 Log).
+struct LogTab: View {
+    @EnvironmentObject var model: AppModel
+    let id: String
+    let go: (LogGo) -> Void
+    @State private var open: String?
+
+    var body: some View {
+        let d = model.derive
+        let items = d.channelLog(id)
+        let days = Dictionary(grouping: items) { Calendar.current.startOfDay(for: Date(timeIntervalSince1970: TimeInterval($0.ev.createdAt))) }
+        if items.isEmpty { Section { Text("Nothing here yet.").foregroundStyle(.secondary) } }
+        ForEach(days.keys.sorted(by: >), id: \.self) { day in
+            Section(Format.day(Int(day.timeIntervalSince1970))) {
+                ForEach(days[day] ?? []) { it in
+                    Button { withAnimation(.snappy) { open = open == it.id ? nil : it.id } } label: {
+                        HStack(alignment: .top, spacing: 10) {
+                            Text(it.icon).frame(width: 24)
+                            VStack(alignment: .leading, spacing: 2) {
+                                (Text(d.logWho(id, it.ev.pubkey)).fontWeight(.semibold) + Text(" " + it.text)).font(.subheadline)
+                                if let detail = it.detail {
+                                    Text(verbatim: detail).font(.footnote).foregroundStyle(.secondary).lineLimit(open == it.id ? nil : 1)
+                                }
+                                if open == it.id {
+                                    Text(Date(timeIntervalSince1970: TimeInterval(it.ev.createdAt)).formatted(date: .complete, time: .standard))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                    if let g = it.go {
+                                        Button("Go there") { go(g) }.font(.footnote.weight(.semibold)).buttonStyle(.borderless)
+                                    }
+                                }
+                            }
+                            Spacer(minLength: 4)
+                            Text(Format.time(it.ev.createdAt)).font(.caption).foregroundStyle(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 }
 
@@ -270,7 +323,7 @@ struct TodosTab: View {
         let tasks = model.derive.tasks(id)
         Section {
             HStack {
-                TextField("Add a to-do", text: $newTodo).font(.body)
+                TextField("Add a todo", text: $newTodo).font(.body)
                 BusyButton { model.addTodo(newTodo, in: id); newTodo = "" } label: { Image(systemName: "plus.circle.fill") }
                     .disabled(newTodo.jsTrim().isEmpty)
             }
