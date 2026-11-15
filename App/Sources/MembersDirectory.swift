@@ -10,6 +10,7 @@ struct MembersDirectory: View {
     @State private var query = ""
     @State private var list: [DirMember]?
     @State private var failed = false
+    @State private var demo = false
     @State private var error: String?
 
     var body: some View {
@@ -52,7 +53,7 @@ struct MembersDirectory: View {
                             .padding(.leading, 28)
                     }
                 }
-            } header: { Text(list.map { "\($0.count) in \(model.config.name)" } ?? model.config.name) }
+            } header: { Text(list == nil ? model.config.name : "\(shown.count) in \(model.config.name)") }
         }
         .navigationTitle("Members")
         .navigationBarTitleDisplayMode(.inline)
@@ -80,9 +81,16 @@ struct MembersDirectory: View {
 
     private func filtered() -> [DirMember] {
         let q = query.jsTrim().lowercased()
-        return (list ?? []).filter { m in
+        return (demo ? demoList() : (list ?? [])).filter { m in
             q.isEmpty || name(m.pubkey, m.name).lowercased().contains(q) || m.agents.contains { name($0.pubkey, $0.name).lowercased().contains(q) }
         }.sorted { name($0.pubkey, $0.name).localizedCaseInsensitiveCompare(name($1.pubkey, $1.name)) == .orderedAscending }
+    }
+
+    /// The demo: who is in its channels (worked out live: the demo's events arrive after launch).
+    private func demoList() -> [DirMember] {
+        let d = model.derive
+        let keys = Set(model.groups.flatMap(\.members)).filter { !d.isGuest($0) && d.agentOwner($0) == nil }
+        return keys.map { k in DirMember(pubkey: k, name: "", role: nil, agents: model.config.agents.filter { $0.value == k }.map { (pubkey: $0.key, name: "") }) }
     }
 
     private func row(_ pk: String, _ fallback: String, size: CGFloat, detail: String?, role: String?) -> some View {
@@ -102,9 +110,8 @@ struct MembersDirectory: View {
         await model.loadRequests(force: true)
         await model.loadRoles()
         if model.engine?.localOnly == true {
-            let d = model.derive
-            let keys = Set(model.groups.flatMap(\.members)).filter { !d.isGuest($0) && d.agentOwner($0) == nil }
-            list = keys.map { k in DirMember(pubkey: k, name: "", role: nil, agents: model.config.agents.filter { $0.value == k }.map { (pubkey: $0.key, name: "") }) }
+            demo = true
+            list = []
         } else {
             do { list = try await model.api.directory() } catch { failed = true }
         }
