@@ -39,26 +39,31 @@ jobs:
 
   app:
     name: App build + screenshots
-    runs-on: macos-15
-    timeout-minutes: 45
+    # Xcode 26 / the iOS 26 SDK: the screenshots show the glass the owner's iPhone draws
+    runs-on: macos-26
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Xcode
-        run: sudo xcode-select -s "$XCODE" && xcodebuild -version
+      - name: Xcode 26
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -v -i beta | sort -V | tail -1)
+          [ -n "$XCODE" ] || { echo "no Xcode 26 on this runner"; ls /Applications | grep -i xcode; exit 1; }
+          sudo xcode-select -s "$XCODE" && xcodebuild -version
       - name: XcodeGen
         run: brew install xcodegen && xcodegen generate
       - uses: actions/cache@v4
         with:
           path: build/SourcePackages
-          key: spm-app-${{ runner.os }}-${{ hashFiles('Package.swift', 'project.yml') }}
-      - name: Build for the simulator
+          key: spm-app26-${{ runner.os }}-${{ hashFiles('Package.swift', 'project.yml') }}
+      - name: Build for the simulator (app + UI tests)
         run: |
           set -o pipefail
           xcodebuild -project Belfry.xcodeproj -scheme Belfry -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build -clonedSourcePackagesDirPath build/SourcePackages \
             -skipPackagePluginValidation -skipMacroValidation \
-            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcodebuild.log | grep -E "error:|warning: .*BelfryApp|BUILD (SUCCEEDED|FAILED)" || true
+            CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 | tee xcodebuild.log | grep -E "error:|warning: .*BelfryApp|BUILD (SUCCEEDED|FAILED)|TEST BUILD (SUCCEEDED|FAILED)" || true
+          if grep -q "BUILD FAILED" xcodebuild.log; then exit 1; fi
           test -d build/Build/Products/Debug-iphonesimulator/Belfry.app
       - name: Build log
         if: always()
@@ -67,8 +72,11 @@ jobs:
           name: xcodebuild-log
           path: xcodebuild.log
       - name: Screenshots
-        run: scripts/screenshots.sh build/Build/Products/Debug-iphonesimulator/Belfry.app screenshots
+        run: |
+          XCTESTRUN=$(ls build/Build/Products/*.xctestrun 2>/dev/null | head -1) \
+            scripts/screenshots.sh build/Build/Products/Debug-iphonesimulator/Belfry.app screenshots
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: screenshots
           path: screenshots

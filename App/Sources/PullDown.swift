@@ -3,7 +3,8 @@ import SwiftUI
 
 // The ONE line under a channel's name (SPEC 19.13, the web's ChannelLine.tsx) and what it pulls
 // down: Pinned, Coming up, To decide, To do, Pods, Topics, the people line, the description.
-// On iPhone the pull-down is a sheet with detents (SPEC 16).
+// The pull-down comes from the top, as on the web (ChannelHeader.tsx): the line, then a short
+// level, then the full one; drag the handle, tap the line or the title, or tap outside to close.
 
 struct ChannelLineBar: View {
     @EnvironmentObject var model: AppModel
@@ -13,6 +14,8 @@ struct ChannelLineBar: View {
     let open: () -> Void
     let showAll: () -> Void
     let review: () -> Void
+    var pulled = false
+    var pull: () -> Void = {}
 
     var body: some View {
         let line = model.derive.channelLine(id, now: .now, topic: topic, hiddenPins: model.hiddenPins)
@@ -40,16 +43,19 @@ struct ChannelLineBar: View {
                 Button { act(line.action) } label: {
                     Text(pill).font(.caption.weight(.semibold))
                         .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(line.ask ? Color.bronze : Color.secondary.opacity(0.15), in: Capsule())
-                        .foregroundStyle(line.ask ? Color.white : Color.primary)
+                        .background(line.ask ? Color.brand : Color.secondary.opacity(0.15), in: Capsule())
+                        .foregroundStyle(line.ask ? Theme.onAccent : Color.primary)
                 }
                 .buttonStyle(.plain)
                 .disabled(line.action == nil)
             }
         }
-        .padding(.horizontal).padding(.vertical, 7)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
+        .padding(.horizontal).padding(.vertical, 8)
+        .lineBackground()
+        .contentShape(Rectangle())
+        .gesture(DragGesture(minimumDistance: 12).onEnded { v in
+            if v.translation.height > 24, !pulled { pull() }
+        })
         .accessibilityElement(children: .contain)
     }
 
@@ -81,7 +87,7 @@ struct LineIconView: View {
         case .pod:
             PodShape(members: line.podMembers).stroke(Color.secondary, lineWidth: 1.4).frame(width: 14, height: 14)
         default:
-            Image(systemName: symbol).font(.caption).foregroundStyle(line.ask ? Color.bronze : Color.secondary)
+            Image(systemName: symbol).font(.caption).foregroundStyle(line.ask ? Color.brand : Color.secondary)
         }
     }
     var symbol: String {
@@ -96,15 +102,95 @@ struct LineIconView: View {
     }
 }
 
-struct PullDownSheet: View {
-    @EnvironmentObject var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.openChannel) private var openChannel
+enum PullLevel { case closed, short, full }
+
+extension View {
+    /// The line's bar: iOS 26 lets the scroll edge effect show it; before, a bar material.
+    @ViewBuilder func lineBackground() -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26, *) { self } else { self.background(.bar).overlay(alignment: .bottom) { Divider() } }
+        #else
+        self.background(.bar).overlay(alignment: .bottom) { Divider() }
+        #endif
+    }
+}
+
+/// The panel that comes down from the line: a short level and a full one; the handle follows the
+/// finger and snaps to the nearest level (up past the short one closes it).
+struct PullDownPanel: View {
     let id: String
+    @Binding var level: PullLevel
     @Binding var topic: String?
     let openDetails: () -> Void
     let showMessage: (String) -> Void
+    @State private var drag: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            let full = geo.size.height - 24
+            let short = min(full, max(260, geo.size.height * 0.55))
+            let base: CGFloat = level == .full ? full : level == .short ? short : 0
+            let h = max(0, min(full, base + drag))
+            ZStack(alignment: .top) {
+                if level != .closed || drag != 0 {
+                    Color.black.opacity(0.25 * min(1, h / max(1, short)))
+                        .ignoresSafeArea(edges: .bottom)
+                        .contentShape(Rectangle())
+                        .onTapGesture { close() }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityLabel("Close")
+                        .transition(.opacity)
+                }
+                if level != .closed {
+                    VStack(spacing: 0) {
+                        PullDownList(id: id, topic: $topic, close: close, openDetails: openDetails, showMessage: showMessage)
+                            .frame(maxHeight: .infinity)
+                        handle(short: short, full: full)
+                    }
+                    .frame(height: h, alignment: .top)
+                    .background(Color(uiColor: .systemGroupedBackground))
+                    .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 24, bottomTrailingRadius: 24, style: .continuous))
+                    .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+        }
+        .allowsHitTesting(level != .closed)
+    }
+
+    private func handle(short: CGFloat, full: CGFloat) -> some View {
+        Capsule().fill(Color.secondary.opacity(0.5)).frame(width: 40, height: 5)
+            .frame(maxWidth: .infinity, minHeight: 28)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(coordinateSpace: .global)
+                .onChanged { v in drag = v.translation.height }
+                .onEnded { v in
+                    let base: CGFloat = level == .full ? full : short
+                    let end = base + v.predictedEndTranslation.height
+                    let next: PullLevel = end < short * 0.55 ? .closed : end < (short + full) / 2 ? .short : .full
+                    withAnimation(.snappy(duration: 0.28)) { level = next; drag = 0 }
+                })
+            .onTapGesture { withAnimation(.snappy(duration: 0.28)) { level = level == .full ? .short : .full } }
+            .accessibilityElement()
+            .accessibilityLabel(level == .full ? "Show less" : "Show everything")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { withAnimation { level = level == .full ? .short : .full } }
+    }
+
+    private func close() { withAnimation(.snappy(duration: 0.25)) { level = .closed; drag = 0 } }
+}
+
+struct PullDownList: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.openChannel) private var openChannel
+    let id: String
+    @Binding var topic: String?
+    let close: () -> Void
+    let openDetails: () -> Void
+    let showMessage: (String) -> Void
     @State private var newTodo = ""
+
+    private func dismiss() { close() }
 
     var body: some View {
         let _ = model.version
@@ -112,12 +198,17 @@ struct PullDownSheet: View {
         let now = Int.now
         let f = d.channelFacts(id, now: now)
         let g = f.group
-        NavigationStack {
-            List {
+        List {
+                if let about = g?.about, !about.isEmpty {
+                    Section {
+                        MarkdownText(text: about).font(.subheadline).lineLimit(6)
+                        Text(d.visibilityLine(g)).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
                 if let g, let p = g.parent, let parent = model.group(p) {
                     Section {
                         Button { dismiss(); openChannel(p, nil) } label: {
-                            ActionRow(icon: "arrow.up.left", title: "\(g.isProposal ? "Proposal" : "Pod") in \(parent.isPod ? parent.name : "# " + parent.name)")
+                            ActionRow(icon: "arrow.up.left", title: "\(g.isProposal ? "Proposal" : "Group") in \(parent.isPod ? parent.name : "# " + parent.name)")
                         }
                     }
                 }
@@ -129,7 +220,7 @@ struct PullDownSheet: View {
                                 HStack { Avatar(pubkey: a.pubkey, size: 28); Text(model.name(a.pubkey)).font(.subheadline.weight(.semibold)) }
                                 if !a.answer.isEmpty { Text(a.answer).font(.subheadline).foregroundStyle(.secondary) }
                                 HStack {
-                                    BusyButton("Let in") { model.admit(id, a.pubkey) }.buttonStyle(.borderedProminent)
+                                    BusyButton("Let in") { model.admit(id, a.pubkey) }.buttonStyle(.brand)
                                     BusyButton("Decline", role: .destructive) { model.declineApplicant(id, a.pubkey) }.buttonStyle(.bordered)
                                 }
                                 .controlSize(.small)
@@ -168,7 +259,7 @@ struct PullDownSheet: View {
                                         Text(d.lineDay(e.start, now: now) + " · " + d.lineWhen(e)).font(.caption).foregroundStyle(.secondary)
                                     }
                                     Spacer()
-                                    if let s = d.stateLabel(e) { Chip(text: s, tint: .bronze) } else if e.status != .cancelled { Chip(text: "RSVP", tint: .bronze) }
+                                    if let s = d.stateLabel(e) { Chip(text: s, tint: .brand) } else if e.status != .cancelled { Chip(text: "RSVP", tint: .brand) }
                                 }
                             }
                             .buttonStyle(.plain)
@@ -188,7 +279,7 @@ struct PullDownSheet: View {
                                         Text(p.status.label).font(.caption).foregroundStyle(.secondary)
                                     }
                                     Spacer()
-                                    if p.votingNow { Chip(text: d.myVote(p) == nil ? "Vote" : "Voted", tint: d.myVote(p) == nil ? .bronze : .secondary) }
+                                    if p.votingNow { Chip(text: d.myVote(p) == nil ? "Vote" : "Voted", tint: d.myVote(p) == nil ? .brand : .secondary) }
                                 }
                             }
                             .buttonStyle(.plain)
@@ -198,20 +289,20 @@ struct PullDownSheet: View {
                 Section("To do") {
                     ForEach(f.todos.prefix(4)) { t in TodoRow(t: t, group: id) }
                     if f.todos.count > 4 {
-                        Button { openDetails() } label: { ActionRow(icon: "checklist", title: "All \(f.todos.count) to-dos") }
+                        Button { openDetails() } label: { ActionRow(icon: "checklist", title: "All \(f.todos.count) todos") }
                     }
                     HStack {
-                        TextField("Add a to-do", text: $newTodo).font(.body)
+                        TextField("Add a todo", text: $newTodo).font(.body)
                         BusyButton {
                             model.addTodo(newTodo, in: id)
                             newTodo = ""
                         } label: { Image(systemName: "plus.circle.fill") }
                         .disabled(newTodo.jsTrim().isEmpty)
-                        .accessibilityLabel("Add the to-do")
+                        .accessibilityLabel("Add the todo")
                     }
                 }
                 if !f.pods.isEmpty {
-                    Section("Pods") {
+                    Section("Groups") {
                         ForEach(f.pods) { p in
                             Button { dismiss(); openChannel(p.id, nil) } label: {
                                 HStack(spacing: 10) {
@@ -225,22 +316,60 @@ struct PullDownSheet: View {
                         }
                     }
                 }
-                TopicsSection(id: id, topic: $topic) { dismiss() }
-                Section {
-                    Button { openDetails() } label: {
-                        ActionRow(icon: "person.2", title: peopleLine(f.active.count), detail: "Members, files, to-dos and settings")
-                    }
-                    if let about = g?.about, !about.isEmpty {
-                        Text(about.components(separatedBy: "\n").first ?? "").font(.footnote).foregroundStyle(.secondary)
+                let photos = Array(d.files(id).filter(\.isImage).prefix(12))
+                if !photos.isEmpty {
+                    Section("Photos") {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 4), spacing: 4) {
+                            ForEach(photos, id: \.url) { m in
+                                Color.clear.aspectRatio(1, contentMode: .fit)
+                                    .overlay { MediaThumb(media: m, all: photos) }
+                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            }
+                        }
+                        .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
                     }
                 }
-            }
-            .navigationTitle(g.map { $0.isPod ? $0.name : "# " + $0.name } ?? id)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+                TopicsSection(id: id, topic: $topic) { dismiss() }
+                Section {
+                    if !f.active.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(f.active.prefix(24), id: \.pubkey) { a in
+                                    Button { model.openProfile = a.pubkey } label: {
+                                        VStack(spacing: 4) {
+                                            Avatar(pubkey: a.pubkey, size: 40)
+                                            Text(model.name(a.pubkey)).font(.caption2).lineLimit(1).frame(width: 56)
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    Button { openDetails() } label: {
+                        ActionRow(icon: "person.2", title: peopleLine(f.active.count), detail: "Members, files, todos and settings")
+                    }
+                }
         }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .listStyle(.insetGrouped)
+        .contentMargins(.top, 4, for: .scrollContent)
+    }
+}
+
+/// A photo filling its cell; a tap opens the lightbox.
+struct MediaThumb: View {
+    @EnvironmentObject var model: AppModel
+    let media: Media
+    var all: [Media] = []
+    var body: some View {
+        AsyncImage(url: URL(string: media.url)) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.12) }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                let urls = (all.isEmpty ? [media] : all).map(\.url)
+                model.lightbox = Lightbox(urls: urls, index: urls.firstIndex(of: media.url) ?? 0)
+            }
+            .accessibilityLabel(media.name ?? "Photo")
+            .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -260,7 +389,10 @@ struct TodoRow: View {
             .accessibilityLabel(t.done ? "Done. Mark as not done" : "Tick off")
             VStack(alignment: .leading, spacing: 2) {
                 Text(t.title).font(.subheadline).strikethrough(t.done)
-                Text(model.derive.todoWho(t)).font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    if t.isWorking(now: Int.now), let since = t.workingSince { WorkingRing(since: since) }
+                    Text(model.derive.todoWho(t)).font(.caption).foregroundStyle(.secondary)
+                }
             }
             Spacer()
             if !t.done {
@@ -270,6 +402,24 @@ struct TodoRow: View {
                     BusyButton("I'll do it") { model.todo(t, in: group, "claim") }.font(.caption).buttonStyle(.borderless)
                 }
             }
+        }
+    }
+}
+
+/// Someone is on this todo now: a ring filling clockwise with the minutes of the current
+/// stretch, "1h", "2h"… in it past an hour (web d6cfae1).
+struct WorkingRing: View {
+    let since: Int
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { ctx in
+            let mins = max(0, (Int(ctx.date.timeIntervalSince1970) - since) / 60)
+            ZStack {
+                Circle().stroke(Color.secondary.opacity(0.25), lineWidth: 2)
+                Circle().trim(from: 0, to: CGFloat(mins % 60) / 60).stroke(Color.green, style: StrokeStyle(lineWidth: 2, lineCap: .round)).rotationEffect(.degrees(-90))
+                if mins >= 60 { Text("\(mins / 60)h").font(.system(size: 7, weight: .bold)) }
+            }
+            .frame(width: 16, height: 16)
+            .accessibilityLabel("Being worked on for \(mins) minutes")
         }
     }
 }
@@ -289,13 +439,23 @@ struct ProposalSection: View {
                 if !p.summary.isEmpty { Text(p.summary).font(.subheadline) }
             }
             if !p.text.isEmpty { MarkdownText(text: p.text).font(.subheadline) }
+            if let w = p.website {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let link = websitePreviewLink(w, domain: model.config.domain), let u = URL(string: link) {
+                        Link(destination: u) { Label("Preview this version", systemImage: "safari") }
+                    }
+                    Text(p.status == .passed ? "Passed: it is (or is about to be) live at \(model.config.domain)."
+                         : "A new version of \(model.config.domain): it goes live once a belfry admin marks this proposal Passed.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
             if p.votingNow {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("\(p.tally["yes"] ?? 0) yes · \(p.tally["no"] ?? 0) no · \(p.tally["abstain"] ?? 0) abstain").font(.footnote).foregroundStyle(.secondary)
                     HStack {
                         ForEach(Proposal.voteOptions, id: \.id) { o in
                             if mine == o.id {
-                                BusyButton(o.label) { model.vote(p, o.id) }.buttonStyle(.borderedProminent)
+                                BusyButton(o.label) { model.vote(p, o.id) }.buttonStyle(.brand)
                             } else {
                                 BusyButton(o.label) { model.vote(p, o.id) }.buttonStyle(.bordered)
                             }

@@ -91,6 +91,9 @@ public struct Group: Identifiable, Hashable, Sendable {
     public var parent: String?
     public var applications: [Application] = []
     public var pending = false
+    /// How many members vouching admits an applicant (the `vouches` tag on the 9002, 1–5; 0: its
+    /// admins accept). Belfry's vouches.py does the admitting (docs/membership.md).
+    public var vouches = 0
 
     public static func typeOf(_ id: String) -> ChannelType {
         if id.hasPrefix("ws-") || id.hasPrefix("ev-") { return .event }
@@ -192,11 +195,11 @@ public struct Message: Identifiable, Hashable, Sendable {
         return text
     }
 
-    /// "an event" / "a pod" / "a proposal" for the line "Created …" above a card; nil otherwise.
+    /// "an event" / "a group" / "a proposal" for the line "Created …" above a card; nil otherwise.
     public var created: String? {
         switch special {
         case .eventCard: return "an event"
-        case .podCard: return "a pod"
+        case .podCard: return "a group"
         case .proposalCard: return "a proposal"
         default: return nil
         }
@@ -315,6 +318,14 @@ public struct TodoTask: Hashable, Sendable, Identifiable {
     public var comments: [TaskComment] = []
     /// The message it was made from ("Turn into a to-do"): its `q` tag.
     public let source: String?
+    /// The assignee's latest `working` heartbeat (2101 action working), while it is theirs.
+    public var beat: Int?
+    /// When the current working stretch began (the ring fills with its minutes).
+    public var workingSince: Int?
+
+    public static let beatFresh = 300
+    /// Someone is on it now: not done, a heartbeat in the last 5 minutes (web isWorking).
+    public func isWorking(now: Int) -> Bool { !done && beat.map { now - $0 < TodoTask.beatFresh } ?? false }
 }
 
 public struct MemberRow: Hashable, Sendable, Identifiable {
@@ -526,6 +537,12 @@ public final class Derive {
                 let access: Bool? = e.hasTag("closed") ? true : e.hasTag("open") ? false : nil
                 if let a = access, (m["closed"] ?? 0) <= e.createdAt { g.closed = a; m["closed"] = e.createdAt }
                 if let p = e.tag("prompt"), (m["prompt"] ?? 0) <= e.createdAt { g.prompt = p; m["prompt"] = e.createdAt }
+                // the vouches rule goes with the access tags: open / closed without it = admins accept
+                if (access != nil || e.tag("vouches") != nil) && (m["vouches"] ?? 0) <= e.createdAt {
+                    let n = Int(e.tag("vouches") ?? "0") ?? 0
+                    g.vouches = access == false ? 0 : max(0, min(n, 5))
+                    m["vouches"] = e.createdAt
+                }
             }
             if e.kind == 9007 { g.admins.insert(e.pubkey) }
             if e.kind == 39001 { for t in e.tags where t.first == "p" && t.count > 1 { g.admins.insert(t[1]) } }
@@ -1151,12 +1168,21 @@ public final class Derive {
     public static func listIdFor(_ groupId: String) -> String { String(Crypto.sha256("osv-village:" + groupId).hex.prefix(16)) }
 
     private var tasksCache = [String: [TodoTask]]()
+    /// Channels.swift: each channel's web settings, worked out once per snapshot.
+    var webCache = [String: WebPage?]()
+    lazy var webEvents: [String: [NostrEvent]] = {
+        var out = [String: [NostrEvent]]()
+        for e in events where e.kind == 30078 { if let d = e.tag("d"), d.hasPrefix("belfry:web:") { out[d, default: []].append(e) } }
+        return out
+    }()
 
     public func tasks(_ groupId: String) -> [TodoTask] {
         if let c = tasksCache[groupId] { return c }
         let listId = Derive.listIdFor(groupId)
         var tasks = [String: TodoTask]()
         var order = [String]()
+        var beats = [String: (task: String, at: Int)]() // per person: their latest heartbeat
+        var stretch = [String: (start: Int, last: Int)]() // per task + person: the current working stretch
         for e in sortedEvents where (2100...2103).contains(e.kind) && e.tag("t") == listId {
             if e.kind == 2100 {
                 let title = e.content.jsTrim().sliceUnits(300)
@@ -1173,10 +1199,24 @@ public final class Derive {
                 case "undone": t.done = false
                 case "delete":
                     if e.pubkey == t.author { tasks[tid] = nil; order.removeAll { $0 == tid }; continue }
+                case "working":
+                    beats[e.pubkey] = (tid, e.createdAt)
+                    let k = tid + e.pubkey
+                    if let s = stretch[k], e.createdAt - s.last < TodoTask.beatFresh { stretch[k] = (s.start, e.createdAt) } else { stretch[k] = (e.createdAt, e.createdAt) }
+                case "idle":
+                    if beats[e.pubkey]?.task == tid { beats[e.pubkey] = nil }
+                    stretch[tid + e.pubkey] = nil
                 default: break
                 }
+                if e.tag("action") == "done" { stretch[tid + e.pubkey] = nil }
                 tasks[tid] = t
             }
+        }
+        for (p, b) in beats {
+            guard var t = tasks[b.task], t.assignee == p else { continue }
+            t.beat = b.at
+            t.workingSince = stretch[b.task + p]?.start ?? b.at
+            tasks[b.task] = t
         }
         let out = order.compactMap { tasks[$0] }
         tasksCache[groupId] = out

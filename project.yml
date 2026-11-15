@@ -55,8 +55,11 @@ targets:
           - CFBundleURLName: sh.belfry.app.connect
             CFBundleURLSchemes: [sh.belfry.app]
         NSPhotoLibraryUsageDescription: Choose photos to send in a channel.
+        NSMicrophoneUsageDescription: Record audio to post in a channel (a meeting, a voice note).
+        NSCameraUsageDescription: Scan the QR code of an invitation.
         BelfryKeychainGroup: $(AppIdentifierPrefix)sh.belfry.app.shared
-        UIBackgroundModes: [remote-notification]
+        # audio: a recording goes on with the screen locked (Recorder.swift)
+        UIBackgroundModes: [remote-notification, audio]
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:
@@ -101,6 +104,21 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: $(BELFRY_TEAM_ID)
+  BelfryUITests:
+    # native menus only a touch opens, captured for the screenshot job (scripts/screenshots.sh)
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: App/UITests
+    dependencies:
+      - target: Belfry
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: sh.belfry.app.uitests
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Belfry
 schemes:
   Belfry:
     build:
@@ -108,5 +126,9 @@ schemes:
         Belfry: all
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - BelfryUITests
     archive:
       config: Release

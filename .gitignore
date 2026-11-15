@@ -11,3 +11,4 @@ App/Info.plist
 App/Belfry.entitlements
 App/NotificationService.entitlements
 App/NotificationService-Info.plist
+.claude/

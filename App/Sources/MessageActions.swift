@@ -83,14 +83,8 @@ struct MessageActions: View {
                                 }
                             }
                             if !isReply && d.canMakeTodo(group, m) {
-                                ActionButtonRow(icon: "checklist", title: "Turn into a to-do", detail: d.todoTitle(m)) {
+                                ActionButtonRow(icon: "checklist", title: "Turn into a todo", detail: d.todoTitle(m)) {
                                     model.makeTodo(m, in: group)
-                                    dismiss()
-                                }
-                            }
-                            if let ref = nsiteRef(m.text), d.isCommunityAdmin {
-                                ActionButtonRow(icon: "globe", title: "Make this the website") {
-                                    model.website = await model.publishWebsite(ref: ref, message: m.id)
                                     dismiss()
                                 }
                             }
@@ -108,6 +102,7 @@ struct MessageActions: View {
             }
         }
         .presentationDetents(confirmDelete ? Set([PresentationDetent.medium]) : Set([PresentationDetent.medium, .large]))
+        .solidSheet()
         .presentationDragIndicator(.visible)
         .sheet(isPresented: $moreEmoji) {
             EmojiPicker { e in
@@ -122,7 +117,9 @@ struct MessageActions: View {
     }
 
     /// An nsite link in a message: nsite:<npub>[/<name>] (SPEC: "Make this the website").
-    func nsiteRef(_ text: String) -> String? {
+    func nsiteRef(_ text: String) -> String? { MessageActions.nsiteRef(text) }
+
+    static func nsiteRef(_ text: String) -> String? {
         Rx("nsite:(npub1[02-9ac-hj-np-z]{58}(?:/[a-z0-9-]{1,40})?)").first(text)?[1]
     }
 }
@@ -180,6 +177,7 @@ struct EmojiPicker: View {
             .padding()
         }
         .presentationDetents([.medium])
+        .solidSheet()
     }
 }
 
@@ -225,6 +223,7 @@ struct EditSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .solidSheet()
     }
 
     var initial: String { model.derive.unsubstituteChannels(m.text).text }
@@ -260,7 +259,7 @@ struct MailReplySheet: View {
                         HStack {
                             Label("Sending in \(countdown) s", systemImage: "paperplane")
                             Spacer()
-                            Button("Undo") { undo() }.buttonStyle(.borderedProminent)
+                            Button("Undo") { undo() }.buttonStyle(.brand)
                         }
                     }
                 }
@@ -304,5 +303,105 @@ struct MailReplySheet: View {
         timer?.invalidate()
         timer = nil
         countdown = nil
+    }
+}
+
+/// What a message's menu can do outside itself (set by the channel and thread screens).
+struct MessageMenuHandlers {
+    var reply: (Message) -> Void
+    var openThread: (Message) -> Void
+    var edit: (Message) -> Void
+    /// The full list (more reactions, the delete confirmation showing the message).
+    var sheet: (Message, _ delete: Bool) -> Void
+    /// "Propose as the website" on a message with an nsite link.
+    var proposeSite: ((Message) -> Void)? = nil
+}
+
+struct MessageMenuKey: EnvironmentKey { static let defaultValue: MessageMenuHandlers? = nil }
+extension EnvironmentValues {
+    var messageMenu: MessageMenuHandlers? {
+        get { self[MessageMenuKey.self] }
+        set { self[MessageMenuKey.self] = newValue }
+    }
+}
+
+/// The native menu of a held message (iMessage / WhatsApp): quick reactions in a row, then the
+/// web's message menu as rows with icons, Delete last.
+struct MessageMenu: View {
+    @EnvironmentObject var model: AppModel
+    let m: Message
+    let group: String
+    let h: MessageMenuHandlers
+
+    var body: some View {
+        let d = model.derive
+        let pending = model.pending(m.id) != nil
+        let isReply = m.ev.kind == 1111
+        if !pending && !isReply {
+            ControlGroup {
+                ForEach(EmojiUsage.top(4), id: \.self) { e in
+                    Button { model.toggleReaction(e, on: m, in: group) } label: { Text(e) }
+                        .accessibilityLabel("React with \(e)")
+                }
+                Button { h.sheet(m, false) } label: { Label("More reactions", systemImage: "face.smiling") }
+            }
+            .controlGroupStyle(.compactMenu)
+        }
+        Section {
+            if !pending {
+                Button { h.reply(m) } label: { Label("Reply", systemImage: "arrowshape.turn.up.left") }
+                if !isReply {
+                    Button { h.openThread(m) } label: { Label("Open thread", systemImage: "bubble.left.and.bubble.right") }
+                }
+            }
+            if d.canEdit(m) {
+                Button { h.edit(m) } label: { Label("Edit message", systemImage: "pencil") }
+            }
+            if !m.text.isEmpty {
+                Button {
+                    UIPasteboard.general.string = d.plainRefs(m.text, npub: "@…")
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                } label: { Label("Copy text", systemImage: "doc.on.doc") }
+            }
+            Button {
+                UIPasteboard.general.string = d.channelURL(group)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } label: { Label("Copy link to the channel", systemImage: "link") }
+            if m.pubkey != model.me && !d.isGuest(model.me) {
+                Button { model.messageAuthor = m.pubkey } label: { Label("Message \(model.realNameOrKey(m.pubkey))", systemImage: "envelope") }
+            }
+        }
+        if !pending {
+            Section {
+                if !isReply && d.canPin(group) {
+                    let on = d.isPinned(group, m.id)
+                    Button { model.pin(m, in: group, !on) } label: { Label(on ? "Unpin from the channel" : "Pin to the channel", systemImage: on ? "pin.slash" : "pin") }
+                }
+                if !isReply && d.canMakeTodo(group, m) {
+                    Button { model.makeTodo(m, in: group) } label: { Label("Turn into a todo", systemImage: "checklist") }
+                }
+                if MessageActions.nsiteRef(m.text) != nil, !d.amGuest, let propose = h.proposeSite {
+                    Button { propose(m) } label: { Label("Propose as the website", systemImage: "globe") }
+                }
+            }
+        }
+        if d.canDelete(m) || pending && m.pubkey == model.me {
+            Section {
+                Button(role: .destructive) { h.sheet(m, true) } label: { Label(pending ? "Discard" : "Delete message", systemImage: "trash") }
+            }
+        }
+    }
+}
+
+extension View {
+    /// Holding a message: the native menu (signed in), or the Join sheet (guest mode).
+    @ViewBuilder func messageMenu(_ m: Message, group: String, handlers: MessageMenuHandlers?, guest: Bool, hold: @escaping () -> Void) -> some View {
+        if let handlers, !guest {
+            self.contextMenu { MessageMenu(m: m, group: group, h: handlers) }
+                .accessibilityAction(named: "Actions") { hold() }
+        } else {
+            self.onLongPressGesture(minimumDuration: 0.35) { hold() }
+                .accessibilityAction(named: "Actions") { hold() }
+        }
     }
 }

@@ -28,7 +28,7 @@ struct BelfryApp: App {
                 }
             }
             .environmentObject(model)
-            .tint(.bronze)
+            .tint(Theme.accent)
             .onOpenURL { model.handle(url: $0) }
             .onAppear {
                 AppDelegate.model = model
@@ -45,6 +45,3 @@ struct BelfryApp: App {
     }
 }
 
-extension Color {
-    static let bronze = Color(red: 0xa4 / 255, green: 0x53 / 255, blue: 0x2b / 255)
-}

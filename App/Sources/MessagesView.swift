@@ -23,10 +23,12 @@ struct MessagesView: View {
             }
         }
         .listStyle(.plain)
-        .navigationTitle("Messages")
+        .navigationTitle("Direct messages")
+        .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: ConvRoute.self) { ConversationView(conv: $0.conv) }
         .refreshable { await model.refresh() }
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) { DrawerButton() }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { newOne = true } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("New message")
             }
@@ -69,8 +71,8 @@ struct ThreadRow: View {
         let mail = MailThreads.isMail(thread.conv)
         HStack(alignment: .top, spacing: 12) {
             if mail {
-                Image(systemName: "envelope.fill").font(.title3).foregroundStyle(.white)
-                    .frame(width: 40, height: 40).background(Color.bronze, in: Circle())
+                Image(systemName: "envelope.fill").font(.title3).foregroundStyle(Theme.onAccent)
+                    .frame(width: 40, height: 40).background(Color.brand, in: Circle())
                     .accessibilityHidden(true)
             } else {
                 Avatar(pubkey: MailThreads.peers(thread.conv).first ?? "", size: 40)
@@ -85,7 +87,7 @@ struct ThreadRow: View {
                 Text(thread.last.mine ? "You: \(thread.last.text)" : thread.last.text).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
             }
             if thread.unread > 0 {
-                Circle().fill(Color.bronze).frame(width: 10, height: 10).padding(.top, 6).accessibilityLabel("Unread")
+                Circle().fill(Color.brand).frame(width: 10, height: 10).padding(.top, 6).accessibilityLabel("Unread")
             }
         }
         .accessibilityElement(children: .combine)
@@ -133,25 +135,37 @@ struct ConversationView: View {
         .onAppear { model.dms?.markRead(conv); model.visibleConversation = conv }
         .onDisappear { if model.visibleConversation == conv { model.visibleConversation = nil } }
         .onChange(of: list.count) { _, _ in model.dms?.markRead(conv) }
-        .safeAreaInset(edge: .bottom) {
+        .bottomBar {
             VStack(spacing: 6) {
                 if let error { Text(error).font(.caption).foregroundStyle(.red) }
                 if MailThreads.isNewMail(conv) {
-                    TextField("Subject", text: $subject).textFieldStyle(.roundedBorder)
+                    TextField("Subject", text: $subject).font(.body)
+                        .padding(.horizontal, 14).frame(minHeight: 38)
+                        .composerField()
                 }
-                HStack(alignment: .bottom) {
+                // the channel composer's shape: a capsule field with Send inside it
+                let can = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                HStack(alignment: .bottom, spacing: 0) {
                     TextField(mail ? "Write an e-mail" : "Message", text: $text, axis: .vertical)
+                        .font(.body)
                         .lineLimit(1...8)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(.background, in: RoundedRectangle(cornerRadius: 18))
-                        .overlay(RoundedRectangle(cornerRadius: 18).stroke(.quaternary))
-                    Button(action: send) { Image(systemName: "arrow.up.circle.fill").font(.title) }
-                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .accessibilityLabel("Send")
+                        .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 8)
+                        .frame(minHeight: 38)
+                    Button(action: send) {
+                        Image(systemName: "arrow.up").font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(can ? Theme.onAccent : Color.secondary)
+                            .frame(width: 30, height: 30)
+                            .background(can ? Theme.accent : Color.secondary.opacity(0.18), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(4)
+                    .disabled(!can)
+                    .accessibilityLabel("Send")
                 }
+                .composerField()
             }
-            .padding(12)
-            .background(.bar)
+            .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
+            .composerBackground(compact: false)
             .sensoryFeedback(.impact(weight: .light), trigger: sending)
         }
     }
@@ -197,7 +211,7 @@ struct Bubble: View {
             if dm.kind == 1301, let s = dm.subject { Text(s).font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
             MarkdownText(text: dm.text.isEmpty ? " " : dm.text)
                 .padding(10)
-                .background(dm.mine ? Color.bronze.opacity(0.16) : Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
+                .background(dm.mine ? Color.brand.opacity(0.14) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             HStack(spacing: 6) {
                 Text(Format.time(dm.at)).font(.caption2).foregroundStyle(.secondary)
                 if let f = dm.failed {

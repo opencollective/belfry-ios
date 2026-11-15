@@ -25,6 +25,12 @@ public struct Poll: Hashable, Sendable {
     public let votes: [String: String]
 }
 
+/// The address of a website version's preview (web previewLink): preview.<domain>/p/<npub>[@name].
+public func websitePreviewLink(_ ref: String, domain: String) -> String? {
+    guard let m = Rx("^nsite:(npub1[02-9ac-hj-np-z]{58})(?:/([a-z0-9-]{1,13}))?$").first(ref), let npub = m[1] else { return nil }
+    return "https://preview.\(domain)/p/\(npub)" + (m[2].map { "@" + $0 } ?? "")
+}
+
 public struct Proposal: Hashable, Sendable, Identifiable {
     public let coord: String
     public let d: String
@@ -37,6 +43,8 @@ public struct Proposal: Hashable, Sendable, Identifiable {
     public let version: Int
     public let status: ProposalStatus
     public let poll: Poll?
+    /// A new version of the website (its nsite ref), live once a belfry admin marks it Passed.
+    public var website: String? = nil
 
     public var id: String { coord }
     public static let voteOptions: [(id: String, label: String)] = [("yes", "Yes"), ("no", "No"), ("abstain", "Abstain")]
@@ -95,7 +103,8 @@ extension Derive {
             let title = e.tag("title") ?? ""
             out.append(Proposal(coord: coord, d: e.tag("d") ?? "", ev: e, author: e.pubkey, groupId: groupId,
                                 title: title.isEmpty ? "Untitled proposal" : title, summary: e.tag("summary") ?? "", text: e.content,
-                                version: version == 0 ? 1 : version, status: status, poll: poll))
+                                version: version == 0 ? 1 : version, status: status, poll: poll,
+                                website: e.tag("website").flatMap { $0.isEmpty ? nil : $0 }))
         }
         return out
     }

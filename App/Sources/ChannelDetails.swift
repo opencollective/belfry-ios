@@ -8,12 +8,14 @@ import SwiftUI
 // sheet: someone who is here already, the member link, a guest link (1 / 50 people; 1 day /
 // 1 week / 1 month), "My own agent".
 
-enum InfoTab: String, CaseIterable { case about = "About", members = "Members", todos = "To-dos", files = "Files", settings = "Settings" }
+enum InfoTab: String, CaseIterable { case about = "About", members = "Members", todos = "Todos", files = "Files", log = "Log", settings = "Settings" }
 
 struct ChannelDetails: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let id: String
+    /// "Go there" from the Log: a message or a thread in the channel.
+    var go: (LogGo) -> Void = { _ in }
     @State var tab: InfoTab = .about
     @State private var invite = false
     @State private var profile: ProfileKey?
@@ -26,7 +28,7 @@ struct ChannelDetails: View {
             List {
                 Section {
                     Picker("Tab", selection: $tab) {
-                        ForEach(InfoTab.allCases.filter { $0 != .settings || admin }, id: \.self) { Text($0.rawValue).tag($0) }
+                        ForEach(InfoTab.allCases.filter { $0 != .settings }, id: \.self) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.segmented)
                     .listRowBackground(Color.clear)
@@ -36,12 +38,27 @@ struct ChannelDetails: View {
                 case .members: MembersTab(id: id) { profile = ProfileKey(pubkey: $0) }
                 case .todos: TodosTab(id: id)
                 case .files: FilesTab(id: id)
+                case .log: LogTab(id: id) { g in
+                    switch g {
+                    case .todos: tab = .todos
+                    case .members: tab = .members
+                    default: dismiss(); go(g)
+                    }
+                }
                 case .settings: SettingsTab(id: id)
                 }
             }
             .navigationTitle(g.map { $0.isPod ? $0.name : "# " + $0.name } ?? id)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                if admin {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { tab = tab == .settings ? .about : .settings } label: { Image(systemName: tab == .settings ? "gearshape.fill" : "gearshape") }
+                            .accessibilityLabel("Channel settings")
+                    }
+                }
+            }
             .sheet(isPresented: $invite) { InviteSheet(id: id) }
             .sheet(item: $profile) { ProfileView(pubkey: $0.pubkey) }
             .onAppear {
@@ -49,6 +66,7 @@ struct ChannelDetails: View {
                 case "members": tab = .members
                 case "todos": tab = .todos
                 case "files": tab = .files
+                case "log": tab = .log
                 default: break
                 }
             }
@@ -58,6 +76,49 @@ struct ChannelDetails: View {
             }
         }
         .presentationDetents([.large])
+    }
+}
+
+/// Everything that happened in the channel, newest first, a section per day (SPEC 19.23 Log).
+struct LogTab: View {
+    @EnvironmentObject var model: AppModel
+    let id: String
+    let go: (LogGo) -> Void
+    @State private var open: String?
+
+    var body: some View {
+        let d = model.derive
+        let items = d.channelLog(id)
+        let days = Dictionary(grouping: items) { Calendar.current.startOfDay(for: Date(timeIntervalSince1970: TimeInterval($0.ev.createdAt))) }
+        if items.isEmpty { Section { Text("Nothing here yet.").foregroundStyle(.secondary) } }
+        ForEach(days.keys.sorted(by: >), id: \.self) { day in
+            Section(Format.day(Int(day.timeIntervalSince1970))) {
+                ForEach(days[day] ?? []) { it in
+                    Button { withAnimation(.snappy) { open = open == it.id ? nil : it.id } } label: {
+                        HStack(alignment: .top, spacing: 10) {
+                            Text(it.icon).frame(width: 24)
+                            VStack(alignment: .leading, spacing: 2) {
+                                (Text(d.logWho(id, it.ev.pubkey)).fontWeight(.semibold) + Text(" " + it.text)).font(.subheadline)
+                                if let detail = it.detail {
+                                    Text(verbatim: detail).font(.footnote).foregroundStyle(.secondary).lineLimit(open == it.id ? nil : 1)
+                                }
+                                if open == it.id {
+                                    Text(Date(timeIntervalSince1970: TimeInterval(it.ev.createdAt)).formatted(date: .complete, time: .standard))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                    if let g = it.go {
+                                        Button("Go there") { go(g) }.font(.footnote.weight(.semibold)).buttonStyle(.borderless)
+                                    }
+                                }
+                            }
+                            Spacer(minLength: 4)
+                            Text(Format.time(it.ev.createdAt)).font(.caption).foregroundStyle(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 }
 
@@ -89,7 +150,7 @@ struct AboutTab: View {
                 ActionButtonRow(icon: "person.crop.circle.badge.plus", title: "Join") { model.join(id) }
             }
             if let g, g.isPod, g.members.contains(model.me) {
-                ActionButtonRow(icon: "rectangle.portrait.and.arrow.right", title: "Leave the pod", destructive: true) { model.leave(id) }
+                ActionButtonRow(icon: "rectangle.portrait.and.arrow.right", title: "Leave the group", destructive: true) { model.leave(id) }
             }
         }
         Section(active.isEmpty ? "Nobody active this month yet" : "Active in the last 30 days") {
@@ -109,7 +170,7 @@ struct AboutTab: View {
         }
         let pods = d.pods(id)
         if !pods.isEmpty {
-            Section("Pods") {
+            Section("Groups") {
                 ForEach(pods) { p in
                     Button { openChannel(p.id, nil) } label: { HStack { ChannelGlyph(group: p, size: 20); Text(p.name) } }.buttonStyle(.plain)
                 }
@@ -188,8 +249,9 @@ struct MembersTab: View {
                             HStack(spacing: 6) {
                                 Text(r.pubkey == model.me ? "You" : r.name).font(.subheadline.weight(.semibold))
                                 if r.isAdmin { Chip(text: "admin") }
-                                if let k = d.kindLabel(r.pubkey) { Chip(text: k.lowercased(), tint: .bronze) }
-                                else if let c = r.guest?.chip { Chip(text: c, tint: .bronze) }
+                                if let role = model.roles.label(of: r.pubkey), role.lowercased() != "admin" { Chip(text: role) }
+                                if let k = d.kindLabel(r.pubkey) { Chip(text: k.lowercased(), tint: .brand) }
+                                else if let c = r.guest?.chip { Chip(text: c, tint: .brand) }
                             }
                             let sub = [r.guest?.by.map { "invited by " + model.name($0) }, r.labels.isEmpty ? nil : r.labels.joined(separator: " · "),
                                        r.place.map { People.placeLabel($0) }].compactMap { $0 }
@@ -214,6 +276,7 @@ struct MembersTab: View {
         .sheet(item: Binding(get: { labeling.map { ProfileKey(pubkey: $0) } }, set: { labeling = $0?.pubkey })) { k in
             LabelsSheet(id: id, pubkey: k.pubkey)
         }
+        .task { await model.loadRoles() }
     }
 }
 
@@ -257,6 +320,7 @@ struct LabelsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .solidSheet()
     }
 }
 
@@ -270,7 +334,7 @@ struct TodosTab: View {
         let tasks = model.derive.tasks(id)
         Section {
             HStack {
-                TextField("Add a to-do", text: $newTodo).font(.body)
+                TextField("Add a todo", text: $newTodo).font(.body)
                 BusyButton { model.addTodo(newTodo, in: id); newTodo = "" } label: { Image(systemName: "plus.circle.fill") }
                     .disabled(newTodo.jsTrim().isEmpty)
             }
@@ -380,12 +444,7 @@ struct DropLinkSheet: View {
                 if let token {
                     let url = model.derive.dropURL(token)
                     Section {
-                        if let img = QR.image(url) {
-                            Image(uiImage: img).interpolation(.none).resizable().scaledToFit().frame(maxWidth: 220).frame(maxWidth: .infinity)
-                        }
-                        Text(url).font(.footnote.monospaced()).textSelection(.enabled)
-                        Button { UIPasteboard.general.string = url } label: { Label("Copy link", systemImage: "doc.on.doc") }
-                        if let u = URL(string: url) { ShareLink(item: u) { Label("Share", systemImage: "square.and.arrow.up") } }
+                        LinkBlock(url: url, title: "Drop box", message: "Add files to the drop box")
                     }
                 } else {
                     Section("Works for") {
@@ -427,7 +486,7 @@ struct SettingsTab: View {
             }
         }
         Section {
-            Toggle("E-mails from anyone", isOn: $inbox)
+            Toggle("E-mails from anyone", isOn: $inbox).tint(Theme.toggle)
         } footer: {
             Text(inbox ? "Anyone can e-mail \(id)@\(model.config.domain). Mails land here as cards and the channel's admins answer as the channel."
                  : "Only members can e-mail \(id)@\(model.config.domain); their mail shows as their message.")
@@ -454,119 +513,60 @@ struct SettingsTab: View {
     }
 }
 
-struct InviteSheet: View {
-    @EnvironmentObject var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    let id: String
-    @State private var query = ""
-    @State private var notes = [String: String]()
-    @State private var people = 1
-    @State private var linkDays = 1
-    @State private var ownAgent = false
-    @State private var link: GuestLink?
-    @State private var error: String?
-    @State private var agents: MyAgents?
-    @State private var copied = false
-
-    var body: some View {
-        let d = model.derive
-        let g = model.group(id)
-        let label = g.map { $0.isPod || $0.isEvent ? $0.name : "# " + $0.name } ?? id
-        let memberLink = d.channelURL(id)
-        NavigationStack {
-            List {
-                Section {
-                    TextField("Name of someone here", text: $query).font(.body).textInputAutocapitalization(.words)
-                    ForEach(d.inviteCandidates(query), id: \.self) { pk in
-                        HStack(spacing: 10) {
-                            Avatar(pubkey: pk, size: 28)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(model.name(pk)).font(.subheadline.weight(.semibold))
-                                Text([d.kindLabel(pk), notes[pk] ?? d.inviteState(g, pk)].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if notes[pk] == nil && !d.inChannel(g, pk) {
-                                BusyButton(d.isGuest(pk) ? "Add" : "Invite") { notes[pk] = await model.inviteHere(pk, to: id) }
-                                    .font(.caption.weight(.semibold)).buttonStyle(.bordered).controlSize(.small)
-                            }
-                        }
-                    }
-                } header: { Text("Someone who is here already") }
-                if !d.amGuest {
-                    Section {
-                        LinkBlock(url: memberLink, title: label, message: "Join \(label) on \(model.config.name)")
-                    } header: { Text("Members") } footer: { Text("Members open \(label) with this link.") }
-                    Section {
-                        if agents.map({ $0.limit > 0 }) ?? false {
-                            Toggle(isOn: $ownAgent) {
-                                VStack(alignment: .leading) {
-                                    Text("My own agent")
-                                    Text(agents.map { $0.room > 0 ? "It joins as yours and stays while you do." : "You have as many agents as you can have." } ?? "")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                            .disabled((agents?.room ?? 0) <= 0)
-                            .onChange(of: ownAgent) { _, _ in link = nil; error = nil }
-                        }
-                        if !ownAgent {
-                            Picker("How many", selection: $people) { Text("One person").tag(1); Text("Up to 50").tag(50) }
-                                .disabled(link != nil)
-                            Picker("Link works for", selection: $linkDays) { Text("1 day").tag(1); Text("1 week").tag(7); Text("1 month").tag(30) }
-                                .disabled(link != nil)
-                        }
-                        if let link {
-                            let url = link.ownAgent ? (link.agentURL ?? link.url) : link.url
-                            LinkBlock(url: url, title: label, message: link.ownAgent ? "Instructions for my agent to join \(label)" : "Join \(label) on \(model.config.name)")
-                            Text(link.ownAgent ? "Hand this to your agent: it works once, and the agent joins as yours."
-                                 : "\(link.people == 1 ? "One person" : "Up to \(link.people) people") can use it for \(link.linkDays == 1 ? "a day" : link.linkDays == 7 ? "a week" : "a month"). They join \(label) only, for \(link.days) days. Everyone here sees who invited them.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                            Button("Make another link") { self.link = nil }
-                        } else {
-                            BusyButton(ownAgent ? "Make the agent's link" : "Make a guest link") {
-                                error = nil
-                                switch await model.makeGuestLink(id, people: ownAgent ? 1 : people, linkDays: ownAgent ? 1 : linkDays, agent: ownAgent) {
-                                case .success(let l): link = l
-                                case .failure(let e): error = e.message
-                                }
-                            }
-                        }
-                        if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) }
-                    } header: { Text("Someone who isn't a member") } footer: { Text("A guest sees this channel only, nothing else.") }
-                }
-            }
-            .navigationTitle("Invite to \(label)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .task { if !model.derive.amGuest && !model.derive.isAgent(model.me) { agents = await model.myAgents() } }
-            .onAppear { if model.launch.screen == "invite" && link == nil { Task { if case .success(let l) = await model.makeGuestLink(id, people: 1, linkDays: 1) { link = l } } } }
-        }
-        .presentationDetents([.large])
-    }
-}
-
-/// A link as text, its QR code, Copy and Share.
+/// A link as rows of a list section: its QR code with the address under it, "Copy link"
+/// (a checkmark and a tap of the haptic engine) and "Share…" (the system share sheet). Each is its
+/// own row, so one tap never reaches the other.
 struct LinkBlock: View {
     let url: String
     let title: String
     let message: String
-    @State private var copied = false
+    var body: some View {
+        QRRow(url: url)
+        CopyRow(text: url, title: "Copy link")
+        if let u = URL(string: url) {
+            ShareLink(item: u, subject: Text(title), message: Text(message)) {
+                Label("Share…", systemImage: "square.and.arrow.up")
+            }
+        }
+    }
+}
+
+/// A QR code on white (scannable in dark mode too) and its text.
+struct QRRow: View {
+    let url: String
     var body: some View {
         VStack(spacing: 10) {
             if let img = QR.image(url) {
-                Image(uiImage: img).interpolation(.none).resizable().scaledToFit().frame(width: 180, height: 180)
+                Image(uiImage: img).interpolation(.none).resizable().scaledToFit()
+                    .frame(width: 184, height: 184)
+                    .padding(10)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .accessibilityLabel("QR code of the link")
             }
-            Text(url).font(.footnote.monospaced()).textSelection(.enabled).multilineTextAlignment(.center)
-            HStack {
-                Button { UIPasteboard.general.string = url; copied = true } label: { Label(copied ? "Copied" : "Copy", systemImage: "doc.on.doc").frame(maxWidth: .infinity) }
-                    .buttonStyle(.borderedProminent)
-                if let u = URL(string: url) {
-                    ShareLink(item: u, subject: Text(title), message: Text(message)) { Label("Share", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity) }
-                        .buttonStyle(.bordered)
-                }
-            }
+            Text(url).font(.footnote.monospaced()).foregroundStyle(.secondary)
+                .textSelection(.enabled).multilineTextAlignment(.center).lineLimit(3)
         }
         .frame(maxWidth: .infinity)
-        .sensoryFeedback(.success, trigger: copied)
+        .padding(.vertical, 6)
+    }
+}
+
+/// "Copy …" as a list row: copies at once, turns into a checkmark for two seconds.
+struct CopyRow: View {
+    let text: String
+    var title = "Copy"
+    @State private var copied = false
+    var body: some View {
+        Button {
+            guard !copied else { return }
+            UIPasteboard.general.string = text
+            copied = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+        } label: {
+            Label(copied ? "Copied" : title, systemImage: copied ? "checkmark" : "doc.on.doc")
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .sensoryFeedback(.success, trigger: copied) { _, new in new }
+        .accessibilityLabel(copied ? "Copied" : title)
     }
 }

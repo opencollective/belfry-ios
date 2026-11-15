@@ -170,17 +170,17 @@ struct EventLine: View {
             Label("Cancelled" + (e.statusReason.map { ": " + $0 } ?? ""), systemImage: "xmark.octagon").foregroundStyle(.red)
         } else if d.stillGoing(e) {
             HStack {
-                Text("Changed · still going?").font(.subheadline.weight(.semibold)).foregroundStyle(Color.bronze)
-                BusyButton("Yes") { model.rsvp(e, .accepted) }.buttonStyle(.borderedProminent)
+                Text("Changed · still going?").font(.subheadline.weight(.semibold)).foregroundStyle(Color.brand)
+                BusyButton("Yes") { model.rsvp(e, .accepted) }.buttonStyle(.brand)
                 BusyButton("No") { model.rsvp(e, .declined) }.buttonStyle(.bordered)
             }
             .controlSize(.small)
         } else if host && !people.applications.isEmpty {
-            Text("\(people.applications.count) \(people.applications.count == 1 ? "person asks" : "people ask") for a place").font(.subheadline.weight(.semibold)).foregroundStyle(Color.bronze)
+            Text("\(people.applications.count) \(people.applications.count == 1 ? "person asks" : "people ask") for a place").font(.subheadline.weight(.semibold)).foregroundStyle(Color.brand)
         } else if host {
-            Text("You're hosting").font(.subheadline.weight(.semibold)).foregroundStyle(Color.bronze)
+            Text("You're hosting").font(.subheadline.weight(.semibold)).foregroundStyle(Color.brand)
         } else if let l = state.line {
-            Text(l).font(.subheadline.weight(.semibold)).foregroundStyle(Color.bronze)
+            Text(l).font(.subheadline.weight(.semibold)).foregroundStyle(Color.brand)
         }
     }
 }
@@ -193,7 +193,7 @@ struct RsvpButtons: View {
         HStack {
             ForEach(Rsvp.allCases, id: \.self) { r in
                 if mine == r {
-                    BusyButton(r.label) { model.rsvp(e, r) }.buttonStyle(.borderedProminent)
+                    BusyButton(r.label) { model.rsvp(e, r) }.buttonStyle(.brand)
                 } else {
                     BusyButton(r.label) { model.rsvp(e, r) }.buttonStyle(.bordered)
                 }
@@ -229,7 +229,7 @@ struct TicketRow: View {
                 } else if t.closed || (left ?? 1) <= 0 {
                     Button((left ?? 1) <= 0 ? "Waitlist" : "Apply", action: apply).buttonStyle(.bordered).controlSize(.small)
                 } else {
-                    BusyButton("Take it") { error = await model.takeTicket(e, t) }.buttonStyle(.borderedProminent).controlSize(.small)
+                    BusyButton("Take it") { error = await model.takeTicket(e, t) }.buttonStyle(.brand).controlSize(.small)
                 }
             }
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
@@ -268,6 +268,7 @@ struct ApplySheet: View {
             }
         }
         .presentationDetents([.medium])
+        .solidSheet()
     }
 }
 
@@ -325,7 +326,7 @@ struct DecideRow: View {
             HStack { Avatar(pubkey: a.pubkey, size: 26); Text(model.name(a.pubkey)).font(.subheadline.weight(.semibold)); if busy { ProgressView().controlSize(.small) } }
             if !a.answer.isEmpty { Text(a.answer).font(.subheadline).foregroundStyle(.secondary) }
             HStack {
-                Button("Approve") { go(true) }.buttonStyle(.borderedProminent)
+                Button("Approve") { go(true) }.buttonStyle(.brand)
                 Button("Decline", role: .destructive) { go(false) }.buttonStyle(.bordered)
             }
             .controlSize(.small)
@@ -364,6 +365,7 @@ struct CancelEventSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .solidSheet()
     }
 }
 
@@ -406,9 +408,9 @@ struct EventFormSheet: View {
                     }
                 }
                 Section {
-                    Toggle("All day", isOn: $allDay)
+                    Toggle("All day", isOn: $allDay).tint(Theme.toggle)
                     DatePicker("Starts", selection: $start, displayedComponents: allDay ? [.date] : [.date, .hourAndMinute])
-                    Toggle("Ends", isOn: $hasEnd)
+                    Toggle("Ends", isOn: $hasEnd).tint(Theme.toggle)
                     if hasEnd { DatePicker("Ends", selection: $end, in: start..., displayedComponents: allDay ? [.date] : [.date, .hourAndMinute]) }
                 }
                 Section("Where") {
@@ -583,9 +585,9 @@ struct TicketFormSheet: View {
                     TextField("Places (empty: no limit)", text: $form.quantity).keyboardType(.numberPad).font(.body)
                 }
                 Section {
-                    Toggle("Needs an application", isOn: $form.closed)
+                    Toggle("Needs an application", isOn: $form.closed).tint(Theme.toggle)
                     if form.closed { TextField("Why would you like to come?", text: $form.prompt, axis: .vertical).lineLimit(1...4).font(.body) }
-                    Toggle("Members only", isOn: $form.members)
+                    Toggle("Members only", isOn: $form.members).tint(Theme.toggle)
                 }
             }
             .navigationTitle(form.id == nil ? "New ticket" : "Edit ticket")
@@ -596,6 +598,7 @@ struct TicketFormSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .solidSheet()
     }
 }
 

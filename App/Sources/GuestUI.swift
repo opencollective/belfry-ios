@@ -41,7 +41,7 @@ struct InviteProblemScreen: View {
                     .foregroundStyle(problem.closed ? .red : .primary)
                 if !problem.closed {
                     Button { model.retryInvite() } label: { Text("Try again").frame(maxWidth: .infinity).padding(.vertical, 6) }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.brand)
                 }
                 Button {
                     if problem.closed { model.pendingInvite = nil }
@@ -69,11 +69,11 @@ struct GuestBar: View {
                 .font(.subheadline)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button("Join") { model.joinAsked = true }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.brand)
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
-        .background(.bar)
+        .floatingBar()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Guest mode")
     }
@@ -170,7 +170,7 @@ struct JoinSheet: View {
         }
         if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red).font(.callout) }
         BusyButton { _ = await send() } label: { Text("Continue").frame(maxWidth: .infinity).padding(.vertical, 6) }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.brand)
             .disabled(!GuestJoinForm.canContinue(name: name, email: email, askName: askName))
         if !saveOnly {
             Text("Already have an account on \(model.config.domain)? Use its e-mail address.").font(.footnote).foregroundStyle(.secondary)
@@ -205,7 +205,7 @@ struct JoinSheet: View {
         // the digits stayed (the connection failed, not the code): the same code again
         if !verifying && error != nil && NativeSignIn.isCode(digits) {
             BusyButton { await verify() } label: { Text("Try again").frame(maxWidth: .infinity).padding(.vertical, 6) }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.brand)
         }
         Divider()
         VStack(alignment: .leading, spacing: 18) {
@@ -233,7 +233,7 @@ struct JoinSheet: View {
         BusyButton {
             await model.signInInstead(channel: model.guestChannel ?? "", moved: moved, nip05: takenAddress, typed: sentTo)
         } label: { Text("Sign in instead").frame(maxWidth: .infinity).padding(.vertical, 6) }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.brand)
         if !moved {
             Button { step = .who; error = nil } label: { Text("Use another address").frame(maxWidth: .infinity).padding(.vertical, 6) }
                 .buttonStyle(.bordered)

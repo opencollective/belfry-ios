@@ -43,6 +43,9 @@ enum Demo {
         channel("garden-3f2a", "Garden", "Beds, seeds and the watering rota", admins: [ps["ben"]!.pubkey], members: all, at: now - 20 * day)
         channel("repair-cafe-91bc", "Repair café", "First Saturday of the month, bring what's broken", admins: [ps["dev"]!.pubkey], members: Array(all.prefix(4)), at: now - 10 * day)
         channel("kitchen-7d10", "Shared kitchen", "Who cooks, who cleans", admins: [ps["emma"]!.pubkey], members: all, at: now - 5 * day)
+        // the repair café's page is public (Public channels in the drawer); the admins' order
+        evs.append(ev(relay, 30078, now - 10 * day, [["d", "belfry:web:repair-cafe-91bc"], ["h", "repair-cafe-91bc"]],
+                      "{\"on\":true,\"slug\":\"repair-cafe\",\"visibility\":\"public\"}"))
 
         func msg(_ who: LocalSigner, _ g: String, _ at: Int, _ text: String) -> NostrEvent {
             let d = Actions.postMessage(g, text: text)
@@ -96,8 +99,8 @@ enum Demo {
         evs.append(ev(ps["ben"]!, 9007, now - 6 * day, [["h", pod]]))
         evs.append(ev(ps["ben"]!, 9002, now - 6 * day, [["h", pod], ["name", "Seed swap"], ["about", "Saving and swapping seeds"], ["closed"], ["prompt", "Which seeds would you bring?"]]))
         channel(pod, "Seed swap", "Saving and swapping seeds", admins: [ps["ben"]!.pubkey], members: [ps["ben"]!.pubkey, ps["chloe"]!.pubkey, ps["emma"]!.pubkey, ps["dev"]!.pubkey], at: now - 6 * day)
-        msg(ps["ben"]!, "general", now - 6 * day, "⬡ New pod: Seed swap · Saving and swapping seeds")
-        evs[evs.count - 1] = ev(ps["ben"]!, 9, now - 6 * day, [["h", "general"], ["pod", pod]], "⬡ New pod: Seed swap · Saving and swapping seeds")
+        msg(ps["ben"]!, "general", now - 6 * day, "⬡ New group: Seed swap · Saving and swapping seeds")
+        evs[evs.count - 1] = ev(ps["ben"]!, 9, now - 6 * day, [["h", "general"], ["pod", pod]], "⬡ New group: Seed swap · Saving and swapping seeds")
         msg(ps["chloe"]!, pod, now - 5 * day, "I have three kinds of beans to share 🫘")
         let (pid, pdrafts) = Actions.createProposal(NewProposal(title: "Quiet hours after 22:00", summary: "No loud work in the yard after ten", text: "From Monday to Saturday, no drilling or music in the yard after **22:00**.", status: .voting),
                                                     parent: "general", me: ps["emma"]!.pubkey, groupsRelay: "wss://groups-relay.demo.belfry.sh", mainRelay: "wss://relay.demo.belfry.sh", now: now - 2 * day, x: "7f3a2b")

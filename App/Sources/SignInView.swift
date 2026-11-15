@@ -39,6 +39,7 @@ private struct AddressScreen: View {
     @State private var error: String?
     /// An older belfry (no session API): the main button opens the browser sign-in.
     @State private var offerBrowser = false
+    @State private var scanning = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -82,13 +83,13 @@ private struct AddressScreen: View {
             // locks on the tap (model.busy) and shows progress until the belfry answered
             Button(action: go) {
                 HStack {
-                    if model.busy { ProgressView().tint(.white) }
+                    if model.busy { ProgressView().tint(Theme.onAccent) }
                     Text(offerBrowser ? "Sign in with the browser" : "Continue")
                         .frame(maxWidth: .infinity)
                 }
                 .padding(.vertical, 6)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.brand)
             .disabled(model.busy || address.trimmingCharacters(in: .whitespaces).isEmpty)
             Text("Your key stays on the belfry; this phone only gets a session.")
                 .font(.footnote)
@@ -101,11 +102,22 @@ private struct AddressScreen: View {
                     }
                     .disabled(model.busy)
                 }
+                Button { hideKeyboard(); scanning = true } label: {
+                    ActionRow(icon: "qrcode.viewfinder", title: "Scan an invitation", detail: "The QR code someone shows you")
+                }
+                .buttonStyle(.plain)
+                .disabled(model.busy)
                 Button { model.startDemo() } label: {
                     ActionRow(icon: "person.2", title: "Try the demo", detail: "A made-up community. Everything in it stays on this device.")
                 }
                 .buttonStyle(.plain)
                 .disabled(model.busy)
+            }
+        }
+        .sheet(isPresented: $scanning) {
+            InviteScanner { url in
+                scanning = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { model.handle(url: url) }
             }
         }
         .onAppear {
@@ -187,7 +199,7 @@ private struct CodeScreen: View {
             }
             if canRetry && !verifying {
                 BusyButton { await submit() } label: { Text("Try again").frame(maxWidth: .infinity).padding(.vertical, 6) }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.brand)
             }
             Divider()
             VStack(alignment: .leading, spacing: 18) {
@@ -277,7 +289,7 @@ struct CodeBoxes: View {
                         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke(focused.wrappedValue && enabled && i == min(typed.count, 5) ? Color.bronze : Color.clear, lineWidth: 2)
+                                .stroke(focused.wrappedValue && enabled && i == min(typed.count, 5) ? Color.brand : Color.clear, lineWidth: 2)
                         )
                 }
             }
@@ -321,20 +333,20 @@ struct BelfryMark: View {
             shield.addQuadCurve(to: CGPoint(x: w * 0.5, y: h * 0.95), control: CGPoint(x: w * 0.9, y: h * 0.82))
             shield.addQuadCurve(to: CGPoint(x: w * 0.1, y: h * 0.5), control: CGPoint(x: w * 0.1, y: h * 0.82))
             shield.closeSubpath()
-            ctx.fill(shield, with: .color(.bronze))
+            ctx.fill(shield, with: .color(Theme.accent))
             var tower = Path()
             tower.addRect(CGRect(x: w * 0.4, y: h * 0.3, width: w * 0.2, height: h * 0.32))
             tower.move(to: CGPoint(x: w * 0.36, y: h * 0.3))
             tower.addLine(to: CGPoint(x: w * 0.5, y: h * 0.17))
             tower.addLine(to: CGPoint(x: w * 0.64, y: h * 0.3))
             tower.closeSubpath()
-            ctx.fill(tower, with: .color(.white))
+            ctx.fill(tower, with: .color(Theme.onAccent))
             for i in 0..<2 {
                 var wave = Path()
                 let y = h * (0.7 + Double(i) * 0.08)
                 wave.move(to: CGPoint(x: w * 0.24, y: y))
                 wave.addCurve(to: CGPoint(x: w * 0.76, y: y), control1: CGPoint(x: w * 0.4, y: y - h * 0.05), control2: CGPoint(x: w * 0.6, y: y + h * 0.05))
-                ctx.stroke(wave, with: .color(.white), lineWidth: max(1.5, w * 0.035))
+                ctx.stroke(wave, with: .color(Theme.onAccent), lineWidth: max(1.5, w * 0.035))
             }
         }
     }

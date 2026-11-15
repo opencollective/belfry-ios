@@ -34,16 +34,17 @@ struct ProfileView: View {
                         if let n5 = p?.nip05, n5.contains("@") { Text(n5).font(.subheadline).foregroundStyle(.secondary).textSelection(.enabled) }
                         FlowRow(spacing: 6) {
                             if let owner = d.agentOwner(pubkey) {
-                                Chip(text: "agent", tint: .bronze)
+                                Chip(text: "agent", tint: .brand)
                                 Chip(text: owner == model.me ? "agent of you" : "agent of \(model.realNameOrKey(owner))")
                             } else {
-                                ForEach(Array(Set(joins.compactMap(\.chip))).sorted(), id: \.self) { Chip(text: $0, tint: .bronze) }
+                                ForEach(Array(Set(joins.compactMap(\.chip))).sorted(), id: \.self) { Chip(text: $0, tint: .brand) }
                             }
                             if d.isBelfryAdmin(pubkey) { Chip(text: "admin of the belfry") }
+                            if let role = model.roles.label(of: pubkey), role.lowercased() != "admin" { Chip(text: role, icon: "person.badge.key") }
                         }
                         if !me && !d.isGuest(model.me) {
                             Button { dismiss(); model.messageAuthor = pubkey } label: { Label("Message", systemImage: "envelope") }
-                                .buttonStyle(.borderedProminent)
+                                .buttonStyle(.brand)
                         }
                         if me { Button("Edit profile") { edit = true }.buttonStyle(.bordered) }
                     }
@@ -78,6 +79,7 @@ struct ProfileView: View {
                         }
                         if d.isCommunityAdmin && d.agentOwner(pubkey) == nil {
                             AdminSwitch(pubkey: pubkey) { error = $0 }
+                            RolePicker(pubkey: pubkey) { error = $0 }
                         }
                     }
                 }
@@ -93,7 +95,48 @@ struct ProfileView: View {
             .task {
                 await model.revalidateConfig()
                 await model.askWhois([pubkey])
+                await model.loadRoles()
             }
+        }
+    }
+}
+
+/// A member's role (docs/roles.md), for the belfry's admins: a native menu of the roles. A saved
+/// guest given a role becomes a member with it; errors are fixed words per code.
+struct RolePicker: View {
+    @EnvironmentObject var model: AppModel
+    let pubkey: String
+    let report: (String?) -> Void
+    @State private var busy = false
+
+    var body: some View {
+        let current = model.roles.members[pubkey] ?? (model.derive.isGuest(pubkey) ? nil : Role.member)
+        Menu {
+            ForEach(model.roles.roles) { r in
+                Button { set(r.id) } label: {
+                    if r.id == current { Label(r.label, systemImage: "checkmark") } else { Text(r.label) }
+                }
+            }
+        } label: {
+            HStack {
+                ActionRow(icon: "person.badge.key", title: "Role", detail: model.roles.role(current)?.label ?? (model.derive.isGuest(pubkey) ? "Guest: no role yet" : "Member"))
+                if busy { ProgressView().controlSize(.small) }
+            }
+        }
+        .disabled(busy || model.derive.isAgent(pubkey))
+    }
+
+    private func set(_ role: String) {
+        guard !busy else { return }
+        busy = true
+        Task {
+            if model.engine?.localOnly == true {
+                model.roles.members[pubkey] = role
+            } else {
+                do { try await model.api.setMemberRole(pubkey, role: role); await model.loadRoles(force: true); report(nil) }
+                catch let e as ApiError { report(e.message) } catch { report(BelfryAPI.network) }
+            }
+            busy = false
         }
     }
 }
@@ -116,6 +159,7 @@ struct AdminSwitch: View {
             })) {
                 HStack { Text("Admin of the belfry"); if busy { ProgressView().controlSize(.small) } }
             }
+            .tint(Theme.toggle)
             .disabled(busy || reason != nil)
             if let reason { Text(reason).font(.caption).foregroundStyle(.secondary) }
         }
@@ -170,7 +214,7 @@ struct EditProfileView: View {
                     if !tags.isEmpty {
                         FlowRow(spacing: 6) {
                             ForEach(tags, id: \.self) { t in
-                                Button { tags.removeAll { $0 == t } } label: { Chip(text: "#" + t, icon: "xmark", tint: .bronze) }.buttonStyle(.plain)
+                                Button { tags.removeAll { $0 == t } } label: { Chip(text: "#" + t, icon: "xmark", tint: .brand) }.buttonStyle(.plain)
                                     .accessibilityLabel("Remove \(t)")
                             }
                         }
@@ -329,7 +373,7 @@ struct AccountSheet: View {
                                 Text(model.derive.myAddress ?? model.config.domain).font(.subheadline).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text("Edit").font(.subheadline).foregroundStyle(Color.bronze)
+                            Text("Edit").font(.subheadline).foregroundStyle(Color.brand)
                         }
                     }
                     .buttonStyle(.plain)
@@ -441,7 +485,7 @@ struct SaveAccountCard: View {
                     .font(compact ? .caption : .subheadline)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button("Save") { open = true }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.brand)
                     .controlSize(.small)
             }
         }

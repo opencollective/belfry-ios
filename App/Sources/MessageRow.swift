@@ -24,6 +24,7 @@ struct MessageRow: View {
     let onReply: () -> Void
     let onHold: () -> Void
     var onTopic: (String) -> Void = { _ in }
+    @Environment(\.messageMenu) private var menu
     @State private var tapped = 0
 
     var body: some View {
@@ -37,8 +38,9 @@ struct MessageRow: View {
                 if first {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(d.nameOver(m)).font(.subheadline.weight(.semibold)).lineLimit(1).onTapGesture { model.openProfile = m.ev.pubkey }
+                        AgentTag(pubkey: m.ev.pubkey)
                         Text(Format.time(m.ev.createdAt)).font(.caption).foregroundStyle(.secondary)
-                        if announce { Label("Announcement", systemImage: "megaphone").font(.caption2.weight(.semibold)).foregroundStyle(Color.bronze) }
+                        if announce { Label("Announcement", systemImage: "megaphone").font(.caption2.weight(.semibold)).foregroundStyle(Color.brand) }
                         if pinned { Image(systemName: "pin").font(.caption2).foregroundStyle(.secondary).accessibilityLabel("Pinned") }
                     }
                 }
@@ -49,45 +51,37 @@ struct MessageRow: View {
                 if !m.eventRefs.isEmpty {
                     ForEach(m.eventRefs, id: \.self) { r in EventCardView(ref: r) }
                 }
-                ForEach(m.media, id: \.url) { media in MediaView(media: media) }
+                ForEach(m.media, id: \.url) { media in MediaView(media: media, all: m.media) }
                 if let e = m.edited { Text("edited").font(.caption2).foregroundStyle(.secondary).accessibilityLabel("Edited \(Format.ago(e))") }
                 let extra = d.extraTopics(m, openTopic: openTopic)
                 if !extra.isEmpty {
                     FlowRow(spacing: 4) {
                         ForEach(extra, id: \.self) { t in
-                            Button { onTopic(t) } label: { Chip(text: "#" + t, tint: .bronze) }.buttonStyle(.plain)
+                            Button { onTopic(t) } label: { Chip(text: "#" + t, tint: .brand) }.buttonStyle(.plain)
                         }
                     }
-                }
-                if let todo {
-                    BusyButton {
-                        model.todo(todo, in: group, todo.done ? "undone" : "done")
-                    } label: {
-                        Chip(text: d.todoChip(todo), icon: todo.done ? "checkmark.square" : "square", tint: todo.done ? .green : .bronze)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint(todo.done ? "Marks it as not done" : "Ticks it off")
                 }
                 if !reactions.isEmpty {
                     ReactionBar(reactions: reactions) { emoji in model.toggleReaction(emoji, on: m, in: group); tapped += 1 }
                 }
                 if let thread, thread.count > 0 {
-                    HStack(spacing: 12) {
-                        Button(action: onThread) {
-                            HStack(spacing: 6) {
-                                HStack(spacing: -6) { ForEach(thread.who.prefix(3), id: \.self) { Avatar(pubkey: $0, size: 18) } }
-                                Text(threadOpen ? "Hide replies" : "\(thread.count) \(thread.count == 1 ? "reply" : "replies")").font(.caption.weight(.semibold))
-                                Text(Format.short(thread.last)).font(.caption2).foregroundStyle(.secondary)
+                    // replies always open the thread's own screen (web 9cbb1cb)
+                    Button(action: onOpenThread) {
+                        HStack(spacing: 6) {
+                            HStack(spacing: -6) {
+                                ForEach(thread.who.prefix(3), id: \.self) {
+                                    Avatar(pubkey: $0, size: 20).overlay(Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 1.5))
+                                }
                             }
+                            Text("\(thread.count) \(thread.count == 1 ? "reply" : "replies")").font(.footnote.weight(.semibold)).foregroundStyle(Color.brand)
+                            Text(Format.short(thread.last)).font(.footnote).foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(threadOpen ? "Hide replies" : "\(thread.count) replies")
-                        Button(action: onOpenThread) {
-                            HStack(spacing: 2) { Text("Open thread"); Image(systemName: "chevron.right") }.font(.caption.weight(.semibold))
-                        }
-                        .buttonStyle(.plain)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
                     }
-                    .foregroundStyle(Color.bronze)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(thread.count) \(thread.count == 1 ? "reply" : "replies"). Open the thread")
                 }
                 if let p = pending {
                     if p.status == .failed {
@@ -107,13 +101,26 @@ struct MessageRow: View {
         .padding(.top, first ? 8 : 2)
         .padding(.bottom, 2)
         .opacity(pending == nil ? 1 : 0.65)
-        .background(flash ? Color.bronze.opacity(0.15) : announce ? Color.bronze.opacity(0.06) : .clear)
+        .background(flash ? Color.brand.opacity(0.15) : announce ? Color.brand.opacity(0.06) : .clear)
         .contentShape(Rectangle())
         .sensoryFeedback(.selection, trigger: tapped)
-        .onLongPressGesture(minimumDuration: 0.35) { onHold() }
         .accessibilityElement(children: .combine)
-        .accessibilityAction(named: "Actions") { onHold() }
+        .messageMenu(m, group: group, handlers: menu, guest: model.guestReading, hold: onHold)
         .accessibilityHint("Touch and hold for actions")
+    }
+}
+
+/// Next to an agent's name wherever it writes (web 683c974): "<member>'s agent" or "Agent".
+struct AgentTag: View {
+    @EnvironmentObject var model: AppModel
+    let pubkey: String
+    var body: some View {
+        let d = model.derive
+        if let owner = d.agentOwner(pubkey) {
+            Chip(text: owner == model.me ? "Your agent" : "\(model.realNameOrKey(owner))'s agent", icon: "sparkles")
+        } else if d.isAgent(pubkey) {
+            Chip(text: "Agent", icon: "sparkles")
+        }
     }
 }
 
@@ -128,13 +135,13 @@ struct SpecialBody: View {
         switch m.special {
         case .podCard(let pid):
             let g = model.group(pid)
-            Button { openChannel(pid, nil) } label: {
+            Button { hideKeyboard(); model.openGroup = pid } label: {
                 CardFrame {
                     HStack(spacing: 10) {
                         if let g { ChannelGlyph(group: g, size: 26) }
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(g?.name ?? "A pod").font(.subheadline.weight(.semibold))
-                            Text(g.map { "\($0.members.count) \($0.members.count == 1 ? "member" : "members") · \($0.closed ? "by application" : "open to join")" } ?? "Pod")
+                            Text(g?.name ?? "A group").font(.subheadline.weight(.semibold))
+                            Text(g.map { "\($0.members.count) \($0.members.count == 1 ? "member" : "members") · \($0.closed ? "by application" : "open to join")" } ?? "Group")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 0)
@@ -151,7 +158,7 @@ struct SpecialBody: View {
                         if let p, !p.summary.isEmpty { Text(p.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
                         if let p {
                             HStack(spacing: 6) {
-                                Chip(text: p.status.label, tint: p.votingNow ? .bronze : .secondary)
+                                Chip(text: p.status.label, tint: p.votingNow ? .brand : .secondary)
                                 Text("version \(p.version)").font(.caption2).foregroundStyle(.secondary)
                                 if p.votingNow { Text("\(p.tally["yes"] ?? 0) yes · \(p.tally["no"] ?? 0) no").font(.caption2).foregroundStyle(.secondary) }
                             }
@@ -198,17 +205,17 @@ struct InboxCardView: View {
     var body: some View {
         let st = model.derive.inboxStates(group)[m.id] ?? CardState()
         let admin = model.derive.canAdmin(group)
-        CardFrame(tint: .bronze) {
+        CardFrame(tint: .brand) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    Image(systemName: "envelope.fill").foregroundStyle(Color.bronze)
+                    Image(systemName: "envelope.fill").foregroundStyle(Color.brand)
                     Text(name.isEmpty ? from : "\(name) <\(from)>").font(.caption.weight(.semibold)).lineLimit(1)
                     if verified { Image(systemName: "checkmark.seal").font(.caption).foregroundStyle(.green).accessibilityLabel("Verified sender") }
                 }
                 if !subject.isEmpty { Text(subject).font(.subheadline.weight(.semibold)) }
                 if !m.body.isEmpty { MarkdownText(text: m.body).lineLimit(8) }
                 HStack(spacing: 8) {
-                    Chip(text: st.status.label, tint: st.status == .open ? .bronze : .secondary)
+                    Chip(text: st.status.label, tint: st.status == .open ? .brand : .secondary)
                     if let a = st.assignee { Text(a == model.me ? "You have it" : "\(model.name(a)) has it").font(.caption2).foregroundStyle(.secondary) }
                 }
                 if admin {
@@ -264,7 +271,7 @@ struct EventCardView: View {
                             if let l = e.location, !l.isEmpty { Text(l).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
                             HStack(spacing: 6) {
                                 if e.status == .cancelled { Chip(text: "Cancelled", tint: .red) }
-                                if let s = d.stateLabel(e) { Chip(text: s, tint: .bronze) }
+                                if let s = d.stateLabel(e) { Chip(text: s, tint: .brand) }
                                 if e.going > 0 { Text("\(e.going) going").font(.caption2).foregroundStyle(.secondary) }
                             }
                         }
@@ -284,7 +291,7 @@ struct DateChip: View {
     var body: some View {
         let date = Date(timeIntervalSince1970: TimeInterval(at))
         VStack(spacing: 0) {
-            Text(date.formatted(.dateTime.month(.abbreviated)).uppercased()).font(.caption2.weight(.bold)).foregroundStyle(Color.bronze)
+            Text(date.formatted(.dateTime.month(.abbreviated)).uppercased()).font(.caption2.weight(.bold)).foregroundStyle(Color.brand)
             Text(date.formatted(.dateTime.day())).font(.title3.weight(.semibold))
         }
         .frame(width: 44, height: 44)
@@ -306,8 +313,8 @@ struct ReactionBar: View {
                     Text("\(r.emoji) \(r.who.count)")
                         .font(.caption.weight(.medium))
                         .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(r.mine != nil ? Color.bronze.opacity(0.15) : Color.secondary.opacity(0.12), in: Capsule())
-                        .overlay(Capsule().stroke(r.mine != nil ? Color.bronze : .clear, lineWidth: 1))
+                        .background(r.mine != nil ? Color.brand.opacity(0.15) : Color.secondary.opacity(0.12), in: Capsule())
+                        .overlay(Capsule().stroke(r.mine != nil ? Color.brand : .clear, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(r.emoji), \(r.who.count). \(r.who.map(model.name).joined(separator: ", "))")
@@ -318,7 +325,10 @@ struct ReactionBar: View {
 }
 
 struct MediaView: View {
+    @EnvironmentObject var model: AppModel
     let media: Media
+    /// The message's media: the lightbox swipes through its photos.
+    var all: [Media] = []
     var body: some View {
         if media.mime.hasPrefix("image/"), let url = URL(string: media.url), url.scheme == "https" || url.scheme == "http" {
             AsyncImage(url: url) { phase in
@@ -329,8 +339,18 @@ struct MediaView: View {
                 }
             }
             .frame(maxWidth: 280, maxHeight: 280, alignment: .leading)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                let photos = (all.isEmpty ? [media] : all).filter { $0.mime.hasPrefix("image/") }.map(\.url)
+                hideKeyboard()
+                model.lightbox = Lightbox(urls: photos, index: photos.firstIndex(of: media.url) ?? 0)
+            }
             .accessibilityLabel(media.name ?? "Photo")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint("Opens the photo")
+        } else if media.mime.hasPrefix("audio/") {
+            AudioRow(media: media)
         } else if media.mime.hasPrefix("image/") {
             Label(media.name ?? "Photo", systemImage: "photo").foregroundStyle(.secondary)
         } else if let url = URL(string: media.url), url.scheme == "https" {
@@ -356,7 +376,7 @@ struct InlineThread: View {
                 Button("Show \(hidden) earlier \(hidden == 1 ? "reply" : "replies")") { withAnimation { all = true } }
                     .font(.caption.weight(.semibold))
             }
-            ForEach(shown) { r in ReplyRow(r: r, onHold: { onHold(r) }) }
+            ForEach(shown) { r in ReplyRow(group: group, r: r, onHold: { onHold(r) }) }
             if !model.guestReading {
                 Composer(group: group, placeholder: shown.isEmpty ? "Reply (starts a thread)" : "Reply in the thread", compact: true) { text, _, _ in
                     model.reply(text, in: group, to: root)
@@ -370,7 +390,7 @@ struct InlineThread: View {
         }
         .padding(10)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(alignment: .leading) { Rectangle().fill(Color.bronze.opacity(0.5)).frame(width: 2).padding(.vertical, 8) }
+        .overlay(alignment: .leading) { Rectangle().fill(Color.brand.opacity(0.5)).frame(width: 2).padding(.vertical, 8) }
         .padding(.leading, 56)
         .padding(.trailing)
         .padding(.vertical, 4)
@@ -381,6 +401,8 @@ struct InlineThread: View {
 
 struct ReplyRow: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.messageMenu) private var menu
+    var group = ""
     let r: Message
     let onHold: () -> Void
     var body: some View {
@@ -389,19 +411,19 @@ struct ReplyRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(model.name(r.ev.pubkey)).font(.caption.weight(.semibold))
+                    AgentTag(pubkey: r.ev.pubkey)
                     Text(Format.time(r.ev.createdAt)).font(.caption2).foregroundStyle(.secondary)
                     if r.edited != nil { Text("edited").font(.caption2).foregroundStyle(.secondary) }
                     if let p = model.pending(r.id) { Text(p.stateText).font(.caption2).foregroundStyle(p.status == .failed ? .red : .secondary) }
                 }
                 if !r.text.isEmpty { MarkdownText(text: r.text).font(.subheadline) }
-                ForEach(r.media, id: \.url) { MediaView(media: $0) }
+                ForEach(r.media, id: \.url) { MediaView(media: $0, all: r.media) }
             }
             Spacer(minLength: 0)
         }
         .contentShape(Rectangle())
-        .onLongPressGesture(minimumDuration: 0.35) { onHold() }
         .accessibilityElement(children: .combine)
-        .accessibilityAction(named: "Actions") { onHold() }
+        .messageMenu(r, group: group.isEmpty ? (r.ev.tag("h") ?? "") : group, handlers: menu, guest: model.guestReading, hold: onHold)
     }
 }
 
@@ -440,7 +462,7 @@ struct JoinLine: View {
     let join: GuestJoin
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "arrow.right").foregroundStyle(Color.bronze)
+            Image(systemName: "arrow.right").foregroundStyle(Color.brand)
             Text(LocalizedStringKey(text)).font(.footnote)
             Spacer(minLength: 0)
             Text(Format.time(join.at)).font(.caption2).foregroundStyle(.secondary)

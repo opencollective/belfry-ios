@@ -15,6 +15,10 @@ struct Composer: View {
     var autoFocus = false
     var threadMode = false
     var topic: String?
+    /// Changes when something asks for the box (Reply in a thread's menu).
+    var focusTrigger = 0
+    /// Where unsent text is kept on this phone (per channel, per thread; web f845d47).
+    var draftKey: String?
     let onSend: (String, [Attachment], Bool) -> Void
     @State private var text = ""
     @State private var picked = [(name: String, pubkey: String)]()
@@ -23,12 +27,14 @@ struct Composer: View {
     @State private var attachments = [Attachment]()
     @State private var announce = false
     @State private var sent = 0
-    @State private var add = false
     @State private var photoPicker = false
     @State private var create: CreateKind?
     @State private var makeEvent = false
+    @State private var recording = false
     @State private var notes = [String: String]()
     @FocusState private var focused: Bool
+    /// The field's one-line height, and so the ＋ circle's: grows with Dynamic Type.
+    @ScaledMetric(relativeTo: .body) private var h: CGFloat = 38
 
     var body: some View {
         let d = model.derive
@@ -85,7 +91,7 @@ struct Composer: View {
                     Label("Announcement: sent to the channel and e-mailed to its followers", systemImage: "megaphone").font(.caption)
                     Spacer()
                     Button { announce = false } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Not an announcement")
-                }.foregroundStyle(Color.bronze)
+                }.foregroundStyle(Color.brand)
             }
             if !attachments.isEmpty {
                 FlowRow(spacing: 6) {
@@ -101,29 +107,26 @@ struct Composer: View {
                 }
             }
             HStack(alignment: .bottom, spacing: 8) {
-                if !compact && !threadMode {
-                    Button { add = true } label: {
-                        Image(systemName: "plus.circle.fill").font(.title2).symbolRenderingMode(.hierarchical)
-                    }
-                    .accessibilityLabel("Add a photo, a to-do, a pod, a proposal…")
+                if !compact && !threadMode { addMenu }
+                // iMessage's shape: a capsule that grows with the lines, Send inside its trailing edge
+                HStack(alignment: .bottom, spacing: 0) {
+                    TextField(announce ? "Announcement" : placeholder, text: $text, axis: .vertical)
+                        .font(.body)
+                        .lineLimit(1...6)
+                        .focused($focused)
+                        .accessibilityIdentifier("composer-field")
+                        .padding(.leading, 14).padding(.trailing, 6)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: h)
+                    sendButton.padding(4)
                 }
-                TextField(announce ? "Announcement" : placeholder, text: $text, axis: .vertical)
-                    .font(.body)
-                    .lineLimit(1...6)
-                    .focused($focused)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(.quaternary))
-                Button(action: send) {
-                    Image(systemName: "arrow.up.circle.fill").font(.title)
-                }
-                .disabled(text.jsTrim().isEmpty && attachments.isEmpty)
-                .accessibilityLabel("Send")
+                .composerField(radius: h / 2)
             }
         }
         .padding(.horizontal, compact ? 0 : 12)
-        .padding(.vertical, compact ? 0 : 8)
-        .background(compact ? AnyShapeStyle(.clear) : AnyShapeStyle(.bar))
+        .padding(.top, compact ? 0 : 6)
+        .padding(.bottom, compact ? 0 : 8)
+        .composerBackground(compact: compact)
         .sensoryFeedback(.impact(weight: .light), trigger: sent)
         .onChange(of: model.launchEventForm) { _, on in
             if on, !compact, !threadMode { model.launchEventForm = false; makeEvent = true }
@@ -132,27 +135,84 @@ struct Composer: View {
             if let v, !compact, !threadMode { text = text.isEmpty ? v + " " : text + " " + v; model.composerPrefill[group] = nil }
         }
         .onAppear {
+            if let k = draftKey, text.isEmpty, let saved = Drafts.get(k) { text = saved }
             if autoFocus { focused = true }
-            if !compact && !threadMode && model.launchAdd { model.launchAdd = false; add = true }
-            if !compact && !threadMode && model.launchEventForm { model.launchEventForm = false; add = false; makeEvent = true }
+            if !compact && !threadMode && model.launchEventForm { model.launchEventForm = false; makeEvent = true }
         }
         .onChange(of: photos) { _, items in load(items) }
-        .sheet(isPresented: $add) {
-            AddMenu(group: group, canAnnounce: canAnnounce) { choice in
-                add = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    switch choice {
-                    case .photo: photoPicker = true
-                    case .announcement: announce = true
-                    case .create(let k): create = k
-                    case .event: makeEvent = true
-                    }
-                }
-            }
-        }
+        .onChange(of: focusTrigger) { _, _ in focused = true }
+        .onChange(of: text) { _, t in if let k = draftKey { Drafts.set(k, t) } }
         .photosPicker(isPresented: $photoPicker, selection: $photos, maxSelectionCount: 6, matching: .images)
         .sheet(item: $create) { k in CreateSheet(kind: k, parent: group) }
         .sheet(isPresented: $makeEvent) { EventFormSheet(editing: nil, channel: group) }
+        .sheet(isPresented: $recording) { RecorderSheet(group: group) }
+    }
+
+    static let height: CGFloat = 38
+
+    private var canSend: Bool { !(text.jsTrim().isEmpty && attachments.isEmpty) }
+
+    /// Send, inside the field: filled with the tint when there is something to send.
+    private var sendButton: some View {
+        Button(action: send) {
+            Image(systemName: "arrow.up")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(canSend ? Theme.onAccent : Color.secondary)
+                .frame(width: h - 8, height: h - 8)
+                .background(canSend ? Theme.accent : Color.secondary.opacity(0.18), in: Circle())
+                .padding(4).contentShape(Circle()).padding(-4) // a 38 pt target around a 30 pt mark
+        }
+        .buttonStyle(.plain)
+        .disabled(!canSend)
+        .animation(.easeOut(duration: 0.15), value: canSend)
+        .accessibilityLabel("Send")
+    }
+
+    /// ＋: a native menu with icons, the same height as the field and on its centre line.
+    private var addMenu: some View {
+        let guest = model.derive.amGuest
+        return Menu {
+            Section {
+                Button { choose(.photo) } label: { Label("Photo", systemImage: "photo.on.rectangle") }
+                Button { choose(.create(.todo)) } label: { Label("Todo", systemImage: "checklist") }
+            }
+            if !guest {
+                Section {
+                    Button { choose(.event) } label: { Label("Event", systemImage: "calendar") }
+                    Button { choose(.create(.proposal)) } label: { Label("Proposal", systemImage: "doc.text") }
+                    Button { choose(.create(.pod)) } label: { Label("Group", systemImage: "hexagon") }
+                }
+                Section {
+                    Button { choose(.audio) } label: { Label("Audio recording", systemImage: "mic") }
+                }
+            }
+            if canAnnounce {
+                Section {
+                    Button { choose(.announcement) } label: { Label("Announcement", systemImage: "megaphone") }
+                }
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: h, height: h)
+                .glass(in: Circle(), interactive: true)
+                .padding(3).contentShape(Circle()).padding(-3) // 44 pt target
+        }
+        .menuOrder(.fixed)
+        .accessibilityLabel("Add a photo, a todo, an event, a proposal…")
+        .accessibilityIdentifier("composer-add")
+    }
+
+    func choose(_ choice: AddChoice) {
+        hideKeyboard()
+        switch choice {
+        case .photo: photoPicker = true
+        case .announcement: announce = true; focused = true
+        case .create(let k): create = k
+        case .event: makeEvent = true
+        case .audio: recording = true
+        }
     }
 
     func people(_ q: String) -> [(pubkey: String, name: String)] {
@@ -186,6 +246,7 @@ struct Composer: View {
         let t = ChannelRefs.substitute(Mentions.substitute(typed, picked: picked), picked: refs)
         onSend(t, attachments, canAnnounce && announce)
         text = ""
+        if let k = draftKey { Drafts.set(k, "") }
         picked = []
         refs = []
         attachments = []
@@ -238,40 +299,61 @@ struct OutsiderNote: View {
 }
 
 enum CreateKind: String, Identifiable { case todo, pod, proposal; var id: String { rawValue } }
-enum AddChoice { case photo, announcement, event, create(CreateKind) }
+enum AddChoice { case photo, announcement, event, audio, create(CreateKind) }
 
-/// The ＋ menu as a list.
-struct AddMenu: View {
-    @EnvironmentObject var model: AppModel
-    let group: String
-    let canAnnounce: Bool
-    let choose: (AddChoice) -> Void
-    var body: some View {
-        let guest = model.derive.amGuest
-        NavigationStack {
-            List {
-                Section {
-                    Button { choose(.photo) } label: { ActionRow(icon: "photo", title: "Photo") }
-                    Button { choose(.create(.todo)) } label: { ActionRow(icon: "checklist", title: "To-do", detail: "Something someone here should do") }
-                }
-                if !guest {
-                    Section {
-                        Button { choose(.event) } label: { ActionRow(icon: "calendar", title: "Event", detail: "Its own page and address; its card shows here") }
-                        Button { choose(.create(.pod)) } label: { ActionRow(icon: "hexagon", title: "Pod", detail: "A smaller group inside this channel") }
-                        Button { choose(.create(.proposal)) } label: { ActionRow(icon: "doc.text", title: "Proposal", detail: "Something to decide together") }
-                    }
-                }
-                if canAnnounce {
-                    Section {
-                        Button { choose(.announcement) } label: { ActionRow(icon: "megaphone", title: "Announcement", detail: "E-mailed to the channel's followers") }
-                    }
-                }
-            }
-            .navigationTitle("Add")
-            .navigationBarTitleDisplayMode(.inline)
+/// Unsent text on this phone, per channel and per thread (and per form).
+enum Drafts {
+    static func key(_ k: String) -> String { "belfry-draft:" + k }
+    static func get(_ k: String) -> String? {
+        let v = UserDefaults.standard.string(forKey: key(k))
+        return v?.isEmpty == false ? v : nil
+    }
+    static func set(_ k: String, _ v: String) {
+        if v.isEmpty { UserDefaults.standard.removeObject(forKey: key(k)) } else { UserDefaults.standard.set(v, forKey: key(k)) }
+    }
+    /// A form's fields (new event, proposal, to-do, channel, thread) as JSON.
+    static func getForm(_ k: String) -> [String: String] {
+        guard let s = get("form:" + k), let d = s.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: String] else { return [:] }
+        return o
+    }
+    static func setForm(_ k: String, _ v: [String: String]) {
+        let empty = v.values.allSatisfy { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        set("form:" + k, empty ? "" : (try? JSONSerialization.data(withJSONObject: v)).flatMap { String(data: $0, encoding: .utf8) } ?? "")
+    }
+    /// Signing out forgets every draft.
+    static func clearAll() {
+        for k in UserDefaults.standard.dictionaryRepresentation().keys where k.hasPrefix("belfry-draft:") { UserDefaults.standard.removeObject(forKey: k) }
+    }
+}
+
+extension View {
+    /// The message field: a glass capsule on iOS 26, a bordered one before.
+    @ViewBuilder func composerField(radius: CGFloat = Composer.height / 2) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26, *) {
+            self.glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+        } else {
+            self.background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).stroke(Color(uiColor: .separator)))
         }
-        .presentationDetents([.medium])
-        .presentationDragIndicator(.visible)
+        #else
+        self.background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).stroke(Color(uiColor: .separator)))
+        #endif
+    }
+
+    /// iOS 26: the composer floats over the feed (the bar's scroll edge effect does the rest);
+    /// before: a bar material.
+    @ViewBuilder func composerBackground(compact: Bool) -> some View {
+        if compact {
+            self
+        } else {
+            #if compiler(>=6.2)
+            if #available(iOS 26, *) { self } else { self.background(.bar) }
+            #else
+            self.background(.bar)
+            #endif
+        }
     }
 }
 
@@ -282,6 +364,8 @@ struct CreateSheet: View {
     @Environment(\.openChannel) private var openChannel
     let kind: CreateKind
     let parent: String
+    /// "Propose as the website": the version's nsite ref and who made it (web 6d267c1).
+    var website: (ref: String, by: String)? = nil
     @State private var title = ""
     @State private var about = ""
     @State private var text = ""
@@ -306,7 +390,7 @@ struct CreateSheet: View {
                             Text("By application").tag(true)
                         }
                         if closed { TextField(Actions.defaultPrompt, text: $prompt, axis: .vertical).lineLimit(1...4).font(.body) }
-                    } footer: { Text(closed ? "People answer the question; the pod's members let them in." : "Anyone in the channel can join.") }
+                    } footer: { Text(closed ? "People answer the question; the group's members let them in." : "Anyone in the channel can join.") }
                 case .proposal:
                     Section {
                         TextField("Title", text: $title).font(.body)
@@ -321,7 +405,19 @@ struct CreateSheet: View {
                     }
                 }
             }
-            .navigationTitle(kind == .todo ? "New to-do" : kind == .pod ? "New pod" : "New proposal")
+            .onAppear {
+                if let w = website, title.isEmpty {
+                    title = "A new version of the website"
+                    about = "By \(w.by)"
+                    text = "Preview it: \(websitePreviewLink(w.ref, domain: model.config.domain) ?? w.ref)\n\nWhat changes:\n- "
+                    status = .feedback
+                    return
+                }
+                let f = Drafts.getForm(formKey)
+                if title.isEmpty { title = f["title"] ?? ""; about = f["about"] ?? ""; text = f["text"] ?? ""; prompt = f["prompt"] ?? "" }
+            }
+            .onChange(of: [title, about, text, prompt]) { _, v in if website == nil { Drafts.setForm(formKey, ["title": v[0], "about": v[1], "text": v[2], "prompt": v[3]]) } }
+            .navigationTitle(kind == .todo ? "New todo" : kind == .pod ? "New group" : "New proposal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -331,10 +427,14 @@ struct CreateSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .solidSheet()
     }
+
+    private var formKey: String { "\(kind.rawValue):\(parent)" }
 
     func make() {
         let t = title.jsTrim()
+        Drafts.setForm(formKey, [:])
         switch kind {
         case .todo:
             model.addTodo(t, in: parent)
@@ -344,7 +444,7 @@ struct CreateSheet: View {
             dismiss()
             openChannel(id, nil)
         case .proposal:
-            let id = model.createProposal(NewProposal(title: t, summary: about.jsTrim(), text: text.jsTrim(), status: status), parent: parent)
+            let id = model.createProposal(NewProposal(title: t, summary: about.jsTrim(), text: text.jsTrim(), status: status, website: website?.ref), parent: parent)
             dismiss()
             openChannel(id, nil)
         }

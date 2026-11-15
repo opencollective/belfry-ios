@@ -165,14 +165,15 @@ struct PushOffer: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "bell.badge").foregroundStyle(Color.bronze)
-            Text("Get a notification when someone mentions you, replies or writes to you.").font(.footnote)
+            Image(systemName: "bell.badge").foregroundStyle(Color.brand)
+            Text("Get notified of mentions, replies and messages.").font(.footnote)
             Spacer(minLength: 4)
-            BusyButton("Turn on") { await model.turnOnPush() }.buttonStyle(.borderedProminent).controlSize(.small)
-            Button { model.dismissPushOffer() } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).accessibilityLabel("Not now")
+            BusyButton("Turn on") { await model.turnOnPush() }.buttonStyle(.brand).controlSize(.small)
+            Button { model.dismissPushOffer() } label: { Image(systemName: "xmark").font(.footnote.weight(.semibold)).foregroundStyle(.secondary) }
+                .buttonStyle(.borderless).accessibilityLabel("Not now")
         }
-        .padding(.horizontal).padding(.vertical, 8)
-        .background(.bar)
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .floatingBar()
     }
 }
 
@@ -194,7 +195,7 @@ struct NotificationsView: View {
                     Button("Open Settings") { if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) } }
                 default:
                     Text("Get a notification when someone mentions you, replies to you, writes to you, or an admin announces or pins something.").font(.footnote)
-                    BusyButton("Turn on notifications") { await model.turnOnPush() }.buttonStyle(.borderedProminent)
+                    BusyButton("Turn on notifications") { await model.turnOnPush() }.buttonStyle(.brand)
                 }
             }
             if let s = settings {
@@ -234,7 +235,7 @@ struct NotificationsView: View {
     }
 
     func toggle(_ title: String, _ on: Bool, _ body: @escaping (Bool) -> [String: Any]) -> some View {
-        Toggle(title, isOn: Binding(get: { on }, set: { set(body($0)) }))
+        Toggle(title, isOn: Binding(get: { on }, set: { set(body($0)) })).tint(Theme.toggle)
     }
 
     func set(_ change: [String: Any]) {
