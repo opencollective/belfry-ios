@@ -7,161 +7,296 @@ import SwiftUI
 // (username through the belfry, picture ≤ 512 px, tags with suggestions, place from the belfry's
 // list). Me: my card, address, key, signed-in devices, outbox, sign out.
 
-struct ProfileKey: Identifiable { let pubkey: String; var id: String { pubkey } }
+struct ProfileKey: Identifiable, Hashable { let pubkey: String; var id: String { pubkey } }
 
+/// Opens a profile on the stack of the screen or sheet it is tapped in (set by `profileStack()`);
+/// the default pushes on the main screen's stack (through `model.openProfile`).
+struct ShowProfileKey: EnvironmentKey { static let defaultValue: ((String) -> Void)? = nil }
+extension EnvironmentValues {
+    var showProfile: ((String) -> Void)? {
+        get { self[ShowProfileKey.self] }
+        set { self[ShowProfileKey.self] = newValue }
+    }
+}
+
+/// Inside a sheet's own NavigationStack: profiles tapped in it are pushed on that stack.
+struct ProfileStack: ViewModifier {
+    @State private var shown: ProfileKey?
+    func body(content: Content) -> some View {
+        content
+            .navigationDestination(item: $shown) { ProfileView(pubkey: $0.pubkey, pushed: true) }
+            .environment(\.showProfile) { pk in hideKeyboard(); shown = ProfileKey(pubkey: pk) }
+    }
+}
+
+extension View {
+    func profileStack() -> some View { modifier(ProfileStack()) }
+}
+
+/// Opens PK's profile where the tap happened: the sheet's own stack, else the main screen's.
+@MainActor struct OpenProfile {
+    let env: ((String) -> Void)?
+    let model: AppModel
+    func callAsFunction(_ pk: String) { if let env { env(pk) } else { model.openProfile = pk } }
+}
+
+/// A profile as a contact card (Contacts): the face, the name, the address, round actions, then
+/// About, Tags, Place, Role, Agents / Owner, Channels in common. Pushed on a stack (back swipe
+/// returns), never a bottom sheet; `pushed: false` only where nothing else can hold it.
 struct ProfileView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openChannel) private var openChannel
     let pubkey: String
+    var pushed = false
     @State private var edit = false
     @State private var error: String?
     @State private var confirmRemove = false
 
     var body: some View {
+        if pushed { card } else { NavigationStack { card.toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } } } }
+    }
+
+    private var card: some View {
         let _ = model.version
         let d = model.derive
         let p = d.profiles()[pubkey]
         let x = d.extras[pubkey]
         let me = pubkey == model.me
-        let joins = d.guestJoinsOf(pubkey)
-        NavigationStack {
-            List {
-                Section {
-                    VStack(spacing: 10) {
-                        Avatar(pubkey: pubkey, size: 88)
-                        Text(me ? (model.realName(pubkey).isEmpty ? "You" : model.realName(pubkey)) : model.name(pubkey)).font(.title2.bold())
-                        if let n5 = p?.nip05, n5.contains("@") { Text(n5).font(.subheadline).foregroundStyle(.secondary).textSelection(.enabled) }
-                        FlowRow(spacing: 6) {
-                            if let owner = d.agentOwner(pubkey) {
-                                Chip(text: "agent", tint: .brand)
-                                Chip(text: owner == model.me ? "agent of you" : "agent of \(model.realNameOrKey(owner))")
-                            } else {
-                                ForEach(Array(Set(joins.compactMap(\.chip))).sorted(), id: \.self) { Chip(text: $0, tint: .brand) }
-                            }
-                            if d.isBelfryAdmin(pubkey) { Chip(text: "admin of the belfry") }
-                            if let role = model.roles.label(of: pubkey), role.lowercased() != "admin" { Chip(text: role, icon: "person.badge.key") }
-                        }
+        let address = p?.nip05.flatMap { $0.contains("@") ? $0 : nil }
+        return List {
+            Section {
+                VStack(spacing: 8) {
+                    Avatar(pubkey: pubkey, size: 104)
+                    Text(me ? (model.realName(pubkey).isEmpty ? "You" : model.realName(pubkey)) : model.name(pubkey))
+                        .font(.title.bold()).multilineTextAlignment(.center)
+                    if let address { Text(address).font(.subheadline).foregroundStyle(.secondary).textSelection(.enabled) }
+                    HStack(spacing: 12) {
                         if !me && !d.isGuest(model.me) {
-                            Button { dismiss(); model.messageAuthor = pubkey } label: { Label("Message", systemImage: "envelope") }
-                                .buttonStyle(.brand)
+                            RoundAction(symbol: "message.fill", title: "Message") { model.messageAuthor = pubkey; if !pushed { dismiss() } }
                         }
-                        if me { Button("Edit profile") { edit = true }.buttonStyle(.bordered) }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .listRowBackground(Color.clear)
-                }
-                if let about = p?.about, !about.isEmpty { Section("About") { MarkdownText(text: about) } }
-                if let x, !x.tags.isEmpty {
-                    Section("Tags") { FlowRow(spacing: 6) { ForEach(x.tags, id: \.self) { Chip(text: "#" + $0) } } }
-                }
-                if let place = x?.place { Section("Where") { Label(People.placeLabel(place), systemImage: "mappin.and.ellipse") } }
-                let shared = d.sharedGroups(pubkey)
-                if !shared.isEmpty {
-                    Section("Channels") {
-                        ForEach(shared) { g in
-                            Button { dismiss(); openChannel(g.id, nil) } label: {
-                                HStack(spacing: 10) { ChannelGlyph(group: g, size: 18); Text(g.name) }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                if !me {
-                    Section {
-                        if model.mayMakeMine(pubkey) {
-                            ActionButtonRow(icon: "person.badge.key", title: "Make it my agent", detail: "It joins as yours: it stays while you do.") {
-                                error = await model.setMyAgent(pubkey, mine: true)
+                        if let address, !me {
+                            RoundAction(symbol: "envelope.fill", title: "E-mail") {
+                                if let u = URL(string: "mailto:" + address) { UIApplication.shared.open(u) }
                             }
                         }
-                        if let owner = d.agentOwner(pubkey), owner == model.me || d.isCommunityAdmin {
-                            Button { confirmRemove = true } label: { ActionRow(icon: "person.badge.minus", title: "Remove this agent…", destructive: true) }
-                        }
-                        if d.isCommunityAdmin && d.agentOwner(pubkey) == nil {
-                            AdminSwitch(pubkey: pubkey) { error = $0 }
-                            RolePicker(pubkey: pubkey) { error = $0 }
+                        if let n = Bech32.npub(pubkey) {
+                            ShareLink(item: address ?? n) { RoundActionLabel(symbol: "square.and.arrow.up", title: "Share") }
+                                .buttonStyle(.plain)
                         }
                     }
+                    .padding(.top, 6)
                 }
-                if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
+                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
             }
-            .navigationTitle("Profile")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .sheet(isPresented: $edit) { EditProfileView() }
-            .confirmationDialog("Remove this agent?", isPresented: $confirmRemove, titleVisibility: .visible) {
-                Button("Remove", role: .destructive) { Task { error = await model.setMyAgent(pubkey, mine: false) } }
-            } message: { Text("It is taken out of every channel. This can't be undone.") }
-            .task {
-                await model.revalidateConfig()
-                await model.askWhois([pubkey])
-                await model.loadRoles()
+            if let about = p?.about, !about.isEmpty { Section("About") { MarkdownText(text: about) } }
+            if let x, !x.tags.isEmpty {
+                Section("Tags") { FlowRow(spacing: 6) { ForEach(x.tags, id: \.self) { Chip(text: "#" + $0) } } }
             }
-        }
-    }
-}
-
-/// A member's role (docs/roles.md), for the belfry's admins: a native menu of the roles. A saved
-/// guest given a role becomes a member with it; errors are fixed words per code.
-struct RolePicker: View {
-    @EnvironmentObject var model: AppModel
-    let pubkey: String
-    let report: (String?) -> Void
-    @State private var busy = false
-
-    var body: some View {
-        let current = model.roles.members[pubkey] ?? (model.derive.isGuest(pubkey) ? nil : Role.member)
-        Menu {
-            ForEach(model.roles.roles) { r in
-                Button { set(r.id) } label: {
-                    if r.id == current { Label(r.label, systemImage: "checkmark") } else { Text(r.label) }
+            if let place = x?.place { Section("Place") { Label(People.placeLabel(place), systemImage: "mappin.and.ellipse") } }
+            RoleSection(pubkey: pubkey) { error = $0 }
+            if let owner = d.agentOwner(pubkey) {
+                Section("Owner") {
+                    ProfileRow(pubkey: owner, detail: owner == model.me ? "You" : nil)
+                    if owner == model.me || d.isCommunityAdmin {
+                        Button(role: .destructive) { confirmRemove = true } label: { Label("Remove this agent…", systemImage: "person.badge.minus") }
+                    }
                 }
-            }
-        } label: {
-            HStack {
-                ActionRow(icon: "person.badge.key", title: "Role", detail: model.roles.role(current)?.label ?? (model.derive.isGuest(pubkey) ? "Guest: no role yet" : "Member"))
-                if busy { ProgressView().controlSize(.small) }
-            }
-        }
-        .disabled(busy || model.derive.isAgent(pubkey))
-    }
-
-    private func set(_ role: String) {
-        guard !busy else { return }
-        busy = true
-        Task {
-            if model.engine?.localOnly == true {
-                model.roles.members[pubkey] = role
             } else {
-                do { try await model.api.setMemberRole(pubkey, role: role); await model.loadRoles(force: true); report(nil) }
-                catch let e as ApiError { report(e.message) } catch { report(BelfryAPI.network) }
+                let theirs = model.config.agents.filter { $0.value == pubkey }.map(\.key).sorted()
+                if !theirs.isEmpty {
+                    Section("Agents") { ForEach(theirs, id: \.self) { a in ProfileRow(pubkey: a, detail: "Agent") } }
+                }
             }
-            busy = false
+            if !me, model.mayMakeMine(pubkey) {
+                Section {
+                    BusyButton { error = await model.setMyAgent(pubkey, mine: true) } label: { Label("Make it my agent", systemImage: "person.badge.key") }
+                } footer: { Text("It joins as yours: it stays while you do.") }
+            }
+            let shared = d.sharedGroups(pubkey)
+            if !shared.isEmpty {
+                Section(me ? "Your channels" : "Channels in common") {
+                    ForEach(shared) { g in
+                        Button { if !pushed { dismiss() }; openChannel(g.id, nil) } label: {
+                            HStack(spacing: 10) { ChannelGlyph(group: g, size: 18); Text(g.name).foregroundStyle(.primary) }
+                        }
+                    }
+                }
+            }
+            if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { if me { ToolbarItem(placement: .topBarTrailing) { Button("Edit") { edit = true } } } }
+        .sheet(isPresented: $edit) { EditProfileView() }
+        .confirmationDialog("Remove this agent?", isPresented: $confirmRemove, titleVisibility: .visible) {
+            Button("Remove", role: .destructive) { Task { error = await model.setMyAgent(pubkey, mine: false) } }
+        } message: { Text("It is taken out of every channel. This can't be undone.") }
+        .task {
+            await model.revalidateConfig()
+            await model.askWhois([pubkey])
+            await model.loadRoles()
         }
     }
 }
 
-/// "Admin of the belfry" (SPEC 19.5): disabled with the reason for an agent or an unsaved guest.
-struct AdminSwitch: View {
+/// A round action under a contact's name (Contacts' Message / Mail / Share).
+struct RoundActionLabel: View {
+    let symbol: String
+    let title: String
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: symbol).font(.body.weight(.semibold)).frame(width: 52, height: 40)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            Text(title).font(.caption2)
+        }
+        .foregroundStyle(Color.brand)
+        .frame(minWidth: 64)
+    }
+}
+
+struct RoundAction: View {
+    let symbol: String
+    let title: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) { RoundActionLabel(symbol: symbol, title: title) }.buttonStyle(.plain)
+    }
+}
+
+/// Someone as a row that opens their profile.
+struct ProfileRow: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.showProfile) private var showProfile
+    let pubkey: String
+    var detail: String?
+    var body: some View {
+        Button { (showProfile ?? { model.openProfile = $0 })(pubkey) } label: {
+            HStack(spacing: 10) {
+                Avatar(pubkey: pubkey, size: 32)
+                Text(model.name(pubkey)).foregroundStyle(.primary)
+                Spacer()
+                if let detail { Text(detail).foregroundStyle(.secondary) }
+            }
+        }
+    }
+}
+
+/// The person's role (docs/roles.md): Member by default, Admin, or a custom role with its line;
+/// "Guest" / "Agent of X" for those. For a belfry admin it opens the role picker.
+struct RoleSection: View {
     @EnvironmentObject var model: AppModel
     let pubkey: String
     let report: (String?) -> Void
-    @State private var busy = false
+    @State private var picking = false
 
     var body: some View {
-        let on = model.derive.isBelfryAdmin(pubkey)
-        let reason = on ? nil : model.derive.noAdminReason(pubkey)
-        VStack(alignment: .leading, spacing: 4) {
-            Toggle(isOn: Binding(get: { on }, set: { v in
-                guard !busy else { return }
-                busy = true
-                Task { report(await model.setAdmin(pubkey, v)); busy = false }
-            })) {
-                HStack { Text("Admin of the belfry"); if busy { ProgressView().controlSize(.small) } }
+        let d = model.derive
+        Section("Role") {
+            roleRows(d)
+        }
+        .navigationDestination(isPresented: $picking) { RoleChoiceList(pubkey: pubkey, report: report) }
+        .onAppear { if model.launch.screen == "rolepicker", d.isCommunityAdmin { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { picking = true } } }
+    }
+
+    @ViewBuilder private func roleRows(_ d: Derive) -> some View {
+        SwiftUI.Group {
+            if let owner = d.agentOwner(pubkey) {
+                LabeledContent("Agent", value: "of " + model.realNameOrKey(owner))
+            } else if d.isGuest(pubkey) && !d.isBelfryAdmin(pubkey) {
+                if d.isCommunityAdmin && d.noAdminReason(pubkey) == nil {
+                    Button { picking = true } label: { LabeledContent("Guest", value: "Make a member…") }
+                } else {
+                    LabeledContent("Guest", value: d.noAdminReason(pubkey) == nil ? "" : "No e-mail yet")
+                }
+            } else {
+                let role = currentRole
+                if d.isCommunityAdmin {
+                    Button { picking = true } label: {
+                        HStack { roleLine(role).foregroundStyle(.primary); Spacer(); Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary) }
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    roleLine(role)
+                }
             }
-            .tint(Theme.toggle)
-            .disabled(busy || reason != nil)
-            if let reason { Text(reason).font(.caption).foregroundStyle(.secondary) }
+        }
+    }
+
+    var currentRole: Role? {
+        if model.derive.isBelfryAdmin(pubkey) { return model.roles.role(Role.admin) ?? Role.builtins[1] }
+        return model.roles.role(model.roles.members[pubkey] ?? Role.member) ?? Role.builtins[0]
+    }
+
+    func roleLine(_ r: Role?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(r?.label ?? "Member")
+            if let desc = r?.description, !desc.isEmpty { Text(desc).font(.footnote).foregroundStyle(.secondary) }
+        }
+    }
+}
+
+/// The role picker (web RolePicker.tsx): the roles with a checkmark on the current one; Admin
+/// goes through /admins, any other role through /member-roles; the row locks while it saves.
+struct RoleChoiceList: View {
+    @EnvironmentObject var model: AppModel
+    let pubkey: String
+    let report: (String?) -> Void
+    @State private var saving: String?
+    @State private var error: String?
+
+    var body: some View {
+        let d = model.derive
+        let current = d.isBelfryAdmin(pubkey) ? Role.admin : (d.isGuest(pubkey) ? nil : (model.roles.members[pubkey] ?? Role.member))
+        List {
+            Section {
+                ForEach(model.roles.roles) { r in
+                    Button { pick(r.id, current: current) } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(r.label).foregroundStyle(.primary)
+                                if !r.description.isEmpty { Text(r.description).font(.footnote).foregroundStyle(.secondary) }
+                            }
+                            Spacer()
+                            if saving == r.id { ProgressView() } else if r.id == current { Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Color.brand) }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(saving != nil)
+                }
+            } footer: { Text("Admin is the only role with powers. A guest given a role becomes a member.") }
+            if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
+            Section { NavigationLink { RolesSettings() } label: { Label("Edit roles…", systemImage: "pencil") } }
+        }
+        .navigationTitle("Role")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await model.loadRoles() }
+    }
+
+    private func pick(_ id: String, current: String?) {
+        guard saving == nil, id != current else { return }
+        saving = id
+        error = nil
+        Task {
+            var e: String?
+            if id == Role.admin {
+                e = await model.setAdmin(pubkey, true)
+            } else if model.engine?.localOnly == true {
+                if current == Role.admin { e = await model.setAdmin(pubkey, false) }
+                model.roles.members[pubkey] = id
+            } else {
+                do { try await model.api.setMemberRole(pubkey, role: id); await model.revalidateConfig(force: true) }
+                catch let x as ApiError { e = x.message } catch { e = BelfryAPI.network }
+            }
+            await model.loadRoles(force: true)
+            if e == nil { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+            error = e
+            report(e)
+            saving = nil
         }
     }
 }

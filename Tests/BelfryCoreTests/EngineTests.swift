@@ -120,3 +120,41 @@ final class EngineTests: XCTestCase {
         }
     }
 }
+
+/// Counts what goes to the signer (a NIP-46 round trip each, in real life).
+final class CountingSigner: Signer, @unchecked Sendable {
+    let inner: LocalSigner
+    var decrypts = 0
+    init(_ inner: LocalSigner) { self.inner = inner }
+    var pubkey: String { inner.pubkey }
+    func sign(_ t: EventTemplate) async throws -> NostrEvent { try await inner.sign(t) }
+    func nip44Encrypt(peer: String, plaintext: String) async throws -> String { try await inner.nip44Encrypt(peer: peer, plaintext: plaintext) }
+    func nip44Decrypt(peer: String, payload: String) async throws -> String { decrypts += 1; return try await inner.nip44Decrypt(peer: peer, payload: payload) }
+}
+
+final class OfflineFirstTests: XCTestCase {
+    /// A gift wrap is opened once: after a restart (a new engine on the same file) nothing goes to
+    /// the signer again, and the conversation is there at once.
+    func testKnownWrapsAreNotDecryptedAgain() async throws {
+        let path = NSTemporaryDirectory() + "dm-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let me = try LocalSigner(secret: Keys.generateSecret())
+        let ana = try LocalSigner(secret: Keys.generateSecret())
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: ana.pubkey, tags: [["p", me.pubkey]], content: "Hi")
+        let wrap = try await GiftWrap.wrap(rumor, to: me.pubkey, signer: ana)
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+        let s1 = CountingSigner(me)
+        let e1 = SyncEngine(config: .defaults(domain: "x.org"), db: try Database(path: path), signer: s1, localOnly: true, attachmentsDir: dir)
+        e1.add([wrap], verify: false)
+        let d1 = DirectMessages(engine: e1)
+        await d1.process()
+        XCTAssertEqual(d1.threads().count, 1)
+        XCTAssertGreaterThan(s1.decrypts, 0)
+        let s2 = CountingSigner(me)
+        let e2 = SyncEngine(config: .defaults(domain: "x.org"), db: try Database(path: path), signer: s2, localOnly: true, attachmentsDir: dir)
+        let d2 = DirectMessages(engine: e2)
+        XCTAssertEqual(d2.threads().first?.last.text, "Hi") // from the store, before any processing
+        await d2.process()
+        XCTAssertEqual(s2.decrypts, 0)
+    }
+}

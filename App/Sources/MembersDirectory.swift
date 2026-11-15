@@ -17,28 +17,67 @@ struct MembersDirectory: View {
     var body: some View {
         let _ = model.version
         let shown = filtered()
+        let sections = Dictionary(grouping: shown) { letter(name($0.pubkey, $0.name)) }
+        let letters = sections.keys.sorted { a, b in a == "#" ? false : b == "#" ? true : a < b }
         List {
-            // what waits for me, only when something does (web 98c33fc)
-            RequestSections(error: $error)
-            Section {
-                if list == nil { HStack { if failed { Text("The list could not be loaded.") } else { ProgressView(); Text("Loading…") } }.foregroundStyle(.secondary) }
-                ForEach(shown) { m in
-                    Button { model.openProfile = m.pubkey } label: { row(m.pubkey, m.name, size: 36, detail: model.profiles[m.pubkey]?.nip05, role: model.roles.label(of: m.pubkey) ?? roleLabel(m.role)) }
-                        .buttonStyle(.plain)
-                    ForEach(m.agents, id: \.pubkey) { a in
-                        Button { model.openProfile = a.pubkey } label: { row(a.pubkey, a.name, size: 28, detail: "\(name(m.pubkey, m.name))'s agent", role: nil) }
-                            .buttonStyle(.plain)
-                            .padding(.leading, 28)
+            if query.isEmpty {
+                // My card, as in Contacts
+                Button { model.openProfile = model.me } label: {
+                    HStack(spacing: 12) {
+                        Avatar(pubkey: model.me, size: 56)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(model.realName(model.me).isEmpty ? "You" : model.realName(model.me)).font(.title3.weight(.semibold)).foregroundStyle(.primary)
+                            Text("My card").font(.subheadline).foregroundStyle(.secondary)
+                        }
                     }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
                 }
-            } header: { Text(list == nil ? model.config.name : "\(shown.count) in \(model.config.name)") }
+                .buttonStyle(.plain)
+                // what waits for me, only when something does (web 98c33fc)
+                RequestSections(error: $error)
+            }
+            if list == nil {
+                HStack { if failed { Text("The list could not be loaded.") } else { ProgressView(); Text("Loading…") } }.foregroundStyle(.secondary)
+            }
+            ForEach(letters, id: \.self) { l in
+                letterSection(l, sections[l] ?? [])
+            }
+            if list != nil {
+                Text("\(shown.count) \(shown.count == 1 ? "member" : "members")").font(.footnote).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity).listRowSeparator(.hidden)
+            }
         }
+        .listStyle(.plain)
+        .sectionIndex()
         .navigationTitle("Members")
-        .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $query, prompt: "Search members")
+        .navigationBarTitleDisplayMode(.large)
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search")
         .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
         .task { await load() }
         .refreshable { await load() }
+    }
+
+    @ViewBuilder private func letterSection(_ l: String, _ people: [DirMember]) -> some View {
+        Section {
+            ForEach(people) { m in
+                Button { model.openProfile = m.pubkey } label: { row(m.pubkey, m.name, size: 40, detail: nil, role: model.roles.label(of: m.pubkey) ?? roleLabel(m.role)) }
+                    .buttonStyle(.plain)
+                ForEach(m.agents, id: \.pubkey) { a in
+                    Button { model.openProfile = a.pubkey } label: { row(a.pubkey, a.name, size: 40, detail: "agent of \(name(m.pubkey, m.name))", role: nil) }
+                        .buttonStyle(.plain)
+                        .padding(.leading, 24)
+                }
+            }
+        } header: { Text(l) }
+        .indexLabel(l)
+    }
+
+    /// The letter a name files under (accents folded; anything else under #).
+    private func letter(_ n: String) -> String {
+        let f = n.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current).uppercased()
+        guard let c = f.first, c.isLetter, c.isASCII else { return "#" }
+        return String(c)
     }
 
     private var rule: String {
@@ -61,7 +100,7 @@ struct MembersDirectory: View {
         let q = query.jsTrim().lowercased()
         return (demo ? demoList() : (list ?? [])).filter { m in
             q.isEmpty || name(m.pubkey, m.name).lowercased().contains(q) || m.agents.contains { name($0.pubkey, $0.name).lowercased().contains(q) }
-        }.sorted { name($0.pubkey, $0.name).localizedCaseInsensitiveCompare(name($1.pubkey, $1.name)) == .orderedAscending }
+        }.sorted { name($0.pubkey, $0.name).localizedStandardCompare(name($1.pubkey, $1.name)) == .orderedAscending }
     }
 
     /// The demo: who is in its channels (worked out live: the demo's events arrive after launch).
@@ -75,11 +114,11 @@ struct MembersDirectory: View {
         HStack(spacing: 10) {
             Avatar(pubkey: pk, size: size)
             VStack(alignment: .leading, spacing: 1) {
-                Text(name(pk, fallback)).font(.body.weight(.medium)).foregroundStyle(.primary)
+                Text(name(pk, fallback)).font(.body).foregroundStyle(.primary)
                 if let detail { Text(detail).font(.footnote).foregroundStyle(.secondary) }
             }
             Spacer()
-            if let role { Chip(text: role) }
+            if let role { Text(role).font(.subheadline).foregroundStyle(.secondary) }
         }
         .contentShape(Rectangle())
     }
@@ -93,5 +132,24 @@ struct MembersDirectory: View {
         } else {
             do { list = try await model.api.directory() } catch { failed = true }
         }
+    }
+}
+
+extension View {
+    /// The A–Z index on the right edge (iOS 26).
+    @ViewBuilder func sectionIndex() -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26, *) { self.listSectionIndexVisibility(.visible) } else { self }
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder func indexLabel(_ l: String) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26, *) { self.sectionIndexLabel(Text(l)) } else { self }
+        #else
+        self
+        #endif
     }
 }

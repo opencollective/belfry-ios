@@ -89,7 +89,7 @@ struct BrandingSettings: View {
     private func image(_ title: String, _ url: String, _ item: Binding<PhotosPickerItem?>, square: Bool) -> some View {
         HStack(spacing: 12) {
             if let u = URL(string: url), !url.isEmpty {
-                AsyncImage(url: u) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.15) }
+                CachedImage(url: u) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.15) }
                     .frame(width: square ? 44 : 78, height: 44).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else {
                 RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.secondary.opacity(0.12))

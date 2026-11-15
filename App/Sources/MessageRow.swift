@@ -338,13 +338,17 @@ struct MediaView: View {
     var all: [Media] = []
     var body: some View {
         if media.mime.hasPrefix("image/"), let url = URL(string: media.url), url.scheme == "https" || url.scheme == "http" {
-            AsyncImage(url: url) { phase in
+            // the size from imeta `dim` when known: no jump when the picture arrives
+            let ratio: CGFloat? = (media.w ?? 0) > 0 && (media.h ?? 0) > 0 ? CGFloat(media.w!) / CGFloat(media.h!) : nil
+            CachedImage(url: url) { phase in
                 switch phase {
                 case .success(let img): img.resizable().scaledToFit()
                 case .failure: Label(media.name ?? "Photo", systemImage: "photo").foregroundStyle(.secondary)
-                default: ProgressView().frame(height: 120)
+                default:
+                    if ratio != nil { Color.secondary.opacity(0.12) } else { ProgressView().frame(height: 120) }
                 }
             }
+            .aspectRatio(ratio, contentMode: .fit)
             .frame(maxWidth: 280, maxHeight: 280, alignment: .leading)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .contentShape(Rectangle())

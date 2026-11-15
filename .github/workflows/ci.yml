@@ -30,6 +30,8 @@ jobs:
         run: |
           set -o pipefail
           swift test 2>&1 | tee swift-test.log
+      - name: Speed in a release build (offline first budgets, CLAUDE.md)
+        run: swift test -c release --filter PerformanceTests 2>&1 | grep -E "perf:|passed|failed|error" | tail -20
       - name: Test log
         if: always()
         uses: actions/upload-artifact@v4

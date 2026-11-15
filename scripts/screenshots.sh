@@ -65,6 +65,10 @@ shot 55-members-requests requests light
 shot 56-log log light
 shot 57-settings settings light
 shot 58-members directory light
+shot 58b-members-dark directory dark
+shot 59-my-card mycard light
+shot 59b-role-picker rolepicker light
+shot 59c-profile-dark profile dark
 shot 62-accounts accounts light
 shot 60-meeting meeting light
 shot 61-meeting-form meetingform light

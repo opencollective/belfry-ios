@@ -236,6 +236,7 @@ struct AddPersonSheet: View {
 /// add someone, hand over an account they hold.
 struct MeetingPeopleSection: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.showProfile) private var showProfile
     let e: CalEvent
     @State private var adding = false
     @State private var handing: String?
@@ -270,7 +271,7 @@ struct MeetingPeopleSection: View {
                 }
                 .contextMenu {
                     if p.heldByMe { Button { handing = p.pubkey } label: { Label("Hand over the account", systemImage: "person.crop.circle.badge.checkmark") } }
-                    Button { model.openProfile = p.pubkey } label: { Label("Profile", systemImage: "person") }
+                    Button { OpenProfile(env: showProfile, model: model)(p.pubkey) } label: { Label("Profile", systemImage: "person") }
                 }
             }
             if host {

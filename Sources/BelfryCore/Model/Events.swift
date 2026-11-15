@@ -206,7 +206,7 @@ public enum EventLinks {
 
     /// https://<own domain>/events/<link> in a text: the links, at most three, in order.
     public static func linksIn(_ text: String, domain: String) -> [String] {
-        if domain.isEmpty || text.isEmpty { return [] }
+        if domain.isEmpty || text.isEmpty || !text.contains("/events/") { return [] }
         let re = Rx("https://" + NSRegularExpression.escapedPattern(for: domain) + "/events/([a-z0-9][a-z0-9-]{1,38}[a-z0-9])(?![a-z0-9-])")
         var out = [String]()
         for m in re.matches(text) { if let l = m[1], !out.contains(l) { out.append(l) } }

@@ -5,8 +5,22 @@ import Foundation
 
 public struct Rx: @unchecked Sendable {
     public let re: NSRegularExpression
+    /// Compiled patterns, kept: building an NSRegularExpression per message was a large part of
+    /// opening a channel (offline first: CLAUDE.md).
+    nonisolated(unsafe) private static var compiled = [String: NSRegularExpression]()
+    private static let lock = NSLock()
+
     public init(_ pattern: String, _ options: NSRegularExpression.Options = []) {
-        re = try! NSRegularExpression(pattern: pattern, options: options)
+        let key = "\(options.rawValue)|" + pattern
+        Rx.lock.lock()
+        if let r = Rx.compiled[key] { re = r; Rx.lock.unlock(); return }
+        Rx.lock.unlock()
+        let r = try! NSRegularExpression(pattern: pattern, options: options)
+        Rx.lock.lock()
+        if Rx.compiled.count > 500 { Rx.compiled.removeAll() }
+        Rx.compiled[key] = r
+        Rx.lock.unlock()
+        re = r
     }
 
     public struct Match {

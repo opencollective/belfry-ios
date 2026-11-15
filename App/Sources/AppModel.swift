@@ -211,7 +211,14 @@ final class AppModel: ObservableObject {
         let ctx = WorldContext(me: me, domain: config.domain, communityName: config.name, communityAdmins: Set(config.admins),
                                groupsKey: groupsKey, bridgeKey: dms?.bridge, groupsRelay: config.groupsRelay,
                                agents: config.agents, kinds: kinds, pending: pendingIds)
-        let d = Derive(events: engine?.snapshot() ?? [], context: ctx)
+        let list = engine?.snapshot() ?? []
+        let d = Derive(events: list, context: ctx)
+        // offline first: the channels nothing arrived in keep what the last snapshot worked out
+        if let prev = cachedDerive?.1, list.count >= prev.events.count, list.count - prev.events.count < 500 {
+            let known = prev.idSet
+            let fresh = list.filter { !known.contains($0.id) }
+            if fresh.count == list.count - prev.events.count { d.carry(from: prev, newEvents: fresh) }
+        }
         cachedDerive = (version, d)
         return d
     }

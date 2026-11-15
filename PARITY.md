@@ -2,13 +2,16 @@
 
 Reference: `village-app`, branch `belfry-chat`, at commit ef9e1cc (2026-11-10), Belfry theme,
 plus `commonshub/collective-belfry` `chat-source` 85ede89 (Reply opens the thread's own view),
-plus guest mode from village-app b2e968b (2026-11-12).
+plus guest mode from village-app b2e968b (2026-11-12); since 2026-11-15 also b43f9cf (groups,
+requests, roles), 8f0ccb8 / 98c33fc (Members), aa778e2 (read state) and Android 90f0762.
 Second reading: the Android app (opencollective/belfry-android 2ce8be8, its PARITY.md). Same
 shape as Android's file. Status words: **done** (built, compiled in CI, rendered in demo mode by
 the screenshot job, and covered by a core test where noted), **partial** (what is missing is
 named), **not yet**.
 
-Read this first: **nothing has run on a phone, and nothing has talked to a real belfry.** No Mac
+Read this first: since 2026-11-15 the owner runs TestFlight builds on his iPhone (iOS 26), and
+sent a message from one; beyond that, **no feature here was checked on a phone or against a real
+belfry by whoever built it**. No Mac
 here: the app is only compiled and screenshotted in the iOS simulator by CI (demo mode, seeded
 community, no network). "Done" means the code follows the protocol contract (SPEC.md + the
 shared vectors, which the core passes), compiles, and its screen renders with the demo data.
