@@ -93,6 +93,26 @@ opening|feed|join|code` shows guest mode's screens (the loading screen; #general
 guest; the Join sheet; its code step), demo code 123456. `-signin code` / `-signin older`
 show the sign-in's code screen / the older-belfry state with made-up values (nothing is sent).
 
+## Offline first (the owner, 2026-11-15: "cache everything locally… opening any channel should be instant")
+
+- Every Nostr event is kept in SQLite (no cap today; if one is ever needed: the newest 5 000 per
+  group, and always the replaceable / state events 0, 39000–39003, 9000–9009, 30078, 1985 still
+  referenced, events and proposals; never outbox items or my unsent work). Decrypted DMs are
+  stored once (`dm-items`, `dm-seen` saved every 20 as it goes): a known gift wrap never goes to
+  the signer again (`OfflineFirstTests`).
+- A channel, a thread, Messages and a conversation draw from the local log in the same frame as
+  the tap: no spinner, no relay, signer, discovery or HTTP call on that path. Cold start reads
+  belfry.json, roles, membership, read state from their stored copies and refreshes them in the
+  background; it reopens the last screen (`belfry-last-screen`, per account).
+- `Derive` caches per snapshot (feed rows, messages, reactions, threads…) and a new snapshot
+  carries the untouched channels' views (`carry`, SPEC 19.22); regexes are compiled once (`Rx`).
+  `PerformanceTests` (≈ 20 000 events) has the budgets and prints `perf:` lines (debug and
+  release builds in CI): keep them passing.
+- Pictures go through `CachedImage` (memory, then Caches/images, then the network once); sizes
+  from imeta `dim` so nothing jumps. URLCache has 512 MB on disk.
+- Subscriptions ask `since` the newest stored event (minus an hour); opening a channel never
+  fetches.
+
 ## UI rules (the owner's, not negotiable)
 
 - Every button locks the moment it is tapped and shows progress until its work is done: use

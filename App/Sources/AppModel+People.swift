@@ -82,13 +82,13 @@ extension AppModel {
                               defaultRole: Role.member, members: [Demo.signer("ana").pubkey: Role.admin, Demo.signer("dev").pubkey: "host"])
             return
         }
-        if let r = try? await api.roles() { roles = r }
+        if let r = try? await api.roles() { roles = r; engine?.db.set("roles", r) }
     }
 
     /// The belfry's membership settings (who invites members, how requests are accepted).
     func loadMembership() async {
         if engine?.localOnly == true { membership = MembershipSettings(admin: derive.isCommunityAdmin); return }
-        if let m = try? await api.membership() { membership = m }
+        if let m = try? await api.membership() { membership = m; engine?.db.set("membership", m) }
     }
 
     /// What the belfry has waiting for me: people asking to join (admins; members while vouching)

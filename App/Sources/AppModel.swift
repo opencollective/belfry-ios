@@ -331,6 +331,9 @@ final class AppModel: ObservableObject {
         }
         engine = e
         dms = d
+        // offline first: the last copies at once, refreshed in the background
+        roles = db.get("roles", as: RolesInfo.self) ?? RolesInfo()
+        membership = db.get("membership", as: MembershipSettings.self) ?? MembershipSettings()
         phase = .ready
         if !s.demo {
             Task {
