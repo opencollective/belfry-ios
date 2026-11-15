@@ -9,7 +9,7 @@ don't guess. The Android app (opencollective/belfry-android) is a second reading
 
 `vectors/` is the contract shared with Android: keep both repos' files identical (copy, don't
 edit one side). SPEC.md differs from Android's only in the paragraph that opens section 19 and the (iOS) notes
-that end 19.19, 19.20 and 19.26, and the iOS-only 19.27 (Android's 19.21 to 19.25 copied 2026-11-15; what the iPhone app does of them is in PARITY.md). `vectors/guestmode.json` is Android's.
+that end 19.19, 19.20 and 19.26, and the iOS-only 19.28 (Android's 19.21 to 19.25 and 19.27 copied 2026-11-15; what the iPhone app does of them is in PARITY.md). `vectors/guestmode.json` and `vectors/readstate.json` are Android's.
 
 ## Layout
 
@@ -157,6 +157,28 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
 - Composer: iMessage's shape (`Composer.height` 38 pt: the ＋ circle, the capsule field, Send
   inside it). Drafts per channel (`c:<id>`) and thread (`t:<group>:<root>`) and per form
   (`Drafts`, UserDefaults; cleared on sign-out).
+- Several accounts (SPEC 19.24, 2026-11-15): `AccountList` (BelfryCore Model/Accounts.swift,
+  core-tested) in UserDefaults `belfry-accounts`, no secrets. Per account a slot ("" then "a2",
+  "a3"…, a numbered slot never given twice): Keychain session `session` / `session@<slot>`
+  (`Keychain.slot` = the open one), SQLite `belfry-<domain>.sqlite` / `belfry-<domain>@<slot>.sqlite`,
+  drafts prefix `belfry-draft:` / `belfry-draft@<slot>:`, per-account defaults via
+  `AppModel.perAccount`. Slot "" keeps every earlier name, so a device of an earlier version
+  migrates by writing the list only (`restoreAccounts`). One account live; `switchAccount` stops
+  the engine and signer (`closeLive`) and opens the other. Sign out = the open account only, then
+  the next. Add an account = `SignInView(onCancel:)` as a full-screen cover; `store(_:)` gives the
+  slot (an identity already here keeps its own). The demo is not in the list and never touches a
+  Keychain session. The shared attachments folder is emptied only with the last account.
+- Push per account: K per slot (`PushKeyStore` account `device-key` / `device-key@<slot>`); each
+  account registers the same APNs token with its own K when it is open (the belfry keeps one
+  row per identity). The extension tries every K (`PushKeyStore.loadAll`, `Push.openAny`) and
+  puts `account` = the slot in the notification; a tap switches to that account first. Signing
+  out removes that account's row; the stored token goes only with the last account.
+- Read state across devices (SPEC 19.27): `BelfryCore/Read` (`ReadState` = the web's readcore.ts,
+  vectors/readstate.json; `ReadSync` = store, merge of my `belfry:read` events, publish through
+  the outbox only after the community relay's EOSE, 3 s debounce / 10 s gap, flushed on
+  background; local only for guests, guest mode and the demo). Marks: a channel on screen
+  (`markChannelRead`), a thread, a conversation, @Mentions opened. Drawer rows bold + count,
+  "N new" on thread lines, delivered notifications of a read channel removed.
 - SQLite instead of SwiftData: plain tables, same shape as the web's IndexedDB, no schema magic.
 - Relay events are signature-checked before storage; seals always.
 - Never render text from a URL; server errors are mapped to fixed messages by their `error` code.

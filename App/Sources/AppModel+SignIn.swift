@@ -37,7 +37,7 @@ extension AppModel {
         do {
             let opened = try await nativeFlow.verifyCode(code)
             let s = StoredSession(domain: opened.config.domain, bunkerURL: opened.bunkerURL, clientSecret: opened.clientSecretHex, pubkey: opened.pubkey)
-            Keychain.save(s)
+            store(s)
             pendingCode = nil
             signInError = nil
             signInNote = nil

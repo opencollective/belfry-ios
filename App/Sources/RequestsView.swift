@@ -56,7 +56,7 @@ struct RequestsView: View {
                                     BusyButton("Accept") { error = await model.decideApplication(p.id, approve: true) }.buttonStyle(.brand)
                                     BusyButton("Decline", role: .destructive) { error = await model.decideApplication(p.id, approve: false) }.buttonStyle(.bordered)
                                 }
-                                if vouching {
+                                if vouching || !admin {
                                     BusyButton(p.vouched ? "Take back my vouch" : "Vouch") { error = await model.vouchApplication(p.id, on: !p.vouched) }.buttonStyle(.bordered)
                                 }
                             }

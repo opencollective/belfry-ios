@@ -81,7 +81,9 @@ and gestures are untested in the real world. XCTest covers the core (BelfryCore)
 | A channel that takes one type of post (web 193557f, a325118) | done | Its "Posts" setting (`posts` in the channel's web settings): threads only → "New thread" (title + details, posted as the web's bold title + `subject`), proposals only → "New proposal", events only → "New event" (its card posted at once) instead of the message box. Choosing the setting is the web's (channel settings). |
 | Todo wording, no todo mark on messages (SPEC 19.23) | done | "Todo" / "Todos" everywhere; the to-do mark is gone from messages. |
 | A todo being worked on: the ring (web d6cfae1, SPEC 19.21) | done | 2101 `working` heartbeats per assignee, fresh 5 min; the ring fills with the minutes of the current stretch ("1h"… inside past an hour). Core-tested. |
-| DM reactions | not yet | The web chat's Messages has none either (village-app b43f9cf): nothing to follow. |
+| DM reactions (web 9641996: NIP-17 kind 7 in gift wraps, kind 5 to take one back) | not yet | Came to the web after this pass started; their read state never counts them. |
+| Read state across devices (SPEC 19.27, web readcore.ts aa778e2, Android 90f0762) | done, never run live | One NIP-44 (to myself) kind 30078 `belfry:read` on the community relay, max-merge (vectors/readstate.json in the core tests), published through the outbox only after the relay's EOSE, debounced, flushed on background; guests / guest mode / demo keep it on the phone. Channels read on screen; threads, conversations, @Mentions; unread counts in the drawer (bold + count), "N new" on a thread's line, the DM list and ☰; delivered notifications of a channel read elsewhere are removed. |
+| Members directory (web Directory.tsx 8f0ccb8, `POST /whois {"directory": true}`) | done, never run live | Members at the top of the drawer (not for guests): first who asks to join (any member vouches; admins accept / decline), then every member with their agents under them, search, role badges. |
 | Edit my message, "edited" mark | done | Edit sheet; core test. |
 | Delete with an in-app confirmation showing the message | done | Inside the menu sheet. |
 | Message menu as a list (reactions, Reply, Open thread, Edit, Copy text, Copy link, Message the author, Pin, Turn into a to-do, Make this the website, Delete) | done | Sheet with grouped rows and line icons. "Copy link" copies the channel's link (no per-message link on the web either). |
@@ -158,9 +160,20 @@ and gestures are untested in the real world. XCTest covers the core (BelfryCore)
 | Create / edit: title, cover upload, all day, start / end, where (suggestions), online + Jitsi, description, who sees it, who can come (application + question), URL checked as typed | done, never run live | Times in the device's zone (no zone picker). Made from a channel's ＋: the URL goes into that composer. |
 | Events read through the API (guests) | done, never run live | Cached a minute; `members_only` / `not_found` → fixed messages. |
 | Opening `https://chat.<domain>/events/<link>` from outside | done, never run live | Universal link (same entitlement as guest links); needs SERVER-NEEDS 5. |
+| Meetings (web core/meetings.ts, ui/Meeting.tsx; SPEC 19.23) | done, never run live | ＋ → Meeting (not for guests): topic (≤ 200), a grid of faces (the channel's most recently active, then its parent's, then members; tap picks), + adds someone here by name or someone new by name / e-mail, when (the next full hour), how long (30 / 45 / 60 / 90 / 120), where (my last meeting's place; the last five as rows; a Jitsi video link). A members-only Belfry event with `t meeting`, `channel`, `p … invited`; closed chat with each member invited put in it; every later version keeps those tags (the event form too); its URL goes into the channel's message box. People not on the belfry: `POST /meeting-guests` (retried up to 6 times, 1–5 s apart, on no_channel / not_host / signer / no connection), then one new version with their tags. The page: "Meeting · members only", "People · N · M there" with each person's state (There / Going / Maybe / Can't go / Host / Invited, "· account held by you"); hosts Confirm / Check in (an hour before) / ✓ There (1985 belfry/attendance), Add someone, Hand over (`/meeting-guests/transfer`, swipe or hold the row). Rows and cards say "Meeting" and "N people"; Your events include meetings I'm invited to. Core-tested (`MeetingsTests`, a stub belfry for the retries). |
 | Signed-out event page (RSVP with a name) | not yet | Sign in first. |
 | Co-host link used by someone new (e-mail first, then the link again) | done, never run live | `email_needed` → save-account card says why; after the code, the link is used with the account. |
 | Prices, payments, check-in | not in v1 | Neither on the web. |
+
+## Several accounts (SPEC 19.24; not in the web chat)
+
+| Item | Status | Notes |
+|---|---|---|
+| Accounts per identity and belfry, slots, migration of the one session of earlier versions | done, never run on a device | Core-tested (`AccountsTests`). Slot "" keeps the earlier Keychain item, database and defaults names: the migration writes the list only. |
+| Switcher behind "you" at the drawer's bottom: accounts (face, name, address or "Guest · community", a check), Add an account, Me | done | A sheet list (screenshot 62); switching stops the open session and opens the other from its store. |
+| Add an account | done, never run live | The sign-in (address + code, browser, scan) over the app with Cancel; the open account runs until the new one is in. Opening a guest link while adding uses the open account (Android asks "which account"): not yet. |
+| Sign out of the open account only, then the next | done | Sign-in screen only when none is left. |
+| Push per account | done, never run on a device | One K per account; each registers the same token when open; the extension finds the account whose K opens the payload and a tap opens that account first. Android's "the notification names the account" and the per-account dot in the switcher: not yet. A non-open account's outbox waits until it is opened (as Android). |
 
 ## Not in the web chat, or out of scope
 

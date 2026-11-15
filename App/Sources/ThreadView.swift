@@ -42,7 +42,11 @@ struct ThreadView: View {
                 .padding(.vertical, 8)
             }
             .defaultScrollAnchor(.bottom)
-            .onChange(of: replies.count) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+            .onChange(of: replies.count) { _, _ in
+                withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                model.markThreadRead(group, rootId)
+            }
+            .onAppear { model.markThreadRead(group, rootId) }
         }
         .bottomBar {
             if model.guestReading {
@@ -101,7 +105,7 @@ struct ChannelSearch: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         HStack {
                                             Text(model.name(h.m.pubkey)).font(.subheadline.bold())
-                                            if everywhere, let g = model.group(h.groupId) { Text(g.isPod ? g.name : "# " + g.name).font(.caption).foregroundStyle(.secondary) }
+                                            if everywhere, let g = model.group(h.groupId) { Text(g.isPod ? g.name : "#" + g.name).font(.caption).foregroundStyle(.secondary) }
                                             Spacer()
                                             Text(Format.short(h.m.at)).font(.caption2).foregroundStyle(.secondary)
                                         }

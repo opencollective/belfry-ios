@@ -106,7 +106,8 @@ extension AppModel {
             }
             return
         }
-        if admin || (membership.accept == "vouches" && !derive.amGuest && !derive.isAgent(me)) {
+        // any member sees who asks to join and vouches (web 8f0ccb8), whatever the setting
+        if admin || (!derive.amGuest && derive.agentOwner(me) == nil && !derive.isAgent(me)) {
             if let p = try? await api.applications() { belfryRequests = p }
         } else { belfryRequests = [] }
         if admin { if let a = try? await api.agentRequests() { agentRequests = a } } else { agentRequests = [] }

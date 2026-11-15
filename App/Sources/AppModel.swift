@@ -1,6 +1,7 @@
 import BelfryCore
 import Foundation
 import SwiftUI
+import UserNotifications
 
 // The app's state: the session (Keychain), the sync engine and direct messages, and a cached
 // Derive over the event log that views read. Every user action goes through here into the outbox.
@@ -68,7 +69,11 @@ final class AppModel: ObservableObject {
     /// The drawer's search field (all channels).
     @Published var drawerQuery = ""
     /// When I last opened @Mentions (the badge counts the ones after).
-    @Published var mentionsSeenAt = UserDefaults.standard.integer(forKey: "belfry-mentions-seen")
+    @Published var mentionsSeenAt = UserDefaults.standard.integer(forKey: AppModel.perAccount("belfry-mentions-seen"))
+    /// The accounts on this device (SPEC 19.24, AppModel+Accounts).
+    @Published var accounts = AccountList()
+    /// "Add an account": the sign-in over the app; the open account stays until the new one is in.
+    @Published var addingAccount = false
     private var cachedMentions: (Int, [NostrEvent])?
     var mentions: [NostrEvent] {
         if let c = cachedMentions, c.0 == version { return c.1 }
@@ -76,10 +81,56 @@ final class AppModel: ObservableObject {
         cachedMentions = (version, m)
         return m
     }
-    var newMentions: Int { mentions.prefix(99).filter { $0.createdAt > mentionsSeenAt }.count }
+    var newMentions: Int {
+        guard let r = readSync?.state else { return mentions.prefix(99).filter { $0.createdAt > mentionsSeenAt }.count }
+        let now = Int.now
+        return mentions.prefix(99).filter { $0.createdAt > mentionsSeenAt && Derive.mentionIsNew(r, $0, now: now) }.count
+    }
+
+    /// The shared read state (SPEC 19.27), per session.
+    var readSync: ReadSync?
+    var readState: ReadState { readSync?.state ?? .empty }
+
+    /// Unread top-level messages of a channel (the drawer's count).
+    func unread(_ groupId: String) -> Int { readSync == nil ? 0 : derive.unreadIn(groupId, readState, now: Int.now) }
+
+    /// A channel on screen at its newest message: read up to it; its notifications go away.
+    func markChannelRead(_ groupId: String) {
+        guard let rs = readSync, let at = derive.channelMark(groupId) else { return }
+        rs.mark("c", groupId, at)
+    }
+
+    func markThreadRead(_ groupId: String, _ rootId: String) {
+        guard let rs = readSync, let at = derive.threadMark(groupId, rootId) else { return }
+        rs.mark("t", rootId, at)
+    }
+
+    func markConversationRead(_ conv: String) {
+        dms?.markRead(conv)
+        if let at = dms?.thread(conv).last?.at { readSync?.mark("d", conv, at) }
+    }
+
+    /// A mark arrived (here or from another device): counts follow, delivered notifications of
+    /// what is read now go away.
+    func readChanged(_ r: ReadState) {
+        version += 1
+        let now = Int.now
+        let center = UNUserNotificationCenter.current()
+        center.getDeliveredNotifications { list in
+            var gone = [String]()
+            for n in list {
+                let tid = n.request.content.threadIdentifier
+                guard tid != "dm", tid != "belfry", !tid.isEmpty else { continue }
+                if Int(n.date.timeIntervalSince1970) <= r.readUpTo("c", tid, now: now) { gone.append(n.request.identifier) }
+            }
+            if !gone.isEmpty { center.removeDeliveredNotifications(withIdentifiers: gone) }
+        }
+    }
+
     func markMentionsSeen() {
+        if let newest = mentions.first?.createdAt { readSync?.mark("m", "", newest) }
         mentionsSeenAt = Int.now
-        UserDefaults.standard.set(mentionsSeenAt, forKey: "belfry-mentions-seen")
+        UserDefaults.standard.set(mentionsSeenAt, forKey: AppModel.perAccount("belfry-mentions-seen"))
     }
     /// Redraws everything when the belfry's colour changes (Theme).
     var brandKey: String { config.branding?.primary ?? "" }
@@ -140,7 +191,7 @@ final class AppModel: ObservableObject {
         } else if launch.signin != nil {
             // a screenshot of screen 1
             pendingInvite = nil
-        } else if let s = Keychain.load() {
+        } else if let s = restoreAccounts() {
             open(s)
         } else {
             pendingCode = nativeFlow.pending
@@ -210,7 +261,7 @@ final class AppModel: ObservableObject {
             let token = try await flow.exchange(code: code)
             guard BunkerURL(token.bunkerURL) != nil else { throw SignIn.Failure.refused }
             let s = StoredSession(domain: domain, bunkerURL: token.bunkerURL, clientSecret: Keys.generateSecret().hex, pubkey: token.pubkey)
-            Keychain.save(s)
+            store(s)
             config = cfg
             open(s, config: cfg)
         } catch let f as SignIn.Failure {
@@ -223,12 +274,14 @@ final class AppModel: ObservableObject {
     }
 
     func open(_ s: StoredSession, config cfg: BelfryConfig? = nil) {
+        if engine != nil { closeLive() } // another account was open (added or switched to)
         session = s
+        mentionsSeenAt = UserDefaults.standard.integer(forKey: AppModel.perAccount("belfry-mentions-seen"))
         let db: Database
         if s.demo {
             db = (try? .memory())!
         } else {
-            db = (try? Database(path: AppModel.dbURL(s.domain).path)) ?? (try! .memory())
+            db = (try? Database(path: AppModel.dbURL(s.domain, slot: Keychain.slot).path)) ?? (try! .memory())
         }
         config = cfg ?? db.get("config", as: BelfryConfig.self) ?? .defaults(domain: s.domain)
         db.set("config", config)
@@ -246,9 +299,17 @@ final class AppModel: ObservableObject {
         let d = DirectMessages(engine: e)
         e.onChange = { [weak self] in DispatchQueue.main.async { self?.changed() } }
         d.onChange = { [weak self] in DispatchQueue.main.async { self?.changed() } }
-        e.onNewEvents = { [weak d] list in
+        // read state across devices (SPEC 19.27): guests, guest mode and the demo keep it here
+        let rs = ReadSync(engine: e, seedD: { d.readMarks })
+        rs.shared = { [weak e] in !s.demo && s.reading != true && !(e?.guestMode.reading ?? false) }
+        rs.onChange = { [weak self] r in DispatchQueue.main.async { self?.readChanged(r) } }
+        d.readFloor = { [weak rs] conv in rs?.state.readUpTo("d", conv, now: Int.now) ?? 0 }
+        readSync = rs
+        e.onNewEvents = { [weak d, weak rs] list in
             if list.contains(where: { $0.kind == 1059 || $0.kind == 4 }) { Task { await d?.process() } }
+            rs?.offer(list)
         }
+        e.onEOSE = { [weak rs] t in if t == .main { rs?.relayAnswered() } }
         e.onSent = { [weak d] item, _ in d?.outboxSent(item) }
         e.onFailed = { [weak d] item in d?.outboxFailed(item) }
         d.onSend = { Push.markSent() }
@@ -267,6 +328,7 @@ final class AppModel: ObservableObject {
         if !s.demo {
             Task {
                 if let bs = signer as? BunkerSigner, s.pubkey == nil, let pk = try? await bs.ensurePubkey() { db.set("pubkey", pk) }
+                if let pk = s.pubkey ?? db.get("pubkey", as: String.self) { self.accountKnown(pk) }
                 await self.revalidateConfig(force: true)
                 if let k = db.get("groups-key", as: String.self) { self.groupsKey = k }
                 if let k = await Discovery.nip05(name: "_groups", domain: s.domain) {
@@ -277,6 +339,7 @@ final class AppModel: ObservableObject {
                 await self.askWhois()
                 await d.loadBridge()
                 self.updateAddress()
+                self.describeAccount()
                 await d.process()
             }
         }
@@ -325,11 +388,15 @@ final class AppModel: ObservableObject {
         else if isDemo { dms.myAddress = "you@\(config.domain)" }
     }
 
+    /// Signs out of the open account only (its session, store, drafts, push key are forgotten) and
+    /// opens the next one on the device; the sign-in screen only when none is left.
     func signOut() {
         engine?.stop()
         if let b = engine?.signer as? BunkerSigner { b.disconnect() }
-        Drafts.clearAll()
+        let slot = Keychain.slot
+        let wasDemo = session?.demo ?? false
         if let s = session, !s.demo {
+            Drafts.clearAll()
             let cfg = config
             Task.detached {
                 var req = URLRequest(url: URL(string: cfg.revoke)!, timeoutInterval: 3)
@@ -338,12 +405,37 @@ final class AppModel: ObservableObject {
                 req.httpBody = try? JSONSerialization.data(withJSONObject: ["client_id": SignIn.clientId])
                 _ = try? await URLSession.shared.data(for: req)
             }
-            try? FileManager.default.removeItem(at: AppModel.dbURL(s.domain))
+            try? FileManager.default.removeItem(at: AppModel.dbURL(s.domain, slot: slot))
+            UserDefaults.standard.removeObject(forKey: AppModel.perAccount("belfry-mentions-seen"))
+            // the demo is not in the list and has no Keychain item: never clear the real account's
+            Keychain.clear(slot: slot)
         }
-        try? FileManager.default.removeItem(at: AppModel.attachmentsDir)
-        Keychain.clear()
         nativeFlow.cancel()
         pendingCode = nil
+        resetLive()
+        var next: AccountEntry?
+        if !wasDemo {
+            next = accounts.remove(slot)
+            saveAccounts()
+        } else {
+            next = accounts.open
+        }
+        if let next, let s = Keychain.load(slot: next.slot) {
+            Keychain.slot = next.slot
+            open(s)
+            return
+        }
+        // the last one: the files waiting in the outbox went with it
+        try? FileManager.default.removeItem(at: AppModel.attachmentsDir)
+        Keychain.slot = ""
+        phase = .signedOut
+        version += 1
+    }
+
+    /// Forgets what the open session held in memory (its engine, caches, guest state).
+    func resetLive() {
+        readSync?.flush()
+        readSync = nil
         engine = nil
         dms = nil
         session = nil
@@ -353,9 +445,9 @@ final class AppModel: ObservableObject {
         whoisAsked = []
         cachedGroups = nil
         cachedProfiles = nil
+        cachedMentions = nil
         guestReading = false
         joinAsked = false
-        phase = .signedOut
         version += 1
     }
 
@@ -365,7 +457,7 @@ final class AppModel: ObservableObject {
         return u
     }
 
-    static func dbURL(_ domain: String) -> URL { supportDir.appendingPathComponent("belfry-\(domain).sqlite") }
+    static func dbURL(_ domain: String, slot: String) -> URL { supportDir.appendingPathComponent(AccountList.dbName(domain: domain, slot: slot)) }
 
     static var attachmentsDir: URL {
         let u = supportDir.appendingPathComponent("attachments", isDirectory: true)
@@ -377,6 +469,7 @@ final class AppModel: ObservableObject {
 
     /// READER: as someone who opened a guest link of #general (guest mode), not as Sam.
     func startDemo(reader: Bool = false) {
+        Drafts.clearAll() // the demo starts empty (only offered signed out, where drafts are gone already)
         let s = StoredSession(domain: "demo.belfry.sh", bunkerURL: nil, clientSecret: (reader ? Demo.readerSecret : Demo.meSecret).hex, pubkey: nil, demo: true,
                               reading: reader ? true : nil, guestChannel: reader ? generalId : nil)
         var cfg = BelfryConfig.defaults(domain: "demo.belfry.sh")
@@ -580,6 +673,7 @@ final class AppModel: ObservableObject {
     @Published var launchDelete = false
     @Published var launchAdd = false
     @Published var launchSettings = false
+    @Published var launchMeetingForm = false
     @Published var launchEventForm = false
 
     // ---- pins I hid on this phone ("Got it, hide"; at most 200; SPEC 19.10) ---------------------

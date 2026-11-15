@@ -62,7 +62,7 @@ extension AppModel {
             let (j, secret) = try await joinWithNewKey(invite, api: api)
             let s = StoredSession(domain: invite.domain, bunkerURL: j.bunkerURL, clientSecret: secret, pubkey: j.pubkey,
                                   reading: j.reading ? true : nil, guestChannel: j.channel)
-            Keychain.save(s)
+            store(s)
             pendingInvite = nil
             joinedChannel = j.channel
             if opening?.name == nil { opening = Opening(channel: j.channel, name: nil) }

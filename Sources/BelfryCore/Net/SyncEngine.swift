@@ -46,6 +46,8 @@ public final class SyncEngine: @unchecked Sendable {
     public var onFailed: ((OutboxItem) -> Void)?
     /// New events arrived (after storing).
     public var onNewEvents: (([NostrEvent]) -> Void)?
+    /// A relay answered the live subscription (EOSE).
+    public var onEOSE: ((Target) -> Void)?
 
     public init(config: BelfryConfig, db: Database, signer: Signer, localOnly: Bool, attachmentsDir: URL) {
         self.config = config
@@ -346,6 +348,8 @@ public final class SyncEngine: @unchecked Sendable {
         return [
             ["kinds": kinds, "since": since, "limit": 2000],
             ["kinds": [30078], "#d": [Derive.profileD], "since": extras, "limit": 2000],
+            // my read state (SPEC 19.27): always the exact d
+            ["kinds": [ReadState.kind], "authors": [me], "#d": [ReadState.readD], "limit": 5],
             ["kinds": [1059], "#p": [me], "since": wraps, "limit": 1000],
             ["kinds": [4], "#p": [me], "since": old, "limit": 500],
             ["kinds": [4], "authors": [me], "since": old, "limit": 500],
@@ -357,6 +361,7 @@ public final class SyncEngine: @unchecked Sendable {
     }
 
     func eose(_ t: Target, _ sub: String) {
+        if sub.hasPrefix("live-") { onEOSE?(t) }
         guard t == .groups else { return }
         if access != .ok { access = .ok; changed() }
         firstChannel()

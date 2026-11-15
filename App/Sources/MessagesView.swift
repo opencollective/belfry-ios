@@ -132,9 +132,9 @@ struct ConversationView: View {
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle(mail && !MailThreads.isNewMail(conv) ? (model.dms?.threadName(conv) ?? "") : convName(model, conv))
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { model.dms?.markRead(conv); model.visibleConversation = conv }
+        .onAppear { model.markConversationRead(conv); model.visibleConversation = conv }
         .onDisappear { if model.visibleConversation == conv { model.visibleConversation = nil } }
-        .onChange(of: list.count) { _, _ in model.dms?.markRead(conv) }
+        .onChange(of: list.count) { _, _ in model.markConversationRead(conv) }
         .bottomBar {
             VStack(spacing: 6) {
                 if let error { Text(error).font(.caption).foregroundStyle(.red) }
