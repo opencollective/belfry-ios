@@ -63,10 +63,16 @@ final class PerformanceTests: XCTestCase {
         }
         d = Derive(events: log + [NostrEvent(id: String(repeating: "e", count: 64), pubkey: me, createdAt: Int.now, kind: 9, tags: [["h", "channel-3"]], content: "new")], me: me)
         let after = time("a new message arrives: snapshot + feedRows(channel-3)") { _ = d.feedRows("channel-3") }
-        XCTAssertLessThan(second, 150, "another channel on the same snapshot")
-        XCTAssertLessThan(first, 1500, "first channel on a fresh snapshot")
-        XCTAssertLessThan(after, 1500)
-        XCTAssertLessThan(drawer, 1500)
+        // budgets for a release build (CI runs it too); a debug build is about ten times slower
+        #if DEBUG
+        let k = 10.0
+        #else
+        let k = 1.0
+        #endif
+        XCTAssertLessThan(second, 50 * k, "another channel on the same snapshot")
+        XCTAssertLessThan(first, 150 * k, "first channel on a fresh snapshot")
+        XCTAssertLessThan(after, 150 * k, "a new message arrives")
+        XCTAssertLessThan(drawer, 150 * k, "the drawer")
     }
 
     func testLoadingTheStoreIsQuick() throws {
