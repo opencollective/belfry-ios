@@ -331,33 +331,71 @@ struct CodeBoxes: View {
     }
 }
 
-/// The Arms mark: a shield with a tower over water.
+/// The Arms mark, the same drawing as the belfry's pages (collective-belfry theme.py, viewBox
+/// 64 × 70): a shield, a crenellated tower with its door, a line of water. The shield takes the
+/// tint (the belfry's primary colour, else ink); the tower the secondary colour when it stands
+/// out on the shield, else white or near-black.
 struct BelfryMark: View {
     var body: some View {
         Canvas { ctx, size in
-            let w = size.width, h = size.height
+            let k = min(size.width / 64, size.height / 70)
+            let ox = (size.width - 64 * k) / 2, oy = (size.height - 70 * k) / 2
+            func pt(_ x: Double, _ y: Double) -> CGPoint { CGPoint(x: ox + x * k, y: oy + y * k) }
+            let shieldColor = Theme.accent
+            let towerColor = BelfryMark.tower
+
             var shield = Path()
-            shield.move(to: CGPoint(x: w * 0.1, y: h * 0.08))
-            shield.addLine(to: CGPoint(x: w * 0.9, y: h * 0.08))
-            shield.addLine(to: CGPoint(x: w * 0.9, y: h * 0.5))
-            shield.addQuadCurve(to: CGPoint(x: w * 0.5, y: h * 0.95), control: CGPoint(x: w * 0.9, y: h * 0.82))
-            shield.addQuadCurve(to: CGPoint(x: w * 0.1, y: h * 0.5), control: CGPoint(x: w * 0.1, y: h * 0.82))
+            shield.move(to: pt(8, 6))
+            shield.addQuadCurve(to: pt(10, 4), control: pt(8, 4))
+            shield.addLine(to: pt(54, 4))
+            shield.addQuadCurve(to: pt(56, 6), control: pt(56, 4))
+            shield.addLine(to: pt(56, 30))
+            shield.addCurve(to: pt(32, 65), control1: pt(56, 47), control2: pt(45, 59))
+            shield.addCurve(to: pt(8, 30), control1: pt(19, 59), control2: pt(8, 47))
             shield.closeSubpath()
-            ctx.fill(shield, with: .color(Theme.accent))
+            ctx.fill(shield, with: .color(shieldColor))
+
+            let outline: [(Double, Double)] = [
+                (22, 43), (22, 24), (20, 24), (20, 18), (24, 18), (24, 21), (27, 21), (27, 18),
+                (31, 18), (31, 21), (33, 21), (33, 18), (37, 18), (37, 21), (40, 21), (40, 18),
+                (44, 18), (44, 24), (42, 24), (42, 43),
+            ]
             var tower = Path()
-            tower.addRect(CGRect(x: w * 0.4, y: h * 0.3, width: w * 0.2, height: h * 0.32))
-            tower.move(to: CGPoint(x: w * 0.36, y: h * 0.3))
-            tower.addLine(to: CGPoint(x: w * 0.5, y: h * 0.17))
-            tower.addLine(to: CGPoint(x: w * 0.64, y: h * 0.3))
+            tower.move(to: pt(outline[0].0, outline[0].1))
+            for p in outline.dropFirst() { tower.addLine(to: pt(p.0, p.1)) }
             tower.closeSubpath()
-            ctx.fill(tower, with: .color(Theme.onAccent))
-            for i in 0..<2 {
-                var wave = Path()
-                let y = h * (0.7 + Double(i) * 0.08)
-                wave.move(to: CGPoint(x: w * 0.24, y: y))
-                wave.addCurve(to: CGPoint(x: w * 0.76, y: y), control1: CGPoint(x: w * 0.4, y: y - h * 0.05), control2: CGPoint(x: w * 0.6, y: y + h * 0.05))
-                ctx.stroke(wave, with: .color(Theme.onAccent), lineWidth: max(1.5, w * 0.035))
-            }
+            ctx.fill(tower, with: .color(towerColor))
+
+            var door = Path()
+            door.move(to: pt(29, 43))
+            door.addLine(to: pt(29, 38))
+            door.addArc(center: pt(32, 38), radius: 3 * k, startAngle: .degrees(180), endAngle: .degrees(0), clockwise: false)
+            door.addLine(to: pt(35, 43))
+            door.closeSubpath()
+            ctx.fill(door, with: .color(shieldColor))
+
+            var water = Path()
+            water.move(to: pt(16, 49))
+            water.addQuadCurve(to: pt(24, 49), control: pt(20, 46.5))
+            water.addQuadCurve(to: pt(32, 49), control: pt(28, 51.5))
+            water.addQuadCurve(to: pt(40, 49), control: pt(36, 46.5))
+            water.addQuadCurve(to: pt(48, 49), control: pt(44, 51.5))
+            ctx.stroke(water, with: .color(towerColor), style: StrokeStyle(lineWidth: 2.2 * k, lineCap: .round))
         }
+        .aspectRatio(64.0 / 70.0, contentMode: .fit)
+    }
+
+    /// The tower's colour: the secondary colour when its contrast with the primary is at least
+    /// 2.2 (the pages' rule), else the text colour on the tint.
+    private static var tower: Color {
+        guard let b = Theme.branding, let p = Branding.rgb(b.primary), let s = Branding.rgb(b.secondary) else { return Theme.onAccent }
+        let lp = luminance(p), ls = luminance(s)
+        let ratio = (max(lp, ls) + 0.05) / (min(lp, ls) + 0.05)
+        return ratio >= 2.2 ? Color(red: s.0, green: s.1, blue: s.2) : Theme.onAccent
+    }
+
+    private static func luminance(_ c: (Double, Double, Double)) -> Double {
+        func lin(_ v: Double) -> Double { v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+        return 0.2126 * lin(c.0) + 0.7152 * lin(c.1) + 0.0722 * lin(c.2)
     }
 }
