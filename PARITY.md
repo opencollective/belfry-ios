@@ -144,10 +144,10 @@ and gestures are untested in the real world. XCTest covers the core (BelfryCore)
 
 | Web feature | Status | Notes |
 |---|---|---|
-| Profile: picture, name, address, about, tags, place, chips, shared channels, Message | done | Opens from a face, a name or a mention. |
+| Profile: picture, name, address, about, tags, place, chips, shared channels, Message | done | A contact card pushed on the stack (Contacts; inside a sheet, on that sheet's stack): Message / E-mail / Share, About, Tags, Place, Role, Owner / Agents, channels in common; Edit on my own. |
 | Agents: "agent of …", Make it my agent, Remove this agent… (confirmation), error codes | done, never run live | |
 | Edit profile: name, username (`POST /username`), about, picture (≤ 512 px), tags with suggestions, place (city search, add a place, country only, nothing) | done, never run live | Never device GPS. |
-| "Admin of the belfry" switch with the guest / agent rules | done, never run live | |
+| Role instead of "Admin of the belfry" | done, never run live | Role section: Member / Admin / a custom role with its line; Guest / Agent of X. Belfry admins open the role picker (Admin through /admins with its error codes, others /member-roles; locks while saving) and Edit roles…. |
 | Me: card, address, key copy, devices, outbox count, save account, sign out | done | |
 
 ## Belfry events (SPEC 19.18)
