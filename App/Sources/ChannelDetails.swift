@@ -48,7 +48,7 @@ struct ChannelDetails: View {
                 case .settings: SettingsTab(id: id)
                 }
             }
-            .navigationTitle(g.map { $0.isPod ? $0.name : "# " + $0.name } ?? id)
+            .navigationTitle(g.map { $0.isPod ? $0.name : "#" + $0.name } ?? id)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
@@ -134,7 +134,7 @@ struct AboutTab: View {
         let active = d.recentlyActive(id)
         Section {
             if let p = g?.parent, let parent = model.group(p) {
-                Text("\(g?.isProposal == true ? "Proposal" : "Pod") in \(parent.isPod ? parent.name : "# " + parent.name)").font(.footnote).foregroundStyle(.secondary)
+                Text("\(g?.isProposal == true ? "Proposal" : "Pod") in \(parent.isPod ? parent.name : "#" + parent.name)").font(.footnote).foregroundStyle(.secondary)
             }
             if let about = g?.about, !about.isEmpty { MarkdownText(text: about) } else { Text("No description yet.").foregroundStyle(.secondary) }
             if d.isInbox(g) {

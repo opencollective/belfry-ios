@@ -377,6 +377,7 @@ final class AppModel: ObservableObject {
 
     /// READER: as someone who opened a guest link of #general (guest mode), not as Sam.
     func startDemo(reader: Bool = false) {
+        Drafts.clearAll() // the demo starts empty (only offered signed out, where drafts are gone already)
         let s = StoredSession(domain: "demo.belfry.sh", bunkerURL: nil, clientSecret: (reader ? Demo.readerSecret : Demo.meSecret).hex, pubkey: nil, demo: true,
                               reading: reader ? true : nil, guestChannel: reader ? generalId : nil)
         var cfg = BelfryConfig.defaults(domain: "demo.belfry.sh")

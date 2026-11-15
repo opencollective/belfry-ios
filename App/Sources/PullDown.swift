@@ -208,7 +208,7 @@ struct PullDownList: View {
                 if let g, let p = g.parent, let parent = model.group(p) {
                     Section {
                         Button { dismiss(); openChannel(p, nil) } label: {
-                            ActionRow(icon: "arrow.up.left", title: "\(g.isProposal ? "Proposal" : "Group") in \(parent.isPod ? parent.name : "# " + parent.name)")
+                            ActionRow(icon: "arrow.up.left", title: "\(g.isProposal ? "Proposal" : "Group") in \(parent.isPod ? parent.name : "#" + parent.name)")
                         }
                     }
                 }

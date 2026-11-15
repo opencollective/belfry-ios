@@ -101,7 +101,7 @@ struct ChannelSearch: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         HStack {
                                             Text(model.name(h.m.pubkey)).font(.subheadline.bold())
-                                            if everywhere, let g = model.group(h.groupId) { Text(g.isPod ? g.name : "# " + g.name).font(.caption).foregroundStyle(.secondary) }
+                                            if everywhere, let g = model.group(h.groupId) { Text(g.isPod ? g.name : "#" + g.name).font(.caption).foregroundStyle(.secondary) }
                                             Spacer()
                                             Text(Format.short(h.m.at)).font(.caption2).foregroundStyle(.secondary)
                                         }

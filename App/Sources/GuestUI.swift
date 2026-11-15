@@ -113,7 +113,7 @@ struct JoinSheet: View {
     var label: String {
         let id = model.guestChannel ?? ""
         let g = model.group(id)
-        return g.map { $0.isPod ? $0.name : "# " + $0.name } ?? (id.isEmpty ? "" : "# " + id)
+        return g.map { $0.isPod ? $0.name : "#" + $0.name } ?? (id.isEmpty ? "" : "#" + id)
     }
 
     var title: String {
