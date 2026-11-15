@@ -89,7 +89,7 @@ struct AboutTab: View {
                 ActionButtonRow(icon: "person.crop.circle.badge.plus", title: "Join") { model.join(id) }
             }
             if let g, g.isPod, g.members.contains(model.me) {
-                ActionButtonRow(icon: "rectangle.portrait.and.arrow.right", title: "Leave the pod", destructive: true) { model.leave(id) }
+                ActionButtonRow(icon: "rectangle.portrait.and.arrow.right", title: "Leave the group", destructive: true) { model.leave(id) }
             }
         }
         Section(active.isEmpty ? "Nobody active this month yet" : "Active in the last 30 days") {
@@ -109,7 +109,7 @@ struct AboutTab: View {
         }
         let pods = d.pods(id)
         if !pods.isEmpty {
-            Section("Pods") {
+            Section("Groups") {
                 ForEach(pods) { p in
                     Button { openChannel(p.id, nil) } label: { HStack { ChannelGlyph(group: p, size: 20); Text(p.name) } }.buttonStyle(.plain)
                 }
@@ -446,97 +446,6 @@ struct SettingsTab: View {
             closed = g.closed
             prompt = g.prompt ?? ""
         }
-    }
-}
-
-struct InviteSheet: View {
-    @EnvironmentObject var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    let id: String
-    @State private var query = ""
-    @State private var notes = [String: String]()
-    @State private var people = 1
-    @State private var linkDays = 1
-    @State private var ownAgent = false
-    @State private var link: GuestLink?
-    @State private var error: String?
-    @State private var agents: MyAgents?
-    @State private var copied = false
-
-    var body: some View {
-        let d = model.derive
-        let g = model.group(id)
-        let label = g.map { $0.isPod || $0.isEvent ? $0.name : "# " + $0.name } ?? id
-        let memberLink = d.channelURL(id)
-        NavigationStack {
-            List {
-                Section {
-                    TextField("Name of someone here", text: $query).font(.body).textInputAutocapitalization(.words)
-                    ForEach(d.inviteCandidates(query), id: \.self) { pk in
-                        HStack(spacing: 10) {
-                            Avatar(pubkey: pk, size: 28)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(model.name(pk)).font(.subheadline.weight(.semibold))
-                                Text([d.kindLabel(pk), notes[pk] ?? d.inviteState(g, pk)].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if notes[pk] == nil && !d.inChannel(g, pk) {
-                                BusyButton(d.isGuest(pk) ? "Add" : "Invite") { notes[pk] = await model.inviteHere(pk, to: id) }
-                                    .font(.caption.weight(.semibold)).buttonStyle(.bordered).controlSize(.small)
-                            }
-                        }
-                    }
-                } header: { Text("Someone who is here already") }
-                if !d.amGuest {
-                    Section {
-                        LinkBlock(url: memberLink, title: label, message: "Join \(label) on \(model.config.name)")
-                    } header: { Text("Members") } footer: { Text("Members open \(label) with this link.") }
-                    Section {
-                        if agents.map({ $0.limit > 0 }) ?? false {
-                            Toggle(isOn: $ownAgent) {
-                                VStack(alignment: .leading) {
-                                    Text("My own agent")
-                                    Text(agents.map { $0.room > 0 ? "It joins as yours and stays while you do." : "You have as many agents as you can have." } ?? "")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                            .tint(Theme.toggle)
-                            .disabled((agents?.room ?? 0) <= 0)
-                            .onChange(of: ownAgent) { _, _ in link = nil; error = nil }
-                        }
-                        if !ownAgent {
-                            Picker("How many", selection: $people) { Text("One person").tag(1); Text("Up to 50").tag(50) }
-                                .disabled(link != nil)
-                            Picker("Link works for", selection: $linkDays) { Text("1 day").tag(1); Text("1 week").tag(7); Text("1 month").tag(30) }
-                                .disabled(link != nil)
-                        }
-                        if let link {
-                            let url = link.ownAgent ? (link.agentURL ?? link.url) : link.url
-                            LinkBlock(url: url, title: label, message: link.ownAgent ? "Instructions for my agent to join \(label)" : "Join \(label) on \(model.config.name)")
-                            Text(link.ownAgent ? "Hand this to your agent: it works once, and the agent joins as yours."
-                                 : "\(link.people == 1 ? "One person" : "Up to \(link.people) people") can use it for \(link.linkDays == 1 ? "a day" : link.linkDays == 7 ? "a week" : "a month"). They join \(label) only, for \(link.days) days. Everyone here sees who invited them.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                            Button("Make another link") { self.link = nil }
-                        } else {
-                            BusyButton(ownAgent ? "Make the agent's link" : "Make a guest link") {
-                                error = nil
-                                switch await model.makeGuestLink(id, people: ownAgent ? 1 : people, linkDays: ownAgent ? 1 : linkDays, agent: ownAgent) {
-                                case .success(let l): link = l
-                                case .failure(let e): error = e.message
-                                }
-                            }
-                        }
-                        if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) }
-                    } header: { Text("Someone who isn't a member") } footer: { Text("A guest sees this channel only, nothing else.") }
-                }
-            }
-            .navigationTitle("Invite to \(label)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .task { if !model.derive.amGuest && !model.derive.isAgent(model.me) { agents = await model.myAgents() } }
-            .onAppear { if model.launch.screen == "invite" && link == nil { Task { if case .success(let l) = await model.makeGuestLink(id, people: 1, linkDays: 1) { link = l } } } }
-        }
-        .presentationDetents([.large])
     }
 }
 

@@ -116,7 +116,7 @@ struct ChannelGlyph: View {
             PodShape(members: group.members.count)
                 .stroke(Color.secondary, style: StrokeStyle(lineWidth: 1.6, lineJoin: .round))
                 .frame(width: size, height: size)
-                .accessibilityLabel("Pod")
+                .accessibilityLabel("Group")
         } else {
             Text(group.icon).font(.system(size: size * 0.85, weight: .semibold)).frame(width: size, height: size)
                 .accessibilityHidden(true)

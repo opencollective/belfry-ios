@@ -66,7 +66,7 @@ struct ChannelView: View {
                             JoinLine(join: j)
                         case .activity(let root, let last):
                             let key = "act:" + root.id
-                            ThreadActivity(root: root, last: last, open: openThreads.contains(key)) { toggle(key) }
+                            ThreadActivity(root: root, last: last, open: false) { thread = ThreadRoute(group: id, root: root.id) }
                             if openThreads.contains(key) {
                                 InlineThread(group: id, root: root, onOpen: { thread = ThreadRoute(group: id, root: root.id) },
                                              onHold: { hold($0) }) { toggle(key) }
@@ -365,7 +365,7 @@ struct PodJoinBar: View {
     let ask: () -> Void
     var body: some View {
         HStack {
-            Text(asked ? "You asked to join. Its members will answer." : group.closed ? "Joining takes an application." : "You're not in this pod.")
+            Text(asked ? "You asked to join. Its members will answer." : group.closed ? "Joining takes an application." : "You're not in this group.")
                 .font(.footnote).foregroundStyle(.secondary)
             Spacer()
             if !asked {

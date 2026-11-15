@@ -63,6 +63,7 @@ jobs:
             -derivedDataPath build -clonedSourcePackagesDirPath build/SourcePackages \
             -skipPackagePluginValidation -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 | tee xcodebuild.log | grep -E "error:|warning: .*BelfryApp|BUILD (SUCCEEDED|FAILED)|TEST BUILD (SUCCEEDED|FAILED)" || true
+          ! grep -q "BUILD FAILED" xcodebuild.log
           test -d build/Build/Products/Debug-iphonesimulator/Belfry.app
       - name: Build log
         if: always()

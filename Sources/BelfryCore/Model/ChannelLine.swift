@@ -155,7 +155,7 @@ extension Derive {
         line.counts = [
             LineCount(kind: "events", n: f.events.count - (shown == "event" ? 1 : 0), plus: shown == "event", label: "more events"),
             LineCount(kind: "proposals", n: f.proposals.count - (shown == "proposal" ? 1 : 0), plus: shown == "proposal", label: "more open proposals"),
-            LineCount(kind: "pods", n: f.pods.count, plus: false, label: "pods"),
+            LineCount(kind: "pods", n: f.pods.count, plus: false, label: "groups"),
             LineCount(kind: "todos", n: f.todos.count, plus: false, label: "to do"),
         ].filter { $0.n > 0 }
         return line

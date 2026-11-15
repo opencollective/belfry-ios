@@ -91,6 +91,9 @@ public struct Group: Identifiable, Hashable, Sendable {
     public var parent: String?
     public var applications: [Application] = []
     public var pending = false
+    /// How many members vouching admits an applicant (the `vouches` tag on the 9002, 1–5; 0: its
+    /// admins accept). Belfry's vouches.py does the admitting (docs/membership.md).
+    public var vouches = 0
 
     public static func typeOf(_ id: String) -> ChannelType {
         if id.hasPrefix("ws-") || id.hasPrefix("ev-") { return .event }
@@ -192,11 +195,11 @@ public struct Message: Identifiable, Hashable, Sendable {
         return text
     }
 
-    /// "an event" / "a pod" / "a proposal" for the line "Created …" above a card; nil otherwise.
+    /// "an event" / "a group" / "a proposal" for the line "Created …" above a card; nil otherwise.
     public var created: String? {
         switch special {
         case .eventCard: return "an event"
-        case .podCard: return "a pod"
+        case .podCard: return "a group"
         case .proposalCard: return "a proposal"
         default: return nil
         }
@@ -526,6 +529,12 @@ public final class Derive {
                 let access: Bool? = e.hasTag("closed") ? true : e.hasTag("open") ? false : nil
                 if let a = access, (m["closed"] ?? 0) <= e.createdAt { g.closed = a; m["closed"] = e.createdAt }
                 if let p = e.tag("prompt"), (m["prompt"] ?? 0) <= e.createdAt { g.prompt = p; m["prompt"] = e.createdAt }
+                // the vouches rule goes with the access tags: open / closed without it = admins accept
+                if (access != nil || e.tag("vouches") != nil) && (m["vouches"] ?? 0) <= e.createdAt {
+                    let n = Int(e.tag("vouches") ?? "0") ?? 0
+                    g.vouches = access == false ? 0 : max(0, min(n, 5))
+                    m["vouches"] = e.createdAt
+                }
             }
             if e.kind == 9007 { g.admins.insert(e.pubkey) }
             if e.kind == 39001 { for t in e.tags where t.first == "p" && t.count > 1 { g.admins.insert(t[1]) } }

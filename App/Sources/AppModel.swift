@@ -52,6 +52,16 @@ final class AppModel: ObservableObject {
     @Published var config: BelfryConfig = .defaults(domain: "belfry.sh") {
         didSet { if config.branding != oldValue.branding { Theme.branding = config.branding } }
     }
+    /// The belfry's roles and membership settings (docs/roles.md, docs/membership.md).
+    @Published var roles = RolesInfo()
+    var rolesAt: Date?
+    @Published var membership = MembershipSettings()
+    /// Requests waiting (Requests screen): people and agents asking to join the belfry.
+    @Published var belfryRequests = [BelfryRequest]()
+    @Published var agentRequests = [AgentRequest]()
+    var demoRequestsSeeded = false
+    /// A group's page to show (its card in the parent channel).
+    @Published var openGroup: String?
     /// The drawer's search field (all channels).
     @Published var drawerQuery = ""
     /// When I last opened @Mentions (the badge counts the ones after).

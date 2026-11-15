@@ -73,22 +73,23 @@ struct MessageRow: View {
                     ReactionBar(reactions: reactions) { emoji in model.toggleReaction(emoji, on: m, in: group); tapped += 1 }
                 }
                 if let thread, thread.count > 0 {
-                    HStack(spacing: 12) {
-                        Button(action: onThread) {
-                            HStack(spacing: 6) {
-                                HStack(spacing: -6) { ForEach(thread.who.prefix(3), id: \.self) { Avatar(pubkey: $0, size: 18) } }
-                                Text(threadOpen ? "Hide replies" : "\(thread.count) \(thread.count == 1 ? "reply" : "replies")").font(.caption.weight(.semibold))
-                                Text(Format.short(thread.last)).font(.caption2).foregroundStyle(.secondary)
+                    // replies always open the thread's own screen (web 9cbb1cb)
+                    Button(action: onOpenThread) {
+                        HStack(spacing: 6) {
+                            HStack(spacing: -6) {
+                                ForEach(thread.who.prefix(3), id: \.self) {
+                                    Avatar(pubkey: $0, size: 20).overlay(Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 1.5))
+                                }
                             }
+                            Text("\(thread.count) \(thread.count == 1 ? "reply" : "replies")").font(.footnote.weight(.semibold)).foregroundStyle(Color.brand)
+                            Text(Format.short(thread.last)).font(.footnote).foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(threadOpen ? "Hide replies" : "\(thread.count) replies")
-                        Button(action: onOpenThread) {
-                            HStack(spacing: 2) { Text("Open thread"); Image(systemName: "chevron.right") }.font(.caption.weight(.semibold))
-                        }
-                        .buttonStyle(.plain)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
                     }
-                    .foregroundStyle(Color.brand)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(thread.count) \(thread.count == 1 ? "reply" : "replies"). Open the thread")
                 }
                 if let p = pending {
                     if p.status == .failed {
@@ -128,13 +129,13 @@ struct SpecialBody: View {
         switch m.special {
         case .podCard(let pid):
             let g = model.group(pid)
-            Button { openChannel(pid, nil) } label: {
+            Button { hideKeyboard(); model.openGroup = pid } label: {
                 CardFrame {
                     HStack(spacing: 10) {
                         if let g { ChannelGlyph(group: g, size: 26) }
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(g?.name ?? "A pod").font(.subheadline.weight(.semibold))
-                            Text(g.map { "\($0.members.count) \($0.members.count == 1 ? "member" : "members") · \($0.closed ? "by application" : "open to join")" } ?? "Pod")
+                            Text(g?.name ?? "A group").font(.subheadline.weight(.semibold))
+                            Text(g.map { "\($0.members.count) \($0.members.count == 1 ? "member" : "members") · \($0.closed ? "by application" : "open to join")" } ?? "Group")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 0)

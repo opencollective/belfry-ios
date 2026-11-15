@@ -37,6 +37,14 @@ struct RootView: View {
     @State private var drawer = false
 
     var body: some View {
+        withSheets
+            .sheet(isPresented: $model.joinAsked) { JoinSheet() }
+            .sheet(isPresented: $newChannel) { NewChannelSheet { id in selection = .channel(id) } }
+            .sheet(isPresented: $account) { AccountSheet() }
+            .sheet(isPresented: $notifications) { NavigationStack { NotificationsView() } }
+    }
+
+    private var routed: some View {
         layout
         .environment(\.openChannel) { id, message in
             focus = message.map { SearchTarget(channel: id, message: $0) }
@@ -55,11 +63,18 @@ struct RootView: View {
                 path = p
             }
         }
+    }
+
+    private var withSheets: some View {
+        withLife
         .sheet(item: Binding(get: { model.openEvent.map { EventKey(key: $0) } }, set: { model.openEvent = $0?.key })) { k in
             EventPage(key: k.key)
         }
         .sheet(item: Binding(get: { model.showEvents.map { EventKey(key: $0) } }, set: { model.showEvents = $0?.key })) { k in
             EventsList(channel: k.key.isEmpty ? nil : k.key)
+        }
+        .sheet(item: Binding(get: { model.openGroup.map { GroupKey(id: $0) } }, set: { model.openGroup = $0?.id })) { k in
+            GroupPage(id: k.id)
         }
         .sheet(item: Binding(get: { model.openProfile.map { ProfileKey(pubkey: $0) } }, set: { model.openProfile = $0?.pubkey })) { k in
             ProfileView(pubkey: k.pubkey)
@@ -67,6 +82,10 @@ struct RootView: View {
         .sheet(item: Binding(get: { model.guestReading ? nil : model.pendingInvite }, set: { if $0 == nil { model.pendingInvite = nil } })) { inv in
             JoinWithAccountSheet(invite: inv)
         }
+    }
+
+    private var withPush: some View {
+        routed
         .onChange(of: model.pushOpen) { _, p in
             guard let p else { return }
             model.pushOpen = nil
@@ -84,6 +103,10 @@ struct RootView: View {
             model.joinedChannel = nil
             selection = .channel(id)
         }
+    }
+
+    private var withLife: some View {
+        withPush
         // no keyboard over a sheet
         .onChange(of: model.openProfile) { _, v in if v != nil { hideKeyboard() } }
         .onChange(of: model.openEvent) { _, v in if v != nil { hideKeyboard() } }
@@ -98,10 +121,6 @@ struct RootView: View {
             if let id = model.joinedChannel { model.joinedChannel = nil; selection = .channel(id) }
         }
         .onChange(of: model.version) { _, _ in if selection == nil { selection = firstChannel() } }
-        .sheet(isPresented: $model.joinAsked) { JoinSheet() }
-        .sheet(isPresented: $newChannel) { NewChannelSheet { id in selection = .channel(id) } }
-        .sheet(isPresented: $account) { AccountSheet() }
-        .sheet(isPresented: $notifications) { NavigationStack { NotificationsView() } }
     }
 
     @ViewBuilder private var layout: some View {
@@ -176,6 +195,9 @@ struct RootView: View {
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
         case "pod": selection = .channel("pod-seed-swap-5e1d")
+        case "group":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openGroup = "pod-seed-swap-5e1d" }
         case "profile":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openProfile = Demo.signer("ana").pubkey }

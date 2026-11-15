@@ -171,7 +171,7 @@ struct Composer: View {
                 Section {
                     Button { choose(.event) } label: { Label("Event", systemImage: "calendar") }
                     Button { choose(.create(.proposal)) } label: { Label("Proposal", systemImage: "doc.text") }
-                    Button { choose(.create(.pod)) } label: { Label("Pod", systemImage: "hexagon") }
+                    Button { choose(.create(.pod)) } label: { Label("Group", systemImage: "hexagon") }
                 }
             }
             if canAnnounce {
@@ -349,7 +349,7 @@ struct CreateSheet: View {
                             Text("By application").tag(true)
                         }
                         if closed { TextField(Actions.defaultPrompt, text: $prompt, axis: .vertical).lineLimit(1...4).font(.body) }
-                    } footer: { Text(closed ? "People answer the question; the pod's members let them in." : "Anyone in the channel can join.") }
+                    } footer: { Text(closed ? "People answer the question; the group's members let them in." : "Anyone in the channel can join.") }
                 case .proposal:
                     Section {
                         TextField("Title", text: $title).font(.body)
@@ -364,7 +364,7 @@ struct CreateSheet: View {
                     }
                 }
             }
-            .navigationTitle(kind == .todo ? "New to-do" : kind == .pod ? "New pod" : "New proposal")
+            .navigationTitle(kind == .todo ? "New to-do" : kind == .pod ? "New group" : "New proposal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

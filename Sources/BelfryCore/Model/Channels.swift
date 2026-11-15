@@ -97,3 +97,61 @@ public extension Derive {
         return Array(out.sorted { $0.createdAt > $1.createdAt }.prefix(limit))
     }
 }
+
+// ---- vouches (docs/membership.md "Groups that accept by vouches") ------------------------------
+
+public extension Derive {
+    static let vouchNS = "belfry/vouch"
+
+    /// Per request (the 9021's id): each author's latest vouch label ("vouch" / "withdrawn").
+    func vouchLabels() -> [String: [String: (v: String, at: Int)]] {
+        var out = [String: [String: (v: String, at: Int)]]()
+        for e in events where e.kind == 1985 && e.tag("L") == Derive.vouchNS {
+            guard let req = e.tag("e"), let v = e.tag("l") else { continue }
+            var m = out[req] ?? [:]
+            if let was = m[e.pubkey], was.at > e.createdAt { continue }
+            m[e.pubkey] = (v, e.createdAt)
+            out[req] = m
+        }
+        return out
+    }
+
+    /// Who vouches for application A in group G now: members of G (of the belfry: not guests or
+    /// agents, where this app knows), never the applicant.
+    func vouchesFor(_ g: Group, _ a: Application) -> [String] {
+        guard let m = vouchLabels()[a.id] else { return [] }
+        return m.filter { pk, x in x.v == "vouch" && pk != a.pubkey && g.members.contains(pk) && !isGuest(pk) && !isAgent(pk) }.map(\.key).sorted()
+    }
+
+    /// Requests to group G I can act on: all when I'm one of its admins; while it accepts by
+    /// vouches, its members see them to vouch (web groupRequestsFor).
+    func groupRequestsFor(_ g: Group) -> [Application] {
+        guard g.closed, !g.applications.isEmpty else { return [] }
+        if g.admins.contains(me) { return g.applications }
+        if g.vouches > 0 && g.members.contains(me) && !isGuest(me) && !isAgent(me) { return g.applications.filter { $0.pubkey != me } }
+        return []
+    }
+
+    func groupRequests() -> [(group: Group, list: [Application])] {
+        groups().map { ($0, groupRequestsFor($0)) }.filter { !$0.1.isEmpty }
+    }
+
+    /// Group requests waiting for me (admins: all; vouchers: the ones I haven't vouched for).
+    func groupRequestCount() -> Int {
+        groupRequests().reduce(0) { n, x in
+            n + (x.group.admins.contains(me) ? x.list.count : x.list.filter { !vouchesFor(x.group, $0).contains(me) }.count)
+        }
+    }
+}
+
+public extension Actions {
+    /// A vouch (or its withdrawal) for a request to join a closed group.
+    static func vouch(_ groupId: String, requestId: String, applicant: String, on: Bool = true) -> Draft {
+        Draft(kind: 1985, tags: [["h", groupId], ["L", Derive.vouchNS], ["l", on ? "vouch" : "withdrawn", Derive.vouchNS], ["e", requestId], ["p", applicant]])
+    }
+
+    /// The admins' order of the channel list (30078 d=belfry:channel-order on the community relay).
+    static func channelOrder(_ ids: [String]) -> Draft {
+        Draft(.main, kind: 30078, content: JSON.encode(["order": Array(ids.prefix(1000))]), tags: [["d", Derive.orderD]])
+    }
+}
