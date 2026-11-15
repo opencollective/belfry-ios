@@ -512,6 +512,7 @@ public final class Derive {
         var appliedOrder = [String]()
         var decided = [String: Int]()
         var gone = Set<String>()
+        var creatorOf = [String: String]()
         for e in sortedEvents {
             let gid = (39000...39003).contains(e.kind) ? e.tag("d") : e.tag("h")
             guard let id = gid, !id.isEmpty else { continue }
@@ -546,8 +547,13 @@ public final class Derive {
                     m["vouches"] = e.createdAt
                 }
             }
-            if e.kind == 9007 { g.admins.insert(e.pubkey) }
-            if e.kind == 39001 { for t in e.tags where t.first == "p" && t.count > 1 { g.admins.insert(t[1]) } }
+            if e.kind == 9007 { g.admins.insert(e.pubkey); if creatorOf[id] == nil { creatorOf[id] = e.pubkey } }
+            // the relay's latest 39001 is the list (an admin made a member again is gone from it;
+            // SPEC 19.29); the creator stays, later co-host puts (9000 … admin) add to it
+            if e.kind == 39001 {
+                g.admins = Set(e.tags.filter { $0.first == "p" && $0.count > 1 }.map { $0[1] })
+                if let c = creatorOf[id] { g.admins.insert(c) }
+            }
             if e.kind == 39002 { g.members = Set(e.tags.filter { $0.first == "p" && $0.count > 1 }.map { $0[1] }) }
             if e.kind == 9000 || e.kind == 9001, let p = e.tag("p"), !p.isEmpty {
                 if e.kind == 9000 { g.members.insert(p) } else { g.members.remove(p) }

@@ -111,14 +111,5 @@ extension AppModel {
         } catch let x as ApiError { return .failure(x) } catch { return .failure(ApiError("network", 0, BelfryAPI.network)) }
     }
 
-    /// An event address opened from outside (https://chat.<domain>/events/<link>): only domain + link.
-    func handleEventURL(_ url: URL) -> Bool {
-        guard url.scheme == "https", let host = url.host?.lowercased(), host.hasPrefix("chat.") else { return false }
-        var parts = url.path.split(separator: "/").map(String.init)
-        if parts.isEmpty, let f = url.fragment { parts = f.split(separator: "/").map(String.init) }
-        guard parts.count == 2, parts[0] == "events", EventLinks.slugRx.test(parts[1]) || EventLinks.isD(parts[1]) else { return false }
-        let domain = String(host.dropFirst(5))
-        if phase == .ready && domain == config.domain { openEvent = parts[1] } else if phase == .ready { website = "This event is in another community." }
-        return true
-    }
+    // An event address opened from outside: AppModel+Checkin handleTicketURL (also /t/<code>).
 }

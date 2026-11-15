@@ -22,6 +22,12 @@ struct InviteSheet: View {
     @State private var asked = 0
     @State private var agents: MyAgents?
 
+    /// STARTAS: what the link is for when the sheet opens (the Members screen's button: a member).
+    init(id: String, startAs: JoinsAs? = nil) {
+        self.id = id
+        _who = State(initialValue: startAs ?? .guest(days: 1))
+    }
+
     var body: some View {
         let _ = model.version
         let g = model.group(id)

@@ -38,8 +38,8 @@ struct ThreadView: View {
                     ForEach(replies) { r in
                         ReplyRow(group: group, r: r) { hold(r) }.padding(.horizontal).id(r.id)
                     }
-                    // the composer's height below the last row: scrolling to the end stops above it
-                    Color.clear.frame(height: 1).padding(.bottom, composerH).id("bottom")
+                    // the end: the composer is this scroll view's safe-area inset, .bottom stops above it
+                    Color.clear.frame(height: 1).id("bottom")
                 }
                 .padding(.vertical, 8)
             }

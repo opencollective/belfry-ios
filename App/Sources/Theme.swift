@@ -121,8 +121,9 @@ extension View {
 
     /// The composer's place: a plain safe-area inset (scrolling to the last message keeps it above
     /// the composer; with iOS 26's safeAreaBar the last row ended up behind it).
-    /// HEIGHT: told the bar's height (the feed pads its end by it: SwiftUI's scrollTo ignores the
-    /// inset and left the last row behind the composer).
+    /// HEIGHT: told the bar's height. The feed must NOT pad its end by it: scrollTo(.bottom) and
+    /// defaultScrollAnchor(.bottom) already stop above a safe-area inset (the pad showed as an
+    /// empty band above the composer at the end of a channel, 2026-11-15).
     func bottomBar<V: View>(height: Binding<CGFloat>? = nil, @ViewBuilder _ content: () -> V) -> some View {
         safeAreaInset(edge: .bottom, spacing: 0) {
             content().background(GeometryReader { g in Color.clear.preference(key: BarHeightKey.self, value: g.size.height) })

@@ -57,7 +57,7 @@ struct InviteScanner: View {
     }
 }
 
-private struct QRScannerView: UIViewControllerRepresentable {
+struct QRScannerView: UIViewControllerRepresentable {
     let onCode: (String) -> Void
 
     func makeUIViewController(context: Context) -> DataScannerViewController {

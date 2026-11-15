@@ -25,6 +25,62 @@ public struct ApiMe: Hashable, Sendable {
     public let applied, waitlist, declined: Bool
     public let rsvp: Rsvp?
     public let member: Bool
+    /// The `viewer` fields of the check-in contract (SPEC 19.29); an older belfry sends none.
+    public var ticketCode: String? = nil
+    /// What my ticket's QR holds: https://chat.<domain>/events/<link>/t/<code> (never shown as text).
+    public var ticketURL: String? = nil
+    public var checkedIn: Int? = nil
+    /// Subset of host, cohost, steward.
+    public var roles: [String] = []
+    public var mayCheckIn = false
+}
+
+/// What the belfry told me about myself at one event, kept on the phone per event (offline
+/// first: my ticket's QR shows without a connection).
+public struct EventViewer: Codable, Hashable, Sendable {
+    public var ticket: String?
+    public var ticketCode: String?
+    public var ticketURL: String?
+    public var checkedIn: Int?
+    public var roles: [String]
+    public var mayCheckIn: Bool
+    public var at: Int
+    public init(ticket: String?, ticketCode: String?, ticketURL: String?, checkedIn: Int?, roles: [String], mayCheckIn: Bool, at: Int) {
+        self.ticket = ticket; self.ticketCode = ticketCode; self.ticketURL = ticketURL; self.checkedIn = checkedIn
+        self.roles = roles; self.mayCheckIn = mayCheckIn; self.at = at
+    }
+    public init(_ m: ApiMe, at: Int) {
+        self.init(ticket: m.ticket, ticketCode: m.ticketCode, ticketURL: m.ticketURL, checkedIn: m.checkedIn, roles: m.roles, mayCheckIn: m.mayCheckIn, at: at)
+    }
+}
+
+/// A ticket holder as the check-in list shows them (`POST /events/<d>/attendees`).
+public struct Attendee: Codable, Hashable, Sendable, Identifiable {
+    public var pubkey: String
+    public var name: String
+    public var ticket: String
+    public var ticketTitle: String
+    public var rsvp: String?
+    public var checkedIn: Int?
+    public var role: String
+    public var id: String { pubkey }
+    public init(pubkey: String, name: String, ticket: String, ticketTitle: String, rsvp: String?, checkedIn: Int?, role: String) {
+        self.pubkey = pubkey; self.name = name; self.ticket = ticket; self.ticketTitle = ticketTitle
+        self.rsvp = rsvp; self.checkedIn = checkedIn; self.role = role
+    }
+}
+
+public struct AttendeeList: Codable, Hashable, Sendable {
+    public var people: [Attendee]
+    public var going: Int
+    public var checkedIn: Int
+    public init(people: [Attendee], going: Int, checkedIn: Int) { self.people = people; self.going = going; self.checkedIn = checkedIn }
+}
+
+public struct CheckInResult: Hashable, Sendable {
+    public let person: Attendee
+    public let already: Bool
+    public init(person: Attendee, already: Bool) { self.person = person; self.already = already }
 }
 
 public struct ApiEvent: Hashable, Sendable {
@@ -167,10 +223,23 @@ public extension BelfryAPI {
         guard let d = o["d"] as? String, let coord = o["coord"] as? String, let group = o["group"] as? String else { return nil }
         func s(_ k: String) -> String? { o[k] as? String }
         var me: ApiMe?
-        if let m = o["me"] as? [String: Any] {
-            me = ApiMe(host: m["host"] as? Bool ?? false, ticket: m["ticket"] as? String, applied: m["applied"] as? Bool ?? false,
-                       waitlist: m["waitlist"] as? Bool ?? false, declined: m["declined"] as? Bool ?? false,
-                       rsvp: Rsvp(rawValue: m["rsvp"] as? String ?? ""), member: m["member"] as? Bool ?? false)
+        // `me` (events v1) and `viewer` (the check-in contract): read both, viewer's fields win
+        let mo = o["me"] as? [String: Any], vo = o["viewer"] as? [String: Any]
+        if mo != nil || vo != nil {
+            var m = mo ?? [:]
+            for (k, v) in vo ?? [:] { m[k] = v }
+            var x = ApiMe(host: m["host"] as? Bool ?? false, ticket: m["ticket"] as? String, applied: m["applied"] as? Bool ?? false,
+                          waitlist: m["waitlist"] as? Bool ?? false, declined: m["declined"] as? Bool ?? false,
+                          rsvp: Rsvp(rawValue: m["rsvp"] as? String ?? ""), member: m["member"] as? Bool ?? false)
+            if let c = m["ticket_code"] as? String, TicketScan.isCode(c) {
+                x.ticketCode = c
+                let u = m["ticket_url"] as? String ?? ""
+                x.ticketURL = u.hasPrefix("https://") && u.hasSuffix("/t/" + c) && (u as NSString).length <= 400 ? u : nil
+            }
+            x.checkedIn = int(m["checked_in"])
+            x.roles = (m["roles"] as? [Any] ?? []).compactMap { $0 as? String }.filter { ["host", "cohost", "steward"].contains($0) }
+            x.mayCheckIn = m["may_check_in"] as? Bool ?? false
+            me = x
         }
         let tickets: [ApiTicket] = (o["tickets"] as? [[String: Any]] ?? []).compactMap { x in
             guard let td = x["d"] as? String else { return nil }
@@ -193,6 +262,65 @@ public extension BelfryAPI {
                         status: s("status") == "cancelled" ? .cancelled : .scheduled, statusReason: (s("status_reason") ?? "").sliceUnits(500),
                         hosts: hosts, tickets: tickets, going: int(o["going"]) ?? 0, community: (s("community") ?? "").sliceUnits(100), me: me)
     }
+
+    // ---- check-in and roles in a group (SPEC 19.29) ---------------------------------------------
+
+    /// The message when the belfry does not know a new endpoint yet (404 without one of its codes).
+    static let updateNeeded = "This belfry needs an update."
+
+    static func checkinFail(_ a: Answer, _ fallback: String, known: Set<String>) -> ApiError {
+        if a.status == 404 && !known.contains(a.error) { return ApiError("update_needed", 404, updateNeeded) }
+        if a.status == 405 { return ApiError("update_needed", 405, updateNeeded) }
+        return eventFail(a, fallback, checkinErrors)
+    }
+
+    static func parseAttendee(_ x: [String: Any]) -> Attendee? {
+        guard let pk = x["pubkey"] as? String, isHex64(pk) else { return nil }
+        return Attendee(pubkey: pk, name: (x["name"] as? String ?? "").sliceUnits(100), ticket: (x["ticket"] as? String ?? "").sliceUnits(200),
+                        ticketTitle: (x["ticket_title"] as? String ?? "").sliceUnits(120), rsvp: x["rsvp"] as? String,
+                        checkedIn: int(x["checked_in"]), role: (x["role"] as? String ?? "member").sliceUnits(20))
+    }
+
+    /// Ticket holders with their check-in state (hosts, co-hosts, stewards). Codes: `not_allowed`.
+    func attendees(d: String) async throws -> AttendeeList {
+        let a = try await signed(eventsBase + "/" + d + "/attendees", method: "POST", json: [:])
+        guard a.ok, let b = a.body else { throw BelfryAPI.checkinFail(a, "The list could not be loaded.", known: ["not_allowed"]) }
+        let people = (b["people"] as? [[String: Any]] ?? []).compactMap(BelfryAPI.parseAttendee)
+        return AttendeeList(people: people, going: BelfryAPI.int(b["going"]) ?? people.count, checkedIn: BelfryAPI.int(b["checked_in"]) ?? people.filter { $0.checkedIn != nil }.count)
+    }
+
+    /// Check someone in (by their ticket's CODE or their PUBKEY), or UNDO it. Codes: `no_ticket`, `not_allowed`.
+    func checkIn(d: String, code: String? = nil, pubkey: String? = nil, undo: Bool = false) async throws -> CheckInResult {
+        var body: [String: Any] = [:]
+        if let code { body["code"] = code } else if let pubkey { body["pubkey"] = pubkey }
+        if undo { body["undo"] = true }
+        let a = try await signed(eventsBase + "/" + d + "/checkin", method: "POST", json: body)
+        guard a.ok, let b = a.body, let p = (b["person"] as? [String: Any]).flatMap(BelfryAPI.parseAttendee) else {
+            throw BelfryAPI.checkinFail(a, "That did not work. Try again.", known: ["no_ticket", "not_allowed"])
+        }
+        return CheckInResult(person: p, already: b["already"] as? Bool ?? false)
+    }
+
+    /// Change PUBKEY's role in a channel, group or event. Codes: `not_allowed`, `not_in_group`,
+    /// `last_admin`, `guest_not_saved`, `agent`, `events_only`.
+    func setGroupRole(channel: String, pubkey: String, role: GroupRole) async throws -> GroupRole {
+        let a = try await signed(base + "/group-roles", method: "POST", json: ["channel": channel, "pubkey": pubkey, "role": role.rawValue])
+        guard a.ok else {
+            throw BelfryAPI.checkinFail(a, "The role could not be changed.", known: ["not_allowed", "not_in_group", "last_admin", "guest_not_saved", "agent", "events_only"])
+        }
+        return GroupRole(rawValue: a.body?["role"] as? String ?? "") ?? role
+    }
+
+    static let checkinErrors = [
+        "not_allowed": "You can’t do this here.",
+        "not_in_group": "They need to be in it first (or hold a ticket).",
+        "last_admin": "Someone else must be an admin first.",
+        "guest_not_saved": "They need an account with an e-mail address first.",
+        "agent": "An agent can’t be an admin.",
+        "events_only": "Stewards are for events only.",
+        "no_ticket": "Not a ticket for this event",
+        "update_needed": updateNeeded,
+    ]
 
     static let eventErrors = [
         "not_found": "There is no such event here.",

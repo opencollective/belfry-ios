@@ -1,10 +1,56 @@
 import BelfryCore
 import Foundation
+import UIKit
 
 // Demo mode (-demo or "Try the demo"): a made-up community kept on this device, used by the
 // screenshot job in CI. Nothing leaves the device.
 
 typealias Channel = BelfryCore.Group
+
+/// The demo's pictures, drawn on the device and put in the image cache (nothing is fetched).
+enum DemoPictures {
+    static func url(_ name: String) -> String { "https://demo.belfry.sh/media/\(name).jpg" }
+
+    static func prepare() {
+        let names = ["cover-repair", "p1", "p2", "p3", "p4", "p5"]
+        for (i, n) in names.enumerated() {
+            ImageCache.shared.put(url(n), draw(i, wide: n.hasPrefix("cover")))
+        }
+    }
+
+    /// A simple scene: a sky, a sun, the ground, a few shapes, in one of five palettes.
+    static func draw(_ i: Int, wide: Bool) -> UIImage {
+        let size = wide ? CGSize(width: 1600, height: 900) : CGSize(width: 900, height: 900)
+        let palettes: [(UIColor, UIColor, UIColor)] = [
+            (UIColor(red: 0.98, green: 0.72, blue: 0.45, alpha: 1), UIColor(red: 0.55, green: 0.32, blue: 0.45, alpha: 1), UIColor(red: 0.25, green: 0.22, blue: 0.3, alpha: 1)),
+            (UIColor(red: 0.62, green: 0.82, blue: 0.95, alpha: 1), UIColor(red: 0.3, green: 0.55, blue: 0.8, alpha: 1), UIColor(red: 0.3, green: 0.5, blue: 0.3, alpha: 1)),
+            (UIColor(red: 0.95, green: 0.88, blue: 0.7, alpha: 1), UIColor(red: 0.85, green: 0.6, blue: 0.35, alpha: 1), UIColor(red: 0.45, green: 0.3, blue: 0.2, alpha: 1)),
+            (UIColor(red: 0.8, green: 0.9, blue: 0.85, alpha: 1), UIColor(red: 0.4, green: 0.65, blue: 0.6, alpha: 1), UIColor(red: 0.2, green: 0.35, blue: 0.35, alpha: 1)),
+            (UIColor(red: 0.92, green: 0.8, blue: 0.9, alpha: 1), UIColor(red: 0.6, green: 0.45, blue: 0.7, alpha: 1), UIColor(red: 0.3, green: 0.25, blue: 0.4, alpha: 1)),
+        ]
+        let (top, bottom, ground) = palettes[i % palettes.count]
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: fmt).image { r in
+            let c = r.cgContext
+            let colors = [top.cgColor, bottom.cgColor] as CFArray
+            if let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) {
+                c.drawLinearGradient(g, start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
+            }
+            UIColor.white.withAlphaComponent(0.85).setFill()
+            c.fillEllipse(in: CGRect(x: size.width * (0.15 + 0.12 * CGFloat(i % 4)), y: size.height * 0.18, width: size.height * 0.2, height: size.height * 0.2))
+            ground.setFill()
+            c.fill(CGRect(x: 0, y: size.height * 0.68, width: size.width, height: size.height * 0.32))
+            UIColor.white.withAlphaComponent(0.25).setFill()
+            for k in 0..<3 {
+                let w = size.width * 0.16
+                let x = size.width * (0.18 + 0.27 * CGFloat(k))
+                let h = size.height * (0.16 + 0.05 * CGFloat((i + k) % 3))
+                UIBezierPath(roundedRect: CGRect(x: x, y: size.height * 0.68 - h, width: w, height: h), cornerRadius: 18).fill()
+            }
+        }
+    }
+}
 
 enum Demo {
     static func secret(_ name: String) -> Data { Crypto.sha256("belfry-ios-demo:" + name) }
@@ -60,7 +106,7 @@ enum Demo {
         let mine = msg(you, "general", y - 3000, "I can bring mine on Saturday, it's 4 m.")
         evs.append(ev(you, 1010, y - 2900, Actions.editMessage("general", Derive.parseMedia(mine), text: "I can bring mine on Saturday, it's 5 m.").tags,
                       "I can bring mine on Saturday, it's 5 m."))
-        msg(ps["dev"]!, "general", now - 5400, "Reminder: repair café this Saturday from 10:00. Bring lamps, bikes, toasters…\n\n- coffee is on us\n- spare parts welcome")
+        msg(ps["dev"]!, "general", now - 5400, "Reminder: repair café today. Bring lamps, bikes, toasters…\n\n- coffee is on us\n- spare parts welcome")
         let budget = msg(ps["emma"]!, "general", now - 3000, "Draft budget for 2027 is in the shared folder. Comments before Friday please, nostr:\(Bech32.npub(me)!)")
         msg(ps["ana"]!, "general", now - 1200, "Thanks Emma! I'll read it tonight.")
         // a thread on the ladder message, its latest reply after later messages: it resurfaces
@@ -115,11 +161,12 @@ enum Demo {
         evs.append(ev(ps["ben"]!, 1018, now - day + 60, [["h", propGroup], ["e", pollId], ["response", "no"]]))
         msg(ps["ana"]!, propGroup, now - day, "Fine by me, but what about the summer party?")
         let dd = "2026-rpcafe"
-        let start = Calendar.current.date(bySettingHour: 18, minute: 0, second: 0, of: Date(timeIntervalSince1970: TimeInterval(now + 2 * day)))!
+        // the repair café is on today (Sam is its steward: "Check people in" shows on its header)
         var form = EventForm(title: "Repair café")
-        form.description = "Bring lamps, bikes, toasters. Coffee is on us."
-        form.start = Int(start.timeIntervalSince1970)
-        form.end = form.start + 3 * 3600
+        form.description = "Bring lamps, bikes, toasters. Coffee is on us.\n\n**What we fix**: small electrics, bikes, clothes.\nSpare parts welcome."
+        form.start = (now / 900) * 900 - 3600
+        form.end = form.start + 4 * 3600
+        form.cover = DemoPictures.url("cover-repair")
         form.tz = TimeZone.current.identifier
         form.location = "Community hall"
         form.slug = "repair-cafe"
@@ -127,9 +174,36 @@ enum Demo {
             evs.append(ev(ps["dev"]!, dr.kind, now - 3 * day + i, dr.tags, dr.content))
         }
         let coord = "31923:\(ps["dev"]!.pubkey):\(dd)"
-        evs.append(ev(ps["dev"]!, 9, now - 3 * day + 10, [["h", "general"], ["a", coord, "wss://relay.demo.belfry.sh"]], "Saturday's repair café has its page: https://demo.belfry.sh/events/repair-cafe"))
+        evs.append(ev(ps["dev"]!, 9, now - 3 * day + 10, [["h", "general"], ["a", coord, "wss://relay.demo.belfry.sh"]], "Today's repair café has its page: https://demo.belfry.sh/events/repair-cafe"))
         evs.append(ev(ps["ana"]!, 31925, now - 2 * day, [["d", "a1"], ["a", coord], ["status", "accepted"], ["p", ps["dev"]!.pubkey]]))
         evs.append(ev(ps["ben"]!, 31925, now - 2 * day, [["d", "b1"], ["a", coord], ["status", "accepted"], ["p", ps["dev"]!.pubkey]]))
+        // its ticket types, Emma co-hosting, tickets, Sam as steward, two check-ins, photos (SPEC 19.29)
+        let rgroup = "ev-" + dd
+        channel(rgroup, "Repair café", "Bring lamps, bikes, toasters. Coffee is on us.", admins: [ps["dev"]!.pubkey, ps["emma"]!.pubkey],
+                members: [ps["dev"]!.pubkey, ps["emma"]!.pubkey, ps["ana"]!.pubkey, ps["ben"]!.pubkey, ps["chloe"]!.pubkey, me], at: now - 3 * day + 3)
+        for (i, t) in [("seat", "Workshop seat", "A table and a fixer for one hour", "12"), ("volunteer", "Volunteer", "Help at the door or fix things", "")].enumerated() {
+            var tags: [Tag] = [["d", "\(dd):\(t.0)"], ["a", coord, "wss://relay.demo.belfry.sh"], ["h", rgroup], ["title", t.1], ["t", "ticket"], ["position", String(i + 1)], ["summary", t.2]]
+            if !t.3.isEmpty { tags.append(["quantity", t.3]) }
+            evs.append(ev(ps["dev"]!, 30402, now - 3 * day + 5 + i, tags, t.2))
+        }
+        for (i, (who, t)) in [(me, "volunteer"), (ps["ana"]!.pubkey, "seat"), (ps["ben"]!.pubkey, "seat"), (ps["chloe"]!.pubkey, "seat")].enumerated() {
+            evs.append(ev(groupsKey, 9000, now - 2 * day + i, [["h", rgroup], ["p", who, "member"], ["ticket", "\(dd):\(t)"], ["paid", "free"], ["a", coord]]))
+        }
+        evs.append(ev(ps["chloe"]!, 31925, now - day, [["d", "c1"], ["a", coord], ["status", "tentative"], ["p", ps["dev"]!.pubkey]]))
+        evs.append(ev(groupsKey, 1985, now - day, [["L", Derive.groupRoleNS], ["l", "steward", Derive.groupRoleNS], ["p", me], ["h", rgroup], ["by", ps["dev"]!.pubkey]]))
+        for (i, k) in ["ana", "ben"].enumerated() {
+            evs.append(ev(groupsKey, 1985, now - 1500 + i * 300, [["L", Derive.ticketNS], ["l", "checked-in", Derive.ticketNS], ["p", ps[k]!.pubkey], ["h", rgroup], ["by", me]]))
+        }
+        msg(ps["dev"]!, rgroup, now - 3000, "Doors open in an hour. Coffee is ready ☕")
+        msg(ps["ana"]!, rgroup, now - 1400, "I'm here with my toaster 🍞")
+        func photos(_ who: LocalSigner, _ at: Int, _ text: String, _ names: [String]) {
+            let tags: [Tag] = [["h", rgroup]] + names.map { ["imeta", "url " + DemoPictures.url($0), "m image/jpeg", "dim 900x900"] }
+            evs.append(ev(who, 9, at, tags, text))
+        }
+        photos(ps["ben"]!, now - 1200, "The first bikes are done 🚲", ["p1", "p2", "p3"])
+        photos(ps["chloe"]!, now - 600, "", ["p4", "p5"])
+        msg(ps["emma"]!, rgroup, now - 300, "We need one more fixer at the electrics table.")
+        DemoPictures.prepare()
         // an event I host, by application, with someone asking
         let dd2 = "2026-gwday1"
         var form2 = EventForm(title: "Garden work day")

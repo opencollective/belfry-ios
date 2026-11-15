@@ -2,166 +2,11 @@ import BelfryCore
 import PhotosUI
 import SwiftUI
 
-// Belfry events (SPEC 19.18) and the older sessions (19.8): the event's page (the one line,
-// when / where / online, my answer, tickets, hosts, description, URL, guest list, the chat),
-// the event form (make / edit, cover, all day, where, online + Jitsi, who sees it, who can
+// Belfry events (SPEC 19.18) and the older sessions (19.8): pieces of the event screen (the
+// one line, RSVP, tickets, applications, decide), the event form (make / edit, cover, all day, where, online + Jitsi, who sees it, who can
 // come, the URL checked as typed), tickets, co-host link, All events.
 
-struct EventPage: View {
-    @EnvironmentObject var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.openChannel) private var openChannel
-    let key: String
-    /// Pushed on a screen's stack (Events): no stack of its own, no Done.
-    var pushed = false
-    @State private var remote: ApiEvent?
-    @State private var error: String?
-
-    var body: some View {
-        if pushed { page } else { NavigationStack { page.profileStack() }.presentationDetents([.large]) }
-    }
-
-    private var page: some View {
-        let _ = model.version
-        let d = model.derive
-        return SwiftUI.Group {
-                if let e = d.eventByKey(key) {
-                    EventPageBody(e: e, api: nil) { dismiss(); openChannel(e.groupId, nil) }
-                } else if let r = remote {
-                    EventPageBody(e: r.calEvent(timeZone: .current, me: model.me), api: r) { dismiss(); openChannel(r.group, nil) }
-                } else if let error {
-                    ContentUnavailableView(error, systemImage: "calendar.badge.exclamationmark")
-                } else {
-                    ProgressView()
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { if !pushed { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } } }
-            .task {
-                guard d.eventByKey(key) == nil else { return }
-                switch await model.remoteEvent(key) {
-                case .success(let r): remote = r
-                case .failure(let e): error = e.message
-                }
-            }
-    }
-}
-
-struct EventPageBody: View {
-    @EnvironmentObject var model: AppModel
-    @Environment(\.showProfile) private var showProfile
-    let e: CalEvent
-    let api: ApiEvent?
-    let openChat: () -> Void
-    @State private var applying: Ticket?
-    @State private var editing = false
-    @State private var tickets = false
-    @State private var cancel = false
-    @State private var confirmDelete = false
-    @State private var coHost: String?
-    @State private var error: String?
-
-    var body: some View {
-        let d = model.derive
-        let now = Int.now
-        let people = d.eventPeople(e)
-        let state = api?.myState ?? d.myState(e, people)
-        let host = d.isHost(e)
-        let list = api.map { $0.tickets.map(\.ticket) } ?? d.tickets(e)
-        let ticketList = list.isEmpty ? [EventLinks.freeTicket(e.d)] : list
-        List {
-            Section {
-                if let c = e.cover, let u = URL(string: c), c.hasPrefix("https://") {
-                    CachedImage(url: u) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.1) }
-                        .frame(height: 170).clipped().listRowInsets(EdgeInsets())
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(e.title).font(.title2.bold())
-                    if e.meeting { Label("Meeting · members only", systemImage: "person.2").font(.subheadline).foregroundStyle(.secondary) }
-                    EventLine(e: e, state: state, people: people, host: host)
-                }
-            }
-            Section {
-                Label(d.lineDay(e.start, now: now) + " · " + d.lineWhen(e), systemImage: "calendar")
-                if let l = e.location, !l.isEmpty { Label(l, systemImage: "mappin.and.ellipse") }
-                if e.links.isEmpty && (api?.online ?? false) {
-                    Label("The online link shows once you have a place", systemImage: "video").foregroundStyle(.secondary)
-                }
-                ForEach(e.links, id: \.self) { l in
-                    if let u = URL(string: l) { Link(destination: u) { Label("Join on \(Actions.meetingLabel(l))", systemImage: "video") } }
-                }
-                if e.isNew && !e.meeting { Label("\(e.going) going", systemImage: "person.2") }
-            }
-            if e.meeting { MeetingPeopleSection(e: e) }
-            if d.isOpen(e, now: now) && !host {
-                Section("Your place") {
-                    switch state {
-                    case .applied, .waitlist:
-                        Text(state.line ?? "").font(.subheadline)
-                        if let a = people.applications.first(where: { $0.pubkey == model.me }), !a.answer.isEmpty {
-                            Text("“\(a.answer)”").font(.caption).foregroundStyle(.secondary)
-                        }
-                        BusyButton("Withdraw", role: .destructive) { model.withdraw(e) }
-                    case .declined:
-                        Text(state.line ?? "").font(.subheadline)
-                    default:
-                        if ticketList.count == 1 && ticketList[0].implicit {
-                            RsvpButtons(e: e)
-                        } else {
-                            if d.myRsvp(e) != nil || people.holders[model.me] != nil { RsvpButtons(e: e) }
-                            ForEach(ticketList) { t in TicketRow(e: e, t: t, people: people, held: people.holders[model.me] == t.d) { applying = t } }
-                        }
-                    }
-                    if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) }
-                }
-            }
-            if !e.hosts.isEmpty {
-                Section("Hosts") {
-                    ForEach(Array(e.hosts).sorted(), id: \.self) { pk in
-                        Button { OpenProfile(env: showProfile, model: model)(pk) } label: {
-                            HStack { Avatar(pubkey: pk, size: 26); Text(api?.hosts.first { $0.first == pk }?.last.flatMap { $0.isEmpty ? nil : $0 } ?? model.name(pk)) }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            if !e.description.isEmpty { Section("About") { MarkdownText(text: e.description) } }
-            if e.isNew {
-                Section("Address") { LinkBlock(url: d.eventURL(e), title: e.title, message: e.title) }
-            }
-            if host && e.isNew && !e.remote { GuestList(e: e, people: people) }
-            Section {
-                Button(action: openChat) { ActionRow(icon: "bubble.left.and.bubble.right", title: "The event's chat") }
-                if host && e.isNew {
-                    Button { editing = true } label: { ActionRow(icon: "pencil", title: "Edit the event") }
-                    Button { tickets = true } label: { ActionRow(icon: "ticket", title: "Tickets", detail: "\(list.filter { !$0.implicit }.count) defined") }
-                    ActionButtonRow(icon: "person.badge.plus", title: "Co-host link", detail: coHost ?? "For one person, for a day") {
-                        switch await model.coHostLink(e) {
-                        case .success(let u): coHost = u; UIPasteboard.general.string = u
-                        case .failure(let x): error = x.message
-                        }
-                    }
-                    if e.status == .cancelled {
-                        ActionButtonRow(icon: "arrow.uturn.backward", title: "Reopen the event") { model.setEventStatus(e, .scheduled) }
-                    } else {
-                        Button { cancel = true } label: { ActionRow(icon: "xmark.octagon", title: "Cancel the event", destructive: true) }
-                    }
-                }
-                if e.creator == model.me {
-                    Button { confirmDelete = true } label: { ActionRow(icon: "trash", title: "Delete the event", destructive: true) }
-                }
-            }
-        }
-        .navigationTitle(e.title)
-        .sheet(item: $applying) { t in ApplySheet(e: e, t: t, full: (people.placesLeft(t) ?? 1) <= 0) }
-        .sheet(isPresented: $editing) { EventFormSheet(editing: e, channel: nil) }
-        .sheet(isPresented: $tickets) { TicketsSheet(e: e) }
-        .sheet(isPresented: $cancel) { CancelEventSheet(e: e) }
-        .confirmationDialog("Delete this event?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { model.deleteEvent(e) }
-        } message: { Text("It disappears for everyone. This can't be undone.") }
-    }
-}
+// The event's screen is EventScreen.swift (SPEC 19.29); it replaced the event page sheet.
 
 /// The event's one line: cancelled / changed · still going? / people asking / my state.
 struct EventLine: View {
@@ -275,48 +120,6 @@ struct ApplySheet: View {
         }
         .presentationDetents([.medium])
         .solidSheet()
-    }
-}
-
-/// Hosts: Going / Asking / Waitlist / Others, approve / decline, make co-host.
-struct GuestList: View {
-    @EnvironmentObject var model: AppModel
-    let e: CalEvent
-    let people: EventPeople
-    @State private var error: String?
-    var body: some View {
-        let asking = people.applications.filter { !$0.waitlist }
-        let waiting = people.applications.filter(\.waitlist)
-        let going = e.goingKeys
-        let others = e.rsvps.filter { $0.value != .accepted }.keys.sorted()
-        if !asking.isEmpty { Section("Asking (\(asking.count))") { ForEach(asking, id: \.pubkey) { a in appRow(a) } } }
-        if !waiting.isEmpty { Section("Waitlist (\(waiting.count))") { ForEach(waiting, id: \.pubkey) { a in appRow(a) } } }
-        Section("Going (\(going.count))") {
-            if going.isEmpty { Text("Nobody yet.").foregroundStyle(.secondary) }
-            ForEach(going, id: \.self) { pk in
-                HStack {
-                    Avatar(pubkey: pk, size: 26)
-                    Text(model.name(pk))
-                    Spacer()
-                    if !e.hosts.contains(pk) {
-                        Menu {
-                            Button("Make co-host") { model.addCoHost(e, pk) }
-                            Button("Take the place back", role: .destructive) { Task { error = await model.decide(e, pk, approve: false, ticket: nil, application: nil) } }
-                        } label: { Image(systemName: "ellipsis.circle") }
-                    } else { Chip(text: "host") }
-                }
-            }
-        }
-        if !others.isEmpty {
-            Section("Others") {
-                ForEach(others, id: \.self) { pk in HStack { Avatar(pubkey: pk, size: 26); Text(model.name(pk)); Spacer(); Text(e.rsvps[pk]?.label ?? "").font(.caption).foregroundStyle(.secondary) } }
-            }
-        }
-        if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
-    }
-
-    func appRow(_ a: EventApplication) -> some View {
-        DecideRow(e: e, a: a) { error = $0 }
     }
 }
 
@@ -608,8 +411,6 @@ struct TicketFormSheet: View {
     }
 }
 
-struct EventRoute: Hashable { let key: String }
-
 /// Events of one channel, as a sheet (from a channel's pull-down).
 struct EventsList: View {
     @Environment(\.dismiss) private var dismiss
@@ -655,7 +456,8 @@ struct EventsScreen: View {
             .padding(.horizontal, 16).padding(.vertical, 8)
             .background(.bar)
         }
-        .navigationDestination(for: EventRoute.self) { r in EventPage(key: r.key, pushed: true) }
+        // on the drawer's screen the main stack shows the event; in a sheet, its own stack
+        .modifier(EventDestination(on: sheet))
         .navigationTitle(channel.flatMap { model.group($0)?.name }.map { "Events in \($0)" } ?? "Events")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -665,6 +467,13 @@ struct EventsScreen: View {
             }
         }
         .sheet(isPresented: $make) { EventFormSheet(editing: nil, channel: channel) }
+    }
+}
+
+struct EventDestination: ViewModifier {
+    let on: Bool
+    func body(content: Content) -> some View {
+        if on { content.navigationDestination(for: EventRoute.self) { r in EventScreen(key: r.key, ticket: r.ticket) } } else { content }
     }
 }
 

@@ -35,7 +35,7 @@ struct ChannelDetails: View {
                 }
                 switch tab {
                 case .about: AboutTab(id: id, invite: { invite = true })
-                case .members: MembersTab(id: id) { profile = ProfileKey(pubkey: $0) }
+                case .members: MembersTab(id: id) { profile = ProfileKey(pubkey: $0, group: id) }
                 case .todos: TodosTab(id: id)
                 case .files: FilesTab(id: id)
                 case .log: LogTab(id: id) { g in
@@ -60,7 +60,7 @@ struct ChannelDetails: View {
                 }
             }
             .sheet(isPresented: $invite) { InviteSheet(id: id) }
-            .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true) }
+            .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group) }
             .onAppear {
                 switch model.launch.screen {
                 case "members": tab = .members
@@ -125,6 +125,7 @@ struct LogTab: View {
 struct AboutTab: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.openChannel) private var openChannel
+    @Environment(\.dismiss) private var dismiss
     let id: String
     let invite: () -> Void
 
@@ -166,7 +167,11 @@ struct AboutTab: View {
         }
         let events = d.upcoming(id, now: .now)
         if !events.isEmpty {
-            Section("Events") { ForEach(events) { e in Button { model.openEvent = e.coord } label: { EventRow(e: e) }.buttonStyle(.plain) } }
+            Section("Events") { ForEach(events) { e in Button {
+                // the event slides in on the main screen once this sheet is down
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { model.openEvent = e.coord }
+            } label: { EventRow(e: e) }.buttonStyle(.plain) } }
         }
         let pods = d.pods(id)
         if !pods.isEmpty {
@@ -233,37 +238,16 @@ struct MembersTab: View {
     @EnvironmentObject var model: AppModel
     let id: String
     let open: (String) -> Void
-    @State private var labeling: String?
 
     var body: some View {
         let d = model.derive
         let rows = d.memberRows(id)
-        let admin = d.canAdmin(id)
         let readingN = d.readingCount(id)
         Section {
+            // a row: the face, the name, the role here as secondary text when it isn't the
+            // default; a tap pushes the profile, which shows (and lets admins change) the role
             ForEach(rows) { r in
-                Button { open(r.pubkey) } label: {
-                    HStack(spacing: 10) {
-                        Avatar(pubkey: r.pubkey, size: 32)
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 6) {
-                                Text(r.pubkey == model.me ? "You" : r.name).font(.subheadline.weight(.semibold))
-                                if r.isAdmin { Chip(text: "admin") }
-                                if let role = model.roles.label(of: r.pubkey), role.lowercased() != "admin" { Chip(text: role) }
-                                if let k = d.kindLabel(r.pubkey) { Chip(text: k.lowercased(), tint: .brand) }
-                                else if let c = r.guest?.chip { Chip(text: c, tint: .brand) }
-                            }
-                            let sub = [r.guest?.by.map { "invited by " + model.name($0) }, r.labels.isEmpty ? nil : r.labels.joined(separator: " · "),
-                                       r.place.map { People.placeLabel($0) }].compactMap { $0 }
-                            if !sub.isEmpty { Text(sub.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
-                        }
-                        Spacer()
-                        if admin {
-                            Button { labeling = r.pubkey } label: { Image(systemName: "tag") }.buttonStyle(.borderless).accessibilityLabel("Labels")
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
+                PersonRow(pubkey: r.pubkey, title: r.pubkey == model.me ? "You" : r.name, detail: detail(r, d)) { open(r.pubkey) }
             }
         } header: {
             Text("\(rows.count) \(rows.count == 1 ? "person" : "people")")
@@ -273,54 +257,15 @@ struct MembersTab: View {
                 Text("\(readingN == 1 ? "1 guest is reading" : "\(readingN) guests are reading"): they opened an invite link and have not joined yet.")
             }
         }
-        .sheet(item: Binding(get: { labeling.map { ProfileKey(pubkey: $0) } }, set: { labeling = $0?.pubkey })) { k in
-            LabelsSheet(id: id, pubkey: k.pubkey)
-        }
-        .task { await model.loadRoles() }
     }
-}
 
-/// A member's labels in a channel (organiser, speaker…), set by its admins.
-struct LabelsSheet: View {
-    @EnvironmentObject var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    let id: String
-    let pubkey: String
-    @State private var labels = [String]()
-    @State private var custom = ""
-    @State private var loaded = false
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    ForEach(Array(Set(Actions.suggestedLabels + labels)).sorted(), id: \.self) { l in
-                        Button {
-                            if labels.contains(l) { labels.removeAll { $0 == l } } else { labels.append(l) }
-                        } label: {
-                            HStack { Text(l); Spacer(); if labels.contains(l) { Image(systemName: "checkmark") } }
-                        }
-                    }
-                    HStack {
-                        TextField("Another label", text: $custom).font(.body)
-                        Button("Add") { let c = custom.jsTrim().lowercased(); if !c.isEmpty && !labels.contains(c) { labels.append(c) }; custom = "" }
-                    }
-                }
-            }
-            .navigationTitle(model.name(pubkey))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { BusyButton("Save") { model.setMemberLabels(pubkey, in: id, labels: labels); dismiss() } }
-            }
-            .onAppear {
-                guard !loaded else { return }
-                loaded = true
-                labels = model.derive.memberLabels(id)[pubkey] ?? []
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .solidSheet()
+    /// "Admin", "Guest · invited by Ana", "Ana's agent"… (nil for a plain member).
+    private func detail(_ r: MemberRow, _ d: Derive) -> String? {
+        var parts = [String]()
+        if r.isAdmin { parts.append("Admin") }
+        if let k = d.kindLabel(r.pubkey) { parts.append(k) } else if let c = r.guest?.chip { parts.append(c.prefix(1).uppercased() + c.dropFirst()) }
+        if let by = r.guest?.by { parts.append("invited by " + model.name(by)) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
 

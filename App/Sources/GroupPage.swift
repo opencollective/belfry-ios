@@ -47,16 +47,7 @@ struct GroupPage: View {
                     Section {
                         if g.members.isEmpty { Text("Nobody yet.").foregroundStyle(.secondary) }
                         ForEach(Array(g.members).sorted { model.name($0) < model.name($1) }, id: \.self) { p in
-                            Button { shownProfile = ProfileKey(pubkey: p) } label: {
-                                HStack(spacing: 10) {
-                                    Avatar(pubkey: p, size: 32)
-                                    Text(model.name(p)).foregroundStyle(.primary)
-                                    if g.admins.contains(p) { Chip(text: "Admin") }
-                                    Spacer()
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
+                            PersonRow(pubkey: p, detail: g.admins.contains(p) ? "Admin" : nil) { shownProfile = ProfileKey(pubkey: p, group: id) }
                         }
                         let others = g.admins.filter { !g.members.contains($0) }
                         if !others.isEmpty {
@@ -77,7 +68,7 @@ struct GroupPage: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .sheet(isPresented: $asking) { if let g { PodApplySheet(group: g) } }
-            .navigationDestination(item: $shownProfile) { ProfileView(pubkey: $0.pubkey, pushed: true) }
+            .navigationDestination(item: $shownProfile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group) }
         }
         .presentationDetents([.medium, .large])
         .solidSheet()

@@ -67,4 +67,35 @@ final class MenuShots: XCTestCase {
         sleep(2)
         shot("53-composer-typing")
     }
+
+    /// The event's header: dragged up (the chat takes the screen), then all the way down.
+    func testEventHeaderDrag() {
+        let app = launch("event")
+        sleep(2)
+        let handle = app.descendants(matching: .any).matching(identifier: "event-handle").firstMatch
+        XCTAssertTrue(handle.waitForExistence(timeout: 10), "the event screen did not open")
+        let from = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: -500)))
+        sleep(2)
+        shot("80-event-dragged-up")
+        let h2 = app.descendants(matching: .any).matching(identifier: "event-handle").firstMatch
+        let from2 = h2.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        from2.press(forDuration: 0.05, thenDragTo: from2.withOffset(CGVector(dx: 0, dy: 800)))
+        sleep(2)
+        shot("81-event-dragged-full")
+    }
+
+    /// The event's chat with the keyboard up (the header steps out of the way).
+    func testEventChatTyping() {
+        let app = launch("event")
+        sleep(2)
+        // the channel under the pushed event screen has a composer too: take the one on screen
+        let fields = app.descendants(matching: .any).matching(identifier: "composer-field")
+        XCTAssertTrue(fields.firstMatch.waitForExistence(timeout: 10))
+        guard let field = fields.allElementsBoundByIndex.first(where: { $0.isHittable }) else { XCTFail("no composer on screen"); return }
+        field.tap()
+        field.typeText("On my way")
+        sleep(2)
+        shot("82-event-chat-typing")
+    }
 }

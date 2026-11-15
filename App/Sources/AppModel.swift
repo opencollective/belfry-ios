@@ -677,8 +677,16 @@ final class AppModel: ObservableObject {
     /// Opens a channel's events list (All events of that channel), from the pull-down.
     @Published var showEvents: String?
 
-    /// An event to show (its coordinate or link), from a card anywhere.
+    /// An event to show (its coordinate or link), from a card anywhere: pushed on the main stack.
     @Published var openEvent: String?
+    /// With `openEvent`: a ticket's code from a scanned / opened ticket link (never shown).
+    var openEventTicket: String?
+    /// What the belfry said about me per event (`viewer`), kept on the phone (SPEC 19.29).
+    @Published var eventViewers = [String: EventViewer]()
+    /// The check-in list per event (its d), from the last answer.
+    @Published var attendeeLists = [String: AttendeeList]()
+    /// Screenshots: the event screen's level / tab / sheet to show.
+    var launchEventDone = false
     /// Screenshots: open the delete confirmation / the ＋ menu once.
     @Published var launchDelete = false
     @Published var launchAdd = false

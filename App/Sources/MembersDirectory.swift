@@ -13,6 +13,7 @@ struct MembersDirectory: View {
     @State private var failed = false
     @State private var demo = false
     @State private var error: String?
+    @State private var inviting = false
 
     var body: some View {
         let _ = model.version
@@ -53,7 +54,21 @@ struct MembersDirectory: View {
         .navigationTitle("Members")
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search")
-        .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) { DrawerButton() }
+            // Xavier 2026-11-15: invite from here; only for who may invite members (no disabled button)
+            if model.mayInviteMembers, inviteChannel != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { hideKeyboard(); inviting = true } label: { Image(systemName: "person.badge.plus") }
+                        .accessibilityLabel("Invite someone")
+                        .accessibilityIdentifier("members-invite")
+                }
+            }
+        }
+        .sheet(isPresented: $inviting) {
+            if let c = inviteChannel { InviteSheet(id: c, startAs: .member(role: model.roles.defaultRole, membership: "permanent")) }
+        }
+        .onAppear { if model.launch.screen == "membersinvite" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { inviting = true } } }
         .task { await load() }
         .refreshable { await load() }
     }
@@ -71,6 +86,14 @@ struct MembersDirectory: View {
             }
         } header: { Text(l) }
         .indexLabel(l)
+    }
+
+    /// Where a member invited from here lands: #general, else the first public channel in the
+    /// admins' order, else the first channel.
+    private var inviteChannel: String? {
+        if model.group(generalId) != nil { return generalId }
+        let s = model.derive.channelSections()
+        return s.pub.first?.id ?? s.members.first?.id
     }
 
     /// The letter a name files under (accents folded; anything else under #).

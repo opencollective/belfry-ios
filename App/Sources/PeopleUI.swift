@@ -7,7 +7,13 @@ import SwiftUI
 // (username through the belfry, picture ≤ 512 px, tags with suggestions, place from the belfry's
 // list). Me: my card, address, key, signed-in devices, outbox, sign out.
 
-struct ProfileKey: Identifiable, Hashable { let pubkey: String; var id: String { pubkey } }
+/// A profile to push; GROUP: opened from that channel's / group's / event's people (the profile
+/// then shows the person's role there, SPEC 19.29).
+struct ProfileKey: Identifiable, Hashable {
+    let pubkey: String
+    var group: String? = nil
+    var id: String { pubkey + "|" + (group ?? "") }
+}
 
 /// Opens a profile on the stack of the screen or sheet it is tapped in (set by `profileStack()`);
 /// the default pushes on the main screen's stack (through `model.openProfile`).
@@ -24,7 +30,7 @@ struct ProfileStack: ViewModifier {
     @State private var shown: ProfileKey?
     func body(content: Content) -> some View {
         content
-            .navigationDestination(item: $shown) { ProfileView(pubkey: $0.pubkey, pushed: true) }
+            .navigationDestination(item: $shown) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group) }
             .environment(\.showProfile) { pk in hideKeyboard(); shown = ProfileKey(pubkey: pk) }
     }
 }
@@ -49,6 +55,8 @@ struct ProfileView: View {
     @Environment(\.openChannel) private var openChannel
     let pubkey: String
     var pushed = false
+    /// Opened from this group's people: "In <group>" with the role there.
+    var group: String? = nil
     @State private var edit = false
     @State private var error: String?
     @State private var confirmRemove = false
@@ -96,6 +104,7 @@ struct ProfileView: View {
             }
             if let place = x?.place { Section("Place") { Label(People.placeLabel(place), systemImage: "mappin.and.ellipse") } }
             RoleSection(pubkey: pubkey) { error = $0 }
+            if let group, model.group(group) != nil { GroupRoleSection(pubkey: pubkey, groupId: group) }
             if let owner = d.agentOwner(pubkey) {
                 Section("Owner") {
                     ProfileRow(pubkey: owner, detail: owner == model.me ? "You" : nil)

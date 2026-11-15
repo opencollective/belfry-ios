@@ -24,6 +24,12 @@ final class ImageCache: @unchecked Sendable {
         dir.appendingPathComponent(SHA256.hash(data: Data(url.utf8)).map { String(format: "%02x", $0) }.joined())
     }
 
+    /// Keeps IMAGE as URL's picture (the demo's photos, made on the device).
+    func put(_ url: String, _ image: UIImage) {
+        if let data = image.jpegData(compressionQuality: 0.8) { try? data.write(to: file(url), options: .atomic) }
+        memory.setObject(image, forKey: url as NSString)
+    }
+
     /// In memory only (for the first frame).
     func cached(_ url: String) -> UIImage? { memory.object(forKey: url as NSString) }
 

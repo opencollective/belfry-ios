@@ -56,7 +56,7 @@ targets:
             CFBundleURLSchemes: [sh.belfry.app]
         NSPhotoLibraryUsageDescription: Choose photos to send in a channel.
         NSMicrophoneUsageDescription: Record audio to post in a channel (a meeting, a voice note).
-        NSCameraUsageDescription: Scan the QR code of an invitation.
+        NSCameraUsageDescription: Scan the QR code of an invitation or of a ticket at an event.
         BelfryKeychainGroup: $(AppIdentifierPrefix)sh.belfry.app.shared
         # audio: a recording goes on with the screen locked (Recorder.swift)
         UIBackgroundModes: [remote-notification, audio]

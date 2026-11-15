@@ -113,8 +113,14 @@ struct RootView: View {
 
     private var withSheets: some View {
         withLife
-        .sheet(item: Binding(get: { model.openEvent.map { EventKey(key: $0) } }, set: { model.openEvent = $0?.key })) { k in
-            EventPage(key: k.key)
+        // an event slides in on the main screen's stack (its screen: header, chat, photos, people)
+        .onChange(of: model.openEvent) { _, k in
+            guard let k else { return }
+            model.openEvent = nil
+            let ticket = model.openEventTicket
+            model.openEventTicket = nil
+            closeDrawer()
+            path.append(EventRoute(key: k, ticket: ticket))
         }
         .sheet(item: Binding(get: { model.showEvents.map { EventKey(key: $0) } }, set: { model.showEvents = $0?.key })) { k in
             EventsList(channel: k.key.isEmpty ? nil : k.key)
@@ -196,7 +202,13 @@ struct RootView: View {
         NavigationStack(path: $path) {
             SwiftUI.Group {
             switch selection {
-            case .channel(let id): ChannelView(id: id, focus: focus?.channel == id ? focus?.message : nil).id(id)
+            case .channel(let id):
+                // an event's group opens as the event (Your events in the drawer)
+                if Channel.typeOf(id) == .event, let e = model.derive.eventOfGroup(id), e.isNew {
+                    EventScreen(key: e.coord, root: true).id(id)
+                } else {
+                    ChannelView(id: id, focus: focus?.channel == id ? focus?.message : nil).id(id)
+                }
             case .messages: MessagesView()
             case .mentions: MentionsView()
             case .requests: MembersDirectory()
@@ -207,7 +219,8 @@ struct RootView: View {
                     .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
             }
             }
-            .navigationDestination(for: ProfileKey.self) { k in ProfileView(pubkey: k.pubkey, pushed: true) }
+            .navigationDestination(for: ProfileKey.self) { k in ProfileView(pubkey: k.pubkey, pushed: true, group: k.group) }
+            .navigationDestination(for: EventRoute.self) { r in EventScreen(key: r.key, ticket: r.ticket) }
         }
         .environment(\.openConversation) { conv in
             var p = NavigationPath()
@@ -292,9 +305,19 @@ struct RootView: View {
         case "eventform":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.launchEventForm = true }
-        case "event":
+        case "event", "eventup", "eventfull", "eventphotos", "eventpeople", "ticket", "checkin", "eventrole":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openEvent = "repair-cafe" }
+        case "checkincard":
+            // a ticket link opened by Sam (the café's steward): the check-in card for Chloé's ticket
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                if let e = model.derive.eventByLink("repair-cafe") {
+                    model.openEventTicket = AppModel.demoTicketCode(e.d, Demo.signer("chloe").pubkey)
+                }
+                model.openEvent = "repair-cafe"
+            }
+        case "membersinvite": selection = .members
         case "messages", "conversation", "mail": selection = .messages
         case "mentions": selection = .mentions
         case "requests": selection = .requests

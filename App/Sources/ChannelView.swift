@@ -13,6 +13,9 @@ struct ChannelView: View {
     @Environment(\.openChannel) private var openChannel
     let id: String
     var focus: String?
+    /// Inside the event screen (its Chat tab): the feed and the composer only; the event screen
+    /// has the header, the bar and the pull-down.
+    var embedded = false
     @State private var openThreads = Set<String>()
     @State private var pull: PullLevel = .closed
     @State private var detailsTab: InfoTab = .about
@@ -76,8 +79,9 @@ struct ChannelView: View {
                             }
                         }
                     }
-                    // the composer's height below the last row: scrolling to the end stops above it
-                    Color.clear.frame(height: 1).padding(.bottom, composerH).id("bottom")
+                    // the end of the feed: the composer is a safe-area inset of this scroll view, so
+                    // scrolling here with .bottom stops right above it (no padding: it showed as a gap)
+                    Color.clear.frame(height: 1).id("bottom")
                 }
                 .padding(.vertical, 8)
             }
@@ -122,6 +126,7 @@ struct ChannelView: View {
                 }
             }
             .topBar {
+                if !embedded {
                 VStack(spacing: 0) {
                     ChannelLineBar(id: id, topic: topic, open: { togglePull() }, showAll: { withAnimation { topic = nil } },
                                    review: { details = true }, pulled: pull != .closed, pull: { openPull() })
@@ -145,17 +150,21 @@ struct ChannelView: View {
                         PodJoinBar(group: g, asked: g.applications.contains { $0.pubkey == model.me }) { podAsk = true }
                     }
                 }
+                }
             }
         }
         // the pull-down: one surface with the navigation bar, over the line and the feed
         .overlay(alignment: .top) {
+            if !embedded {
             PullDownPanel(id: id, level: $pull, topic: $topic,
                           openDetails: { tab in closePull(); detailsTab = tab; DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { details = true } },
                           invite: { closePull(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { invite = true } },
                           showMessage: { mid in closePull(); scrollTarget = mid })
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if !embedded {
             ToolbarItem(placement: .principal) {
                 Button { togglePull() } label: {
                     VStack(spacing: 0) {
@@ -179,6 +188,7 @@ struct ChannelView: View {
             ToolbarItem(placement: .topBarLeading) { DrawerButton() }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button { search = true } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("Search")
+            }
             }
         }
         .navigationDestination(item: $thread) { r in ThreadView(group: r.group, rootId: r.root, focusReply: r.reply) }
