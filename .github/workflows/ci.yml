@@ -118,6 +118,8 @@ jobs:
           mkdir -p private_keys
           echo "$ASC_KEY_P8" > "private_keys/AuthKey_${ASC_KEY_ID}.p8"
           KEY="$PWD/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          # automatic signing makes a development certificate per runner; the team may hold ten
+          ASC_KEY_FILE="$KEY" python3 scripts/asc-certs.py list > "$RUNNER_TEMP/certs-before"
           BUILD=$(( $(date +%s) / 60 ))
           xcodebuild -project Belfry.xcodeproj -scheme Belfry -configuration Release \
             -destination 'generic/platform=iOS' -archivePath build/Belfry.xcarchive \
@@ -137,4 +139,11 @@ jobs:
           xcodebuild -exportArchive -archivePath build/Belfry.xcarchive -exportOptionsPlist ExportOptions.plist \
             -exportPath build/export -allowProvisioningUpdates \
             -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Revoke this run's development certificate
+        if: always() && steps.check.outputs.ok == 'true'
+        run: |
+          KEY="$PWD/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          if [ -f "$KEY" ] && [ -f "$RUNNER_TEMP/certs-before" ]; then
+            ASC_KEY_FILE="$KEY" python3 scripts/asc-certs.py revoke-new "$RUNNER_TEMP/certs-before" || true
+          fi
           rm -rf private_keys
