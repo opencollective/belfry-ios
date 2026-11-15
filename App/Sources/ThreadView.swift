@@ -44,6 +44,7 @@ struct ThreadView: View {
                 .padding(.vertical, 8)
             }
             .defaultScrollAnchor(.bottom)
+            .keepsBottomOnResize()
             .onChange(of: replies.count) { _, _ in
                 withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
                 model.markThreadRead(group, rootId)

@@ -1539,11 +1539,19 @@ people; tickets with a QR; checking people in at the door; roles per channel, gr
   `member` = everyone else ("Attendee" in an event). Changing one: `POST <api>/group-roles
   {"channel","pubkey","role":"admin"|"steward"|"member"}` by an admin of that group or a belfry
   admin → `{"role"}`; errors `not_allowed` (403), `not_in_group`, `last_admin`,
-  `guest_not_saved`, `agent`, `events_only` (409). Clients read roles from the relay, no call.
-- **Admins are the latest 39001** (iOS, 2026-11-15; the web adds every 39001 it has seen): the
-  relay's newest 39001 of a group replaces the admin list (as 39002 replaces members), the
-  creator (9007) always stays, a later 9000 tagged `admin` adds. Without this a co-host made an
-  attendee again stays a co-host on every phone that kept the older 39001.
+  `guest_not_saved`, `agent`, `events_only`, `always_admin` (409: the creator and the belfry's
+  admins stay admins), `invalid` (422), `relay` (503). `"role":"removed"` takes them out of the
+  group (an older belfry: 404 → the client's own 9001). Clients read roles from the relay.
+- **A group's admins** (the server's change 3; web branch `checkin` model.ts): the relay's latest
+  39001 (zooid lists only its own keys, the belfry's admins and the group's creator, never a
+  co-host) ∪ the creator (first 9007) ∪ admins by role: per person the latest 9000 / 9001 for
+  them in the group; a 9000 whose `p` tag has `admin` third → admin, a later 9000 tagged
+  `["role","member"]` or a 9001 → not (a ticket's 9000, without `role`, changes nothing).
+  "Co-host" / "Admin" in lists = such an admin who is not one of the keys that administer every
+  group (the belfry's admins, the relay's key = the 39000's author, the groups key). May check
+  people in: host, co-host, steward, any admin of the group, a belfry admin.
+- **Free events**: on an event without ticket types a member's own going RSVP holds `<d>:free`
+  (a code, in the check-in list).
 - **Tickets.** Everyone holding a ticket (9000 with `ticket` in `ev-<d>`) has a code: 16
   lowercase base32 characters, the same every time. `GET /events/<link>` has in its viewer
   block (`viewer`, else `me` of events v1; both are read, `viewer` wins): `ticket_code`,

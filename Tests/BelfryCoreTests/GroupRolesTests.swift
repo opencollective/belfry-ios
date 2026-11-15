@@ -46,10 +46,10 @@ final class GroupRolesTests: XCTestCase {
             role(MALLORY, group, BEN, "steward", 2000),
             role(GROUPS, group, BEN, "steward", 2001),
             role(GROUPS, group, BEN, "none", 2002),
-            // an admin is never a steward
+            // an admin's role stays admin whatever the label
             role(GROUPS, group, ME, "steward", 2003),
         ])
-        XCTAssertEqual(dv.stewards(group), [ANA])
+        XCTAssertEqual(dv.stewards(group), [ANA, ME])
         XCTAssertEqual(dv.groupRole(group, ANA), .steward)
         XCTAssertEqual(dv.groupRole(group, BEN), .member)
         XCTAssertEqual(dv.groupRole(group, ME), .admin)
@@ -86,6 +86,40 @@ final class GroupRolesTests: XCTestCase {
         let e = try XCTUnwrap(dv.calendar.first)
         XCTAssertEqual(dv.eventRole(e, ANA), .attendee)
         XCTAssertEqual(dv.eventRole(e, BEN), .cohost)
+    }
+
+    func testAdminsByRoleCoHostsAndWhoAdministersEverything() throws {
+        let RELAY = String(repeating: "f", count: 64)
+        let BOSS = String(repeating: "9", count: 64)
+        let base = world([
+            ev(RELAY, 39000, 1050, [["d", group], ["name", "Picnic"]]),
+            ev(RELAY, 39001, 1300, [["d", group], ["p", ME, "admin"], ["p", BOSS, "admin"], ["p", RELAY, "admin"]]),
+            // Ana made co-host, then a ticket (no role: does not demote)
+            ev(GROUPS, 9000, 1400, [["h", group], ["p", ANA, "admin"]]),
+            ev(GROUPS, 9000, 1500, [["h", group], ["p", ANA, "member"], ["ticket", d + ":free"]]),
+            // Ben made co-host, then made an attendee again
+            ev(GROUPS, 9000, 1400, [["h", group], ["p", BEN, "admin"]]),
+            ev(GROUPS, 9000, 1600, [["h", group], ["p", BEN, "member"], ["role", "member"]]),
+        ])
+        let dv = Derive(events: base.events, context: WorldContext(me: ME, communityAdmins: [BOSS], groupsKey: GROUPS, timeZone: TimeZone(identifier: "UTC")!))
+        let g = try XCTUnwrap(dv.group(group))
+        XCTAssertTrue(g.admins.contains(ANA))
+        XCTAssertFalse(g.admins.contains(BEN))
+        let e = try XCTUnwrap(dv.calendar.first)
+        XCTAssertEqual(dv.eventRole(e, ANA), .cohost)
+        XCTAssertEqual(dv.eventRole(e, BEN), .attendee)
+        // the belfry's admins and the relay administer every group: never "Co-host" / "Admin"
+        XCTAssertEqual(dv.eventRole(e, BOSS), .attendee)
+        XCTAssertEqual(dv.eventRole(e, RELAY), .attendee)
+        XCTAssertNil(dv.adminWord(group, BOSS))
+        XCTAssertEqual(dv.adminWord(group, ANA), "Admin")
+        XCTAssertEqual(dv.eventPeopleList(e).hosts, [ME, ANA])
+        // a belfry admin may check people in
+        let boss = Derive(events: base.events, context: WorldContext(me: BOSS, communityAdmins: [BOSS], groupsKey: GROUPS))
+        XCTAssertTrue(boss.mayCheckIn(try XCTUnwrap(boss.calendar.first)))
+        // a 9001 also ends it
+        let out = Derive(events: base.events + [ev(GROUPS, 9001, 1700, [["h", group], ["p", ANA]])], context: WorldContext(me: ME, groupsKey: GROUPS))
+        XCTAssertFalse(try XCTUnwrap(out.group(group)).admins.contains(ANA))
     }
 
     func testCheckInsLatestPerPersonByTheGroupsKey() {
@@ -189,11 +223,20 @@ final class GroupRolesTests: XCTestCase {
         _ = StubBelfry.take()
         StubBelfry.enqueue(409, #"{"error":"last_admin"}"#)
         do { _ = try await api.setGroupRole(channel: group, pubkey: ME, role: .member); XCTFail() } catch let e as ApiError {
-            XCTAssertEqual(e.message, "Someone else must be an admin first.")
+            XCTAssertEqual(e.message, "A group keeps at least one admin.")
         }
         let roleBody = try XCTUnwrap(JSON.parse(try XCTUnwrap(StubBelfry.take()).body) as? [String: Any])
         XCTAssertEqual(roleBody["role"] as? String, "member")
         XCTAssertEqual(roleBody["channel"] as? String, group)
+        StubBelfry.enqueue(409, #"{"error":"always_admin"}"#)
+        do { _ = try await api.setGroupRole(channel: group, pubkey: ME, role: .steward); XCTFail() } catch let e as ApiError {
+            XCTAssertEqual(e.message, "The host and the belfry’s admins stay admins.")
+        }
+        _ = StubBelfry.take()
+        StubBelfry.enqueue(404, #"{"error":"not_found"}"#)
+        do { try await api.removeFromGroup(channel: group, pubkey: ANA); XCTFail() } catch let e as ApiError { XCTAssertEqual(e.code, "update_needed") }
+        let removeBody = try XCTUnwrap(JSON.parse(try XCTUnwrap(StubBelfry.take()).body) as? [String: Any])
+        XCTAssertEqual(removeBody["role"] as? String, "removed")
         StubBelfry.enqueue(200, #"{"role":"steward"}"#)
         let now = try await api.setGroupRole(channel: group, pubkey: ANA, role: .steward)
         XCTAssertEqual(now, .steward)

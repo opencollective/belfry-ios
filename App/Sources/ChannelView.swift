@@ -86,6 +86,12 @@ struct ChannelView: View {
                 .padding(.vertical, 8)
             }
             .defaultScrollAnchor(.bottom)
+            .keepsBottomOnResize()
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
+                if #unavailable(iOS 18) {
+                    if focus == nil && scrollTarget == nil { proxy.scrollTo("bottom", anchor: .bottom) }
+                }
+            }
             .scrollDismissesKeyboard(.interactively)
             .refreshable { await model.refresh() }
             .onAppear {

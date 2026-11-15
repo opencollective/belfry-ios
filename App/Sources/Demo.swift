@@ -38,7 +38,8 @@ enum DemoPictures {
                 c.drawLinearGradient(g, start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
             }
             UIColor.white.withAlphaComponent(0.85).setFill()
-            c.fillEllipse(in: CGRect(x: size.width * (0.15 + 0.12 * CGFloat(i % 4)), y: size.height * 0.18, width: size.height * 0.2, height: size.height * 0.2))
+            let sunX = wide ? 0.62 : 0.15 + 0.12 * CGFloat(i % 4)
+            c.fillEllipse(in: CGRect(x: size.width * sunX, y: size.height * 0.3, width: size.height * 0.2, height: size.height * 0.2))
             ground.setFill()
             c.fill(CGRect(x: 0, y: size.height * 0.68, width: size.width, height: size.height * 0.32))
             UIColor.white.withAlphaComponent(0.25).setFill()

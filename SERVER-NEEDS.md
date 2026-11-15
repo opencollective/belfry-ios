@@ -182,9 +182,9 @@ The app codes against the contract (SPEC 19.29). For the belfry:
   person without checking them in. `POST /events/<d>/checkin {"code", "dry_run": true}` (or a
   `GET`) answering the same `person` without recording would let the card show the name and the
   state first, as the contract describes.
-- **Admins are the latest 39001**: the app now takes a group's newest 39001 as its admin list
-  (the web chat adds every 39001 it has seen), so a co-host made an attendee again drops out as
-  soon as the relay publishes the new 39001. The web chat (model.ts) should do the same.
+- **Admins by role** (the server's change 3) are read as the web's `checkin` branch does: latest
+  39001 ∪ creator ∪ the latest 9000 / 9001 per person. The app does not check who signed the
+  9000 (neither does the web); the relay only accepts them from the groups key and admins.
 - **An older belfry** answers 404 (or 405) without one of the contract's codes: the app shows
   "This belfry needs an update." and hides the ticket button (no `ticket_code`) and "Check people
   in" (no `may_check_in`, unless the relay's roles say so: then the list comes from the relay and

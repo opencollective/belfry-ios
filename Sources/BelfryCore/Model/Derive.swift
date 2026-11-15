@@ -513,6 +513,8 @@ public final class Derive {
         var decided = [String: Int]()
         var gone = Set<String>()
         var creatorOf = [String: String]()
+        var listedAdmins = [String: Set<String>]()
+        var byRole = [String: Bool]() // group id + pubkey → admin by role
         for e in sortedEvents {
             let gid = (39000...39003).contains(e.kind) ? e.tag("d") : e.tag("h")
             guard let id = gid, !id.isEmpty else { continue }
@@ -547,13 +549,10 @@ public final class Derive {
                     m["vouches"] = e.createdAt
                 }
             }
-            if e.kind == 9007 { g.admins.insert(e.pubkey); if creatorOf[id] == nil { creatorOf[id] = e.pubkey } }
-            // the relay's latest 39001 is the list (an admin made a member again is gone from it;
-            // SPEC 19.29); the creator stays, later co-host puts (9000 … admin) add to it
-            if e.kind == 39001 {
-                g.admins = Set(e.tags.filter { $0.first == "p" && $0.count > 1 }.map { $0[1] })
-                if let c = creatorOf[id] { g.admins.insert(c) }
-            }
+            if e.kind == 9007, creatorOf[id] == nil { creatorOf[id] = e.pubkey }
+            // admins (SPEC 19.29, web checkin model.ts): the relay's latest 39001 (zooid lists only
+            // its own keys, the belfry's admins and the creator), the creator, and admins by role
+            if e.kind == 39001 { listedAdmins[id] = Set(e.tags.filter { $0.first == "p" && $0.count > 1 }.map { $0[1] }) }
             if e.kind == 39002 { g.members = Set(e.tags.filter { $0.first == "p" && $0.count > 1 }.map { $0[1] }) }
             if e.kind == 9000 || e.kind == 9001, let p = e.tag("p"), !p.isEmpty {
                 if e.kind == 9000 { g.members.insert(p) } else { g.members.remove(p) }
@@ -561,8 +560,13 @@ public final class Derive {
                 // guest mode: a 9000 tagged `reading` is someone who opened a guest link; a later
                 // 9000 without it (they joined), a `saved` / `member` label or a 9001 ends that
                 if e.kind == 9000 && e.tag("reading") == "1" { g.reading.insert(p) } else { g.reading.remove(p) }
-                // a co-host (events): put in with the admin role; the relay's 39001 says the same
-                if e.kind == 9000, e.tags.contains(where: { $0.count >= 3 && $0[0] == "p" && $0[1] == p && $0[2] == "admin" }) { g.admins.insert(p) }
+                // an admin by role (co-hosts, POST /group-roles): put in with ["p", k, "admin"]; a
+                // later 9000 tagged ["role", "member"] or a 9001 ends it (a ticket's 9000 does not)
+                if e.kind == 9000, e.tags.contains(where: { $0.count >= 3 && $0[0] == "p" && $0[1] == p && $0[2] == "admin" }) {
+                    byRole[id + p] = true
+                } else if e.kind == 9001 || e.tag("role") == "member" {
+                    byRole[id + p] = false
+                }
             }
             if e.kind == 1985, e.tag("L") == Derive.guestNS, let p = e.tag("p"), !p.isEmpty,
                e.tags.contains(where: { $0.count >= 2 && $0[0] == "l" && ($0[1] == "saved" || $0[1] == "member") }) {
@@ -588,6 +592,16 @@ public final class Derive {
             }
             map[id] = g
             metaAt[id] = m
+        }
+        for id in order {
+            guard var g = map[id] else { continue }
+            g.admins = listedAdmins[id] ?? []
+            if let c = creatorOf[id] { g.admins.insert(c) }
+            map[id] = g
+        }
+        for (k, on) in byRole where on && k.count > 64 {
+            let id = String(k.dropLast(64))
+            map[id]?.admins.insert(String(k.suffix(64)))
         }
         // a pod or proposal lives where it was announced: the first post carrying its tag
         for e in sortedEvents where e.kind == 9 {

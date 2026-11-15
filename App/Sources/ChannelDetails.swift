@@ -262,7 +262,7 @@ struct MembersTab: View {
     /// "Admin", "Guest · invited by Ana", "Ana's agent"… (nil for a plain member).
     private func detail(_ r: MemberRow, _ d: Derive) -> String? {
         var parts = [String]()
-        if r.isAdmin { parts.append("Admin") }
+        if let w = d.adminWord(id, r.pubkey) { parts.append(w) }
         if let k = d.kindLabel(r.pubkey) { parts.append(k) } else if let c = r.guest?.chip { parts.append(c.prefix(1).uppercased() + c.dropFirst()) }
         if let by = r.guest?.by { parts.append("invited by " + model.name(by)) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")

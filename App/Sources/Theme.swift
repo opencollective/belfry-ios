@@ -124,10 +124,21 @@ extension View {
     /// HEIGHT: told the bar's height. The feed must NOT pad its end by it: scrollTo(.bottom) and
     /// defaultScrollAnchor(.bottom) already stop above a safe-area inset (the pad showed as an
     /// empty band above the composer at the end of a channel, 2026-11-15).
+    /// 2026-11-15: the composer sits UNDER the feed (a VStack), not over it as a safe-area
+    /// inset: defaultScrollAnchor(.bottom) put the last rows behind and below an inset composer,
+    /// and padding the feed by the composer's height left an empty band after scrollTo. Under it,
+    /// the feed's end is the composer's top, whatever scrolls there.
     func bottomBar<V: View>(height: Binding<CGFloat>? = nil, @ViewBuilder _ content: () -> V) -> some View {
-        safeAreaInset(edge: .bottom, spacing: 0) {
+        VStack(spacing: 0) {
+            self.frame(maxHeight: .infinity)
             content().background(GeometryReader { g in Color.clear.preference(key: BarHeightKey.self, value: g.size.height) })
         }
         .onPreferenceChange(BarHeightKey.self) { h in height?.wrappedValue = h }
+    }
+
+    /// A feed stays on its last rows when it gets shorter or taller (the keyboard, the event's
+    /// header moving): iOS 18's size-change anchor; before, the caller scrolls on a height change.
+    @ViewBuilder func keepsBottomOnResize() -> some View {
+        if #available(iOS 18, *) { self.defaultScrollAnchor(.bottom, for: .sizeChanges) } else { self }
     }
 }

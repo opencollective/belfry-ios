@@ -47,7 +47,7 @@ struct GroupPage: View {
                     Section {
                         if g.members.isEmpty { Text("Nobody yet.").foregroundStyle(.secondary) }
                         ForEach(Array(g.members).sorted { model.name($0) < model.name($1) }, id: \.self) { p in
-                            PersonRow(pubkey: p, detail: g.admins.contains(p) ? "Admin" : nil) { shownProfile = ProfileKey(pubkey: p, group: id) }
+                            PersonRow(pubkey: p, detail: model.derive.adminWord(id, p)) { shownProfile = ProfileKey(pubkey: p, group: id) }
                         }
                         let others = g.admins.filter { !g.members.contains($0) }
                         if !others.isEmpty {

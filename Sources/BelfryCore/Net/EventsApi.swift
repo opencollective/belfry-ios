@@ -306,18 +306,31 @@ public extension BelfryAPI {
     func setGroupRole(channel: String, pubkey: String, role: GroupRole) async throws -> GroupRole {
         let a = try await signed(base + "/group-roles", method: "POST", json: ["channel": channel, "pubkey": pubkey, "role": role.rawValue])
         guard a.ok else {
-            throw BelfryAPI.checkinFail(a, "The role could not be changed.", known: ["not_allowed", "not_in_group", "last_admin", "guest_not_saved", "agent", "events_only"])
+            throw BelfryAPI.checkinFail(a, "The role could not be changed.", known: BelfryAPI.roleCodes)
         }
         return GroupRole(rawValue: a.body?["role"] as? String ?? "") ?? role
     }
 
+    /// Take PUBKEY out of a channel, group or event through the belfry (`role: removed`). An
+    /// older belfry answers `update_needed`: the caller falls back to its own 9001.
+    func removeFromGroup(channel: String, pubkey: String) async throws {
+        let a = try await signed(base + "/group-roles", method: "POST", json: ["channel": channel, "pubkey": pubkey, "role": "removed"])
+        guard a.ok else { throw BelfryAPI.checkinFail(a, "They could not be removed.", known: BelfryAPI.roleCodes) }
+    }
+
+    internal static let roleCodes: Set<String> = ["not_allowed", "not_in_group", "last_admin", "guest_not_saved", "agent", "events_only", "always_admin", "invalid", "relay"]
+
     static let checkinErrors = [
-        "not_allowed": "You can’t do this here.",
-        "not_in_group": "They need to be in it first (or hold a ticket).",
-        "last_admin": "Someone else must be an admin first.",
-        "guest_not_saved": "They need an account with an e-mail address first.",
+        // the web chat's words (checkin.ts CHECK_ERRORS)
+        "not_allowed": "Only the admins can change this.",
+        "not_in_group": "This person isn’t in the group.",
+        "last_admin": "A group keeps at least one admin.",
+        "guest_not_saved": "This guest has no e-mail yet. Once they save their account, they can be an admin.",
         "agent": "An agent can’t be an admin.",
-        "events_only": "Stewards are for events only.",
+        "events_only": "Stewards are for events.",
+        "always_admin": "The host and the belfry’s admins stay admins.",
+        "invalid": "That did not work. Try again.",
+        "relay": "The event could not be reached. Try again.",
         "no_ticket": "Not a ticket for this event",
         "update_needed": updateNeeded,
     ]

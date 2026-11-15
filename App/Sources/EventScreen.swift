@@ -21,11 +21,6 @@ enum EventTab: String, CaseIterable, Hashable { case chat = "Chat", photos = "Ph
 
 struct EventRoute: Hashable { let key: String; var ticket: String? = nil }
 
-struct EventHalfKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
-}
-
 /// Finds the event (the local log first, then the belfry's API for guests) and shows it.
 struct EventScreen: View {
     @EnvironmentObject var model: AppModel
@@ -196,7 +191,7 @@ struct EventScreenBody: View {
                 VStack(alignment: .leading, spacing: 0) {
                     halfPart(d, top: top, access: access)
                         .id("event-top")
-                        .background(GeometryReader { g in Color.clear.preference(key: EventHalfKey.self, value: g.size.height) })
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { halfContentH = $0 }
                     // kept in the tree at every level (clipped away): nothing pops in while pulling
                     EventFullPart(e: e, api: api, error: $error, coHost: $coHost, open: openProfile,
                                   showPeople: { withAnimation(.snappy) { tab = .people; level = .half } },
@@ -214,7 +209,6 @@ struct EventScreenBody: View {
         .frame(maxWidth: .infinity)
         .clipped()
         .background(PDSurface.color)
-        .onPreferenceChange(EventHalfKey.self) { halfContentH = $0 }
         .accessibilityHidden(access && level == .up)
     }
 
@@ -274,8 +268,9 @@ struct EventScreenBody: View {
             .accessibilityIdentifier("event-tabs")
             ZStack {
                 pane(.chat) { ChannelView(id: e.groupId, embedded: true) }
-                pane(.photos) { EventPhotosTab(e: e) }
-                pane(.people) { EventPeopleTab(e: e, open: openProfile, checkIn: { checkingIn = true }) }
+                // lists run under the home indicator (as Photos and Contacts do)
+                pane(.photos) { EventPhotosTab(e: e).ignoresSafeArea(.container, edges: .bottom) }
+                pane(.people) { EventPeopleTab(e: e, open: openProfile, checkIn: { checkingIn = true }).ignoresSafeArea(.container, edges: .bottom) }
             }
             .opacity(hidden ? 0 : 1)
             .allowsHitTesting(!hidden)
@@ -573,7 +568,7 @@ struct EventFullPart: View {
     var body: some View {
         let d = model.derive
         let lists = d.eventPeopleList(e)
-        let hosts = [e.creator] + e.hosts.filter { $0 != e.creator }.sorted()
+        let hosts = lists.hosts.filter { d.eventRole(e, $0) != .steward }
         let host = d.isHost(e) && e.isNew && !e.remote
         VStack(alignment: .leading, spacing: 0) {
             Divider()

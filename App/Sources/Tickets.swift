@@ -207,7 +207,8 @@ struct CheckInScreen: View {
             } message: { p in Text("\(displayName(p)) shows as not checked in.") }
         }
         .task {
-            if camera == .notDetermined {
+            // the demo never asks (the system's question would stand over every later screenshot)
+            if camera == .notDetermined && !model.isDemo {
                 _ = await AVCaptureDevice.requestAccess(for: .video)
                 camera = AVCaptureDevice.authorizationStatus(for: .video)
             }

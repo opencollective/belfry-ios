@@ -92,8 +92,10 @@ final class MenuShots: XCTestCase {
         // the channel under the pushed event screen has a composer too: take the one on screen
         let fields = app.descendants(matching: .any).matching(identifier: "composer-field")
         XCTAssertTrue(fields.firstMatch.waitForExistence(timeout: 10))
-        guard let field = fields.allElementsBoundByIndex.first(where: { $0.isHittable }) else { XCTFail("no composer on screen"); return }
-        field.tap()
+        // the event's own composer is the last one in the tree (the channel's lies under the pushed screen)
+        guard let field = fields.allElementsBoundByIndex.last else { XCTFail("no composer on screen"); return }
+        field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        sleep(1)
         field.typeText("On my way")
         sleep(2)
         shot("82-event-chat-typing")

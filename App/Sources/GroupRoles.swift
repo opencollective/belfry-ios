@@ -66,13 +66,15 @@ struct GroupRoleSection: View {
             let title = g.type == .channel ? "#" + g.name : g.name
             let current = currentChoice(d, e)
             let isCreator = e?.creator == pubkey
-            let editable = d.canAdmin(g) && !isCreator && !d.isAgent(pubkey)
+            // the creator, the belfry's admins and the relay's keys administer it whatever the role
+            let fixed = isCreator || (g.admins.contains(pubkey) && d.everywhere(groupId).contains(pubkey))
+            let editable = d.canAdmin(g) && !fixed && !d.isAgent(pubkey)
             let inGroup = g.members.contains(pubkey) || g.admins.contains(pubkey) || (e.map { d.eventPeople($0).holders[pubkey] != nil } ?? false)
             Section {
                 if editable {
                     ForEach(choices(e != nil), id: \.id) { c in choiceRow(c, current: current) }
                 } else {
-                    LabeledContent("Role", value: label(current, event: e != nil))
+                    LabeledContent("Role", value: fixed && !isCreator ? (d.isBelfryAdmin(pubkey) ? "Admin of the belfry" : "Admin") : label(current, event: e != nil))
                 }
                 if editable && pubkey != model.me && inGroup {
                     Button(role: .destructive) { confirmRemove = true } label: {
@@ -87,7 +89,7 @@ struct GroupRoleSection: View {
                 else if editable && e != nil { Text("Co-hosts can edit the event and decide who comes. Stewards check people in.") }
             }
             .confirmationDialog("Remove \(model.name(pubkey)) from \(title)?", isPresented: $confirmRemove, titleVisibility: .visible) {
-                Button("Remove", role: .destructive) { model.declineApplicant(groupId, pubkey) }
+                Button("Remove", role: .destructive) { remove() }
             } message: { Text("They can't read it any more.") }
         }
     }
@@ -129,6 +131,16 @@ struct GroupRoleSection: View {
         .buttonStyle(.plain)
         .disabled(saving != nil)
         .accessibilityAddTraits(c.id == current ? .isSelected : [])
+    }
+
+    /// Out of the group through the belfry; an older belfry: the 9001 from here.
+    private func remove() {
+        saving = "remove"
+        error = nil
+        Task {
+            error = await model.removeFromGroup(groupId, pubkey)
+            saving = nil
+        }
     }
 
     private func pick(_ c: Choice, current: String) {

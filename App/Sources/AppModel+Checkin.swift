@@ -50,7 +50,7 @@ extension AppModel {
 
     private func demoViewer(_ e: CalEvent) -> EventViewer {
         let d = derive
-        let ticket = d.eventPeople(e).holders[me]
+        let ticket = heldTickets(e)[me]
         let code = ticket.map { _ in AppModel.demoTicketCode(e.d, me) }
         let role = d.eventRole(e, me)
         let roles = role == .attendee ? [] : [role.rawValue]
@@ -68,9 +68,9 @@ extension AppModel {
             people = stored.people
         } else {
             let titles = Dictionary(d.tickets(e).map { ($0.d, $0.title) }, uniquingKeysWith: { a, _ in a })
-            people = d.eventPeople(e).holders.map { pk, t in
-                Attendee(pubkey: pk, name: d.displayName(pk), ticket: t, ticketTitle: titles[t] ?? "Ticket",
-                         rsvp: e.rsvps[pk]?.rawValue, checkedIn: nil, role: d.groupRole(e.groupId, pk).rawValue)
+            people = heldTickets(e).map { pk, t in
+                Attendee(pubkey: pk, name: d.displayName(pk), ticket: t, ticketTitle: titles[t] ?? (t.hasSuffix(":free") ? "Going" : "Ticket"),
+                         rsvp: e.rsvps[pk]?.rawValue, checkedIn: nil, role: d.eventRole(e, pk) == .attendee ? "member" : d.eventRole(e, pk).rawValue)
             }
         }
         for i in people.indices {
@@ -79,6 +79,17 @@ extension AppModel {
         }
         people.sort { $0.name.lowercased() < $1.name.lowercased() }
         return AttendeeList(people: people, going: people.count, checkedIn: people.filter { $0.checkedIn != nil }.count)
+    }
+
+    /// Who holds a ticket at E: the 9000s with `ticket`, and on an event without ticket types the
+    /// members whose own RSVP says going (the free ticket `<d>:free`, as the belfry counts them).
+    func heldTickets(_ e: CalEvent) -> [String: String] {
+        let d = derive
+        var held = d.eventPeople(e).holders
+        if d.tickets(e).allSatisfy(\.implicit) {
+            for (pk, r) in e.rsvps where r == .accepted && held[pk] == nil { held[pk] = e.d + ":free" }
+        }
+        return held
     }
 
     /// The belfry's list (hosts, co-hosts, stewards). Returns a fixed message on failure.
@@ -131,6 +142,19 @@ extension AppModel {
         do {
             _ = try await api.setGroupRole(channel: groupId, pubkey: pk, role: role)
             await refresh()
+            return nil
+        } catch let x as ApiError { return x.message } catch { return BelfryAPI.network }
+    }
+
+    /// Take PK out of GROUP (`role: removed` through the belfry; an older belfry or the demo: 9001).
+    func removeFromGroup(_ groupId: String, _ pk: String) async -> String? {
+        if isDemo || engine?.localOnly == true { declineApplicant(groupId, pk); return nil }
+        do {
+            try await api.removeFromGroup(channel: groupId, pubkey: pk)
+            await refresh()
+            return nil
+        } catch let x as ApiError where x.code == "update_needed" {
+            declineApplicant(groupId, pk)
             return nil
         } catch let x as ApiError { return x.message } catch { return BelfryAPI.network }
     }

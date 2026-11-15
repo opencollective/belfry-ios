@@ -61,10 +61,26 @@ public extension Derive {
         return out
     }
 
-    /// Stewards of GROUP: the latest label says "steward" and the person is not an admin.
+    /// Stewards of GROUP (an event's): the groups key's latest label for them says "steward".
     func stewards(_ groupId: String) -> Set<String> {
-        let admins = group(groupId)?.admins ?? []
-        return Set(latestGroupsKeyLabels(groupId, Derive.groupRoleNS).filter { $0.value.0 == "steward" && !admins.contains($0.key) }.keys)
+        guard Group.typeOf(groupId) == .event else { return [] }
+        return Set(latestGroupsKeyLabels(groupId, Derive.groupRoleNS).filter { $0.value.0 == "steward" }.keys)
+    }
+
+    /// Keys that administer every group: the belfry's admins, the relay's key (the author of the
+    /// group's 39000), the groups key. Never shown as a group's "Admin" or an event's "Co-host".
+    func everywhere(_ groupId: String) -> Set<String> {
+        var out = communityAdmins
+        if let r = ofKind(39000).first(where: { $0.tag("d") == groupId })?.pubkey { out.insert(r) }
+        if let k = ctx.groupsKey, !k.isEmpty { out.insert(k) }
+        return out
+    }
+
+    /// "Admin" for a channel's or group's own admin ('' for everyone else and for the keys that
+    /// administer every group), as its people lists show it.
+    func adminWord(_ groupId: String, _ pubkey: String) -> String? {
+        guard group(groupId)?.admins.contains(pubkey) == true, !everywhere(groupId).contains(pubkey) else { return nil }
+        return "Admin"
     }
 
     /// PUBKEY's role in GROUP.
@@ -89,13 +105,17 @@ public extension Derive {
     /// PUBKEY's role in event E: its creator hosts, other admins co-host, then stewards.
     func eventRole(_ e: CalEvent, _ pubkey: String) -> EventRole {
         if pubkey == e.creator { return .host }
-        if e.hosts.contains(pubkey) { return .cohost }
+        if group(e.groupId)?.admins.contains(pubkey) == true && !everywhere(e.groupId).contains(pubkey) { return .cohost }
         if stewards(e.groupId).contains(pubkey) { return .steward }
         return .attendee
     }
 
-    /// May I check people in at E, as the relay tells it (the API's `may_check_in` wins when known).
-    func mayCheckIn(_ e: CalEvent) -> Bool { !e.remote && eventRole(e, me).maysCheckIn }
+    /// May I check people in at E, as the relay tells it (the API's `may_check_in` wins when
+    /// known): host, co-host, steward, any admin of its group, a belfry admin.
+    func mayCheckIn(_ e: CalEvent) -> Bool {
+        guard !e.remote else { return false }
+        return eventRole(e, me).maysCheckIn || group(e.groupId)?.admins.contains(me) == true || isCommunityAdmin
+    }
 
     /// From 00:00 of the event's first day to the end of its last day, in the context's zone.
     func onEventDays(_ e: CalEvent, now: Int) -> Bool {
@@ -115,7 +135,8 @@ public extension Derive {
     func eventPeopleList(_ e: CalEvent) -> (hosts: [String], going: [String], maybe: [String]) {
         let st = stewards(e.groupId)
         let byName: (String, String) -> Bool = { a, b in self.displayName(a).lowercased() < self.displayName(b).lowercased() }
-        let hosts = [e.creator] + e.hosts.filter { $0 != e.creator }.sorted(by: byName) + st.filter { !e.hosts.contains($0) }.sorted(by: byName)
+        let co = (group(e.groupId)?.admins ?? []).filter { $0 != e.creator && eventRole(e, $0) == .cohost }
+        let hosts = [e.creator] + co.sorted(by: byName) + st.filter { $0 != e.creator && !co.contains($0) }.sorted(by: byName)
         let taken = Set(hosts)
         let going = e.goingKeys.filter { !taken.contains($0) }.sorted(by: byName)
         let maybe = e.rsvps.filter { $0.value == .tentative && !taken.contains($0.key) && !e.goingKeys.contains($0.key) }.map(\.key).sorted(by: byName)
