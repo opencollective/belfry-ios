@@ -61,6 +61,7 @@ shot 54-group group light
 shot 55-requests requests light
 shot 56-log log light
 shot 57-settings settings light
+shot 58-members directory light
 shot 62-accounts accounts light
 shot 60-meeting meeting light
 shot 61-meeting-form meetingform light

@@ -11,6 +11,7 @@ enum SidebarItem: Hashable {
     case messages
     case mentions
     case requests
+    case members
 }
 
 struct SearchTarget: Hashable { let channel: String; let message: String }
@@ -156,6 +157,7 @@ struct RootView: View {
             case .messages: MessagesView()
             case .mentions: MentionsView()
             case .requests: RequestsView()
+            case .members: MembersDirectory()
             case nil: ContentUnavailableView("Pick a channel", systemImage: "number", description: Text("Your community's channels are in the list."))
                     .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
             }
@@ -242,6 +244,7 @@ struct RootView: View {
         case "messages", "conversation", "mail": selection = .messages
         case "mentions": selection = .mentions
         case "requests": selection = .requests
+        case "directory": selection = .members
         case "settings":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
@@ -412,6 +415,13 @@ struct ChannelDrawer: View {
                         }
                     }
                     Section {
+                        if !d.amGuest {
+                            let asking = model.belfryRequests
+                            let waiting = asking.filter { !$0.vouched }.count
+                            DrawerRow(icon: "person.3", title: "Members",
+                                      detail: asking.isEmpty ? "Everyone in \(model.config.name)" : "\(asking.count) asking to join · vouch",
+                                      badge: waiting, on: current == .members) { select(.members) }
+                        }
                         if model.showRequests {
                             let n = model.requestCount
                             DrawerRow(icon: "tray", title: "Requests", detail: n > 0 ? "\(n) waiting for you" : "People and agents asking to join",
@@ -628,6 +638,8 @@ struct ChannelRow: View {
     let group: Channel
     var isPublic = false
 
+    var unreadN: Int { model.unread(group.id) }
+
     var body: some View {
         let last = model.derive.messages(group.id).last
         HStack(spacing: 12) {
@@ -643,7 +655,7 @@ struct ChannelRow: View {
             .frame(width: 32, height: 32)
             .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(group.name).font(.body.weight(.medium)).lineLimit(1)
+                Text(group.name).font(.body.weight(unreadN > 0 ? .bold : .medium)).lineLimit(1)
                 if let last {
                     Text("\(model.name(last.ev.pubkey)): \(preview(last.text))")
                         .font(.subheadline)
@@ -651,9 +663,13 @@ struct ChannelRow: View {
                         .lineLimit(1)
                 }
             }
+            Spacer(minLength: 4)
+            if unreadN > 0 {
+                Text(unreadN > 99 ? "99+" : "\(unreadN)").font(.caption.weight(.semibold)).monospacedDigit().foregroundStyle(.secondary)
+            }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(group.name) channel")
+        .accessibilityLabel(unreadN > 0 ? "\(group.name) channel, \(unreadN) unread" : "\(group.name) channel")
     }
 
     func preview(_ t: String) -> String {

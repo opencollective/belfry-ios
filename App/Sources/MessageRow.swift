@@ -75,6 +75,8 @@ struct MessageRow: View {
                             }
                             Text("\(thread.count) \(thread.count == 1 ? "reply" : "replies")").font(.footnote.weight(.semibold)).foregroundStyle(Color.brand)
                             Text(Format.short(thread.last)).font(.footnote).foregroundStyle(.secondary)
+                            let fresh = model.readSync == nil ? 0 : d.unreadInThread(group, m.id, model.readState, now: Int.now)
+                            if fresh > 0 { Text("· \(fresh) new").font(.footnote.weight(.semibold)).foregroundStyle(.primary) }
                             Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
                         }
                         .padding(.vertical, 2)

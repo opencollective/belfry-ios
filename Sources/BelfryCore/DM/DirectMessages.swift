@@ -114,7 +114,7 @@ public final class DirectMessages: @unchecked Sendable {
         for d in items.values { by[d.conv, default: []].append(d) }
         return by.map { conv, list in
             let sorted = list.sorted { $0.at < $1.at }
-            let r = read[conv] ?? 0
+            let r = max(read[conv] ?? 0, readFloor?(conv) ?? 0)
             return DmThread(conv: conv, last: sorted.last!, unread: sorted.filter { !$0.mine && $0.at > r }.count, count: sorted.count)
         }.sorted { $0.last.at > $1.last.at }
     }
@@ -125,6 +125,12 @@ public final class DirectMessages: @unchecked Sendable {
     }
 
     public var unreadTotal: Int { threads().filter { $0.unread > 0 }.count }
+
+    /// The shared read state's mark for a conversation (SPEC 19.27); the higher of it and this
+    /// phone's own mark counts.
+    public var readFloor: ((String) -> Int)?
+    /// This phone's own marks (seeded once into the shared read state).
+    public var readMarks: [String: Int] { lock.lock(); defer { lock.unlock() }; return read }
 
     public func report(_ emailId: String?) -> DeliveryReport? {
         guard let emailId else { return nil }

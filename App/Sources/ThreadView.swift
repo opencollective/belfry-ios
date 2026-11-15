@@ -42,7 +42,11 @@ struct ThreadView: View {
                 .padding(.vertical, 8)
             }
             .defaultScrollAnchor(.bottom)
-            .onChange(of: replies.count) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+            .onChange(of: replies.count) { _, _ in
+                withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                model.markThreadRead(group, rootId)
+            }
+            .onAppear { model.markThreadRead(group, rootId) }
         }
         .bottomBar {
             if model.guestReading {

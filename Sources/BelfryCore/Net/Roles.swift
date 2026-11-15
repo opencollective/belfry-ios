@@ -316,3 +316,41 @@ public extension BelfryAPI {
         return Branding.clean(b)
     }
 }
+
+
+// ---- the members directory (whois {"directory": true}; web Directory.tsx, 8f0ccb8) -------------
+
+public struct DirMember: Hashable, Sendable, Identifiable {
+    public let pubkey: String
+    public let name: String
+    public let role: String?
+    public let agents: [(pubkey: String, name: String)]
+    public var id: String { pubkey }
+    public init(pubkey: String, name: String, role: String?, agents: [(pubkey: String, name: String)]) {
+        self.pubkey = pubkey; self.name = name; self.role = role; self.agents = agents
+    }
+    public static func == (a: DirMember, b: DirMember) -> Bool { a.pubkey == b.pubkey && a.name == b.name && a.role == b.role && a.agents.map(\.pubkey) == b.agents.map(\.pubkey) }
+    public func hash(into h: inout Hasher) { h.combine(pubkey) }
+}
+
+public extension BelfryAPI {
+    static func parseDirectory(_ b: [String: Any]) -> [DirMember] {
+        let agents = b["agents"] as? [String: Any] ?? [:]
+        let names = b["names"] as? [String: Any] ?? [:]
+        return (b["members"] as? [[String: Any]] ?? []).compactMap { m in
+            guard let pk = m["pubkey"] as? String, isHex64(pk) else { return nil }
+            let mine = agents.compactMap { a, o -> (String, String)? in
+                guard isHex64(a), o as? String == pk else { return nil }
+                return (a, ((names[a] as? String) ?? "").sliceUnits(100))
+            }.sorted { $0.0 < $1.0 }
+            return DirMember(pubkey: pk, name: ((m["name"] as? String) ?? "").sliceUnits(100), role: m["role"] as? String, agents: mine.map { (pubkey: $0.0, name: $0.1) })
+        }
+    }
+
+    /// Every member of the belfry, their own agents under them (members only).
+    func directory() async throws -> [DirMember] {
+        let a = try await signed(base + "/whois", method: "POST", json: ["directory": true])
+        guard a.ok, let b = a.body else { throw BelfryAPI.fail(a, BelfryAPI.whoisErrors, "The list could not be loaded.") }
+        return BelfryAPI.parseDirectory(b)
+    }
+}

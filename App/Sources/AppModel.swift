@@ -1,6 +1,7 @@
 import BelfryCore
 import Foundation
 import SwiftUI
+import UserNotifications
 
 // The app's state: the session (Keychain), the sync engine and direct messages, and a cached
 // Derive over the event log that views read. Every user action goes through here into the outbox.
@@ -80,8 +81,54 @@ final class AppModel: ObservableObject {
         cachedMentions = (version, m)
         return m
     }
-    var newMentions: Int { mentions.prefix(99).filter { $0.createdAt > mentionsSeenAt }.count }
+    var newMentions: Int {
+        guard let r = readSync?.state else { return mentions.prefix(99).filter { $0.createdAt > mentionsSeenAt }.count }
+        let now = Int.now
+        return mentions.prefix(99).filter { $0.createdAt > mentionsSeenAt && Derive.mentionIsNew(r, $0, now: now) }.count
+    }
+
+    /// The shared read state (SPEC 19.27), per session.
+    var readSync: ReadSync?
+    var readState: ReadState { readSync?.state ?? .empty }
+
+    /// Unread top-level messages of a channel (the drawer's count).
+    func unread(_ groupId: String) -> Int { readSync == nil ? 0 : derive.unreadIn(groupId, readState, now: Int.now) }
+
+    /// A channel on screen at its newest message: read up to it; its notifications go away.
+    func markChannelRead(_ groupId: String) {
+        guard let rs = readSync, let at = derive.channelMark(groupId) else { return }
+        rs.mark("c", groupId, at)
+    }
+
+    func markThreadRead(_ groupId: String, _ rootId: String) {
+        guard let rs = readSync, let at = derive.threadMark(groupId, rootId) else { return }
+        rs.mark("t", rootId, at)
+    }
+
+    func markConversationRead(_ conv: String) {
+        dms?.markRead(conv)
+        if let at = dms?.thread(conv).last?.at { readSync?.mark("d", conv, at) }
+    }
+
+    /// A mark arrived (here or from another device): counts follow, delivered notifications of
+    /// what is read now go away.
+    func readChanged(_ r: ReadState) {
+        version += 1
+        let now = Int.now
+        let center = UNUserNotificationCenter.current()
+        center.getDeliveredNotifications { list in
+            var gone = [String]()
+            for n in list {
+                let tid = n.request.content.threadIdentifier
+                guard tid != "dm", tid != "belfry", !tid.isEmpty else { continue }
+                if Int(n.date.timeIntervalSince1970) <= r.readUpTo("c", tid, now: now) { gone.append(n.request.identifier) }
+            }
+            if !gone.isEmpty { center.removeDeliveredNotifications(withIdentifiers: gone) }
+        }
+    }
+
     func markMentionsSeen() {
+        if let newest = mentions.first?.createdAt { readSync?.mark("m", "", newest) }
         mentionsSeenAt = Int.now
         UserDefaults.standard.set(mentionsSeenAt, forKey: AppModel.perAccount("belfry-mentions-seen"))
     }
@@ -252,9 +299,17 @@ final class AppModel: ObservableObject {
         let d = DirectMessages(engine: e)
         e.onChange = { [weak self] in DispatchQueue.main.async { self?.changed() } }
         d.onChange = { [weak self] in DispatchQueue.main.async { self?.changed() } }
-        e.onNewEvents = { [weak d] list in
+        // read state across devices (SPEC 19.27): guests, guest mode and the demo keep it here
+        let rs = ReadSync(engine: e, seedD: { d.readMarks })
+        rs.shared = { [weak e] in !s.demo && s.reading != true && !(e?.guestMode.reading ?? false) }
+        rs.onChange = { [weak self] r in DispatchQueue.main.async { self?.readChanged(r) } }
+        d.readFloor = { [weak rs] conv in rs?.state.readUpTo("d", conv, now: Int.now) ?? 0 }
+        readSync = rs
+        e.onNewEvents = { [weak d, weak rs] list in
             if list.contains(where: { $0.kind == 1059 || $0.kind == 4 }) { Task { await d?.process() } }
+            rs?.offer(list)
         }
+        e.onEOSE = { [weak rs] t in if t == .main { rs?.relayAnswered() } }
         e.onSent = { [weak d] item, _ in d?.outboxSent(item) }
         e.onFailed = { [weak d] item in d?.outboxFailed(item) }
         d.onSend = { Push.markSent() }
@@ -379,6 +434,8 @@ final class AppModel: ObservableObject {
 
     /// Forgets what the open session held in memory (its engine, caches, guest state).
     func resetLive() {
+        readSync?.flush()
+        readSync = nil
         engine = nil
         dms = nil
         session = nil

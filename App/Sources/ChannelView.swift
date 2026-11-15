@@ -83,6 +83,7 @@ struct ChannelView: View {
             .refreshable { await model.refresh() }
             .onAppear {
                 model.markSeen(id)
+                model.markChannelRead(id)
                 model.visibleChannel = id
                 takeThread()
                 if let focus { jump(to: focus, proxy) }
@@ -90,6 +91,7 @@ struct ChannelView: View {
                 if pendingThreadLaunch { openBusiestThread(proxy) }
             }
             .onChange(of: rows.count) { _, _ in
+                if UIApplication.shared.applicationState == .active { model.markChannelRead(id) }
                 if focus == nil && scrollTarget == nil { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
                 if pendingThreadLaunch { openBusiestThread(proxy) }
             }

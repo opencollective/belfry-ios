@@ -36,6 +36,7 @@ struct BelfryApp: App {
             }
             .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { act in if let u = act.webpageURL { model.handle(url: u) } }
             .onChange(of: scenePhase) { _, phase in
+                if phase == .background { model.readSync?.flush() }
                 if phase == .active {
                     model.wake()
                     if model.phase == .ready { Task { await model.checkPush() } }

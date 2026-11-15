@@ -166,3 +166,14 @@ final class ChannelLogTests: XCTestCase {
         XCTAssertEqual(ChannelLog.short(String(repeating: "x", count: 100), 10), String(repeating: "x", count: 9) + "…")
     }
 }
+
+final class DirectoryTests: XCTestCase {
+    func testParse() {
+        let a = String(repeating: "a", count: 64), b = String(repeating: "b", count: 64), c = String(repeating: "c", count: 64)
+        let d = BelfryAPI.parseDirectory(["members": [["pubkey": a, "name": "Ana", "role": "host"], ["pubkey": "bad"]],
+                                          "agents": [b: a, c: "nope"], "names": [b: "Scout"]])
+        XCTAssertEqual(d.count, 1)
+        XCTAssertEqual(d[0].role, "host")
+        XCTAssertEqual(d[0].agents.map(\.name), ["Scout"])
+    }
+}
