@@ -69,8 +69,8 @@ struct ThreadRow: View {
         let mail = MailThreads.isMail(thread.conv)
         HStack(alignment: .top, spacing: 12) {
             if mail {
-                Image(systemName: "envelope.fill").font(.title3).foregroundStyle(.white)
-                    .frame(width: 40, height: 40).background(Color.bronze, in: Circle())
+                Image(systemName: "envelope.fill").font(.title3).foregroundStyle(Theme.onAccent)
+                    .frame(width: 40, height: 40).background(Color.brand, in: Circle())
                     .accessibilityHidden(true)
             } else {
                 Avatar(pubkey: MailThreads.peers(thread.conv).first ?? "", size: 40)
@@ -85,7 +85,7 @@ struct ThreadRow: View {
                 Text(thread.last.mine ? "You: \(thread.last.text)" : thread.last.text).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
             }
             if thread.unread > 0 {
-                Circle().fill(Color.bronze).frame(width: 10, height: 10).padding(.top, 6).accessibilityLabel("Unread")
+                Circle().fill(Color.brand).frame(width: 10, height: 10).padding(.top, 6).accessibilityLabel("Unread")
             }
         }
         .accessibilityElement(children: .combine)
@@ -197,7 +197,7 @@ struct Bubble: View {
             if dm.kind == 1301, let s = dm.subject { Text(s).font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
             MarkdownText(text: dm.text.isEmpty ? " " : dm.text)
                 .padding(10)
-                .background(dm.mine ? Color.bronze.opacity(0.16) : Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
+                .background(dm.mine ? Color.brand.opacity(0.16) : Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
             HStack(spacing: 6) {
                 Text(Format.time(dm.at)).font(.caption2).foregroundStyle(.secondary)
                 if let f = dm.failed {

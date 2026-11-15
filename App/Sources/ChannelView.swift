@@ -14,7 +14,7 @@ struct ChannelView: View {
     let id: String
     var focus: String?
     @State private var openThreads = Set<String>()
-    @State private var pullDown = false
+    @State private var pull: PullLevel = .closed
     @State private var details = false
     @State private var invite = false
     @State private var search = false
@@ -95,19 +95,40 @@ struct ChannelView: View {
             .onChange(of: scrollTarget) { _, t in if let t { jump(to: t, proxy); scrollTarget = nil } }
             .onChange(of: model.openThread) { _, _ in takeThread() }
             .onDisappear { if model.visibleChannel == id { model.visibleChannel = nil } }
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .bottomBar {
                 VStack(spacing: 0) {
-                    ChannelLineBar(id: id, topic: topic, open: { pullDown = true }, showAll: { withAnimation { topic = nil } },
-                                   review: { details = true })
+                if model.guestReading {
+                    // guest mode: reading only; Join opens the sheet (SPEC 19.26)
+                    GuestBar(group: id)
+                } else {
+                if model.unsavedGuest && d.messages(id).contains(where: { $0.pubkey == model.me }) {
+                    SaveAccountCard(compact: true).padding(.horizontal).padding(.vertical, 8).background(.bar)
+                }
+                Composer(group: id, placeholder: "Message \(g.map { $0.isPod ? $0.name : "#" + $0.name } ?? id)", canAnnounce: d.canAdmin(g), topic: topic) { text, attachments, announce in
+                    model.post(text, in: id, attachments: attachments, announce: announce, topic: topic)
+                    withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                }
+                }
+                }
+            }
+            .overlay(alignment: .top) {
+                PullDownPanel(id: id, level: $pull, topic: $topic,
+                              openDetails: { closePull(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { details = true } },
+                              showMessage: { mid in closePull(); scrollTarget = mid })
+            }
+            .topBar {
+                VStack(spacing: 0) {
+                    ChannelLineBar(id: id, topic: topic, open: { togglePull() }, showAll: { withAnimation { topic = nil } },
+                                   review: { details = true }, pulled: pull != .closed, pull: { openPull() })
                     if model.offerPush { PushOffer() }
                     if let g, g.isEvent, let e = d.eventOfGroup(id) {
                         Button { model.openEvent = e.coord } label: {
                             HStack(spacing: 8) {
-                                Image(systemName: "calendar").foregroundStyle(Color.bronze)
+                                Image(systemName: "calendar").foregroundStyle(Color.brand)
                                 Text(e.title).font(.footnote.weight(.semibold)).lineLimit(1)
                                 Text(d.lineDay(e.start, now: .now)).font(.footnote).foregroundStyle(.secondary)
                                 Spacer()
-                                Text("The event").font(.caption.weight(.semibold)).foregroundStyle(Color.bronze)
+                                Text("The event").font(.caption.weight(.semibold)).foregroundStyle(Color.brand)
                                 Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
                             }
                             .padding(.horizontal).padding(.vertical, 7)
@@ -120,34 +141,21 @@ struct ChannelView: View {
                     }
                 }
             }
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 0) {
-                if model.guestReading {
-                    // guest mode: reading only; Join opens the sheet (SPEC 19.26)
-                    GuestBar(group: id)
-                } else {
-                if model.unsavedGuest && d.messages(id).contains(where: { $0.pubkey == model.me }) {
-                    SaveAccountCard(compact: true).padding(.horizontal).padding(.vertical, 8).background(.bar)
-                }
-                Composer(group: id, placeholder: "Message \(g.map { $0.isPod ? $0.name : "#" + $0.name } ?? id)", canAnnounce: d.canAdmin(g), topic: topic) { text, attachments, announce in
-                    model.post(text, in: id, attachments: attachments, announce: announce, topic: topic)
-                }
-                }
-                }
-            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Button { pullDown = true } label: {
+                Button { togglePull() } label: {
                     HStack(spacing: 6) {
                         if let g { ChannelGlyph(group: g, size: 18) }
                         Text(g?.name ?? id).font(.headline).foregroundStyle(.primary).lineLimit(1)
                         Image(systemName: "chevron.down").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(pull == .closed ? 0 : 180))
                     }
                 }
                 .accessibilityLabel("\(g?.name ?? id). Show what's going on in this channel.")
             }
+            ToolbarItem(placement: .topBarLeading) { DrawerButton() }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button { search = true } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("Search")
                 if !model.guestReading {
@@ -156,10 +164,13 @@ struct ChannelView: View {
             }
         }
         .navigationDestination(item: $thread) { r in ThreadView(group: r.group, rootId: r.root, focusReply: r.reply) }
-        .sheet(isPresented: $pullDown) {
-            PullDownSheet(id: id, topic: $topic, openDetails: { pullDown = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { details = true } },
-                          showMessage: { mid in pullDown = false; scrollTarget = mid })
-        }
+        .environment(\.messageMenu, MessageMenuHandlers(
+            reply: { m in thread = ThreadRoute(group: id, root: Derive.rootOf(m.ev) ?? m.id, reply: true) },
+            openThread: { m in thread = ThreadRoute(group: id, root: Derive.rootOf(m.ev) ?? m.id) },
+            edit: { m in editing = m },
+            sheet: { m, delete in model.launchDelete = delete; actionsFor = m }))
+        // no keyboard over a sheet
+        .onChange(of: details || invite || search || podAsk || actionsFor != nil || editing != nil) { _, open in if open { hideKeyboard() } }
         .sheet(isPresented: $details) { ChannelDetails(id: id) }
         .sheet(isPresented: $invite) { InviteSheet(id: id) }
         .sheet(isPresented: $search) {
@@ -187,6 +198,10 @@ struct ChannelView: View {
             return .systemAction
         })
     }
+
+    func openPull() { hideKeyboard(); withAnimation(.snappy(duration: 0.3)) { pull = .short } }
+    func closePull() { withAnimation(.snappy(duration: 0.25)) { pull = .closed } }
+    func togglePull() { if pull == .closed { openPull() } else { closePull() } }
 
     /// Holding a message: its menu; in guest mode the Join sheet instead.
     func hold(_ m: Message) {
@@ -228,7 +243,8 @@ struct ChannelView: View {
         case "thread": pendingThreadLaunch = true
         case "details", "members", "todos", "files": details = true
         case "invite": invite = true
-        case "pulldown", "proposal": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { pullDown = true }
+        case "pulldown", "proposal": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }
+        case "pullfull": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { withAnimation(.snappy) { pull = .full } }
         case "menu":
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 actionsFor = model.derive.messages(id).last { $0.pubkey == model.me && model.derive.canEdit($0) }
@@ -333,7 +349,7 @@ struct EmptyChannel: View {
             } else {
                 Text("\(name) is new").font(.title3.bold())
                 Text("No messages yet. Bring the people who belong here, then say hi.").multilineTextAlignment(.center).foregroundStyle(.secondary)
-                Button("Invite people", action: invite).buttonStyle(.borderedProminent)
+                Button("Invite people", action: invite).buttonStyle(.brand)
             }
         }
         .padding(32)
@@ -354,9 +370,9 @@ struct PodJoinBar: View {
             Spacer()
             if !asked {
                 if group.closed {
-                    Button("Ask to join", action: ask).buttonStyle(.borderedProminent).controlSize(.small)
+                    Button("Ask to join", action: ask).buttonStyle(.brand).controlSize(.small)
                 } else {
-                    BusyButton("Join") { model.join(group.id) }.buttonStyle(.borderedProminent).controlSize(.small)
+                    BusyButton("Join") { model.join(group.id) }.buttonStyle(.brand).controlSize(.small)
                 }
             }
         }

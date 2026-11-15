@@ -3,7 +3,8 @@ import SwiftUI
 
 // The ONE line under a channel's name (SPEC 19.13, the web's ChannelLine.tsx) and what it pulls
 // down: Pinned, Coming up, To decide, To do, Pods, Topics, the people line, the description.
-// On iPhone the pull-down is a sheet with detents (SPEC 16).
+// The pull-down comes from the top, as on the web (ChannelHeader.tsx): the line, then a short
+// level, then the full one; drag the handle, tap the line or the title, or tap outside to close.
 
 struct ChannelLineBar: View {
     @EnvironmentObject var model: AppModel
@@ -13,6 +14,8 @@ struct ChannelLineBar: View {
     let open: () -> Void
     let showAll: () -> Void
     let review: () -> Void
+    var pulled = false
+    var pull: () -> Void = {}
 
     var body: some View {
         let line = model.derive.channelLine(id, now: .now, topic: topic, hiddenPins: model.hiddenPins)
@@ -40,16 +43,19 @@ struct ChannelLineBar: View {
                 Button { act(line.action) } label: {
                     Text(pill).font(.caption.weight(.semibold))
                         .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(line.ask ? Color.bronze : Color.secondary.opacity(0.15), in: Capsule())
-                        .foregroundStyle(line.ask ? Color.white : Color.primary)
+                        .background(line.ask ? Color.brand : Color.secondary.opacity(0.15), in: Capsule())
+                        .foregroundStyle(line.ask ? Theme.onAccent : Color.primary)
                 }
                 .buttonStyle(.plain)
                 .disabled(line.action == nil)
             }
         }
-        .padding(.horizontal).padding(.vertical, 7)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
+        .padding(.horizontal).padding(.vertical, 8)
+        .lineBackground()
+        .contentShape(Rectangle())
+        .gesture(DragGesture(minimumDistance: 12).onEnded { v in
+            if v.translation.height > 24, !pulled { pull() }
+        })
         .accessibilityElement(children: .contain)
     }
 
@@ -81,7 +87,7 @@ struct LineIconView: View {
         case .pod:
             PodShape(members: line.podMembers).stroke(Color.secondary, lineWidth: 1.4).frame(width: 14, height: 14)
         default:
-            Image(systemName: symbol).font(.caption).foregroundStyle(line.ask ? Color.bronze : Color.secondary)
+            Image(systemName: symbol).font(.caption).foregroundStyle(line.ask ? Color.brand : Color.secondary)
         }
     }
     var symbol: String {
@@ -96,15 +102,95 @@ struct LineIconView: View {
     }
 }
 
-struct PullDownSheet: View {
-    @EnvironmentObject var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.openChannel) private var openChannel
+enum PullLevel { case closed, short, full }
+
+extension View {
+    /// The line's bar: iOS 26 lets the scroll edge effect show it; before, a bar material.
+    @ViewBuilder func lineBackground() -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26, *) { self } else { self.background(.bar).overlay(alignment: .bottom) { Divider() } }
+        #else
+        self.background(.bar).overlay(alignment: .bottom) { Divider() }
+        #endif
+    }
+}
+
+/// The panel that comes down from the line: a short level and a full one; the handle follows the
+/// finger and snaps to the nearest level (up past the short one closes it).
+struct PullDownPanel: View {
     let id: String
+    @Binding var level: PullLevel
     @Binding var topic: String?
     let openDetails: () -> Void
     let showMessage: (String) -> Void
+    @State private var drag: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            let full = geo.size.height - 24
+            let short = min(full, max(260, geo.size.height * 0.55))
+            let base: CGFloat = level == .full ? full : level == .short ? short : 0
+            let h = max(0, min(full, base + drag))
+            ZStack(alignment: .top) {
+                if level != .closed || drag != 0 {
+                    Color.black.opacity(0.25 * min(1, h / max(1, short)))
+                        .ignoresSafeArea(edges: .bottom)
+                        .contentShape(Rectangle())
+                        .onTapGesture { close() }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityLabel("Close")
+                        .transition(.opacity)
+                }
+                if level != .closed {
+                    VStack(spacing: 0) {
+                        PullDownList(id: id, topic: $topic, close: close, openDetails: openDetails, showMessage: showMessage)
+                            .frame(maxHeight: .infinity)
+                        handle(short: short, full: full)
+                    }
+                    .frame(height: h, alignment: .top)
+                    .background(Color(uiColor: .systemGroupedBackground))
+                    .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 24, bottomTrailingRadius: 24, style: .continuous))
+                    .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+        }
+        .allowsHitTesting(level != .closed)
+    }
+
+    private func handle(short: CGFloat, full: CGFloat) -> some View {
+        Capsule().fill(Color.secondary.opacity(0.5)).frame(width: 40, height: 5)
+            .frame(maxWidth: .infinity, minHeight: 28)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(coordinateSpace: .global)
+                .onChanged { v in drag = v.translation.height }
+                .onEnded { v in
+                    let base: CGFloat = level == .full ? full : short
+                    let end = base + v.predictedEndTranslation.height
+                    let next: PullLevel = end < short * 0.55 ? .closed : end < (short + full) / 2 ? .short : .full
+                    withAnimation(.snappy(duration: 0.28)) { level = next; drag = 0 }
+                })
+            .onTapGesture { withAnimation(.snappy(duration: 0.28)) { level = level == .full ? .short : .full } }
+            .accessibilityElement()
+            .accessibilityLabel(level == .full ? "Show less" : "Show everything")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { withAnimation { level = level == .full ? .short : .full } }
+    }
+
+    private func close() { withAnimation(.snappy(duration: 0.25)) { level = .closed; drag = 0 } }
+}
+
+struct PullDownList: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.openChannel) private var openChannel
+    let id: String
+    @Binding var topic: String?
+    let close: () -> Void
+    let openDetails: () -> Void
+    let showMessage: (String) -> Void
     @State private var newTodo = ""
+
+    private func dismiss() { close() }
 
     var body: some View {
         let _ = model.version
@@ -112,8 +198,13 @@ struct PullDownSheet: View {
         let now = Int.now
         let f = d.channelFacts(id, now: now)
         let g = f.group
-        NavigationStack {
-            List {
+        List {
+                if let about = g?.about, !about.isEmpty {
+                    Section {
+                        MarkdownText(text: about).font(.subheadline).lineLimit(6)
+                        Text(d.visibilityLine(g)).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
                 if let g, let p = g.parent, let parent = model.group(p) {
                     Section {
                         Button { dismiss(); openChannel(p, nil) } label: {
@@ -129,7 +220,7 @@ struct PullDownSheet: View {
                                 HStack { Avatar(pubkey: a.pubkey, size: 28); Text(model.name(a.pubkey)).font(.subheadline.weight(.semibold)) }
                                 if !a.answer.isEmpty { Text(a.answer).font(.subheadline).foregroundStyle(.secondary) }
                                 HStack {
-                                    BusyButton("Let in") { model.admit(id, a.pubkey) }.buttonStyle(.borderedProminent)
+                                    BusyButton("Let in") { model.admit(id, a.pubkey) }.buttonStyle(.brand)
                                     BusyButton("Decline", role: .destructive) { model.declineApplicant(id, a.pubkey) }.buttonStyle(.bordered)
                                 }
                                 .controlSize(.small)
@@ -168,7 +259,7 @@ struct PullDownSheet: View {
                                         Text(d.lineDay(e.start, now: now) + " · " + d.lineWhen(e)).font(.caption).foregroundStyle(.secondary)
                                     }
                                     Spacer()
-                                    if let s = d.stateLabel(e) { Chip(text: s, tint: .bronze) } else if e.status != .cancelled { Chip(text: "RSVP", tint: .bronze) }
+                                    if let s = d.stateLabel(e) { Chip(text: s, tint: .brand) } else if e.status != .cancelled { Chip(text: "RSVP", tint: .brand) }
                                 }
                             }
                             .buttonStyle(.plain)
@@ -188,7 +279,7 @@ struct PullDownSheet: View {
                                         Text(p.status.label).font(.caption).foregroundStyle(.secondary)
                                     }
                                     Spacer()
-                                    if p.votingNow { Chip(text: d.myVote(p) == nil ? "Vote" : "Voted", tint: d.myVote(p) == nil ? .bronze : .secondary) }
+                                    if p.votingNow { Chip(text: d.myVote(p) == nil ? "Vote" : "Voted", tint: d.myVote(p) == nil ? .brand : .secondary) }
                                 }
                             }
                             .buttonStyle(.plain)
@@ -230,17 +321,10 @@ struct PullDownSheet: View {
                     Button { openDetails() } label: {
                         ActionRow(icon: "person.2", title: peopleLine(f.active.count), detail: "Members, files, to-dos and settings")
                     }
-                    if let about = g?.about, !about.isEmpty {
-                        Text(about.components(separatedBy: "\n").first ?? "").font(.footnote).foregroundStyle(.secondary)
-                    }
                 }
-            }
-            .navigationTitle(g.map { $0.isPod ? $0.name : "# " + $0.name } ?? id)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .listStyle(.insetGrouped)
+        .contentMargins(.top, 4, for: .scrollContent)
     }
 }
 
@@ -295,7 +379,7 @@ struct ProposalSection: View {
                     HStack {
                         ForEach(Proposal.voteOptions, id: \.id) { o in
                             if mine == o.id {
-                                BusyButton(o.label) { model.vote(p, o.id) }.buttonStyle(.borderedProminent)
+                                BusyButton(o.label) { model.vote(p, o.id) }.buttonStyle(.brand)
                             } else {
                                 BusyButton(o.label) { model.vote(p, o.id) }.buttonStyle(.bordered)
                             }

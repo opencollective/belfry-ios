@@ -11,7 +11,7 @@ pick() {
   xcrun simctl list devices available -j | python3 -c '
 import json, sys
 d = json.load(sys.stdin)["devices"]
-names = ["iPhone 16 Pro", "iPhone 16", "iPhone 15 Pro", "iPhone 17 Pro"]
+names = ["iPhone 17 Pro", "iPhone 16 Pro", "iPhone 17", "iPhone 16", "iPhone 15 Pro"]
 for want in names:
     for rt, devs in sorted(d.items(), reverse=True):
         for x in devs:
@@ -49,6 +49,14 @@ shot() { # name screen appearance
   echo "captured $1"
 }
 
+shot 42-composer composer light
+shot 43-composer-dark composer dark
+shot 44-drawer drawer light
+shot 45-drawer-dark drawer dark
+shot 46-pulldown-dark pulldown dark
+shot 47-pulldown-full pullfull light
+shot 48-invite-dark invite dark
+shot 49-mentions mentions light
 shot 01-sign-in signin light
 shot 02-channels channels light
 shot 03-feed feed light
@@ -90,3 +98,16 @@ shot 35-sign-in-code signin-code light
 shot 36-sign-in-older-belfry signin-older light
 shot 37-sign-in-code-dark signin-code dark
 xcrun simctl ui "$UDID" appearance light || true
+
+# native menus only a touch opens: UI tests (App/UITests) write their own PNGs, light and dark
+if [ -n "${XCTESTRUN:-}" ] && [ -f "$XCTESTRUN" ]; then
+  ABS="$(cd "$OUT" && pwd)"
+  for mode in light dark; do
+    xcrun simctl ui "$UDID" appearance "$mode" || true
+    xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1 || true
+    TEST_RUNNER_SHOTS_DIR="$ABS" TEST_RUNNER_SHOTS_SUFFIX="$mode" \
+      xcodebuild test-without-building -xctestrun "$XCTESTRUN" -destination "id=$UDID" \
+      -resultBundlePath "ui-$mode.xcresult" 2>&1 | grep -E "Test Case|error|passed|failed" | tail -30 || echo "UI shots ($mode) failed"
+  done
+  xcrun simctl ui "$UDID" appearance light || true
+fi

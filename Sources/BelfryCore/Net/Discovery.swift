@@ -26,6 +26,10 @@ public struct BelfryConfig: Codable, Hashable, Sendable {
     /// sign-in (SPEC 19.20). Nil = an older belfry: the browser sign-in.
     public var sessionAPI: String?
 
+    /// belfry.json `branding` (logo, cover, two colours, description), cleaned as the web does
+    /// (src/core/branding.ts). Nil = none set: the neutral look.
+    public var branding: Branding?
+
     public var agents: [String: String] { agentsMap ?? [:] }
 
     public static func defaults(domain raw: String) -> BelfryConfig {
@@ -74,12 +78,58 @@ public struct BelfryConfig: Codable, Hashable, Sendable {
             if let m = v as? String, isHex64(k), isHex64(m) { agents[k] = m }
         }
         c.agentsMap = agents
+        if let b = doc["branding"] as? [String: Any] {
+            let clean = Branding.clean(b)
+            c.branding = clean.isEmpty ? nil : clean
+        }
         return c
     }
 
     /// The web chat's link to a channel (the member invite link).
     public func channelLink(_ id: String) -> String {
         chatURL + "#/c/" + MailThreads.encodeURIComponent(id)
+    }
+}
+
+/// The belfry's branding (web src/core/branding.ts): https images only, colours as #rrggbb.
+public struct Branding: Codable, Hashable, Sendable {
+    public var logo = ""
+    public var cover = ""
+    public var primary = ""
+    public var secondary = ""
+    public var description = ""
+
+    public init(logo: String = "", cover: String = "", primary: String = "", secondary: String = "", description: String = "") {
+        self.logo = logo; self.cover = cover; self.primary = primary; self.secondary = secondary; self.description = description
+    }
+
+    public var isEmpty: Bool { logo.isEmpty && cover.isEmpty && primary.isEmpty && secondary.isEmpty && description.isEmpty }
+
+    public static func clean(_ b: [String: Any]) -> Branding {
+        func url(_ v: Any?) -> String {
+            guard let s = v as? String, Rx("^https://[^\\s\"<>]+$").test(s) else { return "" }
+            return s
+        }
+        func hex(_ v: Any?) -> String {
+            guard let s = v as? String, Rx("^#[0-9a-fA-F]{6}$").test(s) else { return "" }
+            return s.lowercased()
+        }
+        let raw = b["description"] as? String ?? ""
+        let d = (raw as NSString).length > 500 ? (raw as NSString).substring(to: 500) : raw
+        return Branding(logo: url(b["logo"]), cover: url(b["cover"]), primary: hex(b["primary"]), secondary: hex(b["secondary"]), description: d)
+    }
+
+    /// RGB 0...1 of a #rrggbb colour.
+    public static func rgb(_ hex: String) -> (Double, Double, Double)? {
+        guard Rx("^#[0-9a-f]{6}$").test(hex), let n = Int(hex.dropFirst(), radix: 16) else { return nil }
+        return (Double(n >> 16) / 255, Double((n >> 8) & 255) / 255, Double(n & 255) / 255)
+    }
+
+    /// Text on a colour: white or near-black, whichever reads better (web onColor).
+    public static func darkText(on hex: String) -> Bool {
+        guard let (r, g, b) = rgb(hex) else { return false }
+        func lin(_ c: Double) -> Double { c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+        return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) > 0.4
     }
 }
 

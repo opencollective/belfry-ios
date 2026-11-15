@@ -1,48 +1,47 @@
 import BelfryCore
 import SwiftUI
 
-// NavigationSplitView: channels (and Messages) in the sidebar, the open channel or conversation
-// as the detail. On iPhone it collapses into a stack with swipe-back.
+// iPhone: the web's phone layout. The open channel (or Messages, @Mentions) fills the screen; ☰
+// (or a swipe from the left edge) slides it to the right and shows the channel drawer under it:
+// the belfry's name, Upcoming events, @Mentions, Direct messages, Public channels and Members
+// only in the admins' order, and you at the bottom. iPad: the same list as a split view's sidebar.
 
 enum SidebarItem: Hashable {
     case channel(String)
     case messages
+    case mentions
 }
 
 struct SearchTarget: Hashable { let channel: String; let message: String }
 struct EventKey: Identifiable { let key: String; var id: String { key } }
 
+/// Opens the channel drawer (iPhone); nil where there is none (iPad's sidebar is always there).
+struct OpenDrawerKey: EnvironmentKey { static let defaultValue: (() -> Void)? = nil }
+extension EnvironmentValues {
+    var openDrawer: (() -> Void)? {
+        get { self[OpenDrawerKey.self] }
+        set { self[OpenDrawerKey.self] = newValue }
+    }
+}
+
 struct RootView: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.horizontalSizeClass) private var hSize
     @State private var selection: SidebarItem?
-    @State private var query = ""
     @State private var newChannel = false
     @State private var account = false
     @State private var notifications = false
     @State private var focus: SearchTarget?
     @State private var visibility = NavigationSplitViewVisibility.automatic
     @State private var path = NavigationPath()
+    @State private var drawer = false
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $visibility) {
-            sidebar
-        } detail: {
-            NavigationStack(path: $path) {
-                switch selection {
-                case .channel(let id): ChannelView(id: id, focus: focus?.channel == id ? focus?.message : nil).id(id)
-                case .messages: MessagesView()
-                case nil: ContentUnavailableView("Pick a channel", systemImage: "number", description: Text("Your community's channels are on the left."))
-                }
-            }
-            .environment(\.openConversation) { conv in
-                var p = NavigationPath()
-                p.append(ConvRoute(conv: conv))
-                path = p
-            }
-        }
+        layout
         .environment(\.openChannel) { id, message in
             focus = message.map { SearchTarget(channel: id, message: $0) }
             if selection == .channel(id) { path = NavigationPath() } else { selection = .channel(id) }
+            closeDrawer()
         }
         .onChange(of: selection) { _, _ in path = NavigationPath() }
         .onChange(of: model.messageAuthor) { _, pk in
@@ -71,6 +70,7 @@ struct RootView: View {
         .onChange(of: model.pushOpen) { _, p in
             guard let p else { return }
             model.pushOpen = nil
+            closeDrawer()
             if let id = p.channel {
                 focus = p.message.map { SearchTarget(channel: id, message: $0) }
                 if let root = p.thread { model.openThread = ThreadRoute(group: id, root: root) }
@@ -84,94 +84,97 @@ struct RootView: View {
             model.joinedChannel = nil
             selection = .channel(id)
         }
+        // no keyboard over a sheet
+        .onChange(of: model.openProfile) { _, v in if v != nil { hideKeyboard() } }
+        .onChange(of: model.openEvent) { _, v in if v != nil { hideKeyboard() } }
+        .onChange(of: model.joinAsked) { _, v in if v { hideKeyboard() } }
         .alert(model.website ?? "", isPresented: Binding(get: { model.website != nil }, set: { if !$0 { model.website = nil } })) {
             Button("OK") { model.website = nil }
         }
         .onAppear {
+            if selection == nil { selection = firstChannel() }
             applyLaunchScreen()
             // a guest link's channel, set while the loading screen stood here
             if let id = model.joinedChannel { model.joinedChannel = nil; selection = .channel(id) }
         }
+        .onChange(of: model.version) { _, _ in if selection == nil { selection = firstChannel() } }
         .sheet(isPresented: $model.joinAsked) { JoinSheet() }
         .sheet(isPresented: $newChannel) { NewChannelSheet { id in selection = .channel(id) } }
         .sheet(isPresented: $account) { AccountSheet() }
         .sheet(isPresented: $notifications) { NavigationStack { NotificationsView() } }
     }
 
-    private var sidebar: some View {
-        let _ = model.version
-        return List(selection: $selection) {
-            if !query.isEmpty {
-                SearchResults(query: query) { target in
-                    focus = target
-                    selection = .channel(target.channel)
-                }
-            } else {
-                if model.access == .denied {
-                    Section {
-                        Label("This belfry doesn't let your key in yet. Ask an admin, or check your membership.", systemImage: "lock")
-                            .font(.callout)
-                    }
-                }
-                Section {
-                    NavigationLink(value: SidebarItem.messages) {
-                        Label {
-                            HStack {
-                                Text("Messages")
-                                Spacer()
-                                if model.unreadDMs > 0 {
-                                    Text("\(model.unreadDMs)")
-                                        .font(.caption.bold())
-                                        .padding(.horizontal, 7).padding(.vertical, 2)
-                                        .background(Color.bronze, in: Capsule())
-                                        .foregroundStyle(.white)
-                                        .accessibilityLabel("\(model.unreadDMs) unread")
-                                }
-                            }
-                        } icon: { Image(systemName: "envelope") }
-                    }
-                }
-                Section("Events") {
-                    Button { model.showEvents = "" } label: { Label("All events", systemImage: "calendar") }
-                    ForEach(model.derive.yourEvents(now: .now)) { e in
-                        NavigationLink(value: SidebarItem.channel(e.groupId)) {
-                            HStack(spacing: 10) {
-                                DateChip(at: e.start).scaleEffect(0.8).frame(width: 36, height: 36)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(e.title).lineLimit(1)
-                                    Text(model.derive.stateLabel(e) ?? "").font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                }
-                Section("Channels") {
-                    ForEach(model.groups.filter { $0.type == .channel || ($0.isPod || $0.isProposal) && $0.members.contains(model.me) }) { g in
-                        NavigationLink(value: SidebarItem.channel(g.id)) { ChannelRow(group: g) }
-                    }
-                }
+    @ViewBuilder private var layout: some View {
+        if hSize == .regular {
+            NavigationSplitView(columnVisibility: $visibility) {
+                drawerList(inDrawer: false)
+            } detail: {
+                detail
+            }
+        } else {
+            DrawerContainer(open: $drawer, edgeSwipe: path.isEmpty) {
+                drawerList(inDrawer: true)
+            } main: {
+                detail.environment(\.openDrawer) { openDrawer() }
             }
         }
-        .listStyle(.sidebar)
-        .navigationTitle(model.config.name)
-        .searchable(text: $query, placement: .sidebar, prompt: "Search all channels")
-        .refreshable { await model.refresh() }
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button { account = true } label: { Avatar(pubkey: model.me, size: 30) }
-                    .accessibilityLabel("Your account")
+    }
+
+    private var detail: some View {
+        NavigationStack(path: $path) {
+            switch selection {
+            case .channel(let id): ChannelView(id: id, focus: focus?.channel == id ? focus?.message : nil).id(id)
+            case .messages: MessagesView()
+            case .mentions: MentionsView()
+            case nil: ContentUnavailableView("Pick a channel", systemImage: "number", description: Text("Your community's channels are in the list."))
+                    .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { newChannel = true } label: { Image(systemName: "plus.bubble") }
-                    .accessibilityLabel("New channel")
-            }
-            ToolbarItem(placement: .bottomBar) { ConnectionBadge() }
         }
+        .environment(\.openConversation) { conv in
+            var p = NavigationPath()
+            p.append(ConvRoute(conv: conv))
+            path = p
+        }
+    }
+
+    private func drawerList(inDrawer: Bool) -> some View {
+        ChannelDrawer(current: selection, inDrawer: inDrawer,
+                      select: { item in
+                          if selection == item { path = NavigationPath() } else { selection = item }
+                          closeDrawer()
+                      },
+                      newChannel: { hideKeyboard(); newChannel = true },
+                      account: { hideKeyboard(); account = true },
+                      open: { target in
+                          focus = target
+                          selection = .channel(target.channel)
+                          closeDrawer()
+                      })
+    }
+
+    private func openDrawer() {
+        hideKeyboard()
+        withAnimation(.snappy(duration: 0.25)) { drawer = true }
+    }
+
+    private func closeDrawer() {
+        guard drawer else { return }
+        withAnimation(.snappy(duration: 0.2)) { drawer = false }
+    }
+
+    /// Where the app opens: #general, else the first channel.
+    private func firstChannel() -> SidebarItem? {
+        let chans = model.groups.filter { $0.type == .channel }
+        guard let g = chans.first(where: { $0.name == "general" }) ?? chans.first else { return nil }
+        return .channel(g.id)
     }
 
     private func applyLaunchScreen() {
         switch model.launch.screen {
-        case "feed", "thread", "details", "invite", "actions", "pulldown", "menu", "delete", "edit", "threadscreen", "chsearch", "add": selection = .channel(generalId)
+        case "feed", "thread", "details", "invite", "actions", "pulldown", "pullfull", "menu", "delete", "edit", "threadscreen", "chsearch", "add", "composer": selection = .channel(generalId)
+        case "drawer", "channels":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
         case "pod": selection = .channel("pod-seed-swap-5e1d")
         case "profile":
             selection = .channel(generalId)
@@ -180,6 +183,7 @@ struct RootView: View {
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { notifications = true }
         case "editprofile", "me":
+            selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { account = true }
         case "members", "todos", "files": selection = .channel(generalId)
         case "proposal": selection = .channel("prop-quiet-hours-after-22-00-7f3a2b")
@@ -194,8 +198,340 @@ struct RootView: View {
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openEvent = "repair-cafe" }
         case "messages", "conversation", "mail": selection = .messages
-        case "search": query = "ladder"
+        case "mentions": selection = .mentions
+        case "search":
+            selection = .channel(generalId)
+            model.drawerQuery = "ladder"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
         default: break
+        }
+    }
+}
+
+/// ☰ at the top left of the screen under the drawer, with the count of what waits for me.
+struct DrawerButton: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.openDrawer) private var openDrawer
+    var body: some View {
+        if let openDrawer {
+            let n = model.unreadDMs + model.newMentions
+            Button(action: openDrawer) {
+                Image(systemName: "line.3.horizontal")
+                    .overlay(alignment: .topTrailing) {
+                        if n > 0 {
+                            Text(n > 99 ? "99+" : "\(n)")
+                                .font(.caption2.weight(.bold)).monospacedDigit()
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16)
+                                .background(Color.red, in: Capsule())
+                                .offset(x: 10, y: -8)
+                        }
+                    }
+            }
+            .accessibilityLabel(n > 0 ? "Channels, \(n) new" : "Channels")
+            .accessibilityIdentifier("drawer-button")
+        }
+    }
+}
+
+/// The phone's drawer: under the page, which slides right (250 ms) to show it; follows a finger
+/// from the left edge (at the root of the stack) and back; a tap on the page's visible strip,
+/// or a drag to the left, closes it (web Phone.tsx / drawer.ts).
+struct DrawerContainer<Drawer: View, Main: View>: View {
+    @Binding var open: Bool
+    var edgeSwipe: Bool
+    @ViewBuilder var drawer: () -> Drawer
+    @ViewBuilder var main: () -> Main
+    @State private var drag: CGFloat = 0
+    @State private var dragging = false
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = min(geo.size.width * 0.86, 360)
+            let x = max(0, min(width, (open ? width : 0) + drag))
+            let p = x / width
+            ZStack(alignment: .leading) {
+                drawer()
+                    .frame(width: width)
+                    .offset(x: (p - 1) * width * 0.25)
+                    .opacity(p > 0 ? 1 : 0)
+                    .accessibilityHidden(!open)
+                main()
+                    .frame(width: geo.size.width)
+                    .allowsHitTesting(!open && !dragging)
+                    .accessibilityHidden(open)
+                    .overlay {
+                        if p > 0 {
+                            Color.black.opacity(0.28 * p)
+                                .ignoresSafeArea()
+                                .contentShape(Rectangle())
+                                .onTapGesture { setOpen(false) }
+                                .gesture(closeDrag(width))
+                                .accessibilityAddTraits(.isButton)
+                                .accessibilityLabel("Close the channels")
+                        }
+                    }
+                    .shadow(color: .black.opacity(0.18 * p), radius: 16)
+                    .offset(x: x)
+                if !open && edgeSwipe {
+                    Color.clear
+                        .frame(width: 22)
+                        .contentShape(Rectangle())
+                        .gesture(openDrag(width))
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+    }
+
+    private func openDrag(_ width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+            .onChanged { v in
+                guard v.translation.width > 0 else { return }
+                if !dragging { dragging = true; hideKeyboard() }
+                drag = v.translation.width
+            }
+            .onEnded { v in
+                let go = v.translation.width > width / 3 || v.predictedEndTranslation.width > width / 2
+                finish(go)
+            }
+    }
+
+    private func closeDrag(_ width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+            .onChanged { v in
+                dragging = true
+                drag = min(0, v.translation.width)
+            }
+            .onEnded { v in
+                let close = v.translation.width < -width / 3 || v.predictedEndTranslation.width < -width / 2
+                finish(!close)
+            }
+    }
+
+    private func finish(_ isOpen: Bool) {
+        withAnimation(.snappy(duration: isOpen ? 0.25 : 0.2)) {
+            open = isOpen
+            drag = 0
+        }
+        dragging = false
+    }
+
+    private func setOpen(_ v: Bool) { finish(v) }
+}
+
+/// The channel list: the drawer on iPhone, the sidebar on iPad.
+struct ChannelDrawer: View {
+    @EnvironmentObject var model: AppModel
+    let current: SidebarItem?
+    let inDrawer: Bool
+    let select: (SidebarItem) -> Void
+    let newChannel: () -> Void
+    let account: () -> Void
+    let open: (SearchTarget) -> Void
+    @FocusState private var searching: Bool
+
+    var body: some View {
+        let _ = model.version
+        let d = model.derive
+        let s = d.channelSections()
+        let next = d.eventsIn(.upcoming, now: .now, channel: nil).first
+        VStack(spacing: 0) {
+            header
+            searchField
+            List {
+                if !model.drawerQuery.isEmpty {
+                    SearchResults(query: model.drawerQuery, open: open)
+                } else {
+                    if model.access == .denied {
+                        Section {
+                            Label("This belfry doesn't let your key in yet. Ask an admin, or check your membership.", systemImage: "lock")
+                                .font(.callout)
+                        }
+                    }
+                    Section {
+                        DrawerRow(icon: "calendar", title: "Upcoming events",
+                                  detail: next.map { d.lineDay($0.start, now: .now) + " · " + $0.title } ?? "Upcoming, yours, the ones you host",
+                                  on: false) { model.showEvents = "" }
+                        DrawerRow(icon: "at", title: "@Mentions", detail: "Where people named you, in every channel",
+                                  badge: model.newMentions, on: current == .mentions) { select(.mentions) }
+                        DrawerRow(icon: "envelope", title: "Direct messages",
+                                  detail: "And e-mail" + (d.myAddress.map { " · " + $0 } ?? ""),
+                                  badge: model.unreadDMs, on: current == .messages) { select(.messages) }
+                    }
+                    if !s.pub.isEmpty {
+                        Section {
+                            ForEach(s.pub) { g in tree(g, nested: s.nested) }
+                        } header: { sectionTitle("Public channels", s.pub.count) }
+                    }
+                    if !s.members.isEmpty || !s.orphans.isEmpty {
+                        Section {
+                            ForEach(s.members) { g in tree(g, nested: s.nested) }
+                            ForEach(s.orphans) { g in row(g, depth: 0) }
+                        } header: { sectionTitle("Members only", s.members.count + s.orphans.count) }
+                    }
+                    let mine = d.yourEvents(now: .now)
+                    if !mine.isEmpty {
+                        Section {
+                            ForEach(mine) { e in
+                                Button { select(.channel(e.groupId)) } label: {
+                                    HStack(spacing: 12) {
+                                        DateChip(at: e.start).scaleEffect(0.75).frame(width: 34, height: 34)
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(e.title).font(.body.weight(.medium)).lineLimit(1)
+                                            Text(model.derive.stateLabel(e) ?? d.lineDay(e.start, now: .now)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .listRowBackground(current == .channel(e.groupId) ? Color.primary.opacity(0.08) : Color.clear)
+                            }
+                        } header: { sectionTitle("Your events", mine.count) }
+                    }
+                    Section {
+                        Button(action: newChannel) { Label("Create a channel", systemImage: "plus") }
+                            .listRowBackground(Color.clear)
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.immediately)
+            .refreshable { await model.refresh() }
+            Divider()
+            me
+        }
+        .background(Color(uiColor: inDrawer ? .secondarySystemBackground : .systemBackground).ignoresSafeArea())
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private var header: some View {
+        let brand = model.config.branding
+        return HStack(spacing: 10) {
+            if let logo = brand?.logo, !logo.isEmpty, let url = URL(string: logo) {
+                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.15) }
+                    .frame(width: 32, height: 32).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .accessibilityHidden(true)
+            }
+            Text(model.config.name).font(.title2.bold()).lineLimit(1).minimumScaleFactor(0.7)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 8)
+            Button(action: newChannel) {
+                Image(systemName: "plus").font(.body.weight(.semibold)).frame(width: 36, height: 36).glass(in: Circle(), interactive: true)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New channel")
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Search all channels", text: $model.drawerQuery).font(.body).focused($searching)
+                .submitLabel(.search)
+            if !model.drawerQuery.isEmpty {
+                Button { model.drawerQuery = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    .buttonStyle(.plain).accessibilityLabel("Clear the search")
+            }
+        }
+        .padding(.horizontal, 10).frame(height: 38)
+        .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, 16).padding(.bottom, 8)
+    }
+
+    private var me: some View {
+        Button(action: account) {
+            HStack(spacing: 10) {
+                Avatar(pubkey: model.me, size: 36)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(model.realName(model.me).isEmpty ? "You" : model.realName(model.me)).font(.body.weight(.semibold)).lineLimit(1)
+                    Text(model.derive.myAddress ?? model.config.domain).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                ConnectionDot()
+                Image(systemName: "gearshape").foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Me: your profile and settings")
+    }
+
+    private func sectionTitle(_ t: String, _ n: Int) -> some View {
+        HStack { Text(t); Spacer(); Text("\(n)").monospacedDigit() }
+            .font(.footnote.weight(.semibold)).foregroundStyle(.secondary).textCase(nil)
+    }
+
+    private func tree(_ g: BelfryCore.Group, nested: [String: [BelfryCore.Group]], depth: Int = 0) -> AnyView {
+        AnyView(SwiftUI.Group {
+            row(g, depth: depth)
+            if depth < 4 {
+                ForEach(nested[g.id] ?? []) { c in tree(c, nested: nested, depth: depth + 1) }
+            }
+        })
+    }
+
+    private func row(_ g: BelfryCore.Group, depth: Int) -> some View {
+        Button { select(.channel(g.id)) } label: { ChannelRow(group: g, isPublic: model.derive.isPublic(g)) }
+            .buttonStyle(.plain)
+            .padding(.leading, CGFloat(depth) * 18)
+            .listRowBackground(current == .channel(g.id) ? Color.primary.opacity(0.08) : Color.clear)
+    }
+}
+
+/// A row at the top of the drawer: icon, title, a line, a count.
+struct DrawerRow: View {
+    let icon: String
+    let title: String
+    let detail: String
+    var badge = 0
+    let on: Bool
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon).font(.body.weight(.medium)).frame(width: 32, height: 32)
+                    .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.body.weight(.medium)).lineLimit(1)
+                    Text(detail).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                if badge > 0 { CountBadge(n: badge) }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(on ? Color.primary.opacity(0.08) : Color.clear)
+    }
+}
+
+struct CountBadge: View {
+    let n: Int
+    var body: some View {
+        Text(n > 99 ? "99+" : "\(n)").font(.caption.weight(.bold)).monospacedDigit()
+            .padding(.horizontal, 7).frame(minWidth: 22, minHeight: 22)
+            .background(Theme.accent, in: Capsule()).foregroundStyle(Theme.onAccent)
+            .accessibilityLabel("\(n) new")
+    }
+}
+
+/// Green when the relays answer, grey offline, a spinner while connecting; nothing in demo mode.
+struct ConnectionDot: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        let _ = model.version
+        if model.isDemo {
+            Text("Demo").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                .padding(.horizontal, 6).padding(.vertical, 2).background(Color.secondary.opacity(0.12), in: Capsule())
+        } else if !model.online {
+            Image(systemName: "wifi.slash").foregroundStyle(.secondary).accessibilityLabel("Offline: messages wait on this phone")
+        } else if model.engine?.relaysUp != true {
+            ProgressView().controlSize(.mini).accessibilityLabel("Connecting")
         }
     }
 }
@@ -203,13 +539,22 @@ struct RootView: View {
 struct ChannelRow: View {
     @EnvironmentObject var model: AppModel
     let group: Channel
+    var isPublic = false
 
     var body: some View {
         let last = model.derive.messages(group.id).last
         HStack(spacing: 12) {
-            ChannelGlyph(group: group, size: 22)
-                .frame(width: 32, height: 32)
-                .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+            SwiftUI.Group {
+                if isPublic && group.type == .channel {
+                    Image(systemName: "globe").font(.body.weight(.medium)).accessibilityLabel("Public")
+                } else if group.type == .channel {
+                    Image(systemName: "number").font(.body.weight(.medium))
+                } else {
+                    ChannelGlyph(group: group, size: 22)
+                }
+            }
+            .frame(width: 32, height: 32)
+            .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 Text(group.name).font(.body.weight(.medium)).lineLimit(1)
                 if let last {
@@ -343,7 +688,7 @@ struct Avatar: View {
     }
 
     var color: Color {
-        let palette: [Color] = [.bronze, .teal, .indigo, .orange, .pink, .green, .purple, .brown]
+        let palette: [Color] = [.blue, .teal, .indigo, .orange, .pink, .green, .purple, .brown]
         let n = pubkey.utf8.prefix(6).reduce(0) { $0 &+ Int($1) }
         return palette[n % palette.count]
     }

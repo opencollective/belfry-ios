@@ -30,7 +30,7 @@ struct JoinWithAccountSheet: View {
                         BusyButton {
                             error = await model.joinWithAccount(invite.token)
                         } label: { Text("Join with your account").frame(maxWidth: .infinity) }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.brand)
                     }
                     if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) }
                 }

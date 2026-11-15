@@ -72,13 +72,13 @@ struct MarkdownText: View {
                 let pk = Bech32.pubkey(npub: npub) ?? ""
                 let name = pk.isEmpty ? "nostr:" + npub : "@" + (model.realName(pk).isEmpty ? model.name(pk) : model.realName(pk))
                 var a = AttributedString(name)
-                a.foregroundColor = .bronze
+                a.foregroundColor = .brand
                 if !pk.isEmpty { a.link = URL(string: "belfry-user://open/" + pk) }
                 a = adding(.stronglyEmphasized, a)
                 out += a
             case .topic(let t):
                 var a = AttributedString("#" + t)
-                a.foregroundColor = .bronze
+                a.foregroundColor = .brand
                 out += a
             }
         }
@@ -99,7 +99,7 @@ struct MarkdownText: View {
             if let id = ChannelRefs.groupOf(naddr) {
                 if let g = model.group(id) {
                     var a = AttributedString("#" + g.name)
-                    a.foregroundColor = .bronze
+                    a.foregroundColor = .brand
                     a.link = URL(string: "belfry-channel://open/" + MailThreads.encodeURIComponent(id))
                     out += adding(.stronglyEmphasized, a)
                 } else {

@@ -15,6 +15,8 @@ struct Composer: View {
     var autoFocus = false
     var threadMode = false
     var topic: String?
+    /// Changes when something asks for the box (Reply in a thread's menu).
+    var focusTrigger = 0
     let onSend: (String, [Attachment], Bool) -> Void
     @State private var text = ""
     @State private var picked = [(name: String, pubkey: String)]()
@@ -23,7 +25,6 @@ struct Composer: View {
     @State private var attachments = [Attachment]()
     @State private var announce = false
     @State private var sent = 0
-    @State private var add = false
     @State private var photoPicker = false
     @State private var create: CreateKind?
     @State private var makeEvent = false
@@ -85,7 +86,7 @@ struct Composer: View {
                     Label("Announcement: sent to the channel and e-mailed to its followers", systemImage: "megaphone").font(.caption)
                     Spacer()
                     Button { announce = false } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Not an announcement")
-                }.foregroundStyle(Color.bronze)
+                }.foregroundStyle(Color.brand)
             }
             if !attachments.isEmpty {
                 FlowRow(spacing: 6) {
@@ -101,29 +102,25 @@ struct Composer: View {
                 }
             }
             HStack(alignment: .bottom, spacing: 8) {
-                if !compact && !threadMode {
-                    Button { add = true } label: {
-                        Image(systemName: "plus.circle.fill").font(.title2).symbolRenderingMode(.hierarchical)
-                    }
-                    .accessibilityLabel("Add a photo, a to-do, a pod, a proposal…")
+                if !compact && !threadMode { addMenu }
+                // iMessage's shape: a capsule that grows with the lines, Send inside its trailing edge
+                HStack(alignment: .bottom, spacing: 0) {
+                    TextField(announce ? "Announcement" : placeholder, text: $text, axis: .vertical)
+                        .font(.body)
+                        .lineLimit(1...6)
+                        .focused($focused)
+                        .padding(.leading, 14).padding(.trailing, 6)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: Composer.height)
+                    sendButton.padding(4)
                 }
-                TextField(announce ? "Announcement" : placeholder, text: $text, axis: .vertical)
-                    .font(.body)
-                    .lineLimit(1...6)
-                    .focused($focused)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(.quaternary))
-                Button(action: send) {
-                    Image(systemName: "arrow.up.circle.fill").font(.title)
-                }
-                .disabled(text.jsTrim().isEmpty && attachments.isEmpty)
-                .accessibilityLabel("Send")
+                .composerField()
             }
         }
         .padding(.horizontal, compact ? 0 : 12)
-        .padding(.vertical, compact ? 0 : 8)
-        .background(compact ? AnyShapeStyle(.clear) : AnyShapeStyle(.bar))
+        .padding(.top, compact ? 0 : 6)
+        .padding(.bottom, compact ? 0 : 8)
+        .composerBackground(compact: compact)
         .sensoryFeedback(.impact(weight: .light), trigger: sent)
         .onChange(of: model.launchEventForm) { _, on in
             if on, !compact, !threadMode { model.launchEventForm = false; makeEvent = true }
@@ -133,26 +130,76 @@ struct Composer: View {
         }
         .onAppear {
             if autoFocus { focused = true }
-            if !compact && !threadMode && model.launchAdd { model.launchAdd = false; add = true }
-            if !compact && !threadMode && model.launchEventForm { model.launchEventForm = false; add = false; makeEvent = true }
+            if !compact && !threadMode && model.launchEventForm { model.launchEventForm = false; makeEvent = true }
         }
         .onChange(of: photos) { _, items in load(items) }
-        .sheet(isPresented: $add) {
-            AddMenu(group: group, canAnnounce: canAnnounce) { choice in
-                add = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    switch choice {
-                    case .photo: photoPicker = true
-                    case .announcement: announce = true
-                    case .create(let k): create = k
-                    case .event: makeEvent = true
-                    }
-                }
-            }
-        }
+        .onChange(of: focusTrigger) { _, _ in focused = true }
         .photosPicker(isPresented: $photoPicker, selection: $photos, maxSelectionCount: 6, matching: .images)
         .sheet(item: $create) { k in CreateSheet(kind: k, parent: group) }
         .sheet(isPresented: $makeEvent) { EventFormSheet(editing: nil, channel: group) }
+    }
+
+    static let height: CGFloat = 38
+
+    private var canSend: Bool { !(text.jsTrim().isEmpty && attachments.isEmpty) }
+
+    /// Send, inside the field: filled with the tint when there is something to send.
+    private var sendButton: some View {
+        Button(action: send) {
+            Image(systemName: "arrow.up")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(canSend ? Theme.onAccent : Color.secondary)
+                .frame(width: Composer.height - 8, height: Composer.height - 8)
+                .background(canSend ? Theme.accent : Color.secondary.opacity(0.18), in: Circle())
+                .padding(4).contentShape(Circle()).padding(-4) // a 38 pt target around a 30 pt mark
+        }
+        .buttonStyle(.plain)
+        .disabled(!canSend)
+        .animation(.easeOut(duration: 0.15), value: canSend)
+        .accessibilityLabel("Send")
+    }
+
+    /// ＋: a native menu with icons, the same height as the field and on its centre line.
+    private var addMenu: some View {
+        let guest = model.derive.amGuest
+        return Menu {
+            Section {
+                Button { choose(.photo) } label: { Label("Photo", systemImage: "photo.on.rectangle") }
+                Button { choose(.create(.todo)) } label: { Label("To-do", systemImage: "checklist") }
+            }
+            if !guest {
+                Section {
+                    Button { choose(.event) } label: { Label("Event", systemImage: "calendar") }
+                    Button { choose(.create(.proposal)) } label: { Label("Proposal", systemImage: "doc.text") }
+                    Button { choose(.create(.pod)) } label: { Label("Pod", systemImage: "hexagon") }
+                }
+            }
+            if canAnnounce {
+                Section {
+                    Button { choose(.announcement) } label: { Label("Announcement", systemImage: "megaphone") }
+                }
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: Composer.height, height: Composer.height)
+                .glass(in: Circle(), interactive: true)
+                .padding(3).contentShape(Circle()).padding(-3) // 44 pt target
+        }
+        .menuOrder(.fixed)
+        .accessibilityLabel("Add a photo, a to-do, an event, a proposal…")
+        .accessibilityIdentifier("composer-add")
+    }
+
+    func choose(_ choice: AddChoice) {
+        hideKeyboard()
+        switch choice {
+        case .photo: photoPicker = true
+        case .announcement: announce = true; focused = true
+        case .create(let k): create = k
+        case .event: makeEvent = true
+        }
     }
 
     func people(_ q: String) -> [(pubkey: String, name: String)] {
@@ -240,38 +287,34 @@ struct OutsiderNote: View {
 enum CreateKind: String, Identifiable { case todo, pod, proposal; var id: String { rawValue } }
 enum AddChoice { case photo, announcement, event, create(CreateKind) }
 
-/// The ＋ menu as a list.
-struct AddMenu: View {
-    @EnvironmentObject var model: AppModel
-    let group: String
-    let canAnnounce: Bool
-    let choose: (AddChoice) -> Void
-    var body: some View {
-        let guest = model.derive.amGuest
-        NavigationStack {
-            List {
-                Section {
-                    Button { choose(.photo) } label: { ActionRow(icon: "photo", title: "Photo") }
-                    Button { choose(.create(.todo)) } label: { ActionRow(icon: "checklist", title: "To-do", detail: "Something someone here should do") }
-                }
-                if !guest {
-                    Section {
-                        Button { choose(.event) } label: { ActionRow(icon: "calendar", title: "Event", detail: "Its own page and address; its card shows here") }
-                        Button { choose(.create(.pod)) } label: { ActionRow(icon: "hexagon", title: "Pod", detail: "A smaller group inside this channel") }
-                        Button { choose(.create(.proposal)) } label: { ActionRow(icon: "doc.text", title: "Proposal", detail: "Something to decide together") }
-                    }
-                }
-                if canAnnounce {
-                    Section {
-                        Button { choose(.announcement) } label: { ActionRow(icon: "megaphone", title: "Announcement", detail: "E-mailed to the channel's followers") }
-                    }
-                }
-            }
-            .navigationTitle("Add")
-            .navigationBarTitleDisplayMode(.inline)
+extension View {
+    /// The message field: a glass capsule on iOS 26, a bordered one before.
+    @ViewBuilder func composerField() -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26, *) {
+            self.glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: Composer.height / 2, style: .continuous))
+        } else {
+            self.background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: Composer.height / 2, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Composer.height / 2, style: .continuous).stroke(Color(uiColor: .separator)))
         }
-        .presentationDetents([.medium])
-        .presentationDragIndicator(.visible)
+        #else
+        self.background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: Composer.height / 2, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Composer.height / 2, style: .continuous).stroke(Color(uiColor: .separator)))
+        #endif
+    }
+
+    /// iOS 26: the composer floats over the feed (the bar's scroll edge effect does the rest);
+    /// before: a bar material.
+    @ViewBuilder func composerBackground(compact: Bool) -> some View {
+        if compact {
+            self
+        } else {
+            #if compiler(>=6.2)
+            if #available(iOS 26, *) { self } else { self.background(.bar) }
+            #else
+            self.background(.bar)
+            #endif
+        }
     }
 }
 

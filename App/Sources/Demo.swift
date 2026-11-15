@@ -43,6 +43,9 @@ enum Demo {
         channel("garden-3f2a", "Garden", "Beds, seeds and the watering rota", admins: [ps["ben"]!.pubkey], members: all, at: now - 20 * day)
         channel("repair-cafe-91bc", "Repair café", "First Saturday of the month, bring what's broken", admins: [ps["dev"]!.pubkey], members: Array(all.prefix(4)), at: now - 10 * day)
         channel("kitchen-7d10", "Shared kitchen", "Who cooks, who cleans", admins: [ps["emma"]!.pubkey], members: all, at: now - 5 * day)
+        // the repair café's page is public (Public channels in the drawer); the admins' order
+        evs.append(ev(relay, 30078, now - 10 * day, [["d", "belfry:web:repair-cafe-91bc"], ["h", "repair-cafe-91bc"]],
+                      "{\"on\":true,\"slug\":\"repair-cafe\",\"visibility\":\"public\"}"))
 
         func msg(_ who: LocalSigner, _ g: String, _ at: Int, _ text: String) -> NostrEvent {
             let d = Actions.postMessage(g, text: text)

@@ -188,8 +188,8 @@ struct MembersTab: View {
                             HStack(spacing: 6) {
                                 Text(r.pubkey == model.me ? "You" : r.name).font(.subheadline.weight(.semibold))
                                 if r.isAdmin { Chip(text: "admin") }
-                                if let k = d.kindLabel(r.pubkey) { Chip(text: k.lowercased(), tint: .bronze) }
-                                else if let c = r.guest?.chip { Chip(text: c, tint: .bronze) }
+                                if let k = d.kindLabel(r.pubkey) { Chip(text: k.lowercased(), tint: .brand) }
+                                else if let c = r.guest?.chip { Chip(text: c, tint: .brand) }
                             }
                             let sub = [r.guest?.by.map { "invited by " + model.name($0) }, r.labels.isEmpty ? nil : r.labels.joined(separator: " · "),
                                        r.place.map { People.placeLabel($0) }].compactMap { $0 }
@@ -380,12 +380,7 @@ struct DropLinkSheet: View {
                 if let token {
                     let url = model.derive.dropURL(token)
                     Section {
-                        if let img = QR.image(url) {
-                            Image(uiImage: img).interpolation(.none).resizable().scaledToFit().frame(maxWidth: 220).frame(maxWidth: .infinity)
-                        }
-                        Text(url).font(.footnote.monospaced()).textSelection(.enabled)
-                        Button { UIPasteboard.general.string = url } label: { Label("Copy link", systemImage: "doc.on.doc") }
-                        if let u = URL(string: url) { ShareLink(item: u) { Label("Share", systemImage: "square.and.arrow.up") } }
+                        LinkBlock(url: url, title: "Drop box", message: "Add files to the drop box")
                     }
                 } else {
                     Section("Works for") {
@@ -427,7 +422,7 @@ struct SettingsTab: View {
             }
         }
         Section {
-            Toggle("E-mails from anyone", isOn: $inbox)
+            Toggle("E-mails from anyone", isOn: $inbox).tint(Theme.toggle)
         } footer: {
             Text(inbox ? "Anyone can e-mail \(id)@\(model.config.domain). Mails land here as cards and the channel's admins answer as the channel."
                  : "Only members can e-mail \(id)@\(model.config.domain); their mail shows as their message.")
@@ -505,6 +500,7 @@ struct InviteSheet: View {
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                             }
+                            .tint(Theme.toggle)
                             .disabled((agents?.room ?? 0) <= 0)
                             .onChange(of: ownAgent) { _, _ in link = nil; error = nil }
                         }
@@ -544,29 +540,60 @@ struct InviteSheet: View {
     }
 }
 
-/// A link as text, its QR code, Copy and Share.
+/// A link as rows of a list section: its QR code with the address under it, "Copy link"
+/// (a checkmark and a tap of the haptic engine) and "Share…" (the system share sheet). Each is its
+/// own row, so one tap never reaches the other.
 struct LinkBlock: View {
     let url: String
     let title: String
     let message: String
-    @State private var copied = false
+    var body: some View {
+        QRRow(url: url)
+        CopyRow(text: url, title: "Copy link")
+        if let u = URL(string: url) {
+            ShareLink(item: u, subject: Text(title), message: Text(message)) {
+                Label("Share…", systemImage: "square.and.arrow.up")
+            }
+        }
+    }
+}
+
+/// A QR code on white (scannable in dark mode too) and its text.
+struct QRRow: View {
+    let url: String
     var body: some View {
         VStack(spacing: 10) {
             if let img = QR.image(url) {
-                Image(uiImage: img).interpolation(.none).resizable().scaledToFit().frame(width: 180, height: 180)
+                Image(uiImage: img).interpolation(.none).resizable().scaledToFit()
+                    .frame(width: 184, height: 184)
+                    .padding(10)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .accessibilityLabel("QR code of the link")
             }
-            Text(url).font(.footnote.monospaced()).textSelection(.enabled).multilineTextAlignment(.center)
-            HStack {
-                Button { UIPasteboard.general.string = url; copied = true } label: { Label(copied ? "Copied" : "Copy", systemImage: "doc.on.doc").frame(maxWidth: .infinity) }
-                    .buttonStyle(.borderedProminent)
-                if let u = URL(string: url) {
-                    ShareLink(item: u, subject: Text(title), message: Text(message)) { Label("Share", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity) }
-                        .buttonStyle(.bordered)
-                }
-            }
+            Text(url).font(.footnote.monospaced()).foregroundStyle(.secondary)
+                .textSelection(.enabled).multilineTextAlignment(.center).lineLimit(3)
         }
         .frame(maxWidth: .infinity)
-        .sensoryFeedback(.success, trigger: copied)
+        .padding(.vertical, 6)
+    }
+}
+
+/// "Copy …" as a list row: copies at once, turns into a checkmark for two seconds.
+struct CopyRow: View {
+    let text: String
+    var title = "Copy"
+    @State private var copied = false
+    var body: some View {
+        Button {
+            guard !copied else { return }
+            UIPasteboard.general.string = text
+            copied = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+        } label: {
+            Label(copied ? "Copied" : title, systemImage: copied ? "checkmark" : "doc.on.doc")
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .sensoryFeedback(.success, trigger: copied) { _, new in new }
+        .accessibilityLabel(copied ? "Copied" : title)
     }
 }

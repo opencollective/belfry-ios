@@ -11,6 +11,7 @@ struct ThreadView: View {
     var focusReply = false
     @State private var actionsFor: Message?
     @State private var editing: Message?
+    @State private var focusBox = 0
 
     var body: some View {
         let _ = model.version
@@ -34,7 +35,7 @@ struct ThreadView: View {
                         ContentUnavailableView("This message is gone", systemImage: "bubble.left")
                     }
                     ForEach(replies) { r in
-                        ReplyRow(r: r) { hold(r) }.padding(.horizontal).id(r.id)
+                        ReplyRow(group: group, r: r) { hold(r) }.padding(.horizontal).id(r.id)
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
@@ -43,11 +44,11 @@ struct ThreadView: View {
             .defaultScrollAnchor(.bottom)
             .onChange(of: replies.count) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
         }
-        .safeAreaInset(edge: .bottom) {
+        .bottomBar {
             if model.guestReading {
                 GuestBar(group: group)
             } else if let root {
-                Composer(group: group, placeholder: replies.isEmpty ? "Reply (starts a thread)" : "Reply in the thread", autoFocus: focusReply, threadMode: true) { text, _, _ in
+                Composer(group: group, placeholder: replies.isEmpty ? "Reply (starts a thread)" : "Reply in the thread", autoFocus: focusReply, threadMode: true, focusTrigger: focusBox) { text, _, _ in
                     model.reply(text, in: group, to: root)
                 }
             }
@@ -58,6 +59,12 @@ struct ThreadView: View {
             MessageActions(m: m, group: group, onReply: {}, onOpenThread: {}, onEdit: { editing = m })
         }
         .sheet(item: $editing) { m in EditSheet(m: m, group: group) }
+        .environment(\.messageMenu, MessageMenuHandlers(
+            reply: { _ in focusBox += 1 },
+            openThread: { _ in },
+            edit: { m in editing = m },
+            sheet: { m, delete in model.launchDelete = delete; actionsFor = m }))
+        .onChange(of: actionsFor != nil || editing != nil) { _, open in if open { hideKeyboard() } }
     }
 
     func hold(_ m: Message) { if model.guestReading { model.joinAsked = true } else { actionsFor = m } }
@@ -127,7 +134,7 @@ struct ChannelSearch: View {
                 let len = folded.distance(from: r.lowerBound, to: r.upperBound)
                 let s = a.index(a.startIndex, offsetByCharacters: lo)
                 let e = a.index(s, offsetByCharacters: len)
-                a[s..<e].foregroundColor = .bronze
+                a[s..<e].foregroundColor = .brand
                 a[s..<e].inlinePresentationIntent = .stronglyEmphasized
                 from = r.upperBound
             }

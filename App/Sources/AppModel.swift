@@ -49,7 +49,27 @@ final class AppModel: ObservableObject {
     var remoteEvents = [String: (at: Date, event: ApiEvent)]()
     /// Text to put in a channel's composer (an event's URL after making it from the channel's ＋).
     @Published var composerPrefill = [String: String]()
-    @Published var config: BelfryConfig = .defaults(domain: "belfry.sh")
+    @Published var config: BelfryConfig = .defaults(domain: "belfry.sh") {
+        didSet { if config.branding != oldValue.branding { Theme.branding = config.branding } }
+    }
+    /// The drawer's search field (all channels).
+    @Published var drawerQuery = ""
+    /// When I last opened @Mentions (the badge counts the ones after).
+    @Published var mentionsSeenAt = UserDefaults.standard.integer(forKey: "belfry-mentions-seen")
+    private var cachedMentions: (Int, [NostrEvent])?
+    var mentions: [NostrEvent] {
+        if let c = cachedMentions, c.0 == version { return c.1 }
+        let m = derive.mentionsOfMe()
+        cachedMentions = (version, m)
+        return m
+    }
+    var newMentions: Int { mentions.prefix(99).filter { $0.createdAt > mentionsSeenAt }.count }
+    func markMentionsSeen() {
+        mentionsSeenAt = Int.now
+        UserDefaults.standard.set(mentionsSeenAt, forKey: "belfry-mentions-seen")
+    }
+    /// Redraws everything when the belfry's colour changes (Theme).
+    var brandKey: String { config.branding?.primary ?? "" }
     @Published var signInError: String?
     /// The native sign-in waiting for its code (SPEC 19.20): screen 2. Kept in the Keychain by
     /// `nativeFlow`, so it is back after the app was killed while the person read the e-mail.
