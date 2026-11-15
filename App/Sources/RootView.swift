@@ -301,25 +301,29 @@ struct DrawerContainer<Drawer: View, Main: View>: View {
             let x = max(0, min(width, (open ? width : 0) + drag))
             let p = x / width
             ZStack(alignment: .leading) {
-                if p > 0 || open {
-                    drawer()
-                        .frame(width: width)
-                        .offset(x: (p - 1) * width * 0.25)
-                }
+                // always in the tree too, for the same reason (hidden while closed)
+                drawer()
+                    .frame(width: width)
+                    .offset(x: (p - 1) * width * 0.25)
+                    .opacity(p > 0 || open ? 1 : 0)
+                    .allowsHitTesting(open)
+                    .accessibilityHidden(!open)
                 main()
                     .frame(width: geo.size.width)
                     .allowsHitTesting(!open && !dragging)
                     .accessibilityHidden(open)
                     .overlay {
-                        if p > 0 {
-                            Color.black.opacity(0.28 * p)
-                                .ignoresSafeArea()
-                                .contentShape(Rectangle())
-                                .onTapGesture { setOpen(false) }
-                                .gesture(closeDrag(width))
-                                .accessibilityAddTraits(.isButton)
-                                .accessibilityLabel("Close the channels")
-                        }
+                        // always in the tree: a shade put in mid-animation appears at the page's
+                        // final place (a grey strip) instead of riding with it
+                        Color.black.opacity(0.28 * p)
+                            .ignoresSafeArea()
+                            .contentShape(Rectangle())
+                            .onTapGesture { setOpen(false) }
+                            .gesture(closeDrag(width))
+                            .allowsHitTesting(p > 0)
+                            .accessibilityHidden(p == 0)
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityLabel("Close the channels")
                     }
                     .shadow(color: .black.opacity(0.18 * p), radius: 16)
                     .offset(x: x)
