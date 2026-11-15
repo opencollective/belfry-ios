@@ -108,6 +108,7 @@ struct MessageRow: View {
         .sensoryFeedback(.selection, trigger: tapped)
         .accessibilityElement(children: .combine)
         .messageMenu(m, group: group, handlers: menu, guest: model.guestReading, hold: onHold)
+        .accessibilityIdentifier("message-row")
         .accessibilityHint("Touch and hold for actions")
     }
 }

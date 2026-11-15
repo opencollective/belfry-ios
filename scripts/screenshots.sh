@@ -116,9 +116,16 @@ if [ -n "${XCTESTRUN:-}" ] && [ -f "$XCTESTRUN" ]; then
   for mode in light dark; do
     xcrun simctl ui "$UDID" appearance "$mode" || true
     xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1 || true
+    set +e
     TEST_RUNNER_SHOTS_DIR="$ABS" TEST_RUNNER_SHOTS_SUFFIX="$mode" \
       xcodebuild test-without-building -xctestrun "$XCTESTRUN" -destination "id=$UDID" \
-      -resultBundlePath "ui-$mode.xcresult" 2>&1 | grep -E "Test Case|error|passed|failed" | tail -30 || echo "UI shots ($mode) failed"
+      -resultBundlePath "ui-$mode.xcresult" > "ui-$mode.log" 2>&1
+    code=$?
+    set -e
+    grep -E "Test Case|error:" "ui-$mode.log" | tail -30 || true
+    if [ $code -ne 0 ]; then UI_FAILED=1; echo "UI tests ($mode) failed"; fi
   done
   xcrun simctl ui "$UDID" appearance light || true
+  # a menu the tests could not open is a failure of the job (the shots would be missing)
+  if [ "${UI_FAILED:-0}" = 1 ]; then exit 1; fi
 fi

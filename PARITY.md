@@ -153,7 +153,7 @@ and gestures are untested in the real world. XCTest covers the core (BelfryCore)
 |---|---|---|
 | Model: `ev-<d>`, rule B, status, versions, visibility, slug, cover, channels | done | Core tests. |
 | Cards from `https://<domain>/events/<link>` (sent with the `a` tag) | done | Up to three per message. |
-| All events (Upcoming / Mine / Hosting / Past), New event | done | |
+| All events (Upcoming / Mine / Hosting / Past), New event | done | An open screen from the drawer (☰, ＋), the picker under the bar, events edge to edge; an event's page is pushed. A time whose end is its start shows the start alone. |
 | "Your events" in the sidebar | done | |
 | Event page: cover, the line (cancelled / changed · still going? / asking / my state), when, where, online link, RSVP, tickets (take / apply / waitlist / members only), my application + Withdraw, hosts, description, address (copy, share, QR), the event's chat | done | One page (sheet); the event's chat has a bar back to the event. |
 | Hosts: guest list (Asking / Waitlist / Going / Others), approve / decline (one lock), make co-host, tickets sheet, co-host link, cancel (with a line) / reopen, delete (creator) | done, never run live | Guest co-hosts decide through `POST /events/<d>/decide`. |

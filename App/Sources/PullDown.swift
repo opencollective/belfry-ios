@@ -126,12 +126,14 @@ struct PullDownPanel: View {
     let invite: () -> Void
     let showMessage: (String) -> Void
     @State private var drag: CGFloat = 0
-    @State private var mounted = false
+    @State private var contentH: CGFloat = 0
 
     var body: some View {
         GeometryReader { geo in
-            let full = geo.size.height - 24
-            let short = min(full, max(240, geo.size.height * 0.5))
+            // the panel is as tall as its rows when they are few (an empty channel: four rows)
+            let natural = contentH > 0 ? contentH + 24 : .infinity
+            let full = min(geo.size.height - 24, natural)
+            let short = min(full, max(200, geo.size.height * 0.5))
             let base: CGFloat = level == .full ? full : level == .short ? short : 0
             let h = max(0, min(full, base + drag))
             ZStack(alignment: .top) {
@@ -144,28 +146,21 @@ struct PullDownPanel: View {
                     .accessibilityAddTraits(.isButton)
                     .accessibilityLabel("Close")
                 VStack(spacing: 0) {
-                    if mounted {
-                        PullDownList(id: id, topic: $topic, full: level == .full, close: close, openDetails: openDetails, invite: invite, showMessage: showMessage)
-                            .frame(maxHeight: .infinity, alignment: .top)
-                        handle(short: short, full: full)
-                    }
+                    // always there (measured, clipped to nothing while closed): nothing pops in
+                    PullDownList(id: id, topic: $topic, full: level == .full, close: close, openDetails: openDetails, invite: invite, showMessage: showMessage)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                    handle(short: short, full: full)
                 }
                 .frame(height: h, alignment: .top)
                 .frame(maxWidth: .infinity)
-                .background(.bar)
+                .background(Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? .secondarySystemBackground : .systemBackground }))
                 .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 14, bottomTrailingRadius: 14, style: .continuous))
                 .overlay(alignment: .bottom) { if h > 0 { Divider() } }
                 .accessibilityHidden(level == .closed)
             }
         }
         .allowsHitTesting(level != .closed)
-        .onAppear { mounted = level != .closed }
-        .onChange(of: level) { _, l in
-            if l != .closed { mounted = true } else {
-                // the rows go once the panel has gone up
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if level == .closed { mounted = false } }
-            }
-        }
+        .onPreferenceChange(PDHeightKey.self) { contentH = $0 }
     }
 
     private func handle(short: CGFloat, full: CGFloat) -> some View {
@@ -225,6 +220,11 @@ extension PDRow where Icon == Image {
     init(symbol: String, title: String, subtitle: String? = nil, value: String? = nil, chevron: Bool = true, action: @escaping () -> Void) {
         self.init(icon: { Image(systemName: symbol) }, title: title, subtitle: subtitle, value: value, chevron: chevron, action: action)
     }
+}
+
+struct PDHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 /// A hairline inset to the rows' text.
@@ -342,6 +342,7 @@ struct PullDownList: View {
                 PDRow(symbol: "info.circle", title: "Channel info") { openDetails(.about) }
             }
             .padding(.bottom, 4)
+            .background(GeometryReader { g in Color.clear.preference(key: PDHeightKey.self, value: g.size.height) })
         }
         .scrollBounceBehavior(.basedOnSize)
     }

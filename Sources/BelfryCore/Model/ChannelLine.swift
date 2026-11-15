@@ -107,7 +107,10 @@ extension Derive {
     /// "18:00 – 21:00", "18:00" or "All day".
     public func lineWhen(_ e: CalEvent) -> String {
         if e.allDay { return "All day" }
-        if let end = e.end { return lineTime(e.start) + " – " + lineTime(end) }
+        // an end at the start (or in the same minute) says nothing: the start alone
+        if let end = e.end, end > e.start, lineTime(end) != lineTime(e.start) || dayKey(end) != dayKey(e.start) {
+            return lineTime(e.start) + " – " + lineTime(end)
+        }
         return lineTime(e.start)
     }
 
