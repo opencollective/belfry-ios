@@ -43,6 +43,11 @@ extension Color {
     static var brand: Color { Theme.accent }
 }
 
+struct BarHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
 /// The filled button in the belfry's colour (borderedProminent's shape, with text that reads on
 /// a neutral or branded tint in light and dark mode).
 struct BrandButtonStyle: ButtonStyle {
@@ -116,7 +121,12 @@ extension View {
 
     /// The composer's place: a plain safe-area inset (scrolling to the last message keeps it above
     /// the composer; with iOS 26's safeAreaBar the last row ended up behind it).
-    func bottomBar<V: View>(@ViewBuilder _ content: () -> V) -> some View {
-        safeAreaInset(edge: .bottom, spacing: 0, content: content)
+    /// HEIGHT: told the bar's height (the feed pads its end by it: SwiftUI's scrollTo ignores the
+    /// inset and left the last row behind the composer).
+    func bottomBar<V: View>(height: Binding<CGFloat>? = nil, @ViewBuilder _ content: () -> V) -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            content().background(GeometryReader { g in Color.clear.preference(key: BarHeightKey.self, value: g.size.height) })
+        }
+        .onPreferenceChange(BarHeightKey.self) { h in height?.wrappedValue = h }
     }
 }

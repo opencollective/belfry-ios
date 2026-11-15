@@ -126,11 +126,11 @@ struct PullDownPanel: View {
 
     var body: some View {
         GeometryReader { geo in
-            // the reader reaches under the navigation bar: the panel's colour fills the bar's area
-            let top = geo.safeAreaInsets.top
+            // the panel's colour also fills the navigation bar's area above it (one surface)
+            let top = max(0, geo.frame(in: .global).minY)
             // the panel is as tall as its rows when they are few (an empty channel: four rows)
             let natural = contentH > 0 ? contentH + 24 : .infinity
-            let full = min(geo.size.height - top - 24, natural)
+            let full = min(geo.size.height - 24, natural)
             let short = min(full, max(200, geo.size.height * 0.5))
             let base: CGFloat = level == .full ? full : level == .short ? short : 0
             let h = max(0, min(full, base + drag))
@@ -143,7 +143,7 @@ struct PullDownPanel: View {
                     .accessibilityHidden(level == .closed)
                     .accessibilityAddTraits(.isButton)
                     .accessibilityLabel("Close")
-                PDSurface.color.frame(height: top)
+                PDSurface.color.frame(height: top).offset(y: -top)
                     .opacity(level == .closed ? 0 : 1)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
@@ -155,14 +155,12 @@ struct PullDownPanel: View {
                 }
                 .frame(height: h, alignment: .top)
                 .frame(maxWidth: .infinity)
-                .padding(.top, top)
                 .background(PDSurface.color)
                 .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 14, bottomTrailingRadius: 14, style: .continuous))
-                .overlay(alignment: .bottom) { if h > 0 { Divider() } }
+                .overlay(alignment: .bottom) { Divider().opacity(h > 0 ? 1 : 0) }
                 .accessibilityHidden(level == .closed)
             }
         }
-        .ignoresSafeArea(.container, edges: .top)
         .allowsHitTesting(level != .closed)
         .onPreferenceChange(PDHeightKey.self) { contentH = $0 }
     }

@@ -16,6 +16,7 @@ struct ChannelView: View {
     @State private var openThreads = Set<String>()
     @State private var pull: PullLevel = .closed
     @State private var detailsTab: InfoTab = .about
+    @State private var composerH: CGFloat = 0
     @State private var details = false
     @State private var invite = false
     @State private var search = false
@@ -75,7 +76,8 @@ struct ChannelView: View {
                             }
                         }
                     }
-                    Color.clear.frame(height: 1).id("bottom")
+                    // the composer's height below the last row: scrolling to the end stops above it
+                    Color.clear.frame(height: 1).padding(.bottom, composerH).id("bottom")
                 }
                 .padding(.vertical, 8)
             }
@@ -99,7 +101,7 @@ struct ChannelView: View {
             .onChange(of: scrollTarget) { _, t in if let t { jump(to: t, proxy); scrollTarget = nil } }
             .onChange(of: model.openThread) { _, _ in takeThread() }
             .onDisappear { if model.visibleChannel == id { model.visibleChannel = nil } }
-            .bottomBar {
+            .bottomBar(height: $composerH) {
                 VStack(spacing: 0) {
                 if model.guestReading {
                     // guest mode: reading only; Join opens the sheet (SPEC 19.26)

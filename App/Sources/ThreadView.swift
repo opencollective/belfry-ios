@@ -12,6 +12,7 @@ struct ThreadView: View {
     @State private var actionsFor: Message?
     @State private var editing: Message?
     @State private var focusBox = 0
+    @State private var composerH: CGFloat = 0
 
     var body: some View {
         let _ = model.version
@@ -37,7 +38,8 @@ struct ThreadView: View {
                     ForEach(replies) { r in
                         ReplyRow(group: group, r: r) { hold(r) }.padding(.horizontal).id(r.id)
                     }
-                    Color.clear.frame(height: 1).id("bottom")
+                    // the composer's height below the last row: scrolling to the end stops above it
+                    Color.clear.frame(height: 1).padding(.bottom, composerH).id("bottom")
                 }
                 .padding(.vertical, 8)
             }
@@ -48,7 +50,7 @@ struct ThreadView: View {
             }
             .onAppear { model.markThreadRead(group, rootId) }
         }
-        .bottomBar {
+        .bottomBar(height: $composerH) {
             if model.guestReading {
                 GuestBar(group: group)
             } else if let root {
