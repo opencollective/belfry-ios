@@ -177,11 +177,8 @@ The app codes against the contract (SPEC 19.29). For the belfry:
   browsers and for phones without the app.
 - **The viewer block**: the app reads `viewer` and `me` (events v1) and merges them, `viewer`
   winning; `ticket_url` is used only when it is https and ends with `/t/<ticket_code>`.
-- **A look-up before checking in** (wanted): a ticket link opened by a steward can only show
-  "A ticket for this event" until "Check in" is tapped, because nothing resolves a code to a
-  person without checking them in. `POST /events/<d>/checkin {"code", "dry_run": true}` (or a
-  `GET`) answering the same `person` without recording would let the card show the name and the
-  state first, as the contract describes.
+- **Peek** (`"peek": true` on /checkin, live since 2026-11-16) is used for the card a ticket link
+  opens; `/group-meta` for edits by admins by role; `"role": "removed"` for removal.
 - **Admins by role** (the server's change 3) are read as the web's `checkin` branch does: latest
   39001 ∪ creator ∪ the latest 9000 / 9001 per person. The app does not check who signed the
   9000 (neither does the web); the relay only accepts them from the groups key and admins.

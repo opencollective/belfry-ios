@@ -1574,9 +1574,10 @@ people; tickets with a QR; checking people in at the door; roles per channel, gr
   ignored for 3 s. Results: green "<Name> · <ticket> · checked in", amber "Already checked in at
   14:02", red "Not a ticket for this event" (2 s, with the success / warning / error haptic).
 - **The link** `https://chat.<domain>/events/<link>/t/<code>` (also after `#`): the event
-  screen; for those who may check in, a card on top with "Check in" (the belfry resolves the
-  code only when checking in, so the name shows after it), then "Checked in at …" / "Already
-  checked in at …" with Undo.
+  screen; for those who may check in, a card on top: who it is, the ticket and whether they are
+  in, asked with `"peek": true` on `/checkin` (nothing recorded by opening a link), then "Check
+  in" → "Checked in at …" with Undo ("Already checked in at …" when they were). An older belfry
+  without peek: the card shows "Check in" only. The scanner checks in at once.
 - **"Check people in"** shows on the header from 00:00 of the event's first day to the end of its
   last day (the device's zone), for host, co-host and steward (the API's `may_check_in`, else
   the relay's roles); always in the screen's menu and the People tab for them.
@@ -1588,6 +1589,13 @@ people; tickets with a QR; checking people in at the door; roles per channel, gr
   Photos · People: the group's feed and composer; its photos newest first with "Add photos" (one
   message through the outbox); hosts / going / maybe with a message button. Someone not in the
   group (no ticket yet; a guest reading through the API) sees the header and the description only.
+- **A group's metadata** (name, description, picture, access): a client publishes its own 9002
+  only when the relay lets it (in the latest 39001, the creator, a belfry admin), and then carries
+  every other tag of the current metadata (the relay replaces it all: a 9002 with only a name
+  dropped closed / prompt / vouches / picture); otherwise `POST /group-meta {channel, name?,
+  about?, picture?, closed?, prompt?, vouches?}`. Accept / Decline of a closed group's 9021 only
+  for those the relay lets moderate (an admin by role vouches); an event's applications go
+  through `POST /events/<d>/decide` for co-hosts by role.
 - **People lists** (channel Members, a group's page, an event's People): face, name, the role
   there as secondary text when it isn't the default; no label editor. A tap pushes the profile,
   which shows "In <group>" with the role there: a picker (Member / Admin; Attendee / Co-host /
