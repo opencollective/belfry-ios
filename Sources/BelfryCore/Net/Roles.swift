@@ -4,7 +4,7 @@ import Foundation
 // docs/membership.md, docs/guests.md; web src/core/roles.ts, invite.ts, requests.ts). Errors are
 // fixed words per code, never the server's text.
 
-public struct Role: Hashable, Sendable, Identifiable {
+public struct Role: Hashable, Sendable, Identifiable, Codable {
     public let id: String
     public var label: String
     public var description: String
@@ -24,7 +24,7 @@ public struct Role: Hashable, Sendable, Identifiable {
     ]
 }
 
-public struct RolesInfo: Hashable, Sendable {
+public struct RolesInfo: Hashable, Sendable, Codable {
     public var roles: [Role]
     public var defaultRole: String
     /// member key → role id (every member; guests and agents have none)
@@ -63,7 +63,7 @@ public struct RolesInfo: Hashable, Sendable {
 }
 
 /// Membership settings (`GET /membership`).
-public struct MembershipSettings: Hashable, Sendable {
+public struct MembershipSettings: Hashable, Sendable, Codable {
     /// admins | members
     public var invite: String
     /// admins | vouches
