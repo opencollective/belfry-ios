@@ -165,3 +165,27 @@ Nothing blocks; notes for the belfry:
   "reading" true for everyone.
 - `/whois` is allowed while reading (it is a read sent as a POST). Push registration
   (`/push/devices`) waits until the guest has joined.
+
+## 8. Tickets, check-in, roles per group (the contract of 2026-11-15) — built in the app, not run live
+
+The app codes against the contract (SPEC 19.29). For the belfry:
+
+- **Universal links for tickets**: the app opens `https://chat.<domain>/events/<link>/t/<code>`.
+  The chat hosts' `apple-app-site-association` (Caddyfile, `"/": "/events/*"`) already covers it:
+  in the `components` form `*` matches across `/`, so no change is needed. The Caddy rewrite of
+  `/events/<link>/t/<code>` to `/#/events/<link>/t/<code>` (contract §2) is still needed for
+  browsers and for phones without the app.
+- **The viewer block**: the app reads `viewer` and `me` (events v1) and merges them, `viewer`
+  winning; `ticket_url` is used only when it is https and ends with `/t/<ticket_code>`.
+- **A look-up before checking in** (wanted): a ticket link opened by a steward can only show
+  "A ticket for this event" until "Check in" is tapped, because nothing resolves a code to a
+  person without checking them in. `POST /events/<d>/checkin {"code", "dry_run": true}` (or a
+  `GET`) answering the same `person` without recording would let the card show the name and the
+  state first, as the contract describes.
+- **Admins are the latest 39001**: the app now takes a group's newest 39001 as its admin list
+  (the web chat adds every 39001 it has seen), so a co-host made an attendee again drops out as
+  soon as the relay publishes the new 39001. The web chat (model.ts) should do the same.
+- **An older belfry** answers 404 (or 405) without one of the contract's codes: the app shows
+  "This belfry needs an update." and hides the ticket button (no `ticket_code`) and "Check people
+  in" (no `may_check_in`, unless the relay's roles say so: then the list comes from the relay and
+  checking in fails with that message).

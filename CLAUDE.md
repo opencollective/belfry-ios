@@ -9,7 +9,7 @@ don't guess. The Android app (opencollective/belfry-android) is a second reading
 
 `vectors/` is the contract shared with Android: keep both repos' files identical (copy, don't
 edit one side). SPEC.md differs from Android's only in the paragraph that opens section 19 and the (iOS) notes
-that end 19.19, 19.20 and 19.26, and the iOS-only 19.28 (Android's 19.21 to 19.25 and 19.27 copied 2026-11-15; what the iPhone app does of them is in PARITY.md). `vectors/guestmode.json` and `vectors/readstate.json` are Android's.
+that end 19.19, 19.20 and 19.26, and the iOS-only 19.28 and 19.29 (Android's 19.21 to 19.25 and 19.27 copied 2026-11-15; what the iPhone app does of them is in PARITY.md). `vectors/guestmode.json` and `vectors/readstate.json` are Android's.
 
 ## Layout
 
@@ -32,7 +32,9 @@ that end 19.19, 19.20 and 19.26, and the iOS-only 19.28 (Android's 19.21 to 19.2
     feed + `feedRows`, guests, pins, to-dos, drop links, inbox state, labels, extras, search.
     Extensions: `Events.swift` (calendar, rule B, tickets, my state, lists), `Proposals.swift`,
     `ChannelLine.swift` (the one line, pod shapes), `ChannelRefs.swift` (naddr references),
-    `Access.swift` (guest / agent / inChannel / invite text), `People.swift` (tags, places).
+    `Access.swift` (guest / agent / inChannel / invite text), `People.swift` (tags, places),
+    `GroupRoles.swift` (SPEC 19.29: stewards and check-ins from the groups key's 1985 labels,
+    event roles, event days, `TicketScan` for scanned texts and event / ticket links).
     `Actions.swift` + `Actions2.swift` (+ `EventActions`): the events each action queues.
     `Text.swift`: hashtags, mentions, JS-like regex helper (`Rx`, UTF-16 offsets).
   - `Mail/`: mail-thread keys, MIME read/write. `Markdown/`: the subset as a tree + e-mail HTML.
@@ -55,7 +57,11 @@ that end 19.19, 19.20 and 19.26, and the iOS-only 19.28 (Android's 19.21 to 19.2
   limit, digits via `NativeSignIn.next`; a failed connection keeps the digits + "Try again", only
   wrong / expired codes clear them; the browser as a second row; `AppModel+SignIn`),
   `JoinUI` (guest links signed in), `GuestUI` + `AppModel+Guest` (guest mode, SPEC 19.26: the
-  loading screen, the guest bar, the Join sheet), `EventsUI`, `Kit` (BusyButton, ActionRow, PodShape, ChannelGlyph,
+  loading screen, the guest bar, the Join sheet), `EventScreen` (the event: three-level header,
+  Chat · Photos · People; `ChannelView(embedded: true)` is its chat), `Tickets` (my ticket's QR,
+  the check-in screen, the card a ticket link opens), `GroupRoles` (`PersonRow`, "In <group>"
+  on a profile), `AppModel+Checkin` (viewer block per event, attendees, check-in, /group-roles),
+  `EventsUI` (forms, tickets, RSVP pieces, All events), `Kit` (BusyButton, ActionRow, PodShape, ChannelGlyph,
   Chip, `openChannel` environment). `project.yml` is the XcodeGen spec; the `.xcodeproj`,
   `App/Info.plist` and `App/Belfry.entitlements` are generated, not committed.
 - `SERVER-NEEDS.md`: changes the belfry must make for this app (redirect URI, push…). This repo
@@ -86,8 +92,12 @@ agent), local-only. `-screen <name>` opens a screen for the screenshot job (`scr
 screenshots.sh` lists them: feed, thread, details, invite, messages, conversation, mail, search,
 channels, pulldown, menu, delete, edit, threadscreen, chsearch, add, pod, proposal, event,
 profile, editprofile, me, members, todos, files, events, eventhost, eventform, and since
-2026-11-15 composer, drawer, pullfull, mentions, group, requests, log, settings). In the demo Sam
-is an admin of the belfry (settings, roles, requests show). `-join` (no
+2026-11-15 composer, drawer, pullfull, mentions, group, requests, log, settings; and event (the
+event screen at half), eventup, eventfull, eventphotos, eventpeople, ticket, checkin (with a
+result card), checkincard (a ticket link opened), eventrole (a profile with "In Repair café"),
+membersinvite). In the demo Sam is an admin of the belfry (settings, roles, requests show), and
+the steward of today's Repair café (Dev hosts, Emma co-hosts; two ticket types; Sam holds a
+Volunteer ticket; Ana and Ben checked in; photos drawn on the device by `DemoPictures`). `-join` (no
 `-demo`) opens a demo guest link signed out (the loading screen, then guest mode). `-guest
 opening|feed|join|code` shows guest mode's screens (the loading screen; #general read as a
 guest; the Join sheet; its code step), demo code 123456. `-signin code` / `-signin older`
@@ -174,6 +184,16 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   a screen (invite, a new event, editing a profile).
 - Views inside animated containers stay in the tree (opacity / allowsHitTesting /
   accessibilityHidden), never inserted mid-animation (drawer shade fix 4c549e1, pull-down).
+- An event is one screen, pushed on the stack (`model.openEvent` → `EventRoute`; an `ev-` group
+  chosen in the drawer opens it as the root): the header at three levels (`EventLevel` up / half /
+  full, the same handle drag as `PullDownPanel`), opening at half; Chat · Photos · People under it,
+  all three kept in the tree. The cover runs under the navigation bar (`toolbarBackground(.hidden)`,
+  the root ignores the top safe area and adds it back by hand).
+- The feed's end is a 1 pt anchor with NO padding: the composer is the scroll view's safe-area
+  inset, and scrollTo / defaultScrollAnchor(.bottom) stop above it (a pad of the composer's
+  height showed as an empty band, fixed 2026-11-15).
+- People lists of a channel / group / event: `PersonRow` (face, name, role there as secondary
+  text), never a label icon; the profile opened from them gets the group (`ProfileKey.group`).
 - The channel line pulls down FROM THE TOP (`PullDownPanel`: one surface with the navigation
   bar, plain system rows `PDRow`: description, pinned, coming up, to decide, Todos "n of m
   done", groups, then Invite someone / Members / Channel info; short and full levels, handle

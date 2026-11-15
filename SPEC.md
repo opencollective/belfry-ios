@@ -1524,3 +1524,66 @@ Not protocol; how the iPhone app follows the web chat's phone layout, for anyone
   `docs/membership.md`, `docs/roles.md`; vouches in groups are kind 1985 `belfry/vouch`
   (core-tested).
 
+
+### 19.29 The event screen, tickets, check-in and roles in a group (2026-11-15)
+
+The belfry's contract of 2026-11-15 (collective-belfry `services/onboarding`, events.py; built
+on the server in parallel), Xavier's request: one screen per event with its chat, photos and
+people; tickets with a QR; checking people in at the door; roles per channel, group and event.
+
+- **Roles in a group.** `admin` = NIP-29 admin (39001; in an event the creator is "Host", other
+  admins "Co-host"). `steward` (events only: checks people in, nothing else) = kind 1985
+  `["L","belfry/group-role"]`, `["l","steward"|"none","belfry/group-role"]`, `["p",<key>]`,
+  `["h",<group>]`, `["by",<who asked>]` **signed by the groups key** (`_groups@domain`); the
+  latest per `p` wins, labels by any other key are ignored, an admin is never a steward.
+  `member` = everyone else ("Attendee" in an event). Changing one: `POST <api>/group-roles
+  {"channel","pubkey","role":"admin"|"steward"|"member"}` by an admin of that group or a belfry
+  admin → `{"role"}`; errors `not_allowed` (403), `not_in_group`, `last_admin`,
+  `guest_not_saved`, `agent`, `events_only` (409). Clients read roles from the relay, no call.
+- **Admins are the latest 39001** (iOS, 2026-11-15; the web adds every 39001 it has seen): the
+  relay's newest 39001 of a group replaces the admin list (as 39002 replaces members), the
+  creator (9007) always stays, a later 9000 tagged `admin` adds. Without this a co-host made an
+  attendee again stays a co-host on every phone that kept the older 39001.
+- **Tickets.** Everyone holding a ticket (9000 with `ticket` in `ev-<d>`) has a code: 16
+  lowercase base32 characters, the same every time. `GET /events/<link>` has in its viewer
+  block (`viewer`, else `me` of events v1; both are read, `viewer` wins): `ticket_code`,
+  `ticket_url` = `https://chat.<domain>/events/<link>/t/<code>` (what the QR holds; used only
+  when it is https and ends with `/t/<code>`), `checked_in` (unix time or null), `roles`
+  (subset of host, cohost, steward), `may_check_in`. Kept on the phone per event (offline:
+  the QR shows without a connection). An older belfry sends none of these: no ticket button.
+- **Check-in.** `POST /events/<d>/attendees {}` → `{"people":[{"pubkey","name","ticket",
+  "ticket_title","rsvp","checked_in","role"}],"going","checked_in"}` (hosts, co-hosts,
+  stewards); `POST /events/<d>/checkin {"code"}` or `{"pubkey"}`, optional `"undo":true` →
+  `{"person":{…},"already"}`; `no_ticket` (404, also another event's code), `not_allowed`
+  (403). The belfry records it as kind 1985 `["L","belfry/ticket"]`,
+  `["l","checked-in"|"not-checked-in","belfry/ticket"]`, `p`, `h`, `by`, signed by the groups
+  key; the latest per `p` wins. The list is drawn from the last answer with newer labels laid
+  over it (every checker's phone updates live), else from the ticket holders on the relay.
+  A 404 without one of these codes (or a 405) means the belfry is older: "This belfry needs an
+  update."
+- **A scanned text** counts only when it is an http(s) URL whose path (or fragment) ends
+  `/t/<16 base32>`; only the code is sent, nothing of the text is shown. The same text is
+  ignored for 3 s. Results: green "<Name> · <ticket> · checked in", amber "Already checked in at
+  14:02", red "Not a ticket for this event" (2 s, with the success / warning / error haptic).
+- **The link** `https://chat.<domain>/events/<link>/t/<code>` (also after `#`): the event
+  screen; for those who may check in, a card on top with "Check in" (the belfry resolves the
+  code only when checking in, so the name shows after it), then "Checked in at …" / "Already
+  checked in at …" with Undo.
+- **"Check people in"** shows on the header from 00:00 of the event's first day to the end of its
+  last day (the device's zone), for host, co-host and steward (the API's `may_check_in`, else
+  the relay's roles); always in the screen's menu and the People tab for them.
+- **The event screen** (iOS): pushed from Events, a card, a universal link and Your events. The
+  header has three levels with the channel pull-down's handle: half (opens there: cover, title,
+  when, where, my status as the main control, who is going), up (the bar names the event and
+  its date, the content takes the screen; typing in the chat goes up), full (hosted by, asking,
+  going, maybe, the description, the address with Share, the hosts' tools). Under it Chat ·
+  Photos · People: the group's feed and composer; its photos newest first with "Add photos" (one
+  message through the outbox); hosts / going / maybe with a message button. Someone not in the
+  group (no ticket yet; a guest reading through the API) sees the header and the description only.
+- **People lists** (channel Members, a group's page, an event's People): face, name, the role
+  there as secondary text when it isn't the default; no label editor. A tap pushes the profile,
+  which shows "In <group>" with the role there: a picker (Member / Admin; Attendee / Co-host /
+  Steward) for that group's admins and belfry admins, saved with `/group-roles`, and "Remove
+  from <group>" (9001). The Host is never changed there.
+- Core-tested in `GroupRolesTests` (stewards, the groups key only, latest wins, admins replace,
+  check-ins, event days, scans, the viewer block, the three calls against a stub belfry).
