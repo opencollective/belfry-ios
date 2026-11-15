@@ -117,9 +117,28 @@ final class GroupRolesTests: XCTestCase {
         // a belfry admin may check people in
         let boss = Derive(events: base.events, context: WorldContext(me: BOSS, communityAdmins: [BOSS], groupsKey: GROUPS))
         XCTAssertTrue(boss.mayCheckIn(try XCTUnwrap(boss.calendar.first)))
+        // only the 39001 and the creator moderate on the relay; Ana (by role) goes through the belfry
+        XCTAssertEqual(g.relayAdmins, [ME, BOSS, RELAY])
+        let ana = Derive(events: base.events, context: WorldContext(me: ANA, groupsKey: GROUPS))
+        XCTAssertFalse(ana.mayModerate(ana.group(group)))
+        XCTAssertTrue(dv.mayModerate(g))
         // a 9001 also ends it
         let out = Derive(events: base.events + [ev(GROUPS, 9001, 1700, [["h", group], ["p", ANA]])], context: WorldContext(me: ME, groupsKey: GROUPS))
         XCTAssertFalse(try XCTUnwrap(out.group(group)).admins.contains(ANA))
+    }
+
+    func testA9002KeepsTheRestOfTheMetadata() throws {
+        let dv = Derive(events: [ev(GROUPS, 39000, 1, [["d", "pod-x"], ["name", "Seeds"], ["about", "a"], ["picture", "https://x.org/p.jpg"], ["closed"], ["prompt", "Why?"]]),
+                                 ev(ME, 9002, 2, [["h", "pod-x"], ["vouches", "2"], ["closed"]])], context: WorldContext(me: ME))
+        let g = try XCTUnwrap(dv.group("pod-x"))
+        let t = Actions.groupMeta(g, name: "Seed swap").tags
+        XCTAssertTrue(t.contains(["name", "Seed swap"]))
+        XCTAssertTrue(t.contains(["about", "a"]))
+        XCTAssertTrue(t.contains(["picture", "https://x.org/p.jpg"]))
+        XCTAssertTrue(t.contains(["closed"]))
+        XCTAssertTrue(t.contains(["prompt", "Why?"]))
+        XCTAssertTrue(t.contains(["vouches", "2"]))
+        XCTAssertTrue(Actions.groupMeta(g, closed: false).tags.contains(["open"]))
     }
 
     func testCheckInsLatestPerPersonByTheGroupsKey() {
@@ -206,6 +225,11 @@ final class GroupRolesTests: XCTestCase {
         let body = try XCTUnwrap(JSON.parse(try XCTUnwrap(StubBelfry.take()).body) as? [String: Any])
         XCTAssertEqual(body["code"] as? String, "abcdefghijklmn23")
         XCTAssertNil(body["undo"])
+        XCTAssertNil(body["peek"])
+        StubBelfry.enqueue(200, #"{"person":{"pubkey":"\#(ANA)","name":"Ana","ticket":"x:t1","ticket_title":"Seat","checked_in":null,"role":"member"},"already":false}"#)
+        let peeked = try await api.checkIn(d: d, code: "abcdefghijklmn23", peek: true)
+        XCTAssertNil(peeked.person.checkedIn)
+        XCTAssertEqual(try XCTUnwrap(JSON.parse(try XCTUnwrap(StubBelfry.take()).body) as? [String: Any])["peek"] as? Bool, true)
 
         // fixed messages per code; an older belfry (404 without its codes) needs an update
         StubBelfry.enqueue(404, #"{"error":"no_ticket"}"#)

@@ -33,6 +33,8 @@ struct ChannelView: View {
     @State private var thread: ThreadRoute?
     @State private var podAsk = false
     @State private var proposeSite: Message?
+    /// The feed shows its last rows: it stays there when its height changes (keyboard, header).
+    @State private var atBottom = true
 
     var body: some View {
         let _ = model.version
@@ -87,10 +89,11 @@ struct ChannelView: View {
             }
             .defaultScrollAnchor(.bottom)
             .keepsBottomOnResize()
+            .trackAtBottom($atBottom)
+            // a lazy feed's bottom anchor lands short when rows are estimated: scroll to the end
+            // when the feed's height changes while it showed its end
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
-                if #unavailable(iOS 18) {
-                    if focus == nil && scrollTarget == nil { proxy.scrollTo("bottom", anchor: .bottom) }
-                }
+                if atBottom && focus == nil && scrollTarget == nil { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .scrollDismissesKeyboard(.interactively)
             .refreshable { await model.refresh() }
@@ -99,7 +102,7 @@ struct ChannelView: View {
                 model.markChannelRead(id)
                 model.visibleChannel = id
                 takeThread()
-                if let focus { jump(to: focus, proxy) }
+                if let focus { jump(to: focus, proxy) } else { toEnd(proxy) }
                 applyLaunch()
                 if pendingThreadLaunch { openBusiestThread(proxy) }
             }
@@ -267,6 +270,12 @@ struct ChannelView: View {
         guard let t = model.openThread, t.group == id else { return }
         model.openThread = nil
         thread = t
+    }
+
+    /// Opening a channel: its end, once the lazy rows are laid out (twice: they settle).
+    func toEnd(_ proxy: ScrollViewProxy) {
+        DispatchQueue.main.async { proxy.scrollTo("bottom", anchor: .bottom) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { if scrollTarget == nil { proxy.scrollTo("bottom", anchor: .bottom) } }
     }
 
     func jump(to mid: String, _ proxy: ScrollViewProxy) {

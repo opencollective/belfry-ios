@@ -125,6 +125,21 @@ public extension Actions {
         Draft(kind: 9002, tags: [["h", id], ["name", name], ["about", about]] + accessTags(access))
     }
 
+    /// A 9002 that changes only what is given and keeps the rest of G's metadata (the relay
+    /// replaces the whole metadata on each 9002: one with only a name dropped closed / prompt /
+    /// vouches / picture).
+    static func groupMeta(_ g: Group, name: String? = nil, about: String? = nil, picture: String? = nil, closed: Bool? = nil, prompt: String? = nil) -> Draft {
+        var tags: [Tag] = [["h", g.id], ["name", name ?? g.name], ["about", about ?? g.about]]
+        let pic = picture ?? g.picture ?? ""
+        if !pic.isEmpty { tags.append(["picture", pic]) }
+        let isClosed = closed ?? g.closed
+        tags.append([isClosed ? "closed" : "open"])
+        let p = (prompt ?? g.prompt ?? "").jsTrim()
+        if isClosed { tags.append(["prompt", p.isEmpty ? defaultPrompt : p]) }
+        if isClosed && g.vouches > 0 { tags.append(["vouches", String(g.vouches)]) }
+        return Draft(kind: 9002, tags: tags)
+    }
+
     static func admit(_ id: String, pubkey: String) -> Draft { Draft(kind: 9000, tags: [["h", id], ["p", pubkey, "member"]]) }
     static func decline(_ id: String, pubkey: String) -> Draft { Draft(kind: 9001, tags: [["h", id], ["p", pubkey]]) }
 

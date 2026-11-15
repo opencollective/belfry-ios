@@ -138,6 +138,17 @@ extension View {
 
     /// A feed stays on its last rows when it gets shorter or taller (the keyboard, the event's
     /// header moving): iOS 18's size-change anchor; before, the caller scrolls on a height change.
+    /// Whether a feed shows its end (iOS 18's scroll geometry; before: always told yes).
+    @ViewBuilder func trackAtBottom(_ at: Binding<Bool>) -> some View {
+        if #available(iOS 18, *) {
+            self.onScrollGeometryChange(for: Bool.self) { g in
+                g.contentOffset.y + g.containerSize.height >= g.contentSize.height - 80
+            } action: { _, v in at.wrappedValue = v }
+        } else {
+            self
+        }
+    }
+
     @ViewBuilder func keepsBottomOnResize() -> some View {
         if #available(iOS 18, *) { self.defaultScrollAnchor(.bottom, for: .sizeChanges) } else { self }
     }

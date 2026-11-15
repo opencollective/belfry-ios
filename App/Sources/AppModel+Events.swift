@@ -17,7 +17,11 @@ extension AppModel {
 
     /// A host's new version, its group's name / picture when they changed, and its URL.
     func editEvent(_ e: CalEvent, _ form: EventForm) async -> String? {
-        for dr in EventActions.edit(e, form, group: group(e.groupId), groupsRelay: config.groupsRelay) { engine?.enqueue(dr) }
+        // the group's name / picture go through editGroupMeta (keeps its access; a co-host by role
+        // can't publish a 9002 on the relay)
+        for dr in EventActions.edit(e, form, group: group(e.groupId), groupsRelay: config.groupsRelay) {
+            if dr.kind == 9002 { editGroupMeta(e.groupId, name: dr.tags.first { $0.first == "name" }?.last, picture: form.cover) } else { engine?.enqueue(dr) }
+        }
         if form.slug != (e.slug ?? ""), !form.slug.isEmpty, engine?.localOnly == false {
             do { try await api.claimSlug(d: e.d, slug: form.slug) } catch let x as ApiError { return x.message } catch {}
         }
@@ -37,7 +41,9 @@ extension AppModel {
     func deleteEvent(_ e: CalEvent) { engine?.enqueue(Actions.deleteEvent(e)) }
 
     func saveTicket(_ e: CalEvent, _ t: TicketForm) {
-        for dr in EventActions.saveTicket(e, t, existing: derive.tickets(e), group: group(e.groupId), mainRelay: config.mainRelay) { engine?.enqueue(dr) }
+        for dr in EventActions.saveTicket(e, t, existing: derive.tickets(e), group: group(e.groupId), mainRelay: config.mainRelay) {
+            if dr.kind == 9002 { editGroupMeta(e.groupId, closed: dr.tags.contains(["closed"])) } else { engine?.enqueue(dr) }
+        }
     }
 
     func deleteTicket(_ t: Ticket) { if let dr = EventActions.deleteTicket(t) { engine?.enqueue(dr) } }
@@ -75,7 +81,8 @@ extension AppModel {
 
     /// A host approves or declines: on the relay as a member host, through the belfry as a guest host.
     func decide(_ e: CalEvent, _ pk: String, approve: Bool, ticket: String?, application: NostrEvent?) async -> String? {
-        if !derive.amGuest || engine?.localOnly != false {
+        // on the relay only when it lets me moderate this group; a co-host by role or a guest: the belfry
+        if (!derive.amGuest && derive.mayModerate(group(e.groupId))) || engine?.localOnly != false {
             engine?.enqueue(EventActions.decide(e, pubkey: pk, approve: approve, ticketD: ticket, application: application))
             return nil
         }

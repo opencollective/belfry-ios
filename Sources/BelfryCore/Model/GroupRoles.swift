@@ -83,6 +83,13 @@ public extension Derive {
         return "Admin"
     }
 
+    /// May I moderate GROUP on the relay myself (9000 / 9001 / 9002)? Its 39001 or its creator, or a
+    /// belfry admin. An admin by role goes through the belfry instead.
+    func mayModerate(_ g: Group?) -> Bool {
+        guard let g else { return false }
+        return g.relayAdmins.contains(me) || isCommunityAdmin
+    }
+
     /// PUBKEY's role in GROUP.
     func groupRole(_ groupId: String, _ pubkey: String) -> GroupRole {
         if group(groupId)?.admins.contains(pubkey) == true { return .admin }

@@ -373,8 +373,8 @@ struct CheckInScreen: View {
     }
 }
 
-/// A ticket link opened by someone who may check people in: a card on the event screen. The
-/// belfry resolves the code only when checking in, so the name shows after "Check in".
+/// A ticket link opened by someone who may check people in: a card on the event screen with who
+/// it is and their state (asked with `peek`: nothing is recorded by opening a link), then Check in.
 struct CheckInCard: View {
     @EnvironmentObject var model: AppModel
     let e: CalEvent
@@ -382,6 +382,8 @@ struct CheckInCard: View {
     let close: () -> Void
     @State private var result: CheckInResult?
     @State private var error: String?
+    /// The answer to the peek: who and whether they are in, before anything is recorded.
+    @State private var peeked = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -411,6 +413,7 @@ struct CheckInCard: View {
                         .buttonStyle(.brand).controlSize(.large)
                 }
             } else {
+                if !peeked && error == nil { ProgressView().frame(maxWidth: .infinity) }
                 BusyButton { await go(undo: false) } label: { Text("Check in").frame(maxWidth: .infinity) }
                     .buttonStyle(.brand).controlSize(.large)
                     .accessibilityIdentifier("checkin-card-button")
@@ -420,6 +423,14 @@ struct CheckInCard: View {
         .padding(16)
         .glass(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .padding(.horizontal, 12)
+        .task(id: code) {
+            // who it is, nothing recorded; an older belfry has no peek: the plain Check in stays
+            switch await model.checkIn(e, code: code, peek: true) {
+            case .success(let x): result = x
+            case .failure(let x): if x.code == "no_ticket" { error = x.message }
+            }
+            peeked = true
+        }
     }
 
     private func go(undo: Bool) async {

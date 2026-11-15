@@ -126,11 +126,14 @@ struct GroupRequestRow: View {
                 if let k = model.derive.kindLabel(pubkey) { Text(k).font(.caption).foregroundStyle(.secondary) }
             }
             if !answer.isEmpty { Text(verbatim: answer).font(.subheadline).foregroundStyle(.secondary) }
-            HStack {
-                BusyButton("Accept") { model.admit(group.id, pubkey) }.buttonStyle(.brand)
-                BusyButton("Decline", role: .destructive) { model.declineApplicant(group.id, pubkey) }.buttonStyle(.bordered)
+            // the relay takes Accept / Decline only from its own admins (an admin by role vouches)
+            if model.derive.mayModerate(group) {
+                HStack {
+                    BusyButton("Accept") { model.admit(group.id, pubkey) }.buttonStyle(.brand)
+                    BusyButton("Decline", role: .destructive) { model.declineApplicant(group.id, pubkey) }.buttonStyle(.bordered)
+                }
+                .controlSize(.small)
             }
-            .controlSize(.small)
         }
         .padding(.vertical, 2)
     }

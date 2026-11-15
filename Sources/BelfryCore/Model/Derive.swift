@@ -86,6 +86,9 @@ public struct Group: Identifiable, Hashable, Sendable {
     /// `members` (except me), member lists, counts, "active" and mention pickers.
     public var reading: Set<String> = []
     public var admins: Set<String> = []
+    /// Admins the relay itself lets moderate and edit the group: its latest 39001 and the creator
+    /// (an admin by role is not one: the belfry acts for them, SPEC 19.29).
+    public var relayAdmins: Set<String> = []
     public var closed = false
     public var prompt: String?
     public var parent: String?
@@ -597,6 +600,7 @@ public final class Derive {
             guard var g = map[id] else { continue }
             g.admins = listedAdmins[id] ?? []
             if let c = creatorOf[id] { g.admins.insert(c) }
+            g.relayAdmins = g.admins
             map[id] = g
         }
         for (k, on) in byRole where on && k.count > 64 {

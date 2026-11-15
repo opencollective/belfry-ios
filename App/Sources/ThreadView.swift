@@ -38,7 +38,7 @@ struct ThreadView: View {
                     ForEach(replies) { r in
                         ReplyRow(group: group, r: r) { hold(r) }.padding(.horizontal).id(r.id)
                     }
-                    // the end: the composer is this scroll view's safe-area inset, .bottom stops above it
+                    // the end (the composer sits under the scroll view)
                     Color.clear.frame(height: 1).id("bottom")
                 }
                 .padding(.vertical, 8)
@@ -49,7 +49,11 @@ struct ThreadView: View {
                 withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
                 model.markThreadRead(group, rootId)
             }
-            .onAppear { model.markThreadRead(group, rootId) }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in proxy.scrollTo("bottom", anchor: .bottom) }
+            .onAppear {
+                model.markThreadRead(group, rootId)
+                DispatchQueue.main.async { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
         }
         .bottomBar(height: $composerH) {
             if model.guestReading {

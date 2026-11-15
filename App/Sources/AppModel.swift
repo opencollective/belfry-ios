@@ -553,7 +553,7 @@ final class AppModel: ObservableObject {
     }
 
     func editPod(_ id: String, name: String, about: String, closed: Bool, prompt: String) {
-        engine?.enqueue(Actions.editPod(id, name: name, about: about, access: PodAccess(closed: closed, prompt: prompt)))
+        editGroupMeta(id, name: name, about: about, closed: closed, prompt: prompt)
     }
 
     func createProposal(_ n: NewProposal, parent: String) -> String {
@@ -737,7 +737,7 @@ final class AppModel: ObservableObject {
     }
 
     func editChannel(_ id: String, name: String, about: String, inbox: Bool?) {
-        engine?.enqueue(Actions.editChannel(id, name: name, about: about))
+        editGroupMeta(id, name: name, about: about)
         if let inbox, inbox != derive.isInbox(group(id)) { engine?.enqueue(Actions.setInbox(id, on: inbox)) }
     }
 

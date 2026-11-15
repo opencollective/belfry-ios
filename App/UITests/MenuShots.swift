@@ -63,6 +63,9 @@ final class MenuShots: XCTestCase {
         let field = app.descendants(matching: .any).matching(identifier: "composer-field").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         field.tap()
+        // a first tap can land while the screen settles: tap again until the keyboard is up
+        if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+        _ = app.keyboards.firstMatch.waitForExistence(timeout: 3)
         field.typeText("Hello from the demo")
         sleep(2)
         shot("53-composer-typing")
@@ -95,7 +98,8 @@ final class MenuShots: XCTestCase {
         // the event's own composer is the last one in the tree (the channel's lies under the pushed screen)
         guard let field = fields.allElementsBoundByIndex.last else { XCTFail("no composer on screen"); return }
         field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        sleep(1)
+        if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+        _ = app.keyboards.firstMatch.waitForExistence(timeout: 3)
         field.typeText("On my way")
         sleep(2)
         shot("82-event-chat-typing")

@@ -290,10 +290,12 @@ public extension BelfryAPI {
     }
 
     /// Check someone in (by their ticket's CODE or their PUBKEY), or UNDO it. Codes: `no_ticket`, `not_allowed`.
-    func checkIn(d: String, code: String? = nil, pubkey: String? = nil, undo: Bool = false) async throws -> CheckInResult {
+    /// PEEK: who it is and whether they are in, nothing recorded (the card a ticket link opens).
+    func checkIn(d: String, code: String? = nil, pubkey: String? = nil, undo: Bool = false, peek: Bool = false) async throws -> CheckInResult {
         var body: [String: Any] = [:]
         if let code { body["code"] = code } else if let pubkey { body["pubkey"] = pubkey }
         if undo { body["undo"] = true }
+        if peek { body["peek"] = true }
         let a = try await signed(eventsBase + "/" + d + "/checkin", method: "POST", json: body)
         guard a.ok, let b = a.body, let p = (b["person"] as? [String: Any]).flatMap(BelfryAPI.parseAttendee) else {
             throw BelfryAPI.checkinFail(a, "That did not work. Try again.", known: ["no_ticket", "not_allowed"])
@@ -316,6 +318,20 @@ public extension BelfryAPI {
     func removeFromGroup(channel: String, pubkey: String) async throws {
         let a = try await signed(base + "/group-roles", method: "POST", json: ["channel": channel, "pubkey": pubkey, "role": "removed"])
         guard a.ok else { throw BelfryAPI.checkinFail(a, "They could not be removed.", known: BelfryAPI.roleCodes) }
+    }
+
+    /// Change a group's name / description / picture / access through the belfry (an admin by role:
+    /// the relay refuses their own 9002). Only the fields given change. Codes: `not_allowed`,
+    /// `not_found`, `invalid`, `relay`.
+    func groupMeta(channel: String, name: String? = nil, about: String? = nil, picture: String? = nil, closed: Bool? = nil, prompt: String? = nil) async throws {
+        var body: [String: Any] = ["channel": channel]
+        if let name { body["name"] = name }
+        if let about { body["about"] = about }
+        if let picture { body["picture"] = picture }
+        if let closed { body["closed"] = closed }
+        if let prompt { body["prompt"] = prompt }
+        let a = try await signed(base + "/group-meta", method: "POST", json: body)
+        guard a.ok else { throw BelfryAPI.checkinFail(a, "The change could not be saved.", known: ["not_allowed", "not_found", "invalid", "relay"]) }
     }
 
     internal static let roleCodes: Set<String> = ["not_allowed", "not_in_group", "last_admin", "guest_not_saved", "agent", "events_only", "always_admin", "invalid", "relay"]

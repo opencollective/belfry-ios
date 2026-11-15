@@ -104,10 +104,11 @@ extension AppModel {
     }
 
     /// Check someone in by their ticket's CODE or their PUBKEY, or UNDO it.
-    func checkIn(_ e: CalEvent, code: String? = nil, pubkey: String? = nil, undo: Bool = false) async -> Result<CheckInResult, ApiError> {
-        if isDemo || engine?.localOnly == true { return demoCheckIn(e, code: code, pubkey: pubkey, undo: undo) }
+    func checkIn(_ e: CalEvent, code: String? = nil, pubkey: String? = nil, undo: Bool = false, peek: Bool = false) async -> Result<CheckInResult, ApiError> {
+        if isDemo || engine?.localOnly == true { return demoCheckIn(e, code: code, pubkey: pubkey, undo: undo, peek: peek) }
         do {
-            let r = try await api.checkIn(d: e.d, code: code, pubkey: pubkey, undo: undo)
+            let r = try await api.checkIn(d: e.d, code: code, pubkey: pubkey, undo: undo, peek: peek)
+            if peek { return .success(r) }
             var list = attendeeLists[e.d] ?? attendees(e)
             if let i = list.people.firstIndex(where: { $0.pubkey == r.person.pubkey }) { list.people[i] = r.person } else { list.people.append(r.person) }
             list.checkedIn = list.people.filter { $0.checkedIn != nil }.count
@@ -118,13 +119,14 @@ extension AppModel {
         } catch let x as ApiError { return .failure(x) } catch { return .failure(ApiError("network", 0, BelfryAPI.network)) }
     }
 
-    private func demoCheckIn(_ e: CalEvent, code: String?, pubkey: String?, undo: Bool) -> Result<CheckInResult, ApiError> {
+    private func demoCheckIn(_ e: CalEvent, code: String?, pubkey: String?, undo: Bool, peek: Bool) -> Result<CheckInResult, ApiError> {
         let list = attendees(e)
         let who = list.people.first { p in
             if let code { return AppModel.demoTicketCode(e.d, p.pubkey) == code }
             return p.pubkey == pubkey
         }
         guard var person = who else { return .failure(ApiError("no_ticket", 404, "Not a ticket for this event")) }
+        if peek { return .success(CheckInResult(person: person, already: person.checkedIn != nil)) }
         let already = !undo && person.checkedIn != nil
         if !already {
             let at = Int.now
@@ -174,6 +176,21 @@ extension AppModel {
             if let x = try? Demo.signer("groups").signNow(EventTemplate(kind: 1985, tags: tags, createdAt: at)) { evs.append(x) }
         }
         engine?.add(evs, verify: false)
+    }
+
+    /// A group's name / description / picture / access (SPEC 19.29): my own 9002 keeping every other
+    /// tag when the relay lets me (its 39001, the creator, a belfry admin); else the belfry's
+    /// POST /group-meta (an admin by role). Errors come back in `website` as a fixed message.
+    func editGroupMeta(_ id: String, name: String? = nil, about: String? = nil, picture: String? = nil, closed: Bool? = nil, prompt: String? = nil) {
+        guard let g = group(id) else { return }
+        if derive.mayModerate(g) || engine?.localOnly == true {
+            engine?.enqueue(Actions.groupMeta(g, name: name, about: about, picture: picture, closed: closed, prompt: prompt))
+            return
+        }
+        Task {
+            do { try await api.groupMeta(channel: id, name: name, about: about, picture: picture, closed: closed, prompt: prompt); await refresh() }
+            catch let x as ApiError { website = x.message } catch { website = BelfryAPI.network }
+        }
     }
 
     /// An event address or a ticket link opened from outside: only the domain, link and code.
