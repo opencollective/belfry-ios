@@ -72,7 +72,7 @@ struct CharterView: View {
         .navigationDestination(item: $who) { WhoAgreed(rule: $0) }
         .onAppear {
             switch model.launch.screen {
-            case "whoagreed": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { who = model.derive.charter().last }
+            case "whoagreed": DispatchQueue.main.asyncAfter(deadline: .now() + 3) { who = model.derive.charter().last }
             case "agreement": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { writing = true }
             default: break
             }
@@ -197,6 +197,7 @@ struct AgreementForm: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .solidSheet()
     }
 }
 

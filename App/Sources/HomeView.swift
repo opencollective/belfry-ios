@@ -112,16 +112,16 @@ private struct HomeTiles: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            NavigationLink(value: PlaceRoute.todos) {
+            Button { model.pushRoute = .todos } label: {
                 Tile(icon: "checkmark.circle", tint: .green, count: todos.onMe.count, title: "To-dos",
                      line: todos.onMe.isEmpty ? "\(todos.open.count) open" : "on you · \(todos.open.count) open")
             }
             .accessibilityIdentifier("home-todos")
-            NavigationLink(value: PlaceRoute.mentions) {
+            Button { model.pushRoute = .mentions } label: {
                 Tile(icon: "at", tint: .orange, count: model.newMentions, title: "Mentions", line: mentionLine())
             }
             .accessibilityIdentifier("home-mentions")
-            NavigationLink(value: PlaceRoute.messages) {
+            Button { model.pushRoute = .messages } label: {
                 Tile(icon: "message", tint: .blue, count: model.unreadDMs, title: "Messages", line: messageLine())
             }
             .accessibilityIdentifier("home-messages")
@@ -157,8 +157,8 @@ private struct Tile: View {
                 Spacer()
                 Text("\(count)").font(.title2.bold()).monospacedDigit()
             }
-            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-            Text(line).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.75)
+            Text(line).font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

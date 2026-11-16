@@ -205,11 +205,11 @@ and gestures are untested in the real world. XCTest covers the core (BelfryCore)
 
 ## Five places, the charter, Add an agent (iOS first, 2026-11-16; the owner's canvas, SPEC 19.31 / 19.32)
 
-Not in the web chat or Android yet: the iPhone app leads here. Screenshots 80–94.
+Not in the web chat or Android yet: the iPhone app leads here. Screenshots 100–114.
 
 | Item | Status | Notes |
 |---|---|---|
-| Bottom bar Home · Calendar · Create (＋) · Groups · Town; a stack per place, the bar at each root (pushed chats cover it, the keyboard hides it), the selected place tapped again goes back to its root, the last place reopens | done | `Tabs.swift`. iPhone only: the iPad keeps the split view with the old sidebar. |
+| Bottom bar Home · Calendar · Create (＋) · Groups · Town; a stack per place (only the open one is built, its path kept), the bar at each root (pushed chats cover it, the keyboard hides it), the selected place tapped again goes back to its root, the last place reopens | done | `Tabs.swift`. iPhone only: the iPad keeps the split view with the old sidebar. |
 | Home: requests, a new agreement, To-dos · Mentions · Messages tiles (each pushes its list), Coming up (7 days, state in words, no buttons), Recent activity (unread channels and groups), calm state | done | `HomeView.swift`. "My to-dos" across channels is new (`MyTodosView`). The red dot on Home's icon = requests + mentions + DMs + to-dos on me + agreements to read. No search on Home yet (the drawer still searches everything). |
 | Calendar: My calendar · Invited · Discover, week strip (Monday first, dots, back = that week's past events), Today / This week / Later, ＋ new event | done | `CalendarView.swift`. Rows push the event screen (RSVP / check-in stay there). |
 | Groups: My groups · Active · All (Join / "by application"), Archived row, ＋ = Create with Group first | done | `GroupsView.swift`. |

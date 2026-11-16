@@ -136,7 +136,9 @@ private struct CalendarRow: View {
                     .foregroundStyle(showDay ? .secondary : .primary)
                 if !showDay, let end = e.end, !e.allDay { Text(Format.time(end)).font(.subheadline).foregroundStyle(.secondary) }
             }
-            .frame(width: 54, alignment: .leading)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .frame(width: 70, alignment: .leading)
             RoundedRectangle(cornerRadius: 2).fill(tint).frame(width: 4)
             VStack(alignment: .leading, spacing: 2) {
                 Text(e.title).font(.body.weight(.medium)).lineLimit(2)

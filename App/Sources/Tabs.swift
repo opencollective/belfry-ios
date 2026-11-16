@@ -138,6 +138,7 @@ struct BelfrySwitchButton: View {
                 Text(model.config.name).font(.headline).lineLimit(1).foregroundStyle(.primary)
                 Image(systemName: "chevron.down").font(.caption.weight(.bold)).foregroundStyle(.secondary)
             }
+            .fixedSize()
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(model.config.name): switch belfry or account")

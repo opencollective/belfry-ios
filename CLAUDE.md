@@ -180,7 +180,7 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
 - iPhone layout (2026-11-16, the owner's canvas "One belfry, five places"): a bottom bar Home ·
   Calendar · Create (＋) · Groups · Town (`Tabs.swift`: `AppTab` in `model.tab`, `TabBar`,
   `tabBarInset()` on each place's ROOT so pushed screens cover it and it slides with the root;
-  hidden with the keyboard). Each place is a `NavigationStack` kept in the tree (opacity) with
+  hidden with the keyboard). Each place is a `NavigationStack` (only the one on screen is built; its path stays in RootView) with
   `placeDestinations()` (profiles, events, group pages, `ChatRoute` chats, `PlaceRoute` screens,
   conversations); `RootView.push` appends to the place on screen, so `openProfile / openEvent /
   openGroup / messageAuthor` and `openChannel` (outside Town) push there. Home (`HomeView`),

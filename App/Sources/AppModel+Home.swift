@@ -97,7 +97,7 @@ extension AppModel {
         let d = derive
         if e.status == .cancelled { return "cancelled" }
         let today = d.startOfDay(e.start) == d.startOfDay(now)
-        if e.hosts.contains(me) { return today && e.isNew ? "you host · check-in today" : "you host" }
+        if e.hosts.contains(me) { return today && e.isNew && !e.meeting ? "you host · check-in today" : "you host" }
         switch d.myState(e) {
         case .ticket: return "going"
         case .maybe: return "maybe"

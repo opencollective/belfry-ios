@@ -11,7 +11,6 @@ import SwiftUI
 
 struct AgentSection: View {
     @EnvironmentObject var model: AppModel
-    @State private var adding = false
     @State private var removing: String?
     @State private var error: String?
 
@@ -24,7 +23,7 @@ struct AgentSection: View {
                 Button(role: .destructive) { removing = a } label: { Label("Remove this agent…", systemImage: "person.badge.minus") }
             }
             if mine.isEmpty || d.isCommunityAdmin {
-                Button { hideKeyboard(); adding = true } label: { Label(mine.isEmpty ? "Add an agent" : "Add another agent", systemImage: "sparkles") }
+                Button { hideKeyboard(); model.showAddAgent = true } label: { Label(mine.isEmpty ? "Add an agent" : "Add another agent", systemImage: "sparkles") }
                     .accessibilityIdentifier("add-agent")
             }
             if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) }
@@ -35,8 +34,7 @@ struct AgentSection: View {
                 Text("An agent is an AI (ChatGPT, Claude or Grok) that can follow conversations for you and post as your agent. Everyone always sees it is not you. Ask it to post something in the right place, or for a summary of what was shared.")
             }
         }
-        .sheet(isPresented: $adding) { AddAgentSheet() }
-        .onAppear { if model.launch.screen == "addagent" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { adding = true } } }
+        .onAppear { if model.launch.screen == "addagent" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { model.showAddAgent = true } } }
         .confirmationDialog("Remove this agent?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
                 guard let a = removing else { return }
@@ -86,6 +84,7 @@ struct AddAgentSheet: View {
             .task { if link == nil && error == nil { await make() } }
         }
         .presentationDetents([.medium, .large])
+        .solidSheet()
     }
 
     /// One line: the rest is at the address (the belfry's instructions for agents).

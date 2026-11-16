@@ -89,6 +89,10 @@ final class AppModel: ObservableObject {
     @Published var focusComposer: String?
     /// A guest sent "Apply to become a member" (demo only until the belfry takes it: SERVER-NEEDS 10).
     @Published var guestApplied = false
+    /// A screen to push on the place on screen (Home's tiles).
+    @Published var pushRoute: PlaceRoute?
+    /// The Add an agent sheet (own profile).
+    @Published var showAddAgent = false
     /// The Create sheet's first row (Calendar: Event; Groups: Group; else Message).
     @Published var createFirst: CreateWhat = .message
     /// The channel open in Town (Create's "Where" starts there when Town is the place).

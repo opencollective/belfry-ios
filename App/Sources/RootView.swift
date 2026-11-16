@@ -118,6 +118,7 @@ struct RootView: View {
             }
             .sheet(isPresented: $notifications) { NavigationStack { NotificationsView() } }
             .sheet(isPresented: $applying) { BecomeMemberSheet() }
+            .sheet(isPresented: $model.showAddAgent) { AddAgentSheet() }
     }
 
     private var routed: some View {
@@ -131,6 +132,11 @@ struct RootView: View {
             }
             focus = message.map { SearchTarget(channel: id, message: $0) }
             if selection == .channel(id) { path = NavigationPath() } else { selection = .channel(id) }
+        }
+        .onChange(of: model.pushRoute) { _, r in
+            guard let r else { return }
+            model.pushRoute = nil
+            push(r)
         }
         .onChange(of: model.tabReselected) { _, _ in current.wrappedValue = NavigationPath(); closeDrawer() }
         .onChange(of: model.tab) { _, t in
@@ -257,17 +263,14 @@ struct RootView: View {
                 detail
             }
         } else {
-            ZStack {
-                place(.home) {
-                    NavigationStack(path: $homePath) { HomeView().tabBarInset().placeDestinations() }
-                }
-                place(.calendar) {
-                    NavigationStack(path: $calendarPath) { CalendarView().tabBarInset().placeDestinations() }
-                }
-                place(.groups) {
-                    NavigationStack(path: $groupsPath) { GroupsView().tabBarInset().placeDestinations() }
-                }
-                place(.town) {
+            // only the place on screen is built (its stack's path is kept here): four lists in
+            // the tree made every UI query of the tests time out
+            SwiftUI.Group {
+                switch model.tab {
+                case .home: NavigationStack(path: $homePath) { HomeView().tabBarInset().placeDestinations() }
+                case .calendar: NavigationStack(path: $calendarPath) { CalendarView().tabBarInset().placeDestinations() }
+                case .groups: NavigationStack(path: $groupsPath) { GroupsView().tabBarInset().placeDestinations() }
+                case .town:
                     DrawerContainer(open: $drawer, edgeSwipe: path.isEmpty) {
                         drawerList(inDrawer: true)
                     } main: {
@@ -277,15 +280,6 @@ struct RootView: View {
             }
             .environment(\.openConversation) { conv in push(ConvRoute(conv: conv)) }
         }
-    }
-
-    /// Every place stays in the tree (its stack and scroll position kept); only one shows.
-    private func place<V: View>(_ t: AppTab, @ViewBuilder _ content: () -> V) -> some View {
-        let on = model.tab == t
-        return content()
-            .opacity(on ? 1 : 0)
-            .allowsHitTesting(on)
-            .accessibilityHidden(!on)
     }
 
     /// A channel, group or event's chat pushed on the place on screen.
