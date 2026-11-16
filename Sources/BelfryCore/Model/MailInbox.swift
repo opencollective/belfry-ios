@@ -131,7 +131,7 @@ extension Derive {
             // state: Open → Answered once something went out → Open again when they write back;
             // Closed and who has it are NIP-32 labels (belfry/inbox) on any of its e-mails, latest wins
             let labels = inGroupSorted(groupId).filter { e in
-                e.kind == 1985 && !deletedSet.contains(e.id) && e.tags.contains { $0.count >= 2 && $0[0] == "L" && $0[1] == Derive.inboxNS }
+                e.kind == 1985 && !deleted().contains(e.id) && e.tags.contains { $0.count >= 2 && $0[0] == "L" && $0[1] == Derive.inboxNS }
             }
             for i in list.indices {
                 let ids = Set(list[i].ids)
