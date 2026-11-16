@@ -1150,7 +1150,7 @@ public final class Derive {
     }
 
     /// The channel's e-mail address.
-    public func mailAddress(_ groupId: String) -> String { groupId + "@" + ctx.domain }
+    public func mailAddress(_ groupId: String) -> String { channelAddress(groupId) }
 
     /// Per e-mail card id: open / answered / closed, who has it, how many answers went out.
     public func inboxStates(_ groupId: String) -> [String: CardState] {

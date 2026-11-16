@@ -16,6 +16,15 @@ struct ThreadView: View {
     @State private var focusBox = 0
 
     var body: some View {
+        // an e-mail of a shared inbox: its thread's own screen (SPEC 19.33)
+        if let t = model.derive.mailThread(group, of: rootId) {
+            MailThreadView(group: group, threadId: t.id, focusReply: focusReply)
+        } else {
+            plain
+        }
+    }
+
+    @ViewBuilder private var plain: some View {
         let _ = model.version
         let d = model.derive
         let root = d.message(group, rootId)

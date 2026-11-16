@@ -66,7 +66,8 @@ struct CalendarView: View {
             }
         }
         .sheet(isPresented: $newEvent) { EventFormSheet(editing: nil, channel: generalId) }
-        .refreshable { await model.refresh() }
+        .refreshable { await model.refresh(); if guest { await model.loadPublicEvents() } }
+        .task { if guest { await model.loadPublicEvents() } }
     }
 
     private func label(_ l: CalendarList) -> String {

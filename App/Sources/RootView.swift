@@ -119,6 +119,12 @@ struct RootView: View {
             .sheet(isPresented: $notifications) { NavigationStack { NotificationsView() } }
             .sheet(isPresented: $applying) { BecomeMemberSheet() }
             .sheet(isPresented: $model.showAddAgent) { AddAgentSheet() }
+            .sheet(item: $model.fullMail) { FullMailSheet(ref: $0) }
+            .fullScreenCover(isPresented: $model.welcomeShown) { WelcomeFlow() }
+            // a new member's first minutes (web welcomeDue): checked on start and when a guest becomes a member
+            .onChange(of: model.derive.amGuest) { _, _ in checkWelcome() }
+            .onChange(of: model.charterRules.count) { _, _ in checkWelcome() }
+            .task { try? await Task.sleep(nanoseconds: 1_500_000_000); checkWelcome() }
     }
 
     private var routed: some View {
@@ -297,6 +303,10 @@ struct RootView: View {
         if phone && model.tab != .town { pushChat(id, nil) } else { selection = .channel(id) }
     }
 
+    private func checkWelcome() {
+        if !model.welcomeShown && model.welcomeDue() { hideKeyboard(); model.welcomeShown = true }
+    }
+
     /// Me: pushed on the place on screen (phone), the sheet on iPad.
     private func openMe() {
         closeDrawer()
@@ -414,6 +424,18 @@ struct RootView: View {
         case "addagent":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openProfile = model.me } // ProfileView opens the sheet
+        case "mailfeed": selection = .channel("hello-79f0")
+        case "mailthread", "mailreply":
+            selection = .channel("hello-79f0")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                if let t = model.derive.mailThreads("hello-79f0").list.first { model.openThread = ThreadRoute(group: "hello-79f0", root: t.id) }
+            }
+        case "fullmail":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                let m = model.derive.messages(generalId).last { if case .memberMail = $0.special { return true } else { return false } }
+                if let m, case .memberMail(let subject, let o?) = m.special { model.fullMail = FullMailRef(subject: subject, original: o) }
+            }
         case "meplace":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { path.append(PlaceRoute.me) }

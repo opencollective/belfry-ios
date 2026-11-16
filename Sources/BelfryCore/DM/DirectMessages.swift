@@ -248,12 +248,16 @@ public final class DirectMessages: @unchecked Sendable {
     /// Shared inbox: an answer by e-mail as the channel (mail-from = <channel>@domain), to the
     /// sender of the inbox card CARDID (SPEC 19.6). Returns the e-mail's id (its delivery report).
     @discardableResult
-    public func sendAsChannel(channel: String, channelName: String, to: String, subject: String, text: String, inReplyTo: String?, cardId: String, myName: String) async throws -> String {
+    /// LOCAL: the channel's address before the @ (its plain alias when it has one, SPEC 19.33).
+    /// REFERENCES: the thread's Message-IDs before In-Reply-To, oldest first, space-separated.
+    public func sendAsChannel(channel: String, local: String? = nil, channelName: String, to: String, subject: String, text: String, inReplyTo: String?,
+                              references: String? = nil, cardId: String, myName: String) async throws -> String {
         try engine.guestMode.check()
         guard let b = bridge else { throw BelfryError.invalid("This belfry does not send e-mail yet.") }
-        let from = channel + "@" + engine.config.domain
+        // envelope (mail-from) and From header alike: the bridge checks they match
+        let from = (local.flatMap { $0.isEmpty ? nil : $0 } ?? channel) + "@" + engine.config.domain
         let (raw, _) = MIME.build(fromName: myName.isEmpty ? channelName : "\(myName) for \(channelName)", from: from, to: to, subject: subject, text: text,
-                                  inReplyTo: inReplyTo, references: inReplyTo, domain: engine.config.domain)
+                                  inReplyTo: inReplyTo, references: references, domain: engine.config.domain)
         let emailId = UUID().uuidString.lowercased()
         let rumor = GiftWrap.rumor(kind: 1301, pubkey: me, tags: [["email-id", emailId], ["mail-from", from], ["rcpt-to", to], ["subject", subject], ["e", cardId]], content: raw)
         if engine.localOnly {

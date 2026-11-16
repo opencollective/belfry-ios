@@ -87,7 +87,11 @@ extension AppModel {
         case .discover: return all.filter { !isMine($0) && !isInvited($0) }
         case .publicEvents:
             let mine = Set(derive.groups().filter { $0.members.contains(me) || $0.reading.contains(me) }.map(\.id))
-            return all.filter { e in e.visibility == .public || e.channels.contains { c in mine.contains(c) } }
+            let local = all.filter { e in e.visibility == .public || e.channels.contains { c in mine.contains(c) } }
+            // the belfry's public list (a guest can't read the calendar's relay), cached on the phone
+            let known = Set(local.map(\.coord))
+            let remote = publicEvents.filter { !known.contains($0.coord) && derive.endOf($0) >= derive.startOfDay(now) && $0.status != .cancelled }
+            return (local + remote).sorted { $0.start < $1.start }
         }
     }
 
@@ -164,16 +168,5 @@ extension AppModel {
         let d = derive
         let base = d.group(generalId)?.members ?? []
         return Set(base.filter { !d.isGuest($0) && !d.isAgent($0) })
-    }
-
-    /// A guest asks to become a member on the same account. The belfry has only the web form
-    /// (pass.<domain>/apply, which makes a new person) and no signed call for a guest yet
-    /// (SERVER-NEEDS 10): refused in words, except in the demo.
-    func applyAsGuest(answer: String) async -> String? {
-        if engine?.localOnly != false {
-            guestApplied = true
-            return nil
-        }
-        return "\(config.name) can't take a guest's request from the app yet. Ask the person who invited you, or a steward."
     }
 }

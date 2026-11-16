@@ -149,7 +149,6 @@ struct TownDrawer: View {
     }
 
     private var guestList: some View {
-        let d = model.derive
         let mine = model.guestChannels
         let open = model.openToEveryone
         return List {
@@ -164,9 +163,9 @@ struct TownDrawer: View {
             if !mine.isEmpty {
                 Section { ForEach(mine) { townRow($0) } } header: { sectionTitle("You were invited to") }
             }
-            if !open.isEmpty || (d.charterGroup != nil && !d.charter().isEmpty) {
+            if !open.isEmpty || !model.charterRules.isEmpty {
                 Section {
-                    if d.charterGroup != nil && !d.charter().isEmpty {
+                    if !model.charterRules.isEmpty {
                         placeRow(icon: "doc.text", title: "Charter", note: nil, badge: 0, on: current == .charter) { select(.charter) }
                     }
                     ForEach(open) { townRow($0) }

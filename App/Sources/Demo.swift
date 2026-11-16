@@ -301,6 +301,34 @@ enum Demo {
             for (k, name) in who.enumerated() { evs.append(ev(ps[name]!, 2101, at + 600 + k, Actions.agree(rule.id, true).tags)) }
             if !newest { evs.append(ev(you, 2101, at + 900, Actions.agree(rule.id, true).tags)) }
         }
+        // SPEC 19.33: a shared inbox (#Hello, hello@): two e-mail threads, an answer, the team's
+        // talk, and a member's own mail in #general ("via e-mail")
+        let inbox = "hello-79f0"
+        evs.append(ev(you, 9007, now - 15 * day, [["h", inbox]]))
+        channel(inbox, "Hello", "What the world writes to hello@", admins: [me, ps["ana"]!.pubkey], members: all, at: now - 15 * day)
+        evs.append(ev(you, 30078, now - 15 * day + 5, Actions.setInbox(inbox, on: true).tags, "{\"on\":true}"))
+        func mailIn(_ at: Int, _ from: String, _ name: String, _ subject: String, _ mid: String, _ text: String, irt: String? = nil) -> NostrEvent {
+            var tags: [Tag] = [["h", inbox], ["client", "belfry-mail"], ["mail-from", from], ["mail-name", name], ["subject", subject], ["message-id", mid], ["belfry-auth", "pass"],
+                               ["mail-original", "https://blossom.demo.belfry.sh/demo", "AAAA", "AAAA"]]
+            if let irt { tags += [["in-reply-to", irt], ["references", irt]] }
+            let e = ev(groupsKey, 9, at, tags, text)
+            evs.append(e)
+            return e
+        }
+        let hall = mailIn(now - 2 * day, "lena@townhall.example", "Lena Brandt", "Using the hall for a choir", "<hall1@townhall.example>",
+                          "Hello! Our choir is looking for a room on Tuesday evenings. Could we use your hall? We are twelve people.")
+        evs.append(ev(groupsKey, 9, now - 2 * day + 3600, [["h", inbox], ["client", "belfry-mail-out"], ["mail-to", "lena@townhall.example"], ["subject", "Re: Using the hall for a choir"],
+                                                            ["message-id", "<out1@demo.belfry.sh>"], ["sent-by", me], ["e", hall.id, "", "reply"]],
+                      "Hi Lena, Tuesdays from 19:00 are free. Come and see the hall on Saturday?"))
+        let hallRe = mailIn(now - 5400, "lena@townhall.example", "Lena Brandt", "Re: Using the hall for a choir", "<hall2@townhall.example>",
+                            "Saturday works. Is there a piano?", irt: "<out1@demo.belfry.sh>")
+        let r = Actions.postThreadReply(inbox, rootId: hallRe.id, rootPubkey: hallRe.pubkey, text: "The old upright is in the back room. I can tune it.")
+        evs.append(ev(ps["ana"]!, 1111, now - 3000, r.tags, "The old upright is in the back room. I can tune it."))
+        _ = mailIn(now - 9000, "bert@bakery.example", "Bert", "Bread for the street party", "<bread1@bakery.example>",
+                   "We can bake 40 loaves for the party on the 14th. Shall I bring them at 10?")
+        evs.append(ev(ps["dev"]!, 9, now - 7000, [["h", generalId], ["client", "belfry-mail"], ["subject", "Minutes of the meeting"], ["message-id", "<min@dev>"],
+                                                  ["mail-original", "https://blossom.demo.belfry.sh/min", "AAAA", "AAAA"]],
+                      "Here are the minutes: we keep the café on Saturdays and buy a second ladder."))
         // guest mode: two people opened a guest link of #general and only read ("2 guests are reading")
         for k in ["reader-1", "reader-2"] {
             evs.append(ev(groupsKey, 9000, now - 900, [["h", "general"], ["p", signer(k).pubkey, "member"], ["guest", "2026-12-12"], ["invited-by", ps["ana"]!.pubkey], ["unsaved", "1"], ["reading", "1"]]))

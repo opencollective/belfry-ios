@@ -294,6 +294,14 @@ private struct CalmCard: View {
                     .buttonStyle(.bordered)
             }
             .font(.subheadline.weight(.medium))
+            // as on the web's calm Home: the lists themselves, one tap away
+            HStack(spacing: 10) {
+                Button { model.pushRoute = .mentions } label: { Label("Mentions", systemImage: "at") }
+                    .buttonStyle(.bordered)
+                Button { model.pushRoute = .messages } label: { Label("Messages", systemImage: "message") }
+                    .buttonStyle(.bordered)
+            }
+            .font(.subheadline.weight(.medium))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 20)
@@ -326,11 +334,12 @@ private struct GuestHome: View {
                 }
             }
             let open = model.openToEveryone
-            if d.charterGroup != nil || !open.isEmpty {
+            let rules = model.charterRules
+            if !rules.isEmpty || !open.isEmpty {
                 Section("Open to everyone") {
-                    if d.charterGroup != nil, !d.charter().isEmpty {
+                    if !rules.isEmpty {
                         NavigationLink(value: PlaceRoute.charter) {
-                            HomeRow(icon: "checkmark.seal", title: "Charter", detail: "\(d.charter().count) short agreements")
+                            HomeRow(icon: "checkmark.seal", title: "Charter", detail: rules.count == 1 ? "1 short agreement" : "\(rules.count) short agreements")
                         }
                     }
                     ForEach(open) { g in NavigationLink(value: ChatRoute(id: g.id)) { PlaceLine(group: g, subtitle: g.about.isEmpty ? nil : g.about) } }
@@ -339,22 +348,40 @@ private struct GuestHome: View {
         }
         .listStyle(.insetGrouped)
         .sheet(isPresented: $applying) { BecomeMemberSheet() }
+        .task {
+            await model.loadApplyStatus()
+            await model.loadPublicCharter()
+        }
     }
 }
 
-/// "Become a member of X": the one big action of a guest's Home, or the request's state.
+/// "Become a member of X": the one big action of a guest's Home, or the request's state in words
+/// (board Join-Apply 2): "1 of 2 vouches", who vouched, what else can happen; "Not this time".
 struct ApplyCard: View {
     @EnvironmentObject var model: AppModel
     @Binding var applying: Bool
     var body: some View {
         let name = model.config.name
+        let s = model.applyState
         VStack(alignment: .leading, spacing: 10) {
-            if model.guestApplied {
+            if let s, let a = s.application, a.isOpen {
                 Text("Your request to become a member").font(.headline)
-                Text(model.membership.accept == "vouches" ? "Any member can vouch; a steward can also say yes. You stay a guest meanwhile."
-                                                          : "A steward will answer. You stay a guest meanwhile.")
+                if let line = s.line { Text(line).font(.title3.weight(.semibold)).foregroundStyle(Color.brand) }
+                ForEach(a.vouchedBy, id: \.pubkey) { v in
+                    HStack(spacing: 8) {
+                        Avatar(pubkey: v.pubkey, size: 24)
+                        Text("\(v.name.isEmpty ? model.name(v.pubkey) : v.name) vouched for you").font(.subheadline)
+                    }
+                }
+                Text(s.accept == "vouches" ? "Any member can vouch; a steward can also say yes. You stay a guest meanwhile, and your guest access doesn't end while the request is open."
+                                           : "A steward will answer. You stay a guest meanwhile, and your guest access doesn't end while the request is open.")
                     .font(.subheadline).foregroundStyle(.secondary)
-                Label("Sent", systemImage: "paperplane").font(.subheadline.weight(.medium)).foregroundStyle(Color.brand)
+            } else if let s, s.application?.state == "declined" {
+                Text("Not this time").font(.headline)
+                Text("The stewards didn't take your request. You stay a guest\(untilLine(s)). You can ask again later.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                Button { hideKeyboard(); applying = true } label: { Text("Ask again").frame(maxWidth: .infinity) }
+                    .buttonStyle(.bordered)
             } else {
                 Text("Become a member of \(name)").font(.headline)
                 Text(acceptLine()).font(.subheadline).foregroundStyle(.secondary)
@@ -368,9 +395,14 @@ struct ApplyCard: View {
         .padding(.vertical, 6)
     }
 
+    private func untilLine(_ s: ApplyStatus) -> String {
+        guard let u = s.until else { return "" }
+        return " until " + Date(timeIntervalSince1970: TimeInterval(u)).formatted(.dateTime.weekday(.abbreviated).day().month(.wide))
+    }
+
     private func acceptLine() -> String {
         let base = "Members see the whole town: the Square, its events and groups."
-        if model.membership.accept == "vouches" {
+        if (model.applyState?.accept ?? model.membership.accept) == "vouches" {
             let n = model.membership.vouches
             return base + " " + (n == 1 ? "One vouch" : "\(n) vouches") + " or a steward's yes."
         }
@@ -378,20 +410,20 @@ struct ApplyCard: View {
     }
 }
 
-/// A guest asks to become a member (board Join-Apply 1): the belfry's question, the saved
-/// e-mail, the charter's agreements. The belfry can't take a guest's request yet (SERVER-NEEDS
-/// 10): the request is refused in words, except in the demo.
+/// A guest asks to become a member (board Join-Apply 1): the belfry's question, the saved e-mail
+/// (not saved: the save-your-account step first), the charter's agreements ticked one by one (sent
+/// as `agreed`: the belfry signs those ticks for the new member), Send.
 struct BecomeMemberSheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var answer = ""
-    @State private var error: String?
-    @State private var charter = false
+    @State private var error: ApiError?
+    @State private var ticked = Set<String>()
+    @State private var mustSave = false
 
     var body: some View {
-        let d = model.derive
-        let rules = d.charter()
-        let agreed = rules.filter { $0.agreed[model.me] != nil }.count
+        let rules = model.charterRules
+        let needSave = model.unsavedGuest || mustSave
         NavigationStack {
             Form {
                 Section {
@@ -404,27 +436,44 @@ struct BecomeMemberSheet: View {
                     TextField("A few words", text: $answer, axis: .vertical).lineLimit(3...8).font(.body)
                 }
                 Section("E-mail") {
-                    if model.unsavedGuest {
-                        Label("Save your e-mail first: Me → Save your account", systemImage: "envelope.badge")
+                    if needSave {
+                        Text("Save your e-mail first: the stewards need a way to reach you.").font(.subheadline)
+                        SaveAccountCard()
                     } else {
                         Label("Saved", systemImage: "checkmark.circle").foregroundStyle(.secondary)
                     }
                 }
                 if !rules.isEmpty {
                     Section {
-                        Button { charter = true } label: {
-                            LabeledContent("Our charter", value: "\(agreed) of \(rules.count) agreements ticked")
+                        ForEach(rules) { r in
+                            let on = ticked.contains(r.id)
+                            Button {
+                                if on { ticked.remove(r.id) } else { ticked.insert(r.id) }
+                            } label: {
+                                HStack(alignment: .top, spacing: 12) {
+                                    Image(systemName: on ? "checkmark.circle.fill" : "circle").font(.title3).foregroundStyle(on ? Color.brand : Color.secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(r.title).font(.body.weight(.medium)).foregroundStyle(.primary)
+                                        if !r.about.isEmpty { Text(r.about).font(.subheadline).foregroundStyle(.secondary) }
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(on ? .isSelected : [])
                         }
-                    }
+                    } header: { Text("Our charter · \(ticked.count) of \(rules.count) agreed") } footer: { Text("Tick each one you agree to.") }
                 }
-                if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
+                if let error, error.code != "guest_not_saved" { Section { Label(error.message, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
                 Section {
                     BusyButton {
-                        error = await model.applyAsGuest(answer: answer)
-                        if error == nil { dismiss() }
+                        let e = await model.applyAsGuest(answer: answer, agreed: Array(ticked))
+                        if e?.code == "guest_not_saved" { mustSave = true; error = e; return }
+                        error = e
+                        if e == nil { dismiss() }
                     } label: { Text("Send request").frame(maxWidth: .infinity) }
                     .buttonStyle(.brand)
-                    .disabled(answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.unsavedGuest || agreed < rules.count)
+                    .disabled(answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || needSave || ticked.count < rules.count)
+                    .accessibilityIdentifier("apply-send")
                 } footer: {
                     Text("Your name and answer are shown to members; your e-mail only to stewards.")
                 }
@@ -432,7 +481,8 @@ struct BecomeMemberSheet: View {
             .navigationTitle("Become a member")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
-            .navigationDestination(isPresented: $charter) { CharterView() }
+            .task { await model.loadPublicCharter() }
+            .onChange(of: model.unsavedGuest) { _, v in if !v { mustSave = false } }
         }
     }
 }

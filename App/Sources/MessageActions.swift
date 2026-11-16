@@ -229,84 +229,6 @@ struct EditSheet: View {
     var initial: String { model.derive.unsubstituteChannels(m.text).text }
 }
 
-/// Reply to an inbox card by e-mail as the channel; Send waits 8 s with Undo (nothing leaves before).
-struct MailReplySheet: View {
-    @EnvironmentObject var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    let card: Message
-    let group: String
-    let to: String
-    let subject: String
-    @State private var text = ""
-    @State private var countdown: Int?
-    @State private var error: String?
-    @State private var timer: Timer?
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    LabeledContent("To", value: to)
-                    LabeledContent("From", value: "\(group)@\(model.config.domain)")
-                    LabeledContent("Subject", value: subject.lowercased().hasPrefix("re:") ? subject : "Re: " + subject)
-                }
-                Section {
-                    TextField("Your answer", text: $text, axis: .vertical).lineLimit(6...16).font(.body)
-                        .disabled(countdown != nil)
-                }
-                if let countdown {
-                    Section {
-                        HStack {
-                            Label("Sending in \(countdown) s", systemImage: "paperplane")
-                            Spacer()
-                            Button("Undo") { undo() }.buttonStyle(.brand)
-                        }
-                    }
-                }
-                if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
-            }
-            .navigationTitle("Reply by e-mail")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { undo(); dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Send") { start() }.disabled(text.jsTrim().isEmpty || countdown != nil)
-                }
-            }
-        }
-        .onDisappear { timer?.invalidate() }
-    }
-
-    func start() {
-        error = nil
-        countdown = 8
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { t in
-            Task { @MainActor in
-                guard let c = countdown else { t.invalidate(); return }
-                if c <= 1 {
-                    t.invalidate()
-                    countdown = nil
-                    if let e = await model.replyAsChannel(card, in: group, to: to, subject: subject, text: text.jsTrim()) {
-                        error = e
-                    } else {
-                        dismiss()
-                    }
-                } else {
-                    countdown = c - 1
-                }
-            }
-        }
-    }
-
-    func undo() {
-        timer?.invalidate()
-        timer = nil
-        countdown = nil
-    }
-}
-
-/// What a message's menu can do outside itself (set by the channel and thread screens).
 struct MessageMenuHandlers {
     var reply: (Message) -> Void
     var openThread: (Message) -> Void
@@ -367,6 +289,9 @@ struct MessageMenu: View {
                 UIPasteboard.general.string = d.channelURL(group)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             } label: { Label("Copy link to the channel", systemImage: "link") }
+            if case .memberMail(let subject, let original?) = m.special {
+                Button { model.fullMail = FullMailRef(subject: subject, original: original) } label: { Label("Full e-mail", systemImage: "envelope.open") }
+            }
             if m.pubkey != model.me && !d.isGuest(model.me) {
                 Button { model.messageAuthor = m.pubkey } label: { Label("Message \(model.realNameOrKey(m.pubkey))", systemImage: "envelope") }
             }

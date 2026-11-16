@@ -41,6 +41,7 @@ struct MessageRow: View {
                         Text(d.nameOver(m)).font(.subheadline.weight(.semibold)).lineLimit(1).onTapGesture { model.openProfile = m.ev.pubkey }
                         AgentTag(pubkey: m.ev.pubkey)
                         Text(Format.time(m.ev.createdAt)).font(.caption).foregroundStyle(.secondary)
+                        if case .memberMail = m.special { Text("via e-mail").font(.caption2).foregroundStyle(.secondary) }
                         if announce { Label("Announcement", systemImage: "megaphone").font(.caption2.weight(.semibold)).foregroundStyle(Color.brand) }
                         if pinned { Image(systemName: "pin").font(.caption2).foregroundStyle(.secondary).accessibilityLabel("Pinned") }
                     }
@@ -164,73 +165,26 @@ struct SpecialBody: View {
             EventCardView(ref: EventRef(coord: coord))
         case .memberMail(let subject, _):
             VStack(alignment: .leading, spacing: 4) {
-                Label("via e-mail", systemImage: "envelope").font(.caption2).foregroundStyle(.secondary)
                 if !subject.isEmpty { Text(subject).font(.subheadline.weight(.semibold)) }
                 if !m.body.isEmpty { MarkdownText(text: m.body) }
             }
-        case .inboxCard(let from, let name, let subject, _, let verified, _):
-            InboxCardView(m: m, group: group, from: from, name: name, subject: subject, verified: verified)
-        case .sentAsChannel(let to, let subject, let by):
-            CardFrame {
-                VStack(alignment: .leading, spacing: 4) {
-                    Label("Sent by e-mail as the channel to \(to)", systemImage: "paperplane").font(.caption).foregroundStyle(.secondary)
-                    if !subject.isEmpty { Text(subject).font(.subheadline.weight(.semibold)) }
-                    if !m.text.isEmpty { MarkdownText(text: m.text) }
-                    if !by.isEmpty { Text("Written by \(model.name(by))").font(.caption2).foregroundStyle(.secondary) }
-                }
-            }
+        case .inboxCard, .sentAsChannel:
+            InboxCardView(m: m, group: group)
         case .none:
             if !m.text.isEmpty { MarkdownText(text: m.text) }
         }
     }
 }
 
-/// A shared inbox card: the sender, verified or not, the subject and its state (SPEC 19.6).
+/// An e-mail from outside or what went out, where one shows outside its thread (a search
+/// result, an old reply's root): its frame (SPEC 19.33).
 struct InboxCardView: View {
     @EnvironmentObject var model: AppModel
     let m: Message
     let group: String
-    let from: String
-    let name: String
-    let subject: String
-    let verified: Bool
-    @State private var reply = false
-
     var body: some View {
-        let st = model.derive.inboxStates(group)[m.id] ?? CardState()
-        let admin = model.derive.canAdmin(group)
-        CardFrame(tint: .brand) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: "envelope.fill").foregroundStyle(Color.brand)
-                    Text(name.isEmpty ? from : "\(name) <\(from)>").font(.caption.weight(.semibold)).lineLimit(1)
-                    if verified { Image(systemName: "checkmark.seal").font(.caption).foregroundStyle(.green).accessibilityLabel("Verified sender") }
-                }
-                if !subject.isEmpty { Text(subject).font(.subheadline.weight(.semibold)) }
-                if !m.body.isEmpty { MarkdownText(text: m.body).lineLimit(8) }
-                HStack(spacing: 8) {
-                    Chip(text: st.status.label, tint: st.status == .open ? .brand : .secondary)
-                    if let a = st.assignee { Text(a == model.me ? "You have it" : "\(model.name(a)) has it").font(.caption2).foregroundStyle(.secondary) }
-                }
-                if admin {
-                    FlowRow(spacing: 8) {
-                        Button { reply = true } label: { Label("Reply by e-mail", systemImage: "arrowshape.turn.up.left") }
-                        if st.assignee == model.me {
-                            BusyButton { model.assignCard(m, in: group, to: "") } label: { Label("Let go", systemImage: "hand.raised.slash") }
-                        } else {
-                            BusyButton { model.assignCard(m, in: group, to: model.me) } label: { Label("Take it", systemImage: "hand.raised") }
-                        }
-                        BusyButton { model.setCard(m, in: group, closed: st.status != .closed) } label: {
-                            Label(st.status == .closed ? "Reopen" : "Close", systemImage: st.status == .closed ? "arrow.uturn.backward" : "checkmark")
-                        }
-                    }
-                    .font(.caption.weight(.semibold))
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            }
-        }
-        .sheet(isPresented: $reply) { MailReplySheet(card: m, group: group, to: from, subject: subject) }
+        let d = model.derive
+        if let it = d.mailIn(m) ?? d.mailOut(m) { MailFrame(it: it, from: d.channelAddress(group)).padding(.horizontal, -16) }
     }
 }
 

@@ -87,12 +87,20 @@ final class AppModel: ObservableObject {
     @Published var showAccounts = false
     /// A channel whose composer takes the keyboard when it appears (Create → Message).
     @Published var focusComposer: String?
-    /// A guest sent "Apply to become a member" (demo only until the belfry takes it: SERVER-NEEDS 10).
-    @Published var guestApplied = false
+    /// A guest's request to become a member as the belfry last told it (stored per account).
+    @Published var applyState: ApplyStatus? = AppModel.loadStored(ApplyStatus.self, "belfry-apply-status")
+    /// The charter for people who can't read its group (GET /charter), stored per account.
+    @Published var publicCharter: [PublicAgreement] = AppModel.loadStored([PublicAgreement].self, "belfry-public-charter") ?? []
+    /// The belfry's public events (GET /events?visibility=public) as the API gives them, stored.
+    @Published var publicEventsRaw: Data? = UserDefaults.standard.data(forKey: AppModel.perAccount("belfry-public-events"))
+    /// A new member's first minutes are on screen (Welcome → charter → name and photo).
+    @Published var welcomeShown = false
     /// A screen to push on the place on screen (Home's tiles).
     @Published var pushRoute: PlaceRoute?
     /// The Add an agent sheet (own profile).
     @Published var showAddAgent = false
+    /// "Full e-mail": the whole message on Blossom.
+    @Published var fullMail: FullMailRef?
     /// The Create sheet's first row (Calendar: Event; Groups: Group; else Message).
     @Published var createFirst: CreateWhat = .message
     /// The channel open in Town (Create's "Where" starts there when Town is the place).
@@ -314,6 +322,10 @@ final class AppModel: ObservableObject {
         if engine != nil { closeLive() } // another account was open (added or switched to)
         session = s
         mentionsSeenAt = UserDefaults.standard.integer(forKey: AppModel.perAccount("belfry-mentions-seen"))
+        // this account's stored copies (offline first)
+        applyState = s.demo ? nil : AppModel.loadStored(ApplyStatus.self, "belfry-apply-status")
+        publicCharter = s.demo ? [] : AppModel.loadStored([PublicAgreement].self, "belfry-public-charter") ?? []
+        publicEventsRaw = s.demo ? nil : UserDefaults.standard.data(forKey: AppModel.perAccount("belfry-public-events"))
         let db: Database
         if s.demo {
             db = (try? .memory())!
@@ -636,18 +648,37 @@ final class AppModel: ObservableObject {
     }
 
     /// Answer an inbox card by e-mail as the channel (after the 8 s undo). Fixed messages only.
-    func replyAsChannel(_ card: Message, in group: String, to: String, subject: String, text: String) async -> String? {
-        guard let dms else { return "Not signed in." }
-        let base = MailThreads.baseSubject(subject)
-        let subj = base.isEmpty ? "(no subject)" : (subject.lowercased().hasPrefix("re:") ? subject : "Re: " + subject)
+    /// "Re: <the subject of the latest e-mail received>" (as mail programs do).
+    static func replySubject(_ t: InboxThread) -> String {
+        let base = MailThreads.baseSubject(t.lastIn?.subject)
+        return "Re: " + (base.isEmpty ? (t.subject.isEmpty ? "(no subject)" : t.subject) : base)
+    }
+
+    /// Answer an e-mail thread by e-mail as the channel (its admins; SPEC 19.33): from the
+    /// channel's plain address, In-Reply-To = the latest e-mail received, References = the thread's
+    /// earlier ones. The demo posts what the bridge would.
+    func sendThreadMail(_ t: InboxThread, in group: String, text: String) async -> Result<String, ApiError> {
+        guard let dms, let to = t.lastIn else { return .failure(ApiError("signer", 0, "Not signed in.")) }
+        let d = derive
+        let subject = AppModel.replySubject(t)
+        let refs = t.refs.filter { $0 != to.messageId }.suffix(10).joined(separator: " ")
+        if isDemo {
+            let mid = "<\(UUID().uuidString.lowercased())@\(config.domain)>"
+            if let e = try? Demo.signer("groups").signNow(EventTemplate(kind: 9, content: text, tags: [["h", group], ["subject", subject], ["mail-to", to.address],
+                ["sent-by", me], ["message-id", mid], ["e", to.m.id, "", "reply"], ["client", "belfry-mail-out"]], createdAt: Int.now)) {
+                engine?.add([e], verify: false)
+            }
+            return .success("")
+        }
         do {
-            try await dms.sendAsChannel(channel: group, channelName: self.group(group)?.name ?? group, to: to, subject: subj, text: text,
-                                        inReplyTo: card.ev.tag("message-id"), cardId: card.id, myName: realName(me))
-            return nil
+            let id = try await dms.sendAsChannel(channel: group, local: d.mailLocal(group), channelName: self.group(group)?.name ?? group, to: to.address,
+                                                 subject: subject, text: text, inReplyTo: to.messageId, references: refs.isEmpty ? nil : refs,
+                                                 cardId: to.m.id, myName: realName(me))
+            return .success(id)
         } catch let e as BelfryError {
-            return e.errorDescription ?? "The e-mail could not be prepared. Try again."
+            return .failure(ApiError("mail", 0, e.errorDescription ?? "The e-mail could not be prepared. Try again."))
         } catch {
-            return "The e-mail could not be prepared. Try again."
+            return .failure(ApiError("mail", 0, "The e-mail could not be prepared. Try again."))
         }
     }
 

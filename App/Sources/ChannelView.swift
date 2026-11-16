@@ -85,6 +85,10 @@ struct ChannelView: View {
                             }
                         case .join(let j):
                             JoinLine(join: j)
+                        case .mailThread(let t):
+                            // one row per e-mail thread (SPEC 19.33): it opens the thread
+                            MailThreadRow(t: t, group: id) { thread = ThreadRoute(group: id, root: t.id) }
+                                .id("mail:" + t.id)
                         case .activity(let root, let last):
                             let key = "act:" + root.id
                             ThreadActivity(root: root, last: last, open: false) { thread = ThreadRoute(group: id, root: root.id) }
@@ -283,6 +287,8 @@ struct ChannelView: View {
 
     func titleText(_ g: Channel?) -> String {
         guard let g else { return id }
+        // the town's default places read as places (board iOS-Town: "Square", not "#Square")
+        if PlaceNames.defaults[g.id] == g.name { return g.name }
         return g.type == .channel ? "#" + g.name : g.name
     }
 

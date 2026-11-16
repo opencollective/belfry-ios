@@ -17,7 +17,9 @@ struct CharterView: View {
     var body: some View {
         let _ = model.version
         let d = model.derive
-        let rules = d.charter()
+        // the group's own agreements, or the public copy for those who can't read it (guests)
+        let rules = model.charterRules
+        let readable = d.charterGroup != nil || !d.charter().isEmpty
         let steward = d.isCommunityAdmin
         let members = model.memberKeys
         List {
@@ -44,7 +46,7 @@ struct CharterView: View {
                 }
                 Section {
                     ForEach(rules) { r in
-                        AgreementRow(rule: r, members: members, steward: steward,
+                        AgreementRow(rule: r, members: members, steward: steward && readable, showCount: readable,
                                      edit: { editing = r }, who: { who = r })
                     }
                 } footer: {
@@ -70,6 +72,7 @@ struct CharterView: View {
         .sheet(item: $editing) { AgreementForm(editing: $0) }
         .sheet(isPresented: $ordering) { CharterOrderSheet() }
         .navigationDestination(item: $who) { WhoAgreed(rule: $0) }
+        .task { await model.loadPublicCharter() }
         .onAppear {
             switch model.launch.screen {
             case "whoagreed": DispatchQueue.main.asyncAfter(deadline: .now() + 3) { who = model.derive.charter().last }
@@ -96,6 +99,7 @@ private struct AgreementRow: View {
     let rule: Agreement
     let members: Set<String>
     let steward: Bool
+    var showCount = true
     let edit: () -> Void
     let who: () -> Void
 
@@ -119,7 +123,7 @@ private struct AgreementRow: View {
                     if isNew && !model.derive.amGuest { Chip(text: rule.stale.contains(model.me) ? "CHANGED" : "NEW", tint: .orange) }
                 }
                 if !rule.about.isEmpty { Text(rule.about).font(.subheadline).foregroundStyle(.secondary) }
-                Button(action: steward ? who : {}) {
+                if showCount { Button(action: steward ? who : {}) {
                     HStack(spacing: 4) {
                         Text(countLine(count))
                         if steward { Image(systemName: "chevron.right").font(.caption2.weight(.semibold)) }
@@ -127,7 +131,7 @@ private struct AgreementRow: View {
                     .font(.caption).foregroundStyle(steward ? Color.brand : Color.secondary)
                 }
                 .buttonStyle(.plain)
-                .disabled(!steward)
+                .disabled(!steward) }
             }
             Spacer(minLength: 0)
         }

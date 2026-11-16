@@ -263,30 +263,47 @@ struct RoleChoiceList: View {
     var body: some View {
         let d = model.derive
         let current = d.isBelfryAdmin(pubkey) ? Role.admin : (d.isGuest(pubkey) ? nil : (model.roles.members[pubkey] ?? Role.member))
+        // Steward · Member · Guest, always in this order; custom roles under them (board Roles)
+        let builtin = [Role.admin, Role.member].compactMap { id in model.roles.roles.first { $0.id == id } }
+        let custom = model.roles.roles.filter { $0.id != Role.admin && $0.id != Role.member }
         List {
             Section {
-                ForEach(model.roles.roles) { r in
-                    Button { pick(r.id, current: current) } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(r.label).foregroundStyle(.primary)
-                                if !r.description.isEmpty { Text(r.description).font(.footnote).foregroundStyle(.secondary) }
-                            }
-                            Spacer()
-                            if saving == r.id { ProgressView() } else if r.id == current { Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Color.brand) }
-                        }
-                        .contentShape(Rectangle())
+                ForEach(builtin) { r in roleRow(r, current: current) }
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(PlaceNames.guest).foregroundStyle(current == nil ? .primary : .secondary)
+                        Text("Invited for a while, in the channels they were invited to.").font(.footnote).foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(saving != nil)
+                    Spacer()
+                    if current == nil { Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Color.brand) }
                 }
+                .accessibilityElement(children: .combine)
             } footer: { Text("Steward is the only role with powers. A guest given a role becomes a member.") }
+            if !custom.isEmpty {
+                Section("Custom roles") { ForEach(custom) { r in roleRow(r, current: current) } }
+            }
             if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
             Section { NavigationLink { RolesSettings() } label: { Label("Edit roles…", systemImage: "pencil") } }
         }
         .navigationTitle("Role")
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.loadRoles() }
+    }
+
+    private func roleRow(_ r: Role, current: String?) -> some View {
+        Button { pick(r.id, current: current) } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(r.label).foregroundStyle(.primary)
+                    if !r.description.isEmpty { Text(r.description).font(.footnote).foregroundStyle(.secondary) }
+                }
+                Spacer()
+                if saving == r.id { ProgressView() } else if r.id == current { Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Color.brand) }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(saving != nil)
     }
 
     private func pick(_ id: String, current: String?) {
