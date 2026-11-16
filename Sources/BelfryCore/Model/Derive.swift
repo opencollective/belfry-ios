@@ -108,6 +108,8 @@ public struct Group: Identifiable, Hashable, Sendable {
     /// Archived (SPEC 19.30): the latest 9002 that says so has `["archived", "1"]`. In no list;
     /// readable from its card, a link, search; nobody writes in it.
     public var archived = false
+    /// The name its metadata gives, before the on-brand names (SPEC 19.31); empty if none.
+    public var rawName = ""
 
     public static func typeOf(_ id: String) -> ChannelType {
         if id.hasPrefix("ws-") || id.hasPrefix("ev-") { return .event }
@@ -261,12 +263,15 @@ public enum FeedItem: Hashable, Sendable, Identifiable {
     case join(GuestJoin)
     /// An older thread back in the feed at its latest reply.
     case activity(root: Message, last: Message)
+    /// An e-mail thread of a shared inbox, where its latest activity is (SPEC 19.33).
+    case mailThread(InboxThread)
 
     public var at: Int {
         switch self {
         case .message(let m): return m.ev.createdAt
         case .join(let j): return j.at
         case .activity(_, let last): return last.ev.createdAt
+        case .mailThread(let t): return t.last
         }
     }
 
@@ -275,6 +280,7 @@ public enum FeedItem: Hashable, Sendable, Identifiable {
         case .message(let m): return m.id
         case .join(let j): return "join:" + j.id
         case .activity(let root, _): return "act:" + root.id
+        case .mailThread(let t): return "mail:" + t.id
         }
     }
 
@@ -567,7 +573,7 @@ public final class Derive {
                 for k in ["name", "about", "picture"] {
                     guard let v = e.tag(k), (m[k] ?? 0) <= e.createdAt else { continue }
                     switch k {
-                    case "name": g.name = v
+                    case "name": g.name = v; g.rawName = v
                     case "about": g.about = v
                     default: g.picture = v
                     }
@@ -1019,12 +1025,15 @@ public final class Derive {
         } else {
             list = all
         }
-        var items: [FeedItem] = list.map { .message($0) }
+        // a shared inbox's e-mails: one row per thread, where its latest activity is (SPEC 19.33)
+        let mt = mailThreads(groupId)
+        var items: [FeedItem] = list.filter { mt.of[$0.id] == nil }.map { .message($0) }
         if topic == nil {
+            items += mt.list.map { .mailThread($0) }
             items += guestJoins(groupId).map { .join($0) }
             let byId = Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             for (rootId, info) in threadsInOrder(groupId) {
-                guard let root = byId[rootId] else { continue }
+                guard mt.of[rootId] == nil, let root = byId[rootId] else { continue }
                 let later = list.contains { $0.ev.createdAt > root.ev.createdAt && $0.ev.createdAt < info.last }
                 guard later, let last = threadReplies(groupId, rootId).last else { continue }
                 items.append(.activity(root: root, last: last))
@@ -1245,6 +1254,8 @@ public final class Derive {
     private var tasksCache = [String: [TodoTask]]()
     /// Charter.swift: the agreements, worked out once per snapshot.
     var charterCache: [Agreement]?
+    /// MailInbox.swift: each channel's e-mail threads.
+    var mailThreadsCache = [String: (list: [InboxThread], of: [String: Int])]()
 
     /// A snapshot built on the one before (SPEC 19.22): when what arrived is only everyday events
     /// (messages without cards, reactions, replies, todos, seen marks, DMs) and the context is the

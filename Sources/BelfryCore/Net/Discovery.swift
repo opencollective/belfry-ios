@@ -29,6 +29,9 @@ public struct BelfryConfig: Codable, Hashable, Sendable {
     /// belfry.json `branding` (logo, cover, two colours, description), cleaned as the web does
     /// (src/core/branding.ts). Nil = none set: the neutral look.
     public var branding: Branding?
+    /// belfry.json `charter` (docs/charter.md): true = at least one agreement, false = none, nil =
+    /// not said (an older belfry, or its relay couldn't say).
+    public var charter: Bool?
 
     public var agents: [String: String] { agentsMap ?? [:] }
 
@@ -78,6 +81,7 @@ public struct BelfryConfig: Codable, Hashable, Sendable {
             if let m = v as? String, isHex64(k), isHex64(m) { agents[k] = m }
         }
         c.agentsMap = agents
+        c.charter = doc["charter"] as? Bool
         if let b = doc["branding"] as? [String: Any] {
             let clean = Branding.clean(b)
             c.branding = clean.isEmpty ? nil : clean
