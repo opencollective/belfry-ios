@@ -63,19 +63,19 @@ struct GroupCard: View {
         let name: String = g?.name ?? Derive.cardName(text) ?? "A group"
         switch state {
         case .deleted:
-            frame(g: nil, name: name, line: "This group has been deleted", chevron: false)
+            card(g: nil, name: name, line: "This group has been deleted", chevron: false)
                 .opacity(0.55)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("group-card-deleted")
         case .archived:
             Button { hideKeyboard(); model.openGroup = id } label: {
-                frame(g: g, name: name, line: "Archived", chevron: true).opacity(0.6)
+                card(g: g, name: name, line: "Archived", chevron: true).opacity(0.6)
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("group-card-archived")
         case .open, .unknown:
             Button { hideKeyboard(); model.openGroup = id } label: {
-                frame(g: g, name: name, line: g.map(openLine) ?? "Group", chevron: true)
+                card(g: g, name: name, line: g.map(openLine) ?? "Group", chevron: true)
             }
             .buttonStyle(.plain)
             .onAppear { if state == .unknown { model.lookFor(id) } }
@@ -87,7 +87,7 @@ struct GroupCard: View {
         return "\(n) \(n == 1 ? "member" : "members") · \(g.closed ? "by application" : "open to join")"
     }
 
-    private func frame(g: Channel?, name: String, line: String, chevron: Bool) -> some View {
+    private func card(g: Channel?, name: String, line: String, chevron: Bool) -> some View {
         CardFrame {
             HStack(spacing: 10) {
                 if let g {

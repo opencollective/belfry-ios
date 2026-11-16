@@ -288,13 +288,7 @@ struct RootView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openGroup = "pod-seed-swap-5e1d" }
         // SPEC 19.30: the cards of a deleted and an archived group, a link to the deleted one,
         // the archived one read only, the Archived list
-        case "groupcards":
-            selection = .members
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                let card = model.derive.messages(generalId).first { $0.special == .podCard(podId: Demo.deletedGroup) }
-                focus = card.map { SearchTarget(channel: generalId, message: $0.id) }
-                selection = .channel(generalId)
-            }
+        case "groupcards": selection = .channel(generalId) // ChannelView scrolls to the cards
         case "groupdeleted": selection = .channel(Demo.deletedGroup)
         case "grouparchived":
             selection = .channel(generalId)

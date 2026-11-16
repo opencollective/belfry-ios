@@ -360,6 +360,11 @@ struct ChannelView: View {
                 if let root = model.derive.threadsInOrder(id).max(by: { $0.info.count < $1.info.count })?.root { thread = ThreadRoute(group: id, root: root) }
             }
         case "chsearch": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { search = true }
+        case "groupcards":
+            // the cards of the demo's deleted and archived groups (SPEC 19.30)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                scrollTarget = model.derive.messages(id).first { $0.special == .podCard(podId: Demo.archivedGroup) }?.id
+            }
         case "add": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { model.launchAdd = true }
         default: break
         }
