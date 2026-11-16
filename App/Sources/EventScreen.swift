@@ -67,7 +67,7 @@ struct EventScreenBody: View {
     @State private var drag: CGFloat = 0
     @State private var halfContentH: CGFloat = 0
     /// The page's height below the bar and the bar's height (see body).
-    @State private var page = PageBox(top: 0, height: 0)
+    @State private var page = PageBox(top: 0, width: 0, height: 0)
     /// The header is out of the tree once it has been pulled up (after its animation).
     @State private var headerGone = false
     @State private var showTicket = false
@@ -87,7 +87,7 @@ struct EventScreenBody: View {
     static let pickerH: CGFloat = 48
 
     struct Heights { let up, half, full: CGFloat }
-    struct PageBox: Equatable, Sendable { let top: CGFloat; let height: CGFloat }
+    struct PageBox: Equatable, Sendable { let top: CGFloat; let width: CGFloat; let height: CGFloat }
 
     var body: some View {
         let _ = LoopWatch.tick("EventScreenBody")
@@ -102,7 +102,7 @@ struct EventScreenBody: View {
         // GeometryReader around it, froze the app when the keyboard rose in the event's chat:
         // UIKit's safe-area and keyboard layout never settled, 2026-11-16.)
         Color.clear
-            .onGeometryChange(for: PageBox.self) { PageBox(top: $0.safeAreaInsets.top.rounded(), height: $0.size.height.rounded()) } action: { p in
+            .onGeometryChange(for: PageBox.self) { PageBox(top: $0.safeAreaInsets.top.rounded(), width: $0.size.width.rounded(), height: $0.size.height.rounded()) } action: { p in
                 LoopWatch.tick("page"); if p != page { page = p }
             }
             .background(alignment: .top) {
@@ -197,7 +197,7 @@ struct EventScreenBody: View {
     private func handle(_ hs: Heights) -> some View {
         Capsule().fill(Color.secondary.opacity(0.45)).frame(width: 36, height: 5)
             .frame(maxWidth: .infinity)
-            .frame(height: EventScreenBody.handleH)
+            .frame(width: page.width, height: EventScreenBody.handleH)
             .background(PDSurface.color)
             .overlay(alignment: .bottom) { Divider() }
             .contentShape(Rectangle())
@@ -224,7 +224,7 @@ struct EventScreenBody: View {
         if headerGone {
             // pulled up (the keyboard is up, or the chat takes the screen): nothing of the header
             // stays to be laid out with every change of the chat
-            Color.clear.frame(height: 0)
+            Color.clear.frame(width: page.width, height: 0)
         } else {
             headerBody(d, h: h, hs: hs, access: access)
         }
@@ -255,8 +255,8 @@ struct EventScreenBody: View {
             .onChange(of: level) { _, l in if l != .full { withAnimation(.snappy) { proxy.scrollTo("event-top", anchor: .top) } } }
         }
         .opacity(access ? min(1, max(0, (h - hs.up) / 60)) : 1)
-        .frame(height: h, alignment: .top)
-        .frame(maxWidth: .infinity)
+        // width and height both fixed: the stacks around never measure the header's content
+        .frame(width: page.width, height: h, alignment: .top)
         .clipped()
         .accessibilityHidden(access && level == .up)
     }
@@ -316,7 +316,7 @@ struct EventScreenBody: View {
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)
-            .frame(height: EventScreenBody.pickerH)
+            .frame(width: page.width, height: EventScreenBody.pickerH)
             .accessibilityIdentifier("event-tabs")
             ZStack {
                 // the chat stays in the tree (its place in the feed, its draft); Photos and People
@@ -327,12 +327,12 @@ struct EventScreenBody: View {
                 if tab == .photos { EventPhotosTab(e: e) }
                 if tab == .people { EventPeopleTab(e: e, open: openProfile, checkIn: { checkingIn = true }) }
             }
-            .frame(height: max(0, height - EventScreenBody.pickerH))
+            .frame(width: page.width, height: max(0, height - EventScreenBody.pickerH))
             .opacity(hidden ? 0 : 1)
             .allowsHitTesting(!hidden)
             .accessibilityHidden(hidden)
         }
-        .frame(height: height, alignment: .top)
+        .frame(width: page.width, height: height, alignment: .top)
     }
 
     /// One tab's view, kept in the tree (switching tabs keeps the feed's place and the drafts).
