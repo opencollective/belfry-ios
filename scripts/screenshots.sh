@@ -142,11 +142,20 @@ if [ -n "${XCTESTRUN:-}" ] && [ -f "$XCTESTRUN" ]; then
   for mode in light dark; do
     xcrun simctl ui "$UDID" appearance "$mode" || true
     xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1 || true
+    # when the app's watchdog reports a stall, sample the app's threads (simulator apps are host
+    # processes) to see where its main thread is busy
+    ( xcrun simctl spawn "$UDID" log stream --style compact --predicate 'subsystem == "sh.belfry.app.watchdog"' 2>/dev/null \
+        | grep --line-buffered "STALL main" | while read -r _; do
+            pid=$(pgrep -n -f "Belfry.app/Belfry" || true)
+            [ -n "$pid" ] && sample "$pid" 3 -file "$ABS/sample-$mode-$(date +%s).txt" >/dev/null 2>&1
+          done ) &
+    SAMPLER=$!
     set +e
     TEST_RUNNER_SHOTS_DIR="$ABS" TEST_RUNNER_SHOTS_SUFFIX="$mode" \
       xcodebuild test-without-building -xctestrun "$XCTESTRUN" -destination "id=$UDID" \
       -resultBundlePath "ui-$mode.xcresult" > "ui-$mode.log" 2>&1
     code=$?
+    kill $SAMPLER 2>/dev/null; pkill -f "log stream --style compact --predicate subsystem" 2>/dev/null
     set -e
     grep -E "Test Case|error:" "ui-$mode.log" | tail -30 || true
     if [ $code -ne 0 ]; then UI_FAILED=1; echo "UI tests ($mode) failed"; fi
