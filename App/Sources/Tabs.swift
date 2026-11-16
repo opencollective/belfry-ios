@@ -27,6 +27,9 @@ enum AppTab: String, CaseIterable, Hashable {
         case .town: return "building.columns"
         }
     }
+
+    /// The selected place's symbol (the calendar has no filled one).
+    var selectedIcon: String { self == .calendar ? "calendar" : icon + ".fill" }
 }
 
 /// The floating bar: four places and the ＋ in the middle (members).
