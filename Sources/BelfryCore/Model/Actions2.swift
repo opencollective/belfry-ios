@@ -129,7 +129,7 @@ public extension Actions {
     /// replaces the whole metadata on each 9002: one with only a name dropped closed / prompt /
     /// vouches / picture).
     static func groupMeta(_ g: Group, name: String? = nil, about: String? = nil, picture: String? = nil, closed: Bool? = nil, prompt: String? = nil, archived: Bool? = nil) -> Draft {
-        var tags: [Tag] = [["h", g.id], ["name", name ?? g.name], ["about", about ?? g.about]]
+        var tags: [Tag] = [["h", g.id], ["name", PlaceNames.wire(id: g.id, name: name ?? g.name)], ["about", about ?? g.about]]
         let pic = picture ?? g.picture ?? ""
         if !pic.isEmpty { tags.append(["picture", pic]) }
         let isClosed = closed ?? g.closed

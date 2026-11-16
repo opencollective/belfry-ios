@@ -202,3 +202,21 @@ and gestures are untested in the real world. XCTest covers the core (BelfryCore)
 | OSV access grants | n/a | Hidden in the Belfry theme. |
 | Web changes after this pass started (village-app 46ce39c, 0612cd3, 7e14fdb, 9641996) | not yet | Channel header shows the address alone and the pull-down says who reads and who can post; admins pick plain addresses (channel, event URL, page); Me → Sign-in methods (e-mail code, passkeys); DM reactions. |
 | TestFlight | waiting | The job runs when Xavier adds the four App Store Connect secrets. |
+
+## Five places, the charter, Add an agent (iOS first, 2026-11-16; the owner's canvas, SPEC 19.31 / 19.32)
+
+Not in the web chat or Android yet: the iPhone app leads here. Screenshots 80–94.
+
+| Item | Status | Notes |
+|---|---|---|
+| Bottom bar Home · Calendar · Create (＋) · Groups · Town; a stack per place, the bar at each root (pushed chats cover it, the keyboard hides it), the selected place tapped again goes back to its root, the last place reopens | done | `Tabs.swift`. iPhone only: the iPad keeps the split view with the old sidebar. |
+| Home: requests, a new agreement, To-dos · Mentions · Messages tiles (each pushes its list), Coming up (7 days, state in words, no buttons), Recent activity (unread channels and groups), calm state | done | `HomeView.swift`. "My to-dos" across channels is new (`MyTodosView`). The red dot on Home's icon = requests + mentions + DMs + to-dos on me + agreements to read. No search on Home yet (the drawer still searches everything). |
+| Calendar: My calendar · Invited · Discover, week strip (Monday first, dots, back = that week's past events), Today / This week / Later, ＋ new event | done | `CalendarView.swift`. Rows push the event screen (RSVP / check-in stay there). |
+| Groups: My groups · Active · All (Join / "by application"), Archived row, ＋ = Create with Group first | done | `GroupsView.swift`. |
+| Create sheet: Where (a channel), Message (opens the channel with the keyboard), Event, Meeting, To-do, Group, Proposal (their existing forms in the same sheet) | done | `CreateMenu.swift`. The forms replace the list inside the sheet instead of pushing (they have their own navigation). |
+| Town: the Square with ☰ = unread town channels; drawer = cover, mark, name, member count, ＋ channel, search, The town (Square, Gates, Charter) / Community life / Building together, Archived, Order (stewards), Belfry settings (stewards), you (tap → Me pushed, ⇅ → accounts) | done | `TownDrawer.swift`. Messages / mentions / events left the drawer (Home, Calendar). |
+| Names: Square, Fairground, Assembly, Scriptorium (only while the default name stands), Gates; roles Steward · Member · Guest; the check-in role shown as Door | done | Core-tested (`CharterTests.testPlaceNames`). The role picker still lists Member first and Steward last (the board wants Steward · Member · Guest). The "turn the names on for an existing belfry" switch of the Names board is not built: the names apply to every belfry. |
+| Charter: page, ticks, counts, "You agreed", stewards write / edit / reorder / remove, Agreed / Not yet, Home reminder, drawer row | done, never run live | SPEC 19.32, `vectors/charter.json`, `CharterTests`. Copy `charter.json` to Android. The new member's first minutes (Welcome → charter → profile → Getting started → notifications) are not built. |
+| Add an agent (own profile, members): explanation, sheet with a one-line prompt + Copy / Share, my agent with Remove instead, stewards may add more | done, never run live | `AgentUI.swift`; `POST /channel-invites {"agent": true}` in `general`. |
+| Guests: Home (Apply first, time left, invited channels, open to everyone), Calendar (Public events · Going), Town drawer (Apply, invited, open to everyone, own row), Apply sheet | partial | Apply sends nothing on a real belfry (SERVER-NEEDS 10); public events only from what the phone holds (11); the charter needs the relay (12). |
+| Joining from the App Store ("Which belfry?", the belfry's card, Ask to join) | not yet | SERVER-NEEDS 13. |

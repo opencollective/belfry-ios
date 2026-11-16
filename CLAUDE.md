@@ -9,7 +9,7 @@ don't guess. The Android app (opencollective/belfry-android) is a second reading
 
 `vectors/` is the contract shared with Android: keep both repos' files identical (copy, don't
 edit one side). SPEC.md differs from Android's only in the paragraph that opens section 19 and the (iOS) notes
-that end 19.19, 19.20 and 19.26, the iOS-only 19.28 and 19.29, and 19.30 (deleted and archived groups, written here 2026-11-16: Android has not got it yet) (Android's 19.21 to 19.25 and 19.27 copied 2026-11-15; what the iPhone app does of them is in PARITY.md). `vectors/guestmode.json` and `vectors/readstate.json` are Android's.
+that end 19.19, 19.20 and 19.26, the iOS-only 19.28 and 19.29, 19.30 (deleted and archived groups, written here 2026-11-16: Android has not got it yet), and 19.31 / 19.32 (five places, names, roles; the charter, written here 2026-11-16; `vectors/charter.json` is ours: copy it to Android) (Android's 19.21 to 19.25 and 19.27 copied 2026-11-15; what the iPhone app does of them is in PARITY.md). `vectors/guestmode.json` and `vectors/readstate.json` are Android's.
 
 ## Layout
 
@@ -96,7 +96,9 @@ profile, editprofile, me, members, todos, files, events, eventhost, eventform, a
 event screen at half), eventup, eventfull, eventphotos, eventpeople, ticket, checkin (with a
 result card), checkincard (a ticket link opened), eventrole (a profile with "In Repair café"),
 membersinvite; and since 2026-11-16 groupcards (the cards of a deleted and an archived group),
-groupdeleted, grouparchived, archivedlist). In the demo Sam is an admin of the belfry (settings, roles, requests show), and
+groupdeleted, grouparchived, archivedlist; and since 2026-11-16 home, calendar, groups, groupsall,
+create, town, towndrawer, mytodos, charter, whoagreed, agreement, myprofile, addagent, meplace;
+`-guest home|calendar|drawer|apply` for a guest's places). In the demo Sam is an admin of the belfry (settings, roles, requests show), and
 the steward of today's Repair café (Dev hosts, Emma co-hosts; two ticket types; Sam holds a
 Volunteer ticket; Ana and Ben checked in; photos drawn on the device by `DemoPictures`). `-join` (no
 `-demo`) opens a demo guest link signed out (the loading screen, then guest mode). `-guest
@@ -175,10 +177,19 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
 - iOS 17+, built with the iOS 26 SDK (Xcode 26 in CI): glass (`.glassEffect`, `safeAreaBar`)
   behind `#if compiler(>=6.2)` + `if #available(iOS 26, *)`, material before (`Theme.swift`:
   `glass(in:)`, `topBar`, `bottomBar`).
-- iPhone layout = the web's phone layout (2026-11-15): the open screen (channel, Messages,
-  @Mentions, Members with the requests on top) with ☰ (count of unread DMs + new mentions + requests) and a left drawer
-  under it (`DrawerContainer` + `ChannelDrawer` in RootView: edge swipe at the stack's root, the
-  page slides right, shade, drag / tap to close). iPad: the same list as a split view's sidebar.
+- iPhone layout (2026-11-16, the owner's canvas "One belfry, five places"): a bottom bar Home ·
+  Calendar · Create (＋) · Groups · Town (`Tabs.swift`: `AppTab` in `model.tab`, `TabBar`,
+  `tabBarInset()` on each place's ROOT so pushed screens cover it and it slides with the root;
+  hidden with the keyboard). Each place is a `NavigationStack` kept in the tree (opacity) with
+  `placeDestinations()` (profiles, events, group pages, `ChatRoute` chats, `PlaceRoute` screens,
+  conversations); `RootView.push` appends to the place on screen, so `openProfile / openEvent /
+  openGroup / messageAuthor` and `openChannel` (outside Town) push there. Home (`HomeView`),
+  Calendar (`CalendarView`), Groups (`GroupsView`), Create (`CreateMenuSheet`, the forms open in
+  the same sheet). Town = the old phone layout: the open channel with ☰ (unread town channels)
+  and the drawer under it (`DrawerContainer` + `TownDrawer`: the town's sections, Belfry settings,
+  you → Me pushed, ⇅ → accounts). Guests: Home · Calendar · Town. No own face in any header. The
+  belfry's name at the top of Home / Calendar / Groups opens the accounts switcher. iPad: the old
+  sidebar (`ChannelDrawer.sidebar`) in a split view, no bar.
 - Deleted and archived groups (SPEC 19.30, `Model/Archive.swift`, `ArchiveUI.swift`,
   `AppModel+Archive`): `Derive.groups()` = the listed ones (not archived, not deleted);
   `group(id)` / `allGroups()` include archived ones; `groupState(id)` = unknown / open /
@@ -190,8 +201,8 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   must be hidden when `model.locked(id)`; `SyncEngine.setLocked` + `GroupLock` refuse it anyway.
   Every 9002 goes through `Actions.groupMeta` (keeps every setting and `archived`).
 - Every row of the drawer opens an open screen (☰ top left, the row highlighted), never a
-  sheet: channels, Members (requests on top), Events (`EventsScreen`, events pushed on the
-  stack), @Mentions, Direct messages, Belfry settings. Sheets are for short tasks started from
+  sheet: channels, the Gates (members, requests on top), the Charter, Archived, Belfry
+  settings; you (the last row) push Me. Home's tiles push Messages, @Mentions, My to-dos. Sheets are for short tasks started from
   a screen (invite, a new event, editing a profile).
 - Layout that can freeze the main thread (the event-chat freeze, 2026-11-16, found with the
   watchdog `LoopWatch` + `sample` in the screenshot job): never write view state from
@@ -214,6 +225,13 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
 - The feed's end is a 1 pt anchor with NO padding: the composer is the scroll view's safe-area
   inset, and scrollTo / defaultScrollAnchor(.bottom) stop above it (a pad of the composer's
   height showed as an empty band, fixed 2026-11-15).
+- Names (SPEC 19.31): `WorldContext.placeNames` (true in the app) shows general / events /
+  proposals / website as Square / Fairground / Assembly / Scriptorium while their own name is the
+  default; members+requests = "Gates"; roles Steward (admin) · Member · Guest; the check-in role
+  `steward` reads "Door". Display only: never write these names back.
+- The charter (SPEC 19.32, `Model/Charter.swift`, `CharterUI.swift`, `AppModel+Charter`): group
+  `charter`, agreements = 2100 with `each`, ticks per author; only belfry admins' rules count.
+- Add an agent (`AgentUI.swift`): on my own profile, a modal by the owner's request.
 - People lists of a channel / group / event: `PersonRow` (face, name, role there as secondary
   text), never a label icon; the profile opened from them gets the group (`ProfileKey.group`).
 - The channel line pulls down FROM THE TOP (`PullDownPanel`: one surface with the navigation

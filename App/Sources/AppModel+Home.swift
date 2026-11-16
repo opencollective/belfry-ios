@@ -168,7 +168,7 @@ extension AppModel {
 
     /// A guest asks to become a member on the same account. The belfry has only the web form
     /// (pass.<domain>/apply, which makes a new person) and no signed call for a guest yet
-    /// (SERVER-NEEDS 12): refused in words, except in the demo.
+    /// (SERVER-NEEDS 10): refused in words, except in the demo.
     func applyAsGuest(answer: String) async -> String? {
         if engine?.localOnly != false {
             guestApplied = true

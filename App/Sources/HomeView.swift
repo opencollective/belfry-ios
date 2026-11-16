@@ -380,7 +380,7 @@ struct ApplyCard: View {
 
 /// A guest asks to become a member (board Join-Apply 1): the belfry's question, the saved
 /// e-mail, the charter's agreements. The belfry can't take a guest's request yet (SERVER-NEEDS
-/// 12): the request is refused in words, except in the demo.
+/// 10): the request is refused in words, except in the demo.
 struct ApplySheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss

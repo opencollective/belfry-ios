@@ -188,7 +188,7 @@ extension AppModel {
             return
         }
         Task {
-            do { try await api.groupMeta(channel: id, name: name, about: about, picture: picture, closed: closed, prompt: prompt); await refresh() }
+            do { try await api.groupMeta(channel: id, name: name.map { PlaceNames.wire(id: id, name: $0) }, about: about, picture: picture, closed: closed, prompt: prompt); await refresh() }
             catch let x as ApiError { website = x.message } catch { website = BelfryAPI.network }
         }
     }

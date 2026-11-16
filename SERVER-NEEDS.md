@@ -209,3 +209,55 @@ The app codes against the contract (SPEC 19.29). For the belfry:
 - **Notifications** of an archived group: the app does not filter pushes; the belfry should not
   send them.
 
+
+## 10. A guest applies to become a member (2026-11-16, board Join-Apply) — screen built, refused in words
+
+The guest's Home leads with "Apply to become a member" (the owner's ask). Today a request to
+join exists only as the web form `pass.<domain>/apply` (apply.py), which makes a new person from
+a name and an e-mail; a guest already has an account, a saved e-mail and a key, and should stay
+that person. **Ask**: `POST /api/v1/applications {"apply": {"answer": "<text ≤ 2000>"}}`, NIP-98
+by the guest's key (an active guest pass with a saved e-mail; 409 `guest_not_saved` otherwise),
+making a `belfry.application` linked to the guest's contact (`kind` = `guest`, the channel(s) and
+inviter for the stewards' card), answering `{"application": {"id","state","vouches","needed"}}`
+and 409 `pending` with the same body when one is open. Then: `{"apply": "status"}` (or the same
+call with `{}`) for the guest's Home ("1 of 2 vouches · Dev Patel vouched for you"); on
+acceptance, `guests.became_member` on the same key (no invite mail: they are signed in), the
+guest passes closed, the role Member. The guest's days must not run out while a request is open
+(the board says so). Until then the app sends nothing and says: "<belfry> can't take a guest's
+request from the app yet. Ask the person who invited you, or a steward." (the demo pretends it
+was sent). Also needed for the request card in the Gates: `kind: "guest"` and the inviter in the
+list answer.
+
+## 11. Public events for guests (2026-11-16, board Join-Guest 5) — list built from what the phone holds
+
+A guest's Calendar shows "Public events · Going": events with `visibility` public plus those of
+the channels they were let into. A guest reads only their channels on the groups relay and not
+the community relay where the calendar events live, so on a real belfry the list holds little
+more than the events they opened by link (`GET /api/v1/events/<link>`). **Ask**: `GET
+/api/v1/events?visibility=public&from=<unix>` (no auth, the same JSON per event as
+`/events/<link>`, newest 100), or let guests read kinds 31922 / 31923 with `visibility` public
+on the community relay. The app would merge it into the guest's list unchanged.
+
+## 12. The charter for guests and people applying (2026-11-16, SPEC 19.32)
+
+The charter is the group `charter` on the groups relay (a fixed id; agreements = 2100 with
+`["each","1"]`; ticks = each person's own 2101 `done`). Members read it like any open group.
+**Ask**: (1) zooid: let guests (patch 0002) and applicants (patch 0004) **read** the group
+`charter` and **write** only their own 2101 with `["each","1"]` in it (no 2100, no edit, no
+delete); (2) belfry.json `charter: true|false` (the group exists and has at least one
+agreement) so a phone that can't read it yet knows whether the joining step exists; (3) when a
+person applies from outside (`/apply`, later the app's Ask to join), the request carries the ids
+of the agreements they ticked (`"agreed": [<2100 id>…]`), and on acceptance the belfry publishes
+nothing for them (their first ticks are theirs to sign once they are in; or the app re-ticks
+from the stored list after the first sign-in). (4) Only belfry admins' 2100 / edits / removals
+count (the app checks against belfry.json `admins`); a belfry that wants the relay to enforce
+it can refuse 2100 with `["h","charter"]` from anyone else. Until then a guest's Home and drawer
+show the Charter row only if the phone holds the group (normally never for a guest).
+
+## 13. Asking to join from the app (2026-11-16, board Join-Outside) — not built
+
+The boards' "Which belfry?" / the belfry's card / "Ask to join" need a JSON form of
+`pass.<domain>/apply` (`POST /api/v1/apply {"name","email","answer","agreed"?}`, no auth, the
+same limits as the web form) and belfry.json `membership.accept` (`admins` | `vouches`) and
+`membership.question` so the card can say how one gets in. Not built on iOS: the app still
+starts on the sign-in screen (name@domain, or a guest link).

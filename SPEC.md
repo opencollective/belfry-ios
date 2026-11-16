@@ -491,7 +491,8 @@ kept identical in both repositories (opencollective/belfry-ios and opencollectiv
 and this file differs only in this paragraph and the (iOS) notes that end 19.19 and 19.20:
 change both in both. Android's 19.21 (web changes of 2026-11-11 / 12) and 19.22 (snapshots built
 on the one before), 19.23 to 19.25 are not ported here yet. 19.26 (guest mode) is Android's text
-with the (iOS) notes at its end.
+with the (iOS) notes at its end. 19.31 (five places, names, roles) and 19.32 (the charter) were
+written here on 2026-11-16 for the web and Android to follow.
 
 `KINDS_GROUPS` (section 4) now also has **1010** (edits).
 
@@ -1669,3 +1670,84 @@ groups (ids `pod-…`). Events and proposals keep their own cancel / status mech
 - Core-tested in `ArchiveTests` (deleted by 9008; unknown until the relay answered, then
   deleted; a stale copy; coming back; one being created; archived by the latest 9002, unarchive,
   `general`; the 9002 keeps every setting; the outbox lock; the card's name; the questions).
+
+### 19.31 Five places, on-brand names, three roles (iOS, 2026-11-16; the owner's canvas "One belfry, five places")
+
+Layout first (each client draws it its own way), then the parts other clients must agree on.
+
+- **The places.** A bottom bar: Home · Calendar · Create (＋) · Groups · Town. Home = what needs
+  me today on the open belfry (requests for stewards and vouching members, a new agreement of
+  the charter, to-dos on me, new mentions, unread direct messages, events of the next 7 days I'm
+  part of or invited to, unread channels and groups); Calendar = My calendar (hosting, going,
+  maybe, applied) · Invited (a meeting's `invited` with no answer) · Discover (the rest); Groups =
+  My groups (pods I'm a member or admin of) · Active (mine with a message in the last 30 days) ·
+  All (every listed pod; not mine: Join when open, "by application" when closed); Town = the
+  Square and a drawer with only the town's places; Create = Message, Event, Meeting, To-do, Group,
+  Proposal into a chosen channel (default: the one on screen, else the Square). Rows never carry
+  action buttons for events: the state in words ("you host · check-in today", "going",
+  "invited · not answered yet"). Chats, events and profiles push over the places; the bar shows
+  only at a place's root. Guests: Home · Calendar · Town.
+- **The drawer's sections** (by group id): The town = `general`, the Gates (members and their
+  requests), the Charter (19.32: shown when the `charter` group exists, or to stewards); Building
+  together = `proposals` and `website`; Community life = every other channel. The stewards'
+  order (`belfry:channel-order`) holds inside each section. Pods are not in the drawer (their own
+  place); the `charter` group is never listed as a channel.
+- **On-brand names** (display only; ids, mail addresses, links and wire values never change):
+  `general` → "Square", `events` → "Fairground", `proposals` → "Assembly", `website` →
+  "Scriptorium", only while the group's own name is still its default (empty, its id, or `#` +
+  id, any case: a renamed channel keeps its name). The members' directory with its requests is
+  called "Gates". (iOS) `WorldContext.placeNames` = true in the app, false in the shared vectors;
+  `PlaceNames` in `Model/Charter.swift`.
+- **Three roles** as people read them: Steward (the built-in `admin` role, the stewards group) ·
+  Member · Guest. A belfry's `GET /roles` label "Admin" for the `admin` role is shown as
+  "Steward"; a custom label stays. The per-event / per-group check-in role (wire value `steward`
+  in the `belfry/group-role` label and `POST /group-roles`, 19.29) is shown as **Door**.
+- **Add an agent** (19.16): on my own profile, members only (not guests, not agents): a short
+  explanation and "Add an agent", which makes a one-agent link (`POST /api/v1/channel-invites`
+  `{"channel": "general", "agent": true}`) and shows one line to paste to the agent:
+  `Join <belfry name> as my agent: read <agent_url> and follow it.` (`agent_url` from the
+  answer, https only, never built from typed text). With my agent there (one per member by
+  default: `POST /agents {}` → `limit`), the section shows it with "Remove this agent…" instead;
+  stewards (unlimited) see "Add another agent".
+
+### 19.32 The charter (iOS, 2026-11-16; `vectors/charter.json`)
+
+A short list of agreements that every person ticks for themselves. It reuses the to-do list
+(19.8, 19.11) of one NIP-29 group so no new kind is needed.
+
+- **Where.** The group `charter` on the groups relay (a fixed id), made by the steward who writes
+  the first agreement: 9007 `["h","charter"]`, then 9002 `["h","charter"],["name","Charter"],
+  ["about",…],["open"]`. Clients never list it as a channel or group.
+- **An agreement** = kind 2100 in that group: content = its title (trimmed, ≤ 300 UTF-16
+  units), tags = the to-do list's `["t", <list id of "charter">]` (sha256hex("osv-village:charter")
+  [:16] = `d93ecde52eff27c7`), `["h","charter"]`, plus `["each","1"]` (a to-do each person does
+  for themselves), `["order","<int>"]` and an optional `["about","<one line ≤ 200>"]`. Only a
+  2100 by a **belfry admin** (belfry.json `admins`) with `each` = 1 counts.
+- **A change** = kind 2101 `["e",<agreement>],["action","edit"]` + the same `t`, `h`, `each`,
+  with content = the full title and the full `about` / `order` tags (latest wins; a missing
+  `about` empties it; a missing `order` keeps the place). Only a belfry admin's edit counts. If
+  the title or the explanation changed, that edit's `created_at` becomes the agreement's
+  **text time**. A reorder alone changes nothing else. **Removal** = 2101 `action` `delete` by a
+  belfry admin (not only the author, unlike ordinary to-dos).
+- **A person's agreement** = their own 2101 `action` `done` (and `undone` to take it back),
+  same tags. Counted **per author**, latest tick wins (an ordinary to-do's `done` is once for
+  everyone; here it never is). A person **has agreed** when their latest tick is `done` and its
+  `created_at` ≥ the text time; a `done` older than the text time is **stale**: that person is
+  asked again, for that rule only (the owner's decision).
+- **Order**: `order` ascending (none = last), then `created_at` of the 2100, then id.
+- **What members see.** The charter page: "You agreed · <date>" (the newest of my current ticks,
+  once all are ticked), else how many wait; each rule with my tick and "N of M members" (people
+  in `general` who are not guests or agents). Stewards also: New agreement, edit (changing the
+  words says it asks everyone again), reorder or remove, and a count opens Agreed / Not yet. A
+  rule I haven't agreed to is highlighted ("NEW", or "CHANGED" when my tick went stale) and Home
+  shows "1 new agreement to read" until I tick it. A new or changed rule never stops anyone from
+  posting (the owner's decision): a reminder only. No agreement yet: stewards see "No agreements
+  yet · Write the first agreement"; everyone else sees no Charter row, and joining skips the step.
+- **Older clients** see the `charter` group as a channel named "Charter" with to-dos marked done
+  by whoever ticked first. Clients that know this section hide it.
+- **Open**: guests and people applying from outside can't read the groups relay's `charter`
+  group (SERVER-NEEDS 12); first minutes of a new member (Welcome → charter → profile) are not
+  built on iOS yet.
+- Core-tested in `CharterTests` (the vector: admins only, `each` only, reorder without asking
+  again, a text change making a tick stale, outsiders' edits and removals ignored, removal by
+  another steward; the actions' tags; the names; the charter group out of the channel list).

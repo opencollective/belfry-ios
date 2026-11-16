@@ -124,7 +124,7 @@ private struct AgreementRow: View {
                         Text(countLine(count))
                         if steward { Image(systemName: "chevron.right").font(.caption2.weight(.semibold)) }
                     }
-                    .font(.caption).foregroundStyle(steward ? Color.brand : .secondary)
+                    .font(.caption).foregroundStyle(steward ? Color.brand : Color.secondary)
                 }
                 .buttonStyle(.plain)
                 .disabled(!steward)

@@ -24,6 +24,9 @@ public enum PlaceNames {
         return raw.isEmpty || raw == id || raw == "#" + id ? n : nil
     }
 
+    /// What to write for a name shown on brand: the id itself (never "Square" on the wire).
+    public static func wire(id: String, name: String) -> String { defaults[id] == name ? id : name }
+
     /// Members and requests (the drawer row and its screen).
     public static let gates = "Gates"
 

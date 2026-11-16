@@ -208,7 +208,7 @@ struct WeekStrip: View {
                     VStack(spacing: 4) {
                         Text(day.formatted(.dateTime.weekday(.abbreviated)).uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
                         Text(day.formatted(.dateTime.day())).font(.title3.weight(today ? .bold : .regular))
-                            .foregroundStyle(today ? Theme.onAccent : .primary)
+                            .foregroundStyle(today ? Theme.onAccent : Color.primary)
                             .frame(width: 38, height: 38)
                             .background(today ? Theme.accent : Color.clear, in: Circle())
                         Circle().fill(marked.contains(Int(c.startOfDay(for: day).timeIntervalSince1970)) ? Color.secondary : Color.clear)

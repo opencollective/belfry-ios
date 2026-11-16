@@ -87,7 +87,7 @@ final class AppModel: ObservableObject {
     @Published var showAccounts = false
     /// A channel whose composer takes the keyboard when it appears (Create → Message).
     @Published var focusComposer: String?
-    /// A guest sent "Apply to become a member" (demo only until the belfry takes it: SERVER-NEEDS 12).
+    /// A guest sent "Apply to become a member" (demo only until the belfry takes it: SERVER-NEEDS 10).
     @Published var guestApplied = false
     /// The Create sheet's first row (Calendar: Event; Groups: Group; else Message).
     @Published var createFirst: CreateWhat = .message
