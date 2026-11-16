@@ -296,7 +296,7 @@ struct RootView: View {
         case "eventhost":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openEvent = "2026-gwday1" }
-        case "meeting":
+        case "meeting", "meetingpeople":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openEvent = "2026-mtg001" }
         case "meetingform":

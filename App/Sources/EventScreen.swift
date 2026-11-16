@@ -277,7 +277,6 @@ struct EventScreenBody: View {
             .accessibilityHidden(hidden)
         }
         .frame(maxHeight: .infinity)
-        .clipped()
     }
 
     /// One tab's view, kept in the tree (switching tabs keeps the feed's place and the drafts).
@@ -341,14 +340,14 @@ struct EventScreenBody: View {
         if let ticket, !launched { launched = true; scanCard = ticket }
         guard !model.launchEventDone else { return }
         let s = model.launch.screen ?? ""
-        guard s.hasPrefix("event") || ["ticket", "checkin", "eventrole"].contains(s) else { return }
+        guard s.hasPrefix("event") || ["ticket", "checkin", "eventrole", "meetingpeople"].contains(s) else { return }
         model.launchEventDone = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
             switch s {
             case "eventup": withAnimation { level = .up }
             case "eventfull": withAnimation { level = .full }
             case "eventphotos": tab = .photos
-            case "eventpeople": tab = .people
+            case "eventpeople", "meetingpeople": tab = .people
             case "ticket": showTicket = true
             case "checkin": checkingIn = true
             case "eventrole": openProfile(Demo.signer("ana").pubkey)
@@ -825,17 +824,15 @@ struct EventPeopleTab: View {
             if e.meeting {
                 MeetingPeopleSection(e: e)
             } else {
-                if model.mayCheckIn(e) {
-                    Section {
-                        Button(action: checkIn) { Label("Check people in", systemImage: "qrcode.viewfinder") }
-                    } footer: {
-                        Text("\(checks.count) checked in so far.")
-                    }
-                }
-                Section("Hosts") {
+                Section {
                     ForEach(lists.hosts, id: \.self) { pk in
                         row(pk, detail: d.eventRole(e, pk).label, checks: checks, message: canMessage)
                     }
+                } header: {
+                    Text("Hosts")
+                } footer: {
+                    // who may check people in sees how far it got (Check people in: the ⋯ menu)
+                    if model.mayCheckIn(e) { Text("\(checks.count) of \(model.attendees(e).people.count) checked in") }
                 }
                 Section("Going · \(lists.going.count)") {
                     if lists.going.isEmpty { Text("Nobody yet.").foregroundStyle(.secondary) }
@@ -849,6 +846,7 @@ struct EventPeopleTab: View {
             }
         }
         .listStyle(.insetGrouped)
+        .contentMargins(.top, 8, for: .scrollContent)
         .environment(\.showProfile) { pk in open(pk) }
     }
 

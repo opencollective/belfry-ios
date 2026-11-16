@@ -71,6 +71,7 @@ shot 59b-role-picker rolepicker light
 shot 59c-profile-dark profile dark
 shot 62-accounts accounts light
 shot 60-meeting meeting light
+shot 60b-meeting-people meetingpeople light
 shot 61-meeting-form meetingform light
 shot 63-event-dark event dark
 shot 64-event-up eventup light

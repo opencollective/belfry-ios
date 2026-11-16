@@ -47,7 +47,9 @@ struct ChannelView: View {
         let pinnedIds = Set(d.pinned(id).map(\.id))
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
+                // an event's chat (embedded) is short: a plain stack, every row measured, so its
+                // end is exact at any height of the event's header (lazy rows left it blank)
+                FeedStack(lazy: !embedded) {
                     if rows.isEmpty {
                         if model.guestReading && topic == nil {
                             Text("No messages here yet.").foregroundStyle(.secondary).padding(32).frame(maxWidth: .infinity)
@@ -96,6 +98,10 @@ struct ChannelView: View {
                 if atBottom && focus == nil && scrollTarget == nil { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .scrollDismissesKeyboard(.interactively)
+            // focusing the composer shows the latest messages (iMessage)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+                if focus == nil && scrollTarget == nil && model.visibleChannel == id { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+            }
             .refreshable { await model.refresh() }
             .onAppear {
                 model.markSeen(id)
@@ -106,9 +112,12 @@ struct ChannelView: View {
                 applyLaunch()
                 if pendingThreadLaunch { openBusiestThread(proxy) }
             }
-            .onChange(of: rows.count) { _, _ in
+            .onChange(of: rows.count) { old, new in
                 if UIApplication.shared.applicationState == .active { model.markChannelRead(id) }
-                if focus == nil && scrollTarget == nil { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+                // a new message: glide to it; the first load (or many at once): jump and settle
+                if focus == nil && scrollTarget == nil {
+                    if old > 0 && new - old <= 3 { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } else { toEnd(proxy) }
+                }
                 if pendingThreadLaunch { openBusiestThread(proxy) }
             }
             .onChange(of: scrollTarget) { _, t in if let t { jump(to: t, proxy); scrollTarget = nil } }
@@ -275,7 +284,10 @@ struct ChannelView: View {
     /// Opening a channel: its end, once the lazy rows are laid out (twice: they settle).
     func toEnd(_ proxy: ScrollViewProxy) {
         DispatchQueue.main.async { proxy.scrollTo("bottom", anchor: .bottom) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { if scrollTarget == nil { proxy.scrollTo("bottom", anchor: .bottom) } }
+        // lazy rows are estimated first: scroll again once they are measured
+        for t in [0.2, 0.5, 1.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + t) { if scrollTarget == nil && focus == nil { proxy.scrollTo("bottom", anchor: .bottom) } }
+        }
     }
 
     func jump(to mid: String, _ proxy: ScrollViewProxy) {
@@ -333,6 +345,19 @@ struct ChannelView: View {
         case "chsearch": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { search = true }
         case "add": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { model.launchAdd = true }
         default: break
+        }
+    }
+}
+
+/// The feed's stack: lazy for a channel, plain for an event's chat.
+struct FeedStack<Content: View>: View {
+    let lazy: Bool
+    @ViewBuilder let content: () -> Content
+    var body: some View {
+        if lazy {
+            LazyVStack(alignment: .leading, spacing: 0, content: content)
+        } else {
+            VStack(alignment: .leading, spacing: 0, content: content)
         }
     }
 }
