@@ -77,6 +77,22 @@ final class AppModel: ObservableObject {
     @Published var accounts = AccountList()
     /// "Add an account": the sign-in over the app; the open account stays until the new one is in.
     @Published var addingAccount = false
+    /// iPhone: the bottom bar's place (Home · Calendar · Groups · Town; Create is a sheet).
+    @Published var tab: AppTab = .home
+    /// The Create sheet (the bar's ＋).
+    @Published var showCreate = false
+    /// The selected place's bar item tapped again: back to its root.
+    @Published var tabReselected = 0
+    /// The accounts / belfries switcher (the belfry's name at the top of a place, ⇅ in the drawer).
+    @Published var showAccounts = false
+    /// A channel whose composer takes the keyboard when it appears (Create → Message).
+    @Published var focusComposer: String?
+    /// A guest sent "Apply to become a member" (demo only until the belfry takes it: SERVER-NEEDS 12).
+    @Published var guestApplied = false
+    /// The Create sheet's first row (Calendar: Event; Groups: Group; else Message).
+    @Published var createFirst: CreateWhat = .message
+    /// The channel open in Town (Create's "Where" starts there when Town is the place).
+    var townChannel = generalId
     private var cachedMentions: (Int, [NostrEvent])?
     var mentions: [NostrEvent] {
         if let c = cachedMentions, c.0 == version { return c.1 }
@@ -214,9 +230,10 @@ final class AppModel: ObservableObject {
     var derive: Derive {
         if let c = cachedDerive, c.0 == version { return c.1 }
         let pendingIds = Set((engine?.outboxItems() ?? []).filter { $0.signed == nil }.map(\.localId))
-        let ctx = WorldContext(me: me, domain: config.domain, communityName: config.name, communityAdmins: Set(config.admins),
+        var ctx = WorldContext(me: me, domain: config.domain, communityName: config.name, communityAdmins: Set(config.admins),
                                groupsKey: groupsKey, bridgeKey: dms?.bridge, groupsRelay: config.groupsRelay,
                                agents: config.agents, kinds: kinds, pending: pendingIds, groupsAbsent: groupsAbsent)
+        ctx.placeNames = true // Square, Fairground, Assembly, Scriptorium (SPEC 19.31)
         let list = engine?.snapshot() ?? []
         let d = Derive(events: list, context: ctx)
         // offline first: the channels nothing arrived in keep what the last snapshot worked out
@@ -499,8 +516,8 @@ final class AppModel: ObservableObject {
                               reading: reader ? true : nil, guestChannel: reader ? generalId : nil)
         var cfg = BelfryConfig.defaults(domain: "demo.belfry.sh")
         cfg.name = "Riverside Commons"
-        // Sam administers the demo belfry (settings, roles, requests show); the reader doesn't
-        cfg.admins = reader ? [] : [(try! LocalSigner(secret: Demo.meSecret)).pubkey]
+        // Sam administers the demo belfry (settings, roles, requests, the charter show); the reader is a guest
+        cfg.admins = [(try! LocalSigner(secret: Demo.meSecret)).pubkey]
         open(s, config: cfg)
         groupsKey = Demo.signer("groups").pubkey
         groupsAbsent = [Demo.deletedGroup: 0] // what the relay's answer would leave (SPEC 19.30)

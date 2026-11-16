@@ -20,7 +20,7 @@ public struct Role: Hashable, Sendable, Identifiable, Codable {
     /// What a belfry without the roles API answers (the two built-ins).
     public static let builtins = [
         Role(id: member, label: "Member", description: "Joins any open channel, invites guests, votes.", builtin: true, isDefault: true),
-        Role(id: admin, label: "Admin", description: "Everything, plus settings and roles.", builtin: true, powers: true),
+        Role(id: admin, label: "Steward", description: "Runs the belfry: settings, roles, the charter.", builtin: true, powers: true),
     ]
 }
 
@@ -46,7 +46,9 @@ public struct RolesInfo: Hashable, Sendable, Codable {
         for o in b["roles"] as? [[String: Any]] ?? [] {
             guard let id = o["id"] as? String, !id.isEmpty, let label = o["label"] as? String, !label.isEmpty,
                   !list.contains(where: { $0.id == id }) else { continue }
-            list.append(Role(id: id, label: label.sliceUnits(40), description: (o["description"] as? String ?? "").sliceUnits(200),
+            // the built-in admin reads Steward (Steward · Member · Guest), whatever the belfry calls it
+            let shown = id == Role.admin && label.lowercased() == "admin" ? "Steward" : label
+            list.append(Role(id: id, label: shown.sliceUnits(40), description: (o["description"] as? String ?? "").sliceUnits(200),
                              builtin: o["builtin"] as? Bool ?? (id == Role.member || id == Role.admin),
                              powers: o["powers"] as? Bool ?? (id == Role.admin), isDefault: o["default"] as? Bool ?? false))
         }

@@ -16,6 +16,8 @@ enum SidebarItem: Hashable {
     case settings
     /// The archived channels and groups (the last row of the channel list, SPEC 19.30).
     case archived
+    /// The charter's agreements (Town drawer, SPEC 19.32).
+    case charter
 }
 
 extension SidebarItem {
@@ -28,6 +30,7 @@ extension SidebarItem {
         case .events: return "events"
         case .settings: return "settings"
         case .archived: return "archived"
+        case .charter: return "charter"
         }
     }
 
@@ -40,6 +43,7 @@ extension SidebarItem {
         case "events": self = .events
         case "settings": self = .settings
         case "archived": self = .archived
+        case "charter": self = .charter
         default:
             guard key.hasPrefix("c:") else { return nil }
             let id = String(key.dropFirst(2))
@@ -70,10 +74,29 @@ struct RootView: View {
     /// The accounts on this phone (behind "you" at the drawer's bottom, SPEC 19.24).
     @State private var switcher = false
     @State private var notifications = false
+    @State private var applying = false
     @State private var focus: SearchTarget?
     @State private var visibility = NavigationSplitViewVisibility.automatic
+    /// Town's stack (and the iPad's detail).
     @State private var path = NavigationPath()
+    @State private var homePath = NavigationPath()
+    @State private var calendarPath = NavigationPath()
+    @State private var groupsPath = NavigationPath()
     @State private var drawer = false
+
+    private var phone: Bool { hSize != .regular }
+    /// The stack of the place on screen (Town's on iPad).
+    private var current: Binding<NavigationPath> {
+        guard phone else { return $path }
+        switch model.tab {
+        case .home: return $homePath
+        case .calendar: return $calendarPath
+        case .groups: return $groupsPath
+        case .town: return $path
+        }
+    }
+
+    private func push<V: Hashable>(_ v: V) { current.wrappedValue.append(v) }
 
     var body: some View {
         withSheets
@@ -82,22 +105,40 @@ struct RootView: View {
             .sheet(isPresented: $newChannel) { NewChannelSheet { id in selection = .channel(id) } }
             .sheet(isPresented: $account) { AccountSheet() }
             .sheet(isPresented: $switcher) {
-                AccountsSheet { switcher = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { account = true } }
+                AccountsSheet { switcher = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { openMe() } }
+            }
+            .onChange(of: model.showAccounts) { _, on in if on { model.showAccounts = false; switcher = true } }
+            .sheet(isPresented: $model.showCreate) {
+                CreateMenuSheet(start: model.tab == .town ? model.townChannel : generalId, first: model.createFirst) { id in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { openFromCreate(id) }
+                }
             }
             .fullScreenCover(isPresented: $model.addingAccount) {
                 SignInView(domainHint: nil, onCancel: { model.cancelAddingAccount() })
             }
             .sheet(isPresented: $notifications) { NavigationStack { NotificationsView() } }
+            .sheet(isPresented: $applying) { ApplySheet() }
     }
 
     private var routed: some View {
         layout
         .environment(\.openChannel) { id, message in
+            closeDrawer()
+            // a chat pushes over the place it was opened from (Home, Calendar, Groups)
+            if phone && model.tab != .town {
+                pushChat(id, message)
+                return
+            }
             focus = message.map { SearchTarget(channel: id, message: $0) }
             if selection == .channel(id) { path = NavigationPath() } else { selection = .channel(id) }
+        }
+        .onChange(of: model.tabReselected) { _, _ in current.wrappedValue = NavigationPath(); closeDrawer() }
+        .onChange(of: model.tab) { _, t in
             closeDrawer()
+            if !model.isDemo { UserDefaults.standard.set(t.rawValue, forKey: AppModel.perAccount("belfry-last-tab")) }
         }
         .onChange(of: selection) { _, v in
+            if case .channel(let id) = v { model.townChannel = id }
             path = NavigationPath()
             // offline first: the next start opens here, from disk, before any network work
             if let v, !model.isDemo { UserDefaults.standard.set(v.key, forKey: AppModel.perAccount("belfry-last-screen")) }
@@ -105,8 +146,14 @@ struct RootView: View {
         .onChange(of: model.messageAuthor) { _, pk in
             guard let pk else { return }
             model.messageAuthor = nil
-            selection = .messages
             let conv = MailThreads.nostrConv(author: pk, pTags: [], me: model.me)
+            if phone {
+                // Messages and the conversation, pushed on the place on screen
+                push(PlaceRoute.messages)
+                push(ConvRoute(conv: conv))
+                return
+            }
+            selection = .messages
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 var p = NavigationPath()
                 p.append(ConvRoute(conv: conv))
@@ -124,7 +171,7 @@ struct RootView: View {
             let ticket = model.openEventTicket
             model.openEventTicket = nil
             closeDrawer()
-            path.append(EventRoute(key: k, ticket: ticket))
+            push(EventRoute(key: k, ticket: ticket))
         }
         .sheet(item: Binding(get: { model.showEvents.map { EventKey(key: $0) } }, set: { model.showEvents = $0?.key })) { k in
             EventsList(channel: k.key.isEmpty ? nil : k.key)
@@ -136,14 +183,14 @@ struct RootView: View {
             model.openGroup = nil
             hideKeyboard()
             closeDrawer()
-            if model.derive.isArchived(id) { path.append(ChannelRoute(id: id)) } else { path.append(GroupRoute(id: id)) }
+            if model.derive.isArchived(id) { push(ChannelRoute(id: id)) } else { push(GroupRoute(id: id)) }
         }
         // a profile slides in on the main screen's stack (Contacts), never a bottom sheet
         .onChange(of: model.openProfile) { _, pk in
             guard let pk else { return }
             model.openProfile = nil
             closeDrawer()
-            path.append(ProfileKey(pubkey: pk))
+            push(ProfileKey(pubkey: pk))
         }
         .sheet(item: Binding(get: { model.guestReading ? nil : model.pendingInvite }, set: { if $0 == nil { model.pendingInvite = nil } })) { inv in
             JoinWithAccountSheet(invite: inv)
@@ -157,9 +204,14 @@ struct RootView: View {
             model.pushOpen = nil
             closeDrawer()
             if let id = p.channel {
+                if phone { model.tab = .town }
                 focus = p.message.map { SearchTarget(channel: id, message: $0) }
                 if let root = p.thread { model.openThread = ThreadRoute(group: id, root: root) }
                 if selection == .channel(id) { path = NavigationPath() } else { selection = .channel(id) }
+            } else if phone {
+                model.tab = .home
+                homePath = NavigationPath()
+                homePath.append(PlaceRoute.messages)
             } else {
                 selection = .messages
             }
@@ -167,6 +219,7 @@ struct RootView: View {
         .onChange(of: model.joinedChannel) { _, id in
             guard let id else { return }
             model.joinedChannel = nil
+            if phone { model.tab = .town }
             selection = .channel(id)
         }
     }
@@ -185,6 +238,10 @@ struct RootView: View {
                 selection = SidebarItem(key: k, groups: model.groups)
             }
             if selection == nil { selection = firstChannel() }
+            if !model.isDemo, let t = UserDefaults.standard.string(forKey: AppModel.perAccount("belfry-last-tab")).flatMap(AppTab.init(rawValue:)) {
+                model.tab = t
+            }
+            if model.guestReading || model.derive.amGuest, model.tab == .groups { model.tab = .home }
             applyLaunchScreen()
             // a guest link's channel, set while the loading screen stood here
             if let id = model.joinedChannel { model.joinedChannel = nil; selection = .channel(id) }
@@ -200,12 +257,56 @@ struct RootView: View {
                 detail
             }
         } else {
-            DrawerContainer(open: $drawer, edgeSwipe: path.isEmpty) {
-                drawerList(inDrawer: true)
-            } main: {
-                detail.environment(\.openDrawer) { openDrawer() }
+            ZStack {
+                place(.home) {
+                    NavigationStack(path: $homePath) { HomeView().tabBarInset().placeDestinations() }
+                }
+                place(.calendar) {
+                    NavigationStack(path: $calendarPath) { CalendarView().tabBarInset().placeDestinations() }
+                }
+                place(.groups) {
+                    NavigationStack(path: $groupsPath) { GroupsView().tabBarInset().placeDestinations() }
+                }
+                place(.town) {
+                    DrawerContainer(open: $drawer, edgeSwipe: path.isEmpty) {
+                        drawerList(inDrawer: true)
+                    } main: {
+                        detail.environment(\.openDrawer) { openDrawer() }
+                    }
+                }
             }
+            .environment(\.openConversation) { conv in push(ConvRoute(conv: conv)) }
         }
+    }
+
+    /// Every place stays in the tree (its stack and scroll position kept); only one shows.
+    private func place<V: View>(_ t: AppTab, @ViewBuilder _ content: () -> V) -> some View {
+        let on = model.tab == t
+        return content()
+            .opacity(on ? 1 : 0)
+            .allowsHitTesting(on)
+            .accessibilityHidden(!on)
+    }
+
+    /// A channel, group or event's chat pushed on the place on screen.
+    private func pushChat(_ id: String, _ message: String?) {
+        if Channel.typeOf(id) == .event, let e = model.derive.eventOfGroup(id), e.isNew {
+            push(EventRoute(key: e.coord))
+        } else {
+            push(ChatRoute(id: id, focus: message))
+        }
+    }
+
+    /// Create → Message: the channel with the keyboard up.
+    private func openFromCreate(_ id: String) {
+        model.focusComposer = id
+        if phone && model.tab != .town { pushChat(id, nil) } else { selection = .channel(id) }
+    }
+
+    /// Me: pushed on the place on screen (phone), the sheet on iPad.
+    private func openMe() {
+        closeDrawer()
+        if phone { push(PlaceRoute.me) } else { account = true }
     }
 
     private var detail: some View {
@@ -227,16 +328,16 @@ struct RootView: View {
             case .events: EventsScreen()
             case .settings: BelfrySettings(screen: true)
             case .archived: ArchivedScreen()
+            case .charter: CharterView().toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
             case nil: ContentUnavailableView("Pick a channel", systemImage: "number", description: Text("Your community's channels are in the list."))
                     .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
             }
             }
-            .navigationDestination(for: ProfileKey.self) { k in ProfileView(pubkey: k.pubkey, pushed: true, group: k.group) }
-            .navigationDestination(for: EventRoute.self) { r in EventScreen(key: r.key, ticket: r.ticket) }
-            .navigationDestination(for: GroupRoute.self) { r in GroupPage(id: r.id) }
-            .navigationDestination(for: ChannelRoute.self) { r in ChannelScreen(id: r.id, pushed: true) }
+            .tabBarInset(phone)
+            .placeDestinations()
         }
         .environment(\.openConversation) { conv in
+            if phone { path.append(ConvRoute(conv: conv)); return }
             var p = NavigationPath()
             p.append(ConvRoute(conv: conv))
             path = p
@@ -251,6 +352,8 @@ struct RootView: View {
                       },
                       newChannel: { hideKeyboard(); newChannel = true },
                       account: { hideKeyboard(); switcher = true },
+                      openMe: { hideKeyboard(); openMe() },
+                      apply: { hideKeyboard(); applying = true },
                       open: { target in
                           focus = target
                           selection = .channel(target.channel)
@@ -276,7 +379,50 @@ struct RootView: View {
     }
 
     private func applyLaunchScreen() {
+        // screenshots: the earlier screens are Town's; the places of the bottom bar have their own
+        if model.launch.screen != nil { model.tab = .town }
+        switch model.launch.guest {
+        case "home": model.tab = .home
+        case "calendar": model.tab = .calendar
+        case "apply":
+            model.tab = .home
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { applying = true }
+        case "drawer":
+            model.tab = .town
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
+        case .some: model.tab = .town
+        case nil: break
+        }
         switch model.launch.screen {
+        case "home", "homecalm": model.tab = .home
+        case "calendar": model.tab = .calendar
+        case "groups": model.tab = .groups
+        case "groupsall":
+            model.tab = .groups // GroupsView picks All from the launch screen
+        case "create":
+            model.tab = .home
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.createFirst = .message; model.showCreate = true }
+        case "town": selection = .channel(generalId)
+        case "towndrawer":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
+        case "mytodos":
+            model.tab = .home
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { homePath.append(PlaceRoute.todos) }
+        case "charter": selection = .charter
+        case "charterhome":
+            model.tab = .home
+        case "whoagreed": selection = .charter // CharterView opens the first rule's list
+        case "agreement": selection = .charter // CharterView opens the new agreement form
+        case "myprofile":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openProfile = model.me }
+        case "addagent":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openProfile = model.me } // ProfileView opens the sheet
+        case "meplace":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { path.append(PlaceRoute.me) }
         case "feed", "thread", "details", "invite", "actions", "pulldown", "pullfull", "menu", "delete", "edit", "threadscreen", "chsearch", "add", "composer": selection = .channel(generalId)
         case "drawer", "channels":
             selection = .channel(generalId)
@@ -363,7 +509,8 @@ struct DrawerButton: View {
     @Environment(\.openDrawer) private var openDrawer
     var body: some View {
         if let openDrawer {
-            let n = model.unreadDMs + model.newMentions + model.requestCount
+            // the town's unread channels only: messages, mentions and requests are on Home
+            let n = model.townUnread
             Button(action: openDrawer) {
                 Image(systemName: "line.3.horizontal")
                     .overlay(alignment: .topTrailing) {
@@ -485,12 +632,20 @@ struct ChannelDrawer: View {
     let select: (SidebarItem) -> Void
     let newChannel: () -> Void
     let account: () -> Void
+    var openMe: () -> Void = {}
+    var apply: () -> Void = {}
     let open: (SearchTarget) -> Void
     @FocusState private var searching: Bool
     @State private var ordering = false
     @State private var settings = false
 
     var body: some View {
+        if inDrawer { TownDrawer(current: current, select: select, newChannel: newChannel, account: account, me: openMe, apply: apply, open: open) } else { sidebar }
+    }
+
+    /// iPad's sidebar: the list as it was before the bottom bar (Members, events, mentions,
+    /// messages, the channels).
+    @ViewBuilder private var sidebar: some View {
         let _ = model.version
         let d = model.derive
         let s = d.channelSections()

@@ -267,6 +267,40 @@ enum Demo {
         msg(ps["chloe"]!, "garden-3f2a", now - 2 * day, "The basil did not survive the cold night 🥲")
         msg(ps["dev"]!, "repair-cafe-91bc", now - 3 * day, "Who can fix a **sewing machine**? Asking for Mrs. Dupont.")
         msg(ps["emma"]!, "kitchen-7d10", now - 6 * 3600, "Soup on Thursday, I need two helpers to chop.")
+        // 2026-11-16 (bottom bar): Assembly (#proposals under its default name), a group Sam is in
+        // with news, a to-do on Sam, and the charter (six agreements Sam wrote; the newest not
+        // ticked by Sam yet: Home shows "1 new agreement to read")
+        channel("proposals", "proposals", "Proposals and votes", admins: [ps["emma"]!.pubkey], members: all, at: now - 25 * day)
+        msg(ps["emma"]!, "proposals", now - 2 * day, "Quiet hours are up for a vote in their own proposal.")
+        let crew = "pod-garden-crew-8a1c"
+        evs.append(ev(ps["ben"]!, 9007, now - 8 * day, [["h", crew]]))
+        evs.append(ev(ps["ben"]!, 9002, now - 8 * day, [["h", crew], ["name", "Garden crew"], ["about", "The people who keep the beds alive"], ["open"]]))
+        channel(crew, "Garden crew", "The people who keep the beds alive", admins: [ps["ben"]!.pubkey],
+                members: [me, ps["ben"]!.pubkey, ps["chloe"]!.pubkey, ps["ana"]!.pubkey], at: now - 8 * day)
+        evs.append(ev(ps["ben"]!, 9, now - 8 * day, [["h", "garden-3f2a"], ["pod", crew]], "⬡ New group: Garden crew · The people who keep the beds alive"))
+        msg(ps["chloe"]!, crew, now - 3 * 3600, "Who waters on Sunday?")
+        msg(ps["ben"]!, crew, now - 2 * 3600, "I'll bring the compost sieve on Saturday")
+        if let lock = evs.first(where: { $0.kind == 2100 && $0.content == "Fix the hall's front door lock" }) {
+            evs.append(ev(you, 2101, now - 3600, Actions.taskAction("general", taskId: lock.id, action: "claim").tags))
+        }
+        for dr in Actions.createCharter() { evs.append(ev(you, dr.kind, now - 20 * day, dr.tags, dr.content)) }
+        let rules: [(String, String)] = [
+            ("We look after each other", "Kind words, good faith; speak up when someone isn't."),
+            ("What's said here stays here", "Ask before sharing a message or photo outside."),
+            ("Shared things come back", "Return tools within a week, clean and working."),
+            ("Quiet hours after 22:00", "In the hall and the garden, every day."),
+            ("Big changes go to the Assembly", "Proposed and voted on, not just done."),
+            ("Leave it better than you found it", "Tidy the hall and the kitchen after use."),
+        ]
+        for (i, r) in rules.enumerated() {
+            let newest = i == rules.count - 1
+            let at = newest ? now - day : now - 20 * day + i
+            let rule = ev(you, 2100, at, Actions.addAgreement(title: r.0, about: r.1, order: i + 1).tags, r.0)
+            evs.append(rule)
+            let who = newest ? ["ana", "dev"] : (i == 3 ? ["ana", "ben", "dev", "emma"] : ["ana", "ben", "chloe", "dev", "emma"])
+            for (k, name) in who.enumerated() { evs.append(ev(ps[name]!, 2101, at + 600 + k, Actions.agree(rule.id, true).tags)) }
+            if !newest { evs.append(ev(you, 2101, at + 900, Actions.agree(rule.id, true).tags)) }
+        }
         // guest mode: two people opened a guest link of #general and only read ("2 guests are reading")
         for k in ["reader-1", "reader-2"] {
             evs.append(ev(groupsKey, 9000, now - 900, [["h", "general"], ["p", signer(k).pubkey, "member"], ["guest", "2026-12-12"], ["invited-by", ps["ana"]!.pubkey], ["unsaved", "1"], ["reading", "1"]]))

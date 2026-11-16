@@ -23,9 +23,8 @@ struct MessagesView: View {
             }
         }
         .listStyle(.plain)
-        .navigationTitle("Direct messages")
+        .navigationTitle("Messages")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: ConvRoute.self) { ConversationView(conv: $0.conv) }
         .refreshable { await model.refresh() }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { DrawerButton() }

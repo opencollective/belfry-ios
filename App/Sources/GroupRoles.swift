@@ -74,7 +74,7 @@ struct GroupRoleSection: View {
                 if editable {
                     ForEach(choices(e != nil), id: \.id) { c in choiceRow(c, current: current) }
                 } else {
-                    LabeledContent("Role", value: fixed && !isCreator ? (d.isBelfryAdmin(pubkey) ? "Admin of the belfry" : "Admin") : label(current, event: e != nil))
+                    LabeledContent("Role", value: fixed && !isCreator ? (d.isBelfryAdmin(pubkey) ? "Steward of the belfry" : "Admin") : label(current, event: e != nil))
                 }
                 if editable && pubkey != model.me && inGroup {
                     Button(role: .destructive) { confirmRemove = true } label: {
@@ -86,7 +86,7 @@ struct GroupRoleSection: View {
                 Text("In \(title)")
             } footer: {
                 if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) }
-                else if editable && e != nil { Text("Co-hosts can edit the event and decide who comes. Stewards check people in.") }
+                else if editable && e != nil { Text("Co-hosts can edit the event and decide who comes. The door checks people in.") }
             }
             .confirmationDialog("Remove \(model.name(pubkey)) from \(title)?", isPresented: $confirmRemove, titleVisibility: .visible) {
                 Button("Remove", role: .destructive) { remove() }
@@ -99,7 +99,7 @@ struct GroupRoleSection: View {
     private func choices(_ event: Bool) -> [Choice] {
         if event {
             return [Choice(id: "attendee", label: "Attendee", role: .member), Choice(id: "cohost", label: "Co-host", role: .admin),
-                    Choice(id: "steward", label: "Steward", role: .steward)]
+                    Choice(id: "steward", label: PlaceNames.door, role: .steward)]
         }
         return [Choice(id: "member", label: "Member", role: .member), Choice(id: "admin", label: "Admin", role: .admin)]
     }

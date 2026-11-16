@@ -34,6 +34,10 @@ public struct WorldContext: Hashable, Sendable {
     public var groupsAbsent: [String: Int]
     /// For day separators and all-day calendar events.
     public var timeZone: TimeZone
+    /// The on-brand names of the town's default places (SPEC 19.31): general reads "Square",
+    /// events "Fairground", proposals "Assembly", website "Scriptorium" while the group's own name
+    /// is still its id. Display only; ids never change. Off in the shared vectors.
+    public var placeNames: Bool = false
 
     public init(me: String, domain: String = "", communityName: String = "", communityAdmins: Set<String> = [],
                 groupsKey: String? = nil, bridgeKey: String? = nil, groupsRelay: String = "",
@@ -641,6 +645,9 @@ public final class Derive {
             map[sub] = g
         }
         for id in order where (map[id]!.isPod || map[id]!.isProposal) && map[id]!.parent == nil { map[id]!.parent = generalId }
+        if ctx.placeNames {
+            for id in order { if let n = PlaceNames.display(id: id, name: map[id]!.name) { map[id]!.name = n } }
+        }
         // reading guests are in no member list or count until they join (the relay's 39002 has them)
         for id in order {
             guard var g = map[id], !g.reading.isEmpty else { continue }
@@ -1236,6 +1243,8 @@ public final class Derive {
     public static func listIdFor(_ groupId: String) -> String { String(Crypto.sha256("osv-village:" + groupId).hex.prefix(16)) }
 
     private var tasksCache = [String: [TodoTask]]()
+    /// Charter.swift: the agreements, worked out once per snapshot.
+    var charterCache: [Agreement]?
 
     /// A snapshot built on the one before (SPEC 19.22): when what arrived is only everyday events
     /// (messages without cards, reactions, replies, todos, seen marks, DMs) and the context is the

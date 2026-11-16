@@ -79,7 +79,7 @@ public extension Derive {
     /// order; groups (pods) and proposals I am in nest under the channel they were posted in.
     func channelSections() -> (pub: [Group], members: [Group], nested: [String: [Group]], orphans: [Group]) {
         let all = groups()
-        let chans = all.filter { $0.type == .channel }
+        let chans = all.filter { $0.type == .channel && $0.id != Derive.charterId }
         let pods = all.filter { ($0.isPod || $0.isProposal) && ($0.members.contains(me) || $0.admins.contains(me)) }
         let ids = Set(all.map(\.id))
         var nested = [String: [Group]]()

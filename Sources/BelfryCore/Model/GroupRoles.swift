@@ -23,7 +23,7 @@ public enum EventRole: String, Sendable, CaseIterable {
         switch self {
         case .host: return "Host"
         case .cohost: return "Co-host"
-        case .steward: return "Steward"
+        case .steward: return PlaceNames.door
         case .attendee: return "Attendee"
         }
     }

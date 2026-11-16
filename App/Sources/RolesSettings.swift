@@ -33,7 +33,7 @@ struct RolesSettings: View {
                     }
                     .buttonStyle(.plain)
                 }
-            } footer: { Text("Every member has one role: a label people see on profiles and in member lists. Admin is the only role with powers.") }
+            } footer: { Text("Every member has one role: a label people see on profiles and in member lists. Steward is the only role with powers.") }
             Section {
                 Button { adding = true } label: { Label("New role", systemImage: "plus") }
             }

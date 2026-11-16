@@ -1,0 +1,312 @@
+import BelfryCore
+import SwiftUI
+
+// The charter (SPEC 19.32, boards Charter and Join-Member 2): a short list of agreements every
+// person ticks for themselves. Members: "You agreed · <date>", their own ticks, a count under each
+// rule. Stewards also write, edit, reorder and remove rules, and a count opens Agreed / Not yet.
+// No charter yet: stewards see "Write the first agreement"; nobody else has a Charter row.
+// Also: My to-dos (Home's tile), across the channels and groups I'm in.
+
+struct CharterView: View {
+    @EnvironmentObject var model: AppModel
+    @State private var writing = false
+    @State private var editing: Agreement?
+    @State private var ordering = false
+    @State private var who: Agreement?
+
+    var body: some View {
+        let _ = model.version
+        let d = model.derive
+        let rules = d.charter()
+        let steward = d.isCommunityAdmin
+        let members = model.memberKeys
+        List {
+            if rules.isEmpty {
+                Section {
+                    ContentUnavailableView {
+                        Label("No agreements yet", systemImage: "checkmark.seal")
+                    } description: {
+                        Text("A charter is a short list of agreements. Everyone who joins ticks each one; members see new ones on Home.")
+                    } actions: {
+                        if steward {
+                            Button("Write the first agreement") { hideKeyboard(); writing = true }.buttonStyle(.brand)
+                        }
+                    }
+                    .listRowBackground(Color.clear)
+                }
+            } else {
+                Section {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Our charter").font(.title2.bold())
+                        Text(header(rules)).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    .listRowBackground(Color.clear)
+                }
+                Section {
+                    ForEach(rules) { r in
+                        AgreementRow(rule: r, members: members, steward: steward,
+                                     edit: { editing = r }, who: { who = r })
+                    }
+                } footer: {
+                    if steward { Text("Changing a rule's words asks everyone to agree to that rule again.") }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Charter")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if steward && !rules.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button { writing = true } label: { Label("New agreement", systemImage: "plus") }
+                        Button { ordering = true } label: { Label("Reorder or remove", systemImage: "arrow.up.arrow.down") }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                    .accessibilityLabel("Edit the charter")
+                }
+            }
+        }
+        .sheet(isPresented: $writing) { AgreementForm(editing: nil) }
+        .sheet(item: $editing) { AgreementForm(editing: $0) }
+        .sheet(isPresented: $ordering) { CharterOrderSheet() }
+        .navigationDestination(item: $who) { WhoAgreed(rule: $0) }
+        .onAppear {
+            switch model.launch.screen {
+            case "whoagreed": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { who = model.derive.charter().last }
+            case "agreement": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { writing = true }
+            default: break
+            }
+        }
+    }
+
+    private func header(_ rules: [Agreement]) -> String {
+        let d = model.derive
+        if let at = d.charterAgreedAt() {
+            return "You agreed · " + Date(timeIntervalSince1970: TimeInterval(at)).formatted(.dateTime.day().month(.abbreviated))
+        }
+        let left = rules.filter { $0.agreed[model.me] == nil }.count
+        if d.amGuest { return "\(rules.count) short agreements" }
+        return left == rules.count ? "Tick each one you agree to." : (left == 1 ? "1 new since you agreed" : "\(left) to read")
+    }
+}
+
+/// One rule: my tick, its title and line, how many members agreed (a steward taps it for who).
+private struct AgreementRow: View {
+    @EnvironmentObject var model: AppModel
+    let rule: Agreement
+    let members: Set<String>
+    let steward: Bool
+    let edit: () -> Void
+    let who: () -> Void
+
+    var body: some View {
+        let mine = rule.agreed[model.me] != nil
+        let isNew = !mine
+        let count = rule.agreed.keys.filter { members.contains($0) }.count
+        HStack(alignment: .top, spacing: 12) {
+            if !model.derive.amGuest {
+                Button { model.agree(rule, !mine) } label: {
+                    Image(systemName: mine ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundStyle(mine ? Color.brand : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(mine ? "Agreed: \(rule.title)" : "Agree: \(rule.title)")
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(rule.title).font(.body.weight(.semibold))
+                    if isNew && !model.derive.amGuest { Chip(text: rule.stale.contains(model.me) ? "CHANGED" : "NEW", tint: .orange) }
+                }
+                if !rule.about.isEmpty { Text(rule.about).font(.subheadline).foregroundStyle(.secondary) }
+                Button(action: steward ? who : {}) {
+                    HStack(spacing: 4) {
+                        Text(countLine(count))
+                        if steward { Image(systemName: "chevron.right").font(.caption2.weight(.semibold)) }
+                    }
+                    .font(.caption).foregroundStyle(steward ? Color.brand : .secondary)
+                }
+                .buttonStyle(.plain)
+                .disabled(!steward)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+        .listRowBackground(isNew && !model.derive.amGuest ? Color.orange.opacity(0.08) : nil)
+        .contextMenu {
+            if steward {
+                Button { edit() } label: { Label("Edit", systemImage: "pencil") }
+            }
+        }
+        .swipeActions(edge: .trailing) {
+            if steward { Button { edit() } label: { Label("Edit", systemImage: "pencil") }.tint(.gray) }
+        }
+    }
+
+    private func countLine(_ n: Int) -> String {
+        var s = "\(n) of \(max(members.count, n)) members"
+        if rule.textAt > rule.addedAt || Int.now - rule.addedAt < 14 * 86400 {
+            s = (rule.textAt > rule.addedAt ? "Changed " : "Added ") + Date(timeIntervalSince1970: TimeInterval(rule.textAt)).formatted(.dateTime.day().month(.abbreviated)) + " · " + s
+        }
+        return s
+    }
+}
+
+/// A steward writes or edits a rule: a title and an optional one-line explanation.
+struct AgreementForm: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    let editing: Agreement?
+    @State private var title = ""
+    @State private var about = ""
+    @State private var loaded = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("A short rule", text: $title, axis: .vertical).lineLimit(1...3).font(.body)
+                    TextField("One line to explain it (optional)", text: $about, axis: .vertical).lineLimit(1...3).font(.body)
+                } footer: {
+                    Text(editing == nil ? "Everyone ticks it for themselves; members see it on Home until they do."
+                                        : "Changing the words asks everyone to agree to this rule again.")
+                }
+                if let editing {
+                    Section {
+                        BusyButton(role: .destructive) { model.removeAgreement(editing); dismiss() } label: { Text("Remove this agreement") }
+                    }
+                }
+            }
+            .navigationTitle(editing == nil ? "New agreement" : "Edit agreement")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    BusyButton(editing == nil ? "Add" : "Save") {
+                        model.saveAgreement(editing, title: title, about: about)
+                        dismiss()
+                    }
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .onAppear {
+                guard !loaded else { return }
+                loaded = true
+                title = editing?.title ?? ""
+                about = editing?.about ?? ""
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+/// Reorder or remove the rules (stewards).
+private struct CharterOrderSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var rules = [Agreement]()
+    @State private var removed = [Agreement]()
+    @State private var loaded = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(rules) { r in Text(r.title) }
+                    .onMove { rules.move(fromOffsets: $0, toOffset: $1) }
+                    .onDelete { idx in removed += idx.map { rules[$0] }; rules.remove(atOffsets: idx) }
+            }
+            .environment(\.editMode, .constant(.active))
+            .navigationTitle("Reorder or remove")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    BusyButton("Save") {
+                        model.reorderCharter(rules, removed: removed)
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                guard !loaded else { return }
+                loaded = true
+                rules = model.derive.charter()
+            }
+        }
+    }
+}
+
+/// Who has and hasn't agreed to one rule (members). A tap opens their profile.
+private struct WhoAgreed: View {
+    @EnvironmentObject var model: AppModel
+    let rule: Agreement
+    @State private var tab = 0
+
+    var body: some View {
+        let members = model.memberKeys
+        let yes = members.filter { rule.agreed[$0] != nil }.sorted { model.name($0) < model.name($1) }
+        let not = members.filter { rule.agreed[$0] == nil }.sorted { model.name($0) < model.name($1) }
+        List {
+            Section {
+                Picker("Who", selection: $tab) {
+                    Text("Agreed · \(yes.count)").tag(0)
+                    Text("Not yet · \(not.count)").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .listRowBackground(Color.clear)
+            }
+            Section {
+                ForEach(tab == 0 ? yes : not, id: \.self) { pk in
+                    ProfileRow(pubkey: pk, detail: rule.stale.contains(pk) && tab == 1 ? "before the change" : nil)
+                }
+            } footer: {
+                if tab == 1 { Text("Members who haven't agreed see the rule on their Home. Guests aren't counted.") }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle(rule.title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// ---- My to-dos --------------------------------------------------------------------------------
+
+struct MyTodosView: View {
+    @EnvironmentObject var model: AppModel
+    var body: some View {
+        let _ = model.version
+        let t = model.myTodos
+        List {
+            if t.onMe.isEmpty && t.open.isEmpty {
+                ContentUnavailableView("No to-dos", systemImage: "checkmark.circle",
+                                       description: Text("To-dos made in your channels and groups show here."))
+                    .listRowBackground(Color.clear)
+            }
+            if !t.onMe.isEmpty { Section("On you") { ForEach(t.onMe) { TodoLine(ref: $0) } } }
+            if !t.open.isEmpty { Section("Open · nobody on it yet") { ForEach(t.open) { TodoLine(ref: $0) } } }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("My to-dos")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct TodoLine: View {
+    @EnvironmentObject var model: AppModel
+    let ref: TodoRef
+    var body: some View {
+        HStack(spacing: 12) {
+            Button { model.todo(ref.task, in: ref.group, ref.task.done ? "undone" : "done") } label: {
+                Image(systemName: ref.task.done ? "checkmark.circle.fill" : "circle").font(.title3).foregroundStyle(Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Done: " + ref.task.title)
+            NavigationLink(value: ChatRoute(id: ref.group)) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(ref.task.title).foregroundStyle(.primary)
+                    Text("#" + (model.group(ref.group)?.name ?? ref.group)).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+}

@@ -112,6 +112,9 @@ struct ProfileView: View {
                         Button(role: .destructive) { confirmRemove = true } label: { Label("Remove this agent…", systemImage: "person.badge.minus") }
                     }
                 }
+            } else if me && !d.isGuest(model.me) && !d.isAgent(model.me) && !model.guestReading {
+                // Add an agent (members only): the button, or my agent with Remove
+                AgentSection()
             } else {
                 let theirs = model.config.agents.filter { $0.value == pubkey }.map(\.key).sorted()
                 if !theirs.isEmpty {
@@ -277,7 +280,7 @@ struct RoleChoiceList: View {
                     .buttonStyle(.plain)
                     .disabled(saving != nil)
                 }
-            } footer: { Text("Admin is the only role with powers. A guest given a role becomes a member.") }
+            } footer: { Text("Steward is the only role with powers. A guest given a role becomes a member.") }
             if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
             Section { NavigationLink { RolesSettings() } label: { Label("Edit roles…", systemImage: "pencil") } }
         }
@@ -502,14 +505,23 @@ struct AccountSheet: View {
     @State private var confirm = false
     @State private var edit = false
     @State private var copied = false
+    /// Pushed from the Town drawer's last row (your face and name): Me as a screen, no Done.
+    var pushed = false
 
     var body: some View {
+        if pushed {
+            content
+        } else {
+            NavigationStack { content.toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } } }
+        }
+    }
+
+    private var content: some View {
         let _ = model.version
         let queued = model.engine?.outboxItems() ?? []
-        NavigationStack {
-            List {
+        return List {
                 Section {
-                    Button { edit = true } label: {
+                    Button { if pushed { model.openProfile = model.me } else { edit = true } } label: {
                         HStack(spacing: 14) {
                             Avatar(pubkey: model.me, size: 56)
                             VStack(alignment: .leading) {
@@ -517,7 +529,7 @@ struct AccountSheet: View {
                                 Text(model.derive.myAddress ?? model.config.domain).font(.subheadline).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text("Edit").font(.subheadline).foregroundStyle(Color.brand)
+                            if pushed { Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary) } else { Text("Edit").font(.subheadline).foregroundStyle(Color.brand) }
                         }
                     }
                     .buttonStyle(.plain)
@@ -556,14 +568,12 @@ struct AccountSheet: View {
             }
             .navigationTitle("You")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .confirmationDialog("Sign out of \(model.config.name)?", isPresented: $confirm, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) { dismiss(); Task { await model.signOutEverywhere() } }
             }
             .sheet(isPresented: $edit) { EditProfileView() }
             .onAppear { if model.launch.screen == "editprofile" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { edit = true } } }
         }
-    }
 }
 
 /// Signed-in devices: the sessions open on my key; end one (this device is marked).
