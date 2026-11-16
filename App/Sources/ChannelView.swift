@@ -35,6 +35,7 @@ struct ChannelView: View {
     @State private var proposeSite: Message?
     /// The feed shows its last rows: it stays there when its height changes (keyboard, header).
     @State private var atBottom = true
+    @State private var resizeScroll: Task<Void, Never>?
 
     var body: some View {
         let _ = model.version
@@ -93,8 +94,16 @@ struct ChannelView: View {
             .trackAtBottom($atBottom)
             // a lazy feed's bottom anchor lands short when rows are estimated: scroll to the end
             // when the feed's height changes while it showed its end
+            // back to the end when the height changes, debounced: scrolling on every frame of the
+            // event header's animation looped with the lazy rows' estimates (a UI test timed out)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
-                if atBottom && focus == nil && scrollTarget == nil { proxy.scrollTo("bottom", anchor: .bottom) }
+                // once the height has settled (not every frame of the header's animation)
+                guard atBottom && focus == nil && scrollTarget == nil else { return }
+                resizeScroll?.cancel()
+                resizeScroll = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    if !Task.isCancelled { proxy.scrollTo("bottom", anchor: .bottom) }
+                }
             }
             .scrollDismissesKeyboard(.interactively)
             // focusing the composer shows the latest messages (iMessage)

@@ -49,7 +49,9 @@ struct ThreadView: View {
                 withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
                 model.markThreadRead(group, rootId)
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in proxy.scrollTo("bottom", anchor: .bottom) }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
+                if #unavailable(iOS 18) { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
             .onAppear {
                 model.markThreadRead(group, rootId)
                 DispatchQueue.main.async { proxy.scrollTo("bottom", anchor: .bottom) }
