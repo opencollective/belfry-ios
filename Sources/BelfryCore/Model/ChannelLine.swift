@@ -153,7 +153,7 @@ extension Derive {
         } else if let p = f.proposals.first {
             line = ChannelLine(.proposal, p.title, " · " + p.status.rawValue); shown = "proposal"
         } else if let g, g.isPod {
-            line = ChannelLine(.pod, "", membersWord(g.members.count) + " · " + (g.closed ? "by application" : "open to join"), quiet: true, podMembers: g.members.count)
+            line = ChannelLine(.pod, "", membersWord(g.members.count) + (g.archived ? "" : " · " + (g.closed ? "by application" : "open to join")), quiet: true, podMembers: g.members.count)
         }
         line.counts = [
             LineCount(kind: "events", n: f.events.count - (shown == "event" ? 1 : 0), plus: shown == "event", label: "more events"),

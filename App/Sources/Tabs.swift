@@ -35,6 +35,7 @@ enum AppTab: String, CaseIterable, Hashable {
 /// The floating bar: four places and the ＋ in the middle (members).
 struct TabBar: View {
     @EnvironmentObject var model: AppModel
+    static let height: CGFloat = 66
 
     var body: some View {
         let guest = model.derive.amGuest || model.guestReading
@@ -104,8 +105,11 @@ struct TabBarInset: ViewModifier {
         content
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 TabBar()
+                    // fixed in both directions (CLAUDE.md layout rules): nothing around the
+                    // chat's composer measures the bar
+                    .frame(height: keyboard ? 0 : TabBar.height)
+                    .frame(maxWidth: .infinity)
                     .opacity(keyboard ? 0 : 1)
-                    .frame(height: keyboard ? 0 : nil)
                     .clipped()
                     .allowsHitTesting(!keyboard)
                     .accessibilityHidden(keyboard)

@@ -69,7 +69,7 @@ struct GroupCard: View {
                 .accessibilityIdentifier("group-card-deleted")
         case .archived:
             Button { hideKeyboard(); model.openGroup = id } label: {
-                card(g: g, name: name, line: "Archived", chevron: true).opacity(0.6)
+                card(g: g, name: name, line: g.map { membersLine($0) + " · Archived" } ?? "Archived", chevron: true).opacity(0.6)
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("group-card-archived")
@@ -82,9 +82,13 @@ struct GroupCard: View {
         }
     }
 
-    private func openLine(_ g: Channel) -> String {
+    private func membersLine(_ g: Channel) -> String {
         let n = g.members.count
-        return "\(n) \(n == 1 ? "member" : "members") · \(g.closed ? "by application" : "open to join")"
+        return "\(n) \(n == 1 ? "member" : "members")"
+    }
+
+    private func openLine(_ g: Channel) -> String {
+        membersLine(g) + " · " + (g.closed ? "by application" : "open to join")
     }
 
     private func card(g: Channel?, name: String, line: String, chevron: Bool) -> some View {

@@ -97,8 +97,8 @@ struct GroupPage: View {
     private func subtitle(_ g: Channel, _ parent: Channel?) -> String {
         var s = "Group"
         if let p = parent { s += " in " + (p.isPod ? p.name : "#" + p.name) }
-        s += " · "
-        s += g.closed ? "by request" : "open to members"
+        // an archived group takes nobody: no "open to members" (its banner says it is archived)
+        if !g.archived { s += " · " + (g.closed ? "by application" : "open to members") }
         return s
     }
 
