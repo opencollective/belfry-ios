@@ -46,7 +46,11 @@ struct RequestSections: View {
                 Section {
                     ForEach(model.belfryRequests) { p in
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(verbatim: p.name.isEmpty ? "Someone" : p.name).font(.body.weight(.semibold))
+                            HStack(spacing: 8) {
+                                if let pk = p.pubkey { Avatar(pubkey: pk, size: 28) }
+                                Text(verbatim: p.name.isEmpty ? "Someone" : p.name).font(.body.weight(.semibold))
+                            }
+                            if p.isGuest { Text(guestLine(p)).font(.footnote).foregroundStyle(.secondary) }
                             if admin, let e = p.email { Text(verbatim: e).font(.footnote).foregroundStyle(.secondary) }
                             if !p.motivation.isEmpty { Text(verbatim: p.motivation).font(.subheadline).foregroundStyle(.secondary) }
                             if vouching {
@@ -102,4 +106,13 @@ struct RequestSections: View {
         }
         return s
     }
+}
+
+/// "Guest in #garden since 12 Nov, invited by Ana" (guestapply.py's card for stewards).
+func guestLine(_ p: BelfryRequest) -> String {
+    var s = "Guest"
+    if !p.channels.isEmpty { s += " in " + p.channels.map { "#" + $0 }.joined(separator: ", ") }
+    if p.since.count >= 10 { s += " since " + String(p.since.prefix(10)) }
+    if !p.inviter.isEmpty { s += ", invited by " + p.inviter }
+    return s
 }

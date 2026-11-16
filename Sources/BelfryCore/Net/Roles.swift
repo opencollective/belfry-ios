@@ -231,9 +231,17 @@ public struct BelfryRequest: Hashable, Sendable, Identifiable {
     public let vouches: Int
     public let vouched: Bool
     public let email: String?
+    /// A guest asking from inside (guestapply.py): `kind` guest, their channels, who invited them
+    /// (a name), their key and their first guest day.
+    public var kind = ""
+    public var channels: [String] = []
+    public var inviter = ""
+    public var pubkey: String?
+    public var since = ""
     public init(id: Int, name: String, motivation: String, created: String, vouches: Int, vouched: Bool, email: String?) {
         self.id = id; self.name = name; self.motivation = motivation; self.created = created; self.vouches = vouches; self.vouched = vouched; self.email = email
     }
+    public var isGuest: Bool { kind == "guest" }
 }
 
 public struct AgentRequest: Hashable, Sendable, Identifiable {
@@ -263,9 +271,15 @@ public extension BelfryAPI {
     static func parseRequests(_ x: Any?) -> [BelfryRequest] {
         (x as? [[String: Any]] ?? []).compactMap { r in
             guard let id = int(r["id"]) else { return nil }
-            return BelfryRequest(id: id, name: (r["name"] as? String ?? "").sliceUnits(100), motivation: (r["motivation"] as? String ?? "").sliceUnits(2000),
-                                 created: r["created"] as? String ?? "", vouches: int(r["vouches"]) ?? 0, vouched: r["vouched"] as? Bool ?? false,
-                                 email: r["email"] as? String)
+            var b = BelfryRequest(id: id, name: (r["name"] as? String ?? "").sliceUnits(100), motivation: (r["motivation"] as? String ?? "").sliceUnits(2000),
+                                  created: r["created"] as? String ?? "", vouches: int(r["vouches"]) ?? 0, vouched: r["vouched"] as? Bool ?? false,
+                                  email: r["email"] as? String)
+            b.kind = r["kind"] as? String ?? ""
+            b.channels = (r["channels"] as? [Any] ?? []).compactMap { $0 as? String }
+            b.inviter = (r["inviter"] as? String ?? "").sliceUnits(100)
+            b.pubkey = (r["pubkey"] as? String).flatMap { isHex64($0) ? $0 : nil }
+            b.since = r["since"] as? String ?? ""
+            return b
         }
     }
 

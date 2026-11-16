@@ -101,7 +101,9 @@ extension AppModel {
         if engine?.localOnly == true {
             if admin && !demoRequestsSeeded {
                 demoRequestsSeeded = true
-                belfryRequests = [BelfryRequest(id: 1, name: "Nora Lindqvist", motivation: "I run the repair café on Thursdays and would like to bring it here. <b>not bold</b>", created: "", vouches: 1, vouched: false, email: "nora@example.org")]
+                var lou = BelfryRequest(id: 2, name: "Lou (neighbour)", motivation: "I live on Mill Street and I fix sewing machines and bikes.", created: "", vouches: 1, vouched: false, email: "lou@example.org")
+                lou.kind = "guest"; lou.channels = ["general"]; lou.inviter = "Ana Silva"; lou.pubkey = Demo.signer("guest").pubkey; lou.since = "2026-11-15"
+                belfryRequests = [lou, BelfryRequest(id: 1, name: "Nora Lindqvist", motivation: "I run the repair café on Thursdays and would like to bring it here. <b>not bold</b>", created: "", vouches: 1, vouched: false, email: "nora@example.org")]
                 agentRequests = [AgentRequest(id: 7, pubkey: String(repeating: "b", count: 64), name: "Scout", about: "Sorts the bug reports in #issues.", created: "", forMe: true)]
             }
             return

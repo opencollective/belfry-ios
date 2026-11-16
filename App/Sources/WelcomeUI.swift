@@ -38,6 +38,8 @@ struct WelcomeFlow: View {
             loaded = true
             ticked = Set(model.charterRules.filter { $0.agreed[model.me] != nil }.map(\.id))
             name = model.realName(model.me)
+            if model.launch.screen == "welcomecharter" { step = .charter; ticked = Set(model.charterRules.prefix(4).map(\.id)) }
+            if model.launch.screen == "welcomeprofile" { step = .profile }
         }
     }
 

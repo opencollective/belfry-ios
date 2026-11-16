@@ -388,6 +388,11 @@ struct RootView: View {
         switch model.launch.guest {
         case "home": model.tab = .home
         case "calendar": model.tab = .calendar
+        case "applied":
+            model.tab = .home
+            model.applyState = ApplyStatus(application: MyApplication(id: 1, state: "new", vouches: 1, needed: 2,
+                                                                      vouchedBy: [.init(pubkey: Demo.signer("dev").pubkey, name: "Dev Patel")]),
+                                           until: Int.now + 7 * 86400, accept: "vouches")
         case "apply":
             model.tab = .home
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { applying = true }

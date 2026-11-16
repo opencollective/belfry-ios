@@ -50,6 +50,20 @@ shot() { # name screen appearance
 }
 
 # 2026-11-16: the bottom bar (Home · Calendar · Create · Groups · Town), the charter, Add an agent, guests' places
+# 2026-11-16 round 2: e-mail threads in a channel, a guest's request, the first minutes
+shot 120-mail-feed mailfeed light
+shot 120b-mail-feed-dark mailfeed dark
+shot 121-mail-thread mailthread light
+shot 121b-mail-thread-dark mailthread dark
+shot 122-mail-reply mailreply light
+shot 122b-mail-reply-dark mailreply dark
+shot 123-full-mail fullmail light
+shot 124-welcome welcome light
+shot 124b-welcome-charter welcomecharter light
+shot 124c-welcome-profile welcomeprofile light
+shot 124d-welcome-charter-dark welcomecharter dark
+shot 125-guest-applied guest-applied light
+shot 125b-guest-applied-dark guest-applied dark
 shot 100-home home light
 shot 100b-home-dark home dark
 shot 101-calendar calendar light
