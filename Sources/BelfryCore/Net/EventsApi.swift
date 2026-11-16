@@ -322,19 +322,24 @@ public extension BelfryAPI {
 
     /// Change a group's name / description / picture / access through the belfry (an admin by role:
     /// the relay refuses their own 9002). Only the fields given change. Codes: `not_allowed`,
-    /// `not_found`, `invalid`, `relay`.
-    func groupMeta(channel: String, name: String? = nil, about: String? = nil, picture: String? = nil, closed: Bool? = nil, prompt: String? = nil) async throws {
+    /// `not_found`, `invalid`, `relay`, and (SPEC 19.30) `archived` (an archived group takes only
+    /// `archived: false`), `always_open` (#general). Returns the `archived` the belfry answers
+    /// with, nil when it says nothing about it (a belfry from before archiving).
+    @discardableResult
+    func groupMeta(channel: String, name: String? = nil, about: String? = nil, picture: String? = nil, closed: Bool? = nil, prompt: String? = nil, archived: Bool? = nil) async throws -> Bool? {
         var body: [String: Any] = ["channel": channel]
         if let name { body["name"] = name }
         if let about { body["about"] = about }
         if let picture { body["picture"] = picture }
         if let closed { body["closed"] = closed }
         if let prompt { body["prompt"] = prompt }
+        if let archived { body["archived"] = archived }
         let a = try await signed(base + "/group-meta", method: "POST", json: body)
-        guard a.ok else { throw BelfryAPI.checkinFail(a, "The change could not be saved.", known: ["not_allowed", "not_found", "invalid", "relay"]) }
+        guard a.ok else { throw BelfryAPI.checkinFail(a, "The change could not be saved.", known: ["not_allowed", "not_found", "invalid", "relay", "archived", "always_open"]) }
+        return a.body?["archived"] as? Bool
     }
 
-    internal static let roleCodes: Set<String> = ["not_allowed", "not_in_group", "last_admin", "guest_not_saved", "agent", "events_only", "always_admin", "invalid", "relay"]
+    internal static let roleCodes: Set<String> = ["not_allowed", "not_in_group", "last_admin", "guest_not_saved", "agent", "events_only", "always_admin", "invalid", "relay", "archived"]
 
     static let checkinErrors = [
         // the web chat's words (checkin.ts CHECK_ERRORS)
@@ -348,6 +353,8 @@ public extension BelfryAPI {
         "invalid": "That did not work. Try again.",
         "relay": "The event could not be reached. Try again.",
         "no_ticket": "Not a ticket for this event",
+        "archived": "This group is archived: nothing changes in it until it is unarchived.",
+        "always_open": "#general can’t be archived.",
         "update_needed": updateNeeded,
     ]
 

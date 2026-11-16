@@ -29,13 +29,16 @@ public struct WorldContext: Hashable, Sendable {
     public var kinds: [String: String]
     /// Ids of events still in my outbox (queued or failed).
     public var pending: Set<String>
+    /// Groups the groups relay said it does not have (SPEC 19.30): id → the newest metadata
+    /// (9007 / 9002 / 39000) this device held for it when the relay answered (0: none).
+    public var groupsAbsent: [String: Int]
     /// For day separators and all-day calendar events.
     public var timeZone: TimeZone
 
     public init(me: String, domain: String = "", communityName: String = "", communityAdmins: Set<String> = [],
                 groupsKey: String? = nil, bridgeKey: String? = nil, groupsRelay: String = "",
                 agents: [String: String] = [:], kinds: [String: String] = [:], pending: Set<String> = [],
-                timeZone: TimeZone = .current) {
+                groupsAbsent: [String: Int] = [:], timeZone: TimeZone = .current) {
         self.me = me
         self.domain = domain
         self.communityName = communityName
@@ -46,6 +49,7 @@ public struct WorldContext: Hashable, Sendable {
         self.agents = agents
         self.kinds = kinds
         self.pending = pending
+        self.groupsAbsent = groupsAbsent
         self.timeZone = timeZone
     }
 }
@@ -97,6 +101,9 @@ public struct Group: Identifiable, Hashable, Sendable {
     /// How many members vouching admits an applicant (the `vouches` tag on the 9002, 1–5; 0: its
     /// admins accept). Belfry's vouches.py does the admitting (docs/membership.md).
     public var vouches = 0
+    /// Archived (SPEC 19.30): the latest 9002 that says so has `["archived", "1"]`. In no list;
+    /// readable from its card, a link, search; nobody writes in it.
+    public var archived = false
 
     public static func typeOf(_ id: String) -> ChannelType {
         if id.hasPrefix("ws-") || id.hasPrefix("ev-") { return .event }
@@ -500,14 +507,27 @@ public final class Derive {
 
     // ---- groups --------------------------------------------------------------------------------
 
-    private lazy var groupList: [Group] = computeGroups()
-    private lazy var groupById: [String: Group] = Dictionary(groupList.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    lazy var groupIndex: GroupIndex = computeGroups()
+    private lazy var groupList: [Group] = groupIndex.all.filter { !$0.archived }
+    private lazy var groupById: [String: Group] = Dictionary(groupIndex.all.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
 
-    /// `general` first, then by latest activity.
+    struct GroupIndex {
+        /// Every group that is there, archived ones too; `general` first, then by latest activity.
+        var all: [Group]
+        var deleted: Set<String>
+        /// Per group id: its newest 9007 / 9002 / 39000.
+        var newestMeta: [String: Int]
+    }
+
+    /// The groups in lists: `general` first, then by latest activity. Not the deleted ones, not
+    /// the archived ones (SPEC 19.30).
     public func groups() -> [Group] { groupList }
+    /// Any group that is there, archived or not (a card, a link, search).
     public func group(_ id: String) -> Group? { groupById[id] }
+    /// Every group that is there, archived ones too.
+    public func allGroups() -> [Group] { groupIndex.all }
 
-    private func computeGroups() -> [Group] {
+    private func computeGroups() -> GroupIndex {
         var map = [String: Group]()
         var order = [String]()
         var metaAt = [String: [String: Int]]()
@@ -515,6 +535,7 @@ public final class Derive {
         var appliedOrder = [String]()
         var decided = [String: Int]()
         var gone = Set<String>()
+        var newestMeta = [String: Int]()
         var creatorOf = [String: String]()
         var listedAdmins = [String: Set<String>]()
         var byRole = [String: Bool]() // group id + pubkey → admin by role
@@ -532,7 +553,13 @@ public final class Derive {
                 g.createdAt = min(g.createdAt, e.createdAt)
                 if isPending(e.id) { g.pending = true }
             }
+            // archived: the latest 9002 that says anything about it (never #general)
+            if e.kind == 9002, let a = e.tag("archived"), id != generalId, (m["archived"] ?? 0) <= e.createdAt {
+                g.archived = a == "1"
+                m["archived"] = e.createdAt
+            }
             if e.kind == 9007 || e.kind == 9002 || e.kind == 39000 {
+                newestMeta[id] = max(newestMeta[id] ?? 0, e.createdAt)
                 for k in ["name", "about", "picture"] {
                     guard let v = e.tag(k), (m[k] ?? 0) <= e.createdAt else { continue }
                     switch k {
@@ -627,11 +654,17 @@ public final class Derive {
             g.applications.append(Application(pubkey: e.pubkey, answer: e.content, at: e.createdAt, id: e.id))
             map[gid] = g
         }
-        return order.compactMap { map[$0] }.filter { !gone.contains($0.id) }.enumerated().sorted { x, y in
+        // deleted (SPEC 19.30): a 9008, or the relay said it has no such group and nothing newer
+        // about it arrived since (never one I am still creating, never #general)
+        for (id, at) in ctx.groupsAbsent where id != generalId && (newestMeta[id] ?? 0) <= at && map[id]?.pending != true {
+            gone.insert(id)
+        }
+        let all = order.compactMap { map[$0] }.filter { !gone.contains($0.id) }.enumerated().sorted { x, y in
             let a = x.element, b = y.element
             if a.id == generalId || b.id == generalId { return a.id == generalId && b.id != generalId }
             return a.lastActivity != b.lastActivity ? a.lastActivity > b.lastActivity : x.offset < y.offset
         }.map(\.element)
+        return GroupIndex(all: all, deleted: gone, newestMeta: newestMeta)
     }
 
     /// Who signed each channel's metadata (kind 39000, the relay's key): the author of a channel reference.
@@ -1388,7 +1421,8 @@ public final class Derive {
     public func search(_ query: String, channel: String? = nil, limit: Int = 200) -> [SearchHit] {
         let words = fold(query).split(whereSeparator: { $0.isWhitespace }).map(String.init)
         if words.isEmpty { return [] }
-        let scope = channel.map { [$0] } ?? groupList.map(\.id)
+        // archived groups stay searchable (SPEC 19.30)
+        let scope = channel.map { [$0] } ?? groupIndex.all.map(\.id)
         var out = [SearchHit]()
         for gid in scope {
             for m in messages(gid) {

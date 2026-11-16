@@ -5,13 +5,11 @@ import SwiftUI
 // it: what the group is, who is in it and who runs it, Follow (its announcements by e-mail), and
 // Join (open) / Apply to join (closed) / Pending / You're in. Being in a group makes nobody a
 // member of the belfry. ("Group" is what the protocol still calls a pod: ids pod-…)
-
-struct GroupKey: Identifiable, Hashable { let id: String }
+// Since 2026-11-16 it is a screen pushed on the main stack (`GroupRoute`), never a sheet. A
+// deleted group shows only that it has been deleted; an archived one is read only (SPEC 19.30).
 
 struct GroupPage: View {
     @EnvironmentObject var model: AppModel
-    @Environment(\.showProfile) private var showProfile
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.openChannel) private var openChannel
     let id: String
     @State private var asking = false
@@ -20,7 +18,15 @@ struct GroupPage: View {
     var body: some View {
         let _ = model.version
         let g = model.group(id)
-        NavigationStack {
+        let state = model.derive.groupState(id)
+        if state == .deleted {
+            GroupGone()
+        } else {
+            page(g, archived: state == .archived)
+        }
+    }
+
+    private func page(_ g: Channel?, archived: Bool) -> some View {
             List {
                 if let g {
                     let parent = g.parent.flatMap { model.group($0) }
@@ -41,9 +47,9 @@ struct GroupPage: View {
                             }
                         }
                         .padding(.vertical, 4)
-                        action(g)
+                        if archived { archivedAction(g) } else { action(g) }
                     }
-                    FollowBell(id: id)
+                    if !archived { FollowBell(id: id) }
                     Section {
                         if g.members.isEmpty { Text("Nobody yet.").foregroundStyle(.secondary) }
                         ForEach(Array(g.members).sorted { model.name($0) < model.name($1) }, id: \.self) { p in
@@ -55,24 +61,37 @@ struct GroupPage: View {
                             Text("Also run by \(names).").font(.footnote).foregroundStyle(.secondary)
                         }
                     } header: { Text("Who’s in · \(g.members.count)") }
-                    if model.derive.canAdmin(g), !g.applications.isEmpty {
+                    if !archived, model.derive.canAdmin(g), !g.applications.isEmpty {
                         Section("Asking to join · \(g.applications.count)") {
                             ForEach(g.applications, id: \.pubkey) { a in GroupRequestRow(group: g, pubkey: a.pubkey, answer: a.answer) }
                         }
                     }
                 } else {
-                    ContentUnavailableView("This group isn’t here yet", systemImage: "hexagon", description: Text("It shows once the relay sends it."))
+                    // nothing known about it and the relay has not said yet: never "deleted" on a guess
+                    ContentUnavailableView("Nothing to show yet", systemImage: "hexagon", description: Text(unknownLine))
+                        .listRowBackground(Color.clear)
                 }
             }
             .navigationTitle("Group")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .sheet(isPresented: $asking) { if let g { PodApplySheet(group: g) } }
             .navigationDestination(item: $shownProfile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group) }
+            .onAppear { model.lookFor(id) }
+    }
+
+    private var unknownLine: String {
+        if !model.online { return "You’re offline." }
+        if model.guestReading || model.derive.amGuest { return "There is nothing about this group here." }
+        return "Looking for this group."
+    }
+
+    /// An archived group: read only, whoever I am in it.
+    @ViewBuilder private func archivedAction(_ g: Channel) -> some View {
+        HStack {
+            Label("Archived · read only", systemImage: "archivebox").foregroundStyle(.secondary)
+            Spacer()
+            Button("Read \(g.name)") { model.openGroup = id }.buttonStyle(.bordered).controlSize(.small)
         }
-        .presentationDetents([.medium, .large])
-        .solidSheet()
-        .presentationDragIndicator(.visible)
     }
 
     private func subtitle(_ g: Channel, _ parent: Channel?) -> String {
@@ -90,7 +109,7 @@ struct GroupPage: View {
             HStack {
                 Label("You’re in", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                 Spacer()
-                Button("Open \(g.name)") { dismiss(); openChannel(id, nil) }.buttonStyle(.brand).controlSize(.small)
+                Button("Open \(g.name)") { openChannel(id, nil) }.buttonStyle(.brand).controlSize(.small)
             }
         } else if mine {
             VStack(alignment: .leading, spacing: 4) {
@@ -104,9 +123,9 @@ struct GroupPage: View {
                 if g.closed {
                     Button("Apply to join") { asking = true }.buttonStyle(.brand).controlSize(.small)
                 } else {
-                    BusyButton("Join") { model.join(id); dismiss(); openChannel(id, nil) }.buttonStyle(.brand).controlSize(.small)
+                    BusyButton("Join") { model.join(id); openChannel(id, nil) }.buttonStyle(.brand).controlSize(.small)
                 }
-                Button("Have a look") { dismiss(); openChannel(id, nil) }.buttonStyle(.bordered).controlSize(.small)
+                Button("Have a look") { openChannel(id, nil) }.buttonStyle(.bordered).controlSize(.small)
             }
         }
     }

@@ -172,6 +172,18 @@ and gestures are untested in the real world. XCTest covers the core (BelfryCore)
 | Co-host link used by someone new (e-mail first, then the link again) | done, never run live | `email_needed` → save-account card says why; after the code, the link is used with the account. |
 | Prices, payments | not in v1 | Neither on the web. |
 
+## Deleted and archived groups (SPEC 19.30, the contract of 2026-11-16)
+
+| Item | Status | Notes |
+|---|---|---|
+| Deleted: by a 9008, or by the relay's answer about the group's metadata; "unknown" before that | done, never run live | Core-tested (`ArchiveTests`). The question to the relay (`39000` with `#d`, #general as the proof of an answer) was never sent to a real relay: whether zooid answers it for every channel and closed group a member is not in is unverified. Not for guests. |
+| A deleted group's card: name from the card, "This group has been deleted", greyed, not a button | done | Screenshot 73. |
+| A route to a deleted group: "This group has been deleted" | done | The channel (drawer, link, notification, search, `#` reference) and the group's page. Screenshot 74. |
+| Archived: `["archived","1"]` on the latest 9002 that says so; in no list; read only | done, never run live | Banner "Archived · read only" + Unarchive; no composer (a line where it was), no menus, reactions, inline replies, thread composer, to-do changes, drop links, invite, follow, roles, settings. The outbox refuses anything else for it (`GroupLock`). Screenshot 75. Notifications of an archived group are the belfry's to stop. |
+| Archive (settings, with the confirmation) / Unarchive | done, never run live | Own 9002 keeping every setting for admins the relay knows; `POST /group-meta {"archived"}` for admins by role, with fixed messages (`archived`, `always_open`, "This belfry can't archive yet: it needs an update."). The iPhone app has no Delete: Archive sits at the end of the settings. |
+| "Archived" at the bottom of the channel list → a screen | done | Screenshot 76. |
+| The group's page is a pushed screen, not a sheet | done | Screenshot 77. |
+
 ## Several accounts (SPEC 19.24; not in the web chat)
 
 | Item | Status | Notes |

@@ -60,6 +60,8 @@ struct ThreadView: View {
         .bottomBar(height: $composerH) {
             if model.guestReading {
                 GuestBar(group: group)
+            } else if model.locked(group) {
+                ArchivedFooter()
             } else if let root {
                 Composer(group: group, placeholder: replies.isEmpty ? "Reply (starts a thread)" : "Reply in the thread", autoFocus: focusReply, threadMode: true, focusTrigger: focusBox, draftKey: "t:\(group):\(rootId)") { text, _, _ in
                     model.reply(text, in: group, to: root)
@@ -80,7 +82,7 @@ struct ThreadView: View {
         .onChange(of: actionsFor != nil || editing != nil) { _, open in if open { hideKeyboard() } }
     }
 
-    func hold(_ m: Message) { if model.guestReading { model.joinAsked = true } else { actionsFor = m } }
+    func hold(_ m: Message) { if model.guestReading { model.joinAsked = true } else if !model.locked(group) { actionsFor = m } }
 }
 
 /// Search this channel or all (accent-folded words; tap a result to see it in its channel).

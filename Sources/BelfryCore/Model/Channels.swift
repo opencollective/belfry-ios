@@ -97,6 +97,7 @@ public extension Derive {
         var out = [NostrEvent]()
         for e in events where (e.kind == 9 || e.kind == 1111) && e.pubkey != me && e.tag("h") != nil && !seen.contains(e.id) {
             seen.insert(e.id)
+            if let h = e.tag("h"), isDeleted(h) { continue } // a deleted group is in no list
             if e.tags.contains(where: { $0.count > 1 && $0[0] == "p" && $0[1] == me }) || (npub.map { e.content.contains($0) } ?? false) {
                 out.append(e)
             }

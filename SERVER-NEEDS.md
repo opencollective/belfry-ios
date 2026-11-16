@@ -186,3 +186,26 @@ The app codes against the contract (SPEC 19.29). For the belfry:
   "This belfry needs an update." and hides the ticket button (no `ticket_code`) and "Check people
   in" (no `may_check_in`, unless the relay's roles say so: then the list comes from the relay and
   checking in fails with that message).
+
+## 9. Deleted and archived groups (the contract of 2026-11-16) — built in the app, not run live
+
+- **`POST /group-meta` with `archived`** (boolean): used only by admins by role (the relay's own
+  admins publish the 9002 themselves, with `["archived","1"|"0"]` and every other setting kept).
+  The app shows fixed messages for 409 `archived` and `always_open`. **Ask**: answer with
+  `"archived": true|false` in the body. A belfry from before this answers 200 and changes
+  nothing; without that field the app can only watch the relay for 5 s before saying "This
+  belfry can't archive yet: it needs an update."
+- **The 9002 the belfry publishes** must carry `["archived","1"]` while the group is archived
+  (any later 9002 without the tag leaves it archived for this app: the latest one that says
+  anything wins), and `["archived","0"]` to unarchive.
+- **Does the groups relay answer `{"kinds":[39000],"#d":[…]}` for every channel and group a
+  member may see, closed groups they are not in included?** The app calls a group deleted when
+  that answer names `general` and not the group. If zooid hides a closed group's 39000 from
+  non-members, their cards would read "This group has been deleted" for them: tell us and the
+  app will ask the belfry instead (a `POST /whois`-like "which of these groups exist").
+- **A deleted group's leftovers**: zooid drops everything of a deleted group, the 9008 too, so a
+  phone that was away never hears of it; the question above is how the app finds out. Nothing
+  to do unless the relay could keep (or re-serve) the 9008.
+- **Notifications** of an archived group: the app does not filter pushes; the belfry should not
+  send them.
+

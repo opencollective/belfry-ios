@@ -87,6 +87,13 @@ shot 69b-check-in-dark checkin dark
 shot 70-check-in-card checkincard light
 shot 71-profile-in-event eventrole light
 shot 72-members-invite membersinvite light
+shot 73-group-cards groupcards light
+shot 73b-group-cards-dark groupcards dark
+shot 74-group-deleted groupdeleted light
+shot 75-group-archived grouparchived light
+shot 75b-group-archived-dark grouparchived dark
+shot 76-archived-list archivedlist light
+shot 77-group-page group light
 shot 01-sign-in signin light
 shot 02-channels channels light
 shot 03-feed feed light

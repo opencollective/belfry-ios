@@ -14,6 +14,8 @@ enum SidebarItem: Hashable {
     case members
     case events
     case settings
+    /// The archived channels and groups (the last row of the channel list, SPEC 19.30).
+    case archived
 }
 
 extension SidebarItem {
@@ -25,6 +27,7 @@ extension SidebarItem {
         case .requests, .members: return "members"
         case .events: return "events"
         case .settings: return "settings"
+        case .archived: return "archived"
         }
     }
 
@@ -36,6 +39,7 @@ extension SidebarItem {
         case "members": self = .members
         case "events": self = .events
         case "settings": self = .settings
+        case "archived": self = .archived
         default:
             guard key.hasPrefix("c:") else { return nil }
             let id = String(key.dropFirst(2))
@@ -125,8 +129,14 @@ struct RootView: View {
         .sheet(item: Binding(get: { model.showEvents.map { EventKey(key: $0) } }, set: { model.showEvents = $0?.key })) { k in
             EventsList(channel: k.key.isEmpty ? nil : k.key)
         }
-        .sheet(item: Binding(get: { model.openGroup.map { GroupKey(id: $0) } }, set: { model.openGroup = $0?.id })) { k in
-            GroupPage(id: k.id)
+        // a group's page slides in on the main screen's stack, never a bottom sheet; an archived
+        // group opens read only; a deleted one says so (SPEC 19.30)
+        .onChange(of: model.openGroup) { _, id in
+            guard let id else { return }
+            model.openGroup = nil
+            hideKeyboard()
+            closeDrawer()
+            if model.derive.isArchived(id) { path.append(ChannelRoute(id: id)) } else { path.append(GroupRoute(id: id)) }
         }
         // a profile slides in on the main screen's stack (Contacts), never a bottom sheet
         .onChange(of: model.openProfile) { _, pk in
@@ -207,7 +217,8 @@ struct RootView: View {
                 if Channel.typeOf(id) == .event, let e = model.derive.eventOfGroup(id), e.isNew {
                     EventScreen(key: e.coord, root: true).id(id)
                 } else {
-                    ChannelView(id: id, focus: focus?.channel == id ? focus?.message : nil).id(id)
+                    // the channel, or "This group has been deleted"
+                    ChannelScreen(id: id, focus: focus?.channel == id ? focus?.message : nil)
                 }
             case .messages: MessagesView()
             case .mentions: MentionsView()
@@ -215,12 +226,15 @@ struct RootView: View {
             case .members: MembersDirectory()
             case .events: EventsScreen()
             case .settings: BelfrySettings(screen: true)
+            case .archived: ArchivedScreen()
             case nil: ContentUnavailableView("Pick a channel", systemImage: "number", description: Text("Your community's channels are in the list."))
                     .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
             }
             }
             .navigationDestination(for: ProfileKey.self) { k in ProfileView(pubkey: k.pubkey, pushed: true, group: k.group) }
             .navigationDestination(for: EventRoute.self) { r in EventScreen(key: r.key, ticket: r.ticket) }
+            .navigationDestination(for: GroupRoute.self) { r in GroupPage(id: r.id) }
+            .navigationDestination(for: ChannelRoute.self) { r in ChannelScreen(id: r.id, pushed: true) }
         }
         .environment(\.openConversation) { conv in
             var p = NavigationPath()
@@ -272,6 +286,20 @@ struct RootView: View {
         case "group":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openGroup = "pod-seed-swap-5e1d" }
+        // SPEC 19.30: the cards of a deleted and an archived group, a link to the deleted one,
+        // the archived one read only, the Archived list
+        case "groupcards":
+            selection = .members
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                let card = model.derive.messages(generalId).first { $0.special == .podCard(podId: Demo.deletedGroup) }
+                focus = card.map { SearchTarget(channel: generalId, message: $0.id) }
+                selection = .channel(generalId)
+            }
+        case "groupdeleted": selection = .channel(Demo.deletedGroup)
+        case "grouparchived":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openGroup = Demo.archivedGroup }
+        case "archivedlist": selection = .archived
         case "mycard":
             selection = .members
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openProfile = model.me }
@@ -547,6 +575,16 @@ struct ChannelDrawer: View {
                         if d.isCommunityAdmin {
                             Button { hideKeyboard(); ordering = true } label: { Label("Order of the channels", systemImage: "arrow.up.arrow.down") }
                                 .listRowBackground(Color.clear)
+                        }
+                    }
+                    // the very last row, only while something is archived: it opens a screen
+                    let archived = d.myArchived()
+                    if !archived.isEmpty {
+                        Section {
+                            DrawerRow(icon: "archivebox", title: "Archived",
+                                      detail: archived.count == 1 ? "1 channel or group, read only" : "\(archived.count) channels and groups, read only",
+                                      on: current == .archived) { select(.archived) }
+                                .accessibilityIdentifier("drawer-archived")
                         }
                     }
                 }

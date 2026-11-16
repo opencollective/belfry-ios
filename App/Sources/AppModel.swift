@@ -64,8 +64,11 @@ final class AppModel: ObservableObject {
     var requestsAt: Date?
     /// Photos full screen (a message's photos, swiped through).
     @Published var lightbox: Lightbox?
-    /// A group's page to show (its card in the parent channel).
+    /// A group's page to show (its card in the parent channel): pushed on the main stack.
     @Published var openGroup: String?
+    /// Groups the relay said it does not have (SPEC 19.30; stored as `groups-absent`).
+    @Published var groupsAbsent = [String: Int]()
+    var presenceAt: Date?
     /// The drawer's search field (all channels).
     @Published var drawerQuery = ""
     /// When I last opened @Mentions (the badge counts the ones after).
@@ -210,7 +213,7 @@ final class AppModel: ObservableObject {
         let pendingIds = Set((engine?.outboxItems() ?? []).filter { $0.signed == nil }.map(\.localId))
         let ctx = WorldContext(me: me, domain: config.domain, communityName: config.name, communityAdmins: Set(config.admins),
                                groupsKey: groupsKey, bridgeKey: dms?.bridge, groupsRelay: config.groupsRelay,
-                               agents: config.agents, kinds: kinds, pending: pendingIds)
+                               agents: config.agents, kinds: kinds, pending: pendingIds, groupsAbsent: groupsAbsent)
         let list = engine?.snapshot() ?? []
         let d = Derive(events: list, context: ctx)
         // offline first: the channels nothing arrived in keep what the last snapshot worked out
@@ -220,6 +223,8 @@ final class AppModel: ObservableObject {
             if fresh.count == list.count - prev.events.count { d.carry(from: prev, newEvents: fresh) }
         }
         cachedDerive = (version, d)
+        // nothing is queued for an archived or deleted group (SPEC 19.30)
+        engine?.setLocked(d.lockedGroups)
         return d
     }
 
@@ -237,7 +242,8 @@ final class AppModel: ObservableObject {
         return p
     }
 
-    func group(_ id: String) -> BelfryCore.Group? { groups.first { $0.id == id } }
+    /// Any group that is there, archived ones too (`groups` has only the listed ones).
+    func group(_ id: String) -> BelfryCore.Group? { derive.group(id) }
     func name(_ pk: String) -> String { derive.displayName(pk, profiles) }
     func realName(_ pk: String) -> String { Derive.realName(pk, profiles) }
     func pending(_ id: String) -> OutboxItem? { engine?.pending(id) }
@@ -316,7 +322,11 @@ final class AppModel: ObservableObject {
             if list.contains(where: { $0.kind == 1059 || $0.kind == 4 }) { Task { await d?.process() } }
             rs?.offer(list)
         }
-        e.onEOSE = { [weak rs] t in if t == .main { rs?.relayAnswered() } }
+        e.onEOSE = { [weak rs, weak self] t in
+            if t == .main { rs?.relayAnswered() }
+            // the groups relay answered: does it still have the groups this device knows?
+            if t == .groups { Task { @MainActor in await self?.checkGroups() } }
+        }
         e.onSent = { [weak d] item, _ in d?.outboxSent(item) }
         e.onFailed = { [weak d] item in d?.outboxFailed(item) }
         d.onSend = { Push.markSent() }
@@ -333,6 +343,8 @@ final class AppModel: ObservableObject {
         dms = d
         // offline first: the last copies at once, refreshed in the background
         roles = db.get("roles", as: RolesInfo.self) ?? RolesInfo()
+        groupsAbsent = db.get("groups-absent", as: [String: Int].self) ?? [:]
+        presenceAt = nil
         membership = db.get("membership", as: MembershipSettings.self) ?? MembershipSettings()
         phase = .ready
         if !s.demo {
@@ -488,6 +500,7 @@ final class AppModel: ObservableObject {
         cfg.admins = reader ? [] : [(try! LocalSigner(secret: Demo.meSecret)).pubkey]
         open(s, config: cfg)
         groupsKey = Demo.signer("groups").pubkey
+        groupsAbsent = [Demo.deletedGroup: 0] // what the relay's answer would leave (SPEC 19.30)
         if reader { joinedChannel = generalId }
         if let e = engine, let d = dms {
             Task { await Demo.seed(engine: e, dms: d) ; self.updateAddress() }

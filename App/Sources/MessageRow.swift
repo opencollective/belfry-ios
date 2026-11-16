@@ -62,7 +62,10 @@ struct MessageRow: View {
                     }
                 }
                 if !reactions.isEmpty {
-                    ReactionBar(reactions: reactions) { emoji in model.toggleReaction(emoji, on: m, in: group); tapped += 1 }
+                    ReactionBar(reactions: reactions) { emoji in
+                        if model.locked(group) { return } // archived: read only
+                        model.toggleReaction(emoji, on: m, in: group); tapped += 1
+                    }
                 }
                 if let thread, thread.count > 0 {
                     // replies always open the thread's own screen (web 9cbb1cb)
@@ -107,7 +110,7 @@ struct MessageRow: View {
         .contentShape(Rectangle())
         .sensoryFeedback(.selection, trigger: tapped)
         .accessibilityElement(children: .combine)
-        .messageMenu(m, group: group, handlers: menu, guest: model.guestReading, hold: onHold)
+        .messageMenu(m, group: group, handlers: menu, guest: model.guestReading || model.locked(group), hold: onHold)
         .accessibilityIdentifier("message-row")
         .accessibilityHint("Touch and hold for actions")
     }
@@ -137,21 +140,8 @@ struct SpecialBody: View {
     var body: some View {
         switch m.special {
         case .podCard(let pid):
-            let g = model.group(pid)
-            Button { hideKeyboard(); model.openGroup = pid } label: {
-                CardFrame {
-                    HStack(spacing: 10) {
-                        if let g { ChannelGlyph(group: g, size: 26) }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(g?.name ?? "A group").font(.subheadline.weight(.semibold))
-                            Text(g.map { "\($0.members.count) \($0.members.count == 1 ? "member" : "members") · \($0.closed ? "by application" : "open to join")" } ?? "Group")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: 0)
-                        Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-                    }
-                }
-            }.buttonStyle(.plain)
+            // open / archived (greyed, opens read only) / deleted (greyed, not a button), SPEC 19.30
+            GroupCard(id: pid, text: m.text)
         case .proposalCard(let pid):
             let p = model.derive.proposalFor(pid)
             Button { openChannel(pid, nil) } label: {
@@ -388,7 +378,7 @@ struct InlineThread: View {
                     .font(.caption.weight(.semibold))
             }
             ForEach(shown) { r in ReplyRow(group: group, r: r, onHold: { onHold(r) }) }
-            if !model.guestReading {
+            if !model.guestReading && !model.locked(group) {
                 Composer(group: group, placeholder: shown.isEmpty ? "Reply (starts a thread)" : "Reply in the thread", compact: true) { text, _, _ in
                     model.reply(text, in: group, to: root)
                 }
@@ -434,7 +424,7 @@ struct ReplyRow: View {
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .messageMenu(r, group: group.isEmpty ? (r.ev.tag("h") ?? "") : group, handlers: menu, guest: model.guestReading, hold: onHold)
+        .messageMenu(r, group: group.isEmpty ? (r.ev.tag("h") ?? "") : group, handlers: menu, guest: model.guestReading || model.locked(r.ev.tag("h") ?? group), hold: onHold)
     }
 }
 

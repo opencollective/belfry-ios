@@ -282,7 +282,7 @@ struct PullDownList: View {
                     PDDivider()
                 }
                 if let p = f.own { ProposalBlock(p: p); PDDivider() }
-                if let g, g.isPod, d.canAdmin(g), !g.applications.isEmpty {
+                if let g, g.isPod, !g.archived, d.canAdmin(g), !g.applications.isEmpty {
                     PDRow(symbol: "person.crop.circle.badge.questionmark", title: "Asking to join", value: "\(g.applications.count)") { dismiss(); model.openGroup = id }
                     PDDivider()
                 }
@@ -339,7 +339,7 @@ struct PullDownList: View {
                     }
                     TopicRows(id: id, topic: $topic) { dismiss() }
                 }
-                if !model.guestReading {
+                if !model.guestReading && g?.archived != true {
                     PDRow(symbol: "person.badge.plus", title: "Invite someone") { invite() }
                     PDDivider()
                 }
@@ -452,6 +452,7 @@ struct TodoRow: View {
                 Image(systemName: t.done ? "checkmark.square.fill" : "square").font(.title3).foregroundStyle(t.done ? Color.green : Color.secondary)
             }
             .buttonStyle(.plain)
+            .disabled(model.locked(group))
             .accessibilityLabel(t.done ? "Done. Mark as not done" : "Tick off")
             VStack(alignment: .leading, spacing: 2) {
                 Text(t.title).font(.subheadline).strikethrough(t.done)
@@ -461,7 +462,7 @@ struct TodoRow: View {
                 }
             }
             Spacer()
-            if !t.done {
+            if !t.done && !model.locked(group) {
                 if t.assignee == model.me {
                     BusyButton("Let go") { model.todo(t, in: group, "unclaim") }.font(.caption).buttonStyle(.borderless)
                 } else if t.assignee == nil {

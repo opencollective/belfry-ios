@@ -1603,3 +1603,69 @@ people; tickets with a QR; checking people in at the door; roles per channel, gr
   from <group>" (9001). The Host is never changed there.
 - Core-tested in `GroupRolesTests` (stewards, the groups key only, latest wins, admins replace,
   check-ins, event days, scans, the viewer block, the three calls against a stub belfry).
+
+### 19.30 Deleted and archived groups (the belfry's contract of 2026-11-16)
+
+Xavier's request, after a card in #demo on belfry.sh ("⬡ New pod: Canal", group
+`pod-canal-41ec`, about which the groups relay returns nothing at all) opened "This group isn't
+here yet. It shows once the relay sends it.": a deleted group says so and can't be tapped; a
+link to it says so; and a group can be **archived** as a softer way to delete. "Group" here is
+anything with a NIP-29 group id that people open from the channel list or a card: channels and
+groups (ids `pod-…`). Events and proposals keep their own cancel / status mechanisms.
+
+- **Deleted.** A group is deleted when (a) a kind 9008 for it is known, or (b) the groups relay
+  was asked for its metadata and answered that it has none. Until the relay answered, a group
+  nothing is known about is **unknown**: its card shows as an open one's (the name from the
+  card), never "deleted" on a guess, and the sentence "It shows once the relay sends it" is gone.
+  - (iOS) How (b) is decided: after each EOSE of the groups relay's live subscription (at most
+    once a minute), and when a card or a link names a group this device knows nothing about, the
+    app asks `{"kinds":[39000],"#d":[general, <up to 100 ids>]}` for the channels and groups it
+    knows (not events, not proposals, not one it is still creating) and the groups its cards
+    name. An answer counts only when it names `general` (always asked along, always there: a
+    timeout, a refused or an empty answer proves nothing). Each asked id the answer does not
+    name is marked absent with the newest 9007 / 9002 / 39000 this device held for it (0: none);
+    one it names loses the mark. A marked group is deleted until something newer about it
+    arrives. The marks are stored (`groups-absent`), so the state holds offline. This also
+    catches a group deleted while this device was away and whose 9008 the relay did not keep
+    (the device still holds its old metadata). Never asked as a guest (the relay shows a guest
+    only their own channels: absence proves nothing) and never in guest mode. `general` is never
+    deleted by absence.
+  - The card in the parent: the group's name if still known (from the card's text "⬡ New pod:
+    <name> · …" / "⬡ New group: …", else "A group"), "This group has been deleted", greyed, not a
+    button (no chevron). The card is never removed with the group.
+  - A route to a deleted group (the channel, its page, a link, a notification, a search result,
+    a `#` reference): a plain screen "This group has been deleted" with the way back. No
+    composer, no pull-down, no settings.
+  - A deleted group is in no list (channel list, pickers, `#` references, @Mentions, search).
+- **Archived.** `["archived","1"]` on the group's kind 9002, read like `prompt` / `vouches`: the
+  latest 9002 that says anything about it wins; `["archived","0"]` unarchives. Every 9002 keeps
+  the group's other settings (name, about, picture, closed, prompt, vouches) and, while it is
+  archived, `["archived","1"]`. `general` is never archived (a tag on its 9002 is ignored; the
+  belfry answers `always_open`).
+  - Who: whoever may edit the group (its admins, admins by role, the belfry's admins). Those the
+    relay lets edit (its 39001, the creator, a belfry admin) publish the 9002 themselves; an
+    admin by role sends `POST <api>/group-meta {"channel","archived":true|false}`. While
+    archived the belfry refuses every other change with 409 `archived` (`/group-meta`,
+    `/group-roles`, `/channel-invites`, `/channel-guests`). A belfry from before archiving
+    answers ok and changes nothing: (iOS) the app looks for the change for 5 s (or trusts an
+    `archived` in the answer), then says "This belfry can't archive yet: it needs an update."
+  - An archived group is in no list (channel list, pickers, `#` references, groups of a
+    channel, requests, the drawer's counts) but still opens from its card, a link and search:
+    everything is readable. Under the header: "Archived · read only" with Unarchive for those
+    who may. No composer, reactions, replies, edits, to-dos, pins, invite, follow, roles or
+    settings. Its card in the parent: name, "Archived", greyed, still a button (it opens the
+    group read only).
+  - Archive sits in the group's settings with a confirmation: "Archive <name>? It leaves the
+    channel list and nobody can post in it. You can unarchive it later."
+  - A row "Archived" at the very bottom of the channel list, only while there is at least one I
+    can open (one I am in or run; for a member every archived channel), opens a screen listing
+    them; a tap opens the group read only.
+  - The relay enforces none of this: an older client can still post in an archived group, and
+    those messages show. (iOS) The app itself queues nothing for an archived or deleted group
+    (`GroupLock`: the last check in the outbox; only the unarchiving 9002 passes), whatever a
+    screen forgot to hide.
+- (iOS) A group's page (its card, a request) is a screen pushed on the main stack, never a
+  sheet; an archived group's card pushes the group itself, read only.
+- Core-tested in `ArchiveTests` (deleted by 9008; unknown until the relay answered, then
+  deleted; a stale copy; coming back; one being created; archived by the latest 9002, unarchive,
+  `general`; the 9002 keeps every setting; the outbox lock; the card's name; the questions).

@@ -68,7 +68,7 @@ struct GroupRoleSection: View {
             let isCreator = e?.creator == pubkey
             // the creator, the belfry's admins and the relay's keys administer it whatever the role
             let fixed = isCreator || (g.admins.contains(pubkey) && d.everywhere(groupId).contains(pubkey))
-            let editable = d.canAdmin(g) && !fixed && !d.isAgent(pubkey)
+            let editable = d.canAdmin(g) && !fixed && !d.isAgent(pubkey) && !g.archived // archived: read only
             let inGroup = g.members.contains(pubkey) || g.admins.contains(pubkey) || (e.map { d.eventPeople($0).holders[pubkey] != nil } ?? false)
             Section {
                 if editable {

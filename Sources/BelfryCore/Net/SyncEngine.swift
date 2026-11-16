@@ -123,9 +123,16 @@ public final class SyncEngine: @unchecked Sendable {
         return lastCreatedAt
     }
 
+    /// Groups nothing is written in (archived or deleted, SPEC 19.30): the app sets them from its
+    /// snapshot. Only an unarchiving 9002 passes.
+    public func setLocked(_ ids: Set<String>) { lock.lock(); lockedGroups = ids; lock.unlock() }
+    private var lockedGroups = Set<String>()
+
     @discardableResult
     public func enqueue(_ d: Draft, attachments: [Attachment] = []) -> String {
         if guestMode.refuse() { return "" } // guest mode: nothing is sent; the Join sheet opens
+        lock.lock(); let locked = lockedGroups; lock.unlock()
+        if GroupLock.refuses(d, locked: locked) { return "" }
         let item = OutboxItem(target: d.target, kind: d.kind, content: d.content, tags: d.tags + [SyncEngine.clientTag],
                               createdAt: nextCreatedAt(), attachments: attachments)
         put(item)

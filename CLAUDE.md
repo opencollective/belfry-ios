@@ -9,7 +9,7 @@ don't guess. The Android app (opencollective/belfry-android) is a second reading
 
 `vectors/` is the contract shared with Android: keep both repos' files identical (copy, don't
 edit one side). SPEC.md differs from Android's only in the paragraph that opens section 19 and the (iOS) notes
-that end 19.19, 19.20 and 19.26, and the iOS-only 19.28 and 19.29 (Android's 19.21 to 19.25 and 19.27 copied 2026-11-15; what the iPhone app does of them is in PARITY.md). `vectors/guestmode.json` and `vectors/readstate.json` are Android's.
+that end 19.19, 19.20 and 19.26, the iOS-only 19.28 and 19.29, and 19.30 (deleted and archived groups, written here 2026-11-16: Android has not got it yet) (Android's 19.21 to 19.25 and 19.27 copied 2026-11-15; what the iPhone app does of them is in PARITY.md). `vectors/guestmode.json` and `vectors/readstate.json` are Android's.
 
 ## Layout
 
@@ -95,7 +95,8 @@ profile, editprofile, me, members, todos, files, events, eventhost, eventform, a
 2026-11-15 composer, drawer, pullfull, mentions, group, requests, log, settings; and event (the
 event screen at half), eventup, eventfull, eventphotos, eventpeople, ticket, checkin (with a
 result card), checkincard (a ticket link opened), eventrole (a profile with "In Repair café"),
-membersinvite). In the demo Sam is an admin of the belfry (settings, roles, requests show), and
+membersinvite; and since 2026-11-16 groupcards (the cards of a deleted and an archived group),
+groupdeleted, grouparchived, archivedlist). In the demo Sam is an admin of the belfry (settings, roles, requests show), and
 the steward of today's Repair café (Dev hosts, Emma co-hosts; two ticket types; Sam holds a
 Volunteer ticket; Ana and Ben checked in; photos drawn on the device by `DemoPictures`). `-join` (no
 `-demo`) opens a demo guest link signed out (the loading screen, then guest mode). `-guest
@@ -178,6 +179,16 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   @Mentions, Members with the requests on top) with ☰ (count of unread DMs + new mentions + requests) and a left drawer
   under it (`DrawerContainer` + `ChannelDrawer` in RootView: edge swipe at the stack's root, the
   page slides right, shade, drag / tap to close). iPad: the same list as a split view's sidebar.
+- Deleted and archived groups (SPEC 19.30, `Model/Archive.swift`, `ArchiveUI.swift`,
+  `AppModel+Archive`): `Derive.groups()` = the listed ones (not archived, not deleted);
+  `group(id)` / `allGroups()` include archived ones; `groupState(id)` = unknown / open /
+  archived / deleted. Deleted by absence comes only from the relay's answer (`groupsAbsent`,
+  stored as `groups-absent`; asked after the groups relay's EOSE and for unknown ids; #general
+  is the proof of an answer; never as a guest). A group's page (`GroupRoute`) and an archived
+  group (`ChannelRoute` → `ChannelScreen(pushed:)`) are pushed on the main stack; `ChannelScreen`
+  is what any route to a channel shows (the channel, or `GroupGone`). Any new write in a channel
+  must be hidden when `model.locked(id)`; `SyncEngine.setLocked` + `GroupLock` refuse it anyway.
+  Every 9002 goes through `Actions.groupMeta` (keeps every setting and `archived`).
 - Every row of the drawer opens an open screen (☰ top left, the row highlighted), never a
   sheet: channels, Members (requests on top), Events (`EventsScreen`, events pushed on the
   stack), @Mentions, Direct messages, Belfry settings. Sheets are for short tasks started from

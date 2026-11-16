@@ -58,6 +58,10 @@ enum Demo {
     static let meSecret = secret("you")
     /// Guest mode's demo: someone who opened a guest link of #general and reads (SPEC 19.26).
     static let readerSecret = secret("reader")
+    /// SPEC 19.30 in the demo: a group whose card is in #general and that the relay no longer has,
+    /// and an archived one.
+    static let deletedGroup = "pod-canal-clean-up-41ec"
+    static let archivedGroup = "pod-winter-market-2c9e"
     static let people: [(String, String)] = [
         ("ana", "Ana Silva"), ("ben", "Ben Okafor"), ("chloe", "Chloé Martin"), ("dev", "Dev Patel"), ("emma", "Emma Lind"),
     ]
@@ -149,6 +153,19 @@ enum Demo {
         msg(ps["ben"]!, "general", now - 6 * day, "⬡ New group: Seed swap · Saving and swapping seeds")
         evs[evs.count - 1] = ev(ps["ben"]!, 9, now - 6 * day, [["h", "general"], ["pod", pod]], "⬡ New group: Seed swap · Saving and swapping seeds")
         msg(ps["chloe"]!, pod, now - 5 * day, "I have three kinds of beans to share 🫘")
+        // SPEC 19.30: a group that was deleted (its card stays; the relay has nothing about it:
+        // `AppModel.startDemo` marks it absent) and an archived one (read only, in no list)
+        evs.append(ev(ps["ana"]!, 9, now - 4 * day, [["h", "general"], ["pod", Demo.deletedGroup]], "⬡ New group: Canal clean-up · Saturday mornings along the water"))
+        let market = Demo.archivedGroup
+        evs.append(ev(ps["emma"]!, 9007, now - 9 * day, [["h", market]]))
+        evs.append(ev(ps["emma"]!, 9002, now - 9 * day, [["h", market], ["name", "Winter market"], ["about", "Stalls, lights and soup for the December market"], ["open"]]))
+        channel(market, "Winter market", "Stalls, lights and soup for the December market", admins: [ps["emma"]!.pubkey], members: [me, ps["emma"]!.pubkey, ps["ana"]!.pubkey, ps["dev"]!.pubkey], at: now - 9 * day)
+        evs.append(ev(ps["emma"]!, 9, now - 4 * day + 600, [["h", "general"], ["pod", market]], "⬡ New group: Winter market · Stalls, lights and soup for the December market"))
+        msg(ps["emma"]!, market, now - 8 * day, "Who can lend trestle tables? We need twelve.")
+        msg(ps["dev"]!, market, now - 8 * day + 1800, "The repair café has four, and I can ask the school for more.")
+        msg(ps["ana"]!, market, now - 7 * day, "Soup is sorted: pumpkin and a big pot of lentils 🍲")
+        msg(ps["emma"]!, market, now - 3 * day, "That was a lovely market. Thank you all! Archiving this group until next year.")
+        evs.append(ev(ps["emma"]!, 9002, now - 3 * day + 60, [["h", market], ["name", "Winter market"], ["about", "Stalls, lights and soup for the December market"], ["open"], ["archived", "1"]]))
         let (pid, pdrafts) = Actions.createProposal(NewProposal(title: "Quiet hours after 22:00", summary: "No loud work in the yard after ten", text: "From Monday to Saturday, no drilling or music in the yard after **22:00**.", status: .voting),
                                                     parent: "general", me: ps["emma"]!.pubkey, groupsRelay: "wss://groups-relay.demo.belfry.sh", mainRelay: "wss://relay.demo.belfry.sh", now: now - 2 * day, x: "7f3a2b")
         let propGroup = pid // prop-quiet-hours-after-22-00-7f3a2b

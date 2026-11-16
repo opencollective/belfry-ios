@@ -16,6 +16,9 @@ struct ChannelView: View {
     /// Inside the event screen (its Chat tab): the feed and the composer only; the event screen
     /// has the header, the bar and the pull-down.
     var embedded = false
+    /// Pushed on the main stack (an archived group opened from its card or the Archived list):
+    /// the back button instead of ☰.
+    var pushed = false
     @State private var openThreads = Set<String>()
     @State private var pull: PullLevel = .closed
     @State private var detailsTab: InfoTab = .about
@@ -46,12 +49,14 @@ struct ChannelView: View {
         let reactions = d.reactions(id)
         let todos = d.todosBySource(id)
         let pinnedIds = Set(d.pinned(id).map(\.id))
+        // archived (SPEC 19.30): everything is readable, every write action is hidden
+        let locked = d.isArchived(id)
         ScrollViewReader { proxy in
             ScrollView {
                 // lazy always: a plain stack hung a short event chat (the meeting's) in CI
                 FeedStack(lazy: true) {
                     if rows.isEmpty {
-                        if model.guestReading && topic == nil {
+                        if (model.guestReading || locked) && topic == nil {
                             Text("No messages here yet.").foregroundStyle(.secondary).padding(32).frame(maxWidth: .infinity)
                         } else {
                             EmptyChannel(name: g?.name ?? id, filtered: topic != nil) { invite = true }
@@ -115,6 +120,7 @@ struct ChannelView: View {
                 model.markSeen(id)
                 model.markChannelRead(id)
                 model.visibleChannel = id
+                if g == nil { model.lookFor(id) }
                 takeThread()
                 if let focus { jump(to: focus, proxy) } else { toEnd(proxy) }
                 applyLaunch()
@@ -136,6 +142,8 @@ struct ChannelView: View {
                 if model.guestReading {
                     // guest mode: reading only; Join opens the sheet (SPEC 19.26)
                     GuestBar(group: id)
+                } else if locked {
+                    if !embedded { ArchivedFooter() }
                 } else {
                 if model.unsavedGuest && d.messages(id).contains(where: { $0.pubkey == model.me }) {
                     SaveAccountCard(compact: true).padding(.horizontal).padding(.vertical, 8).background(.bar)
@@ -154,9 +162,10 @@ struct ChannelView: View {
             .topBar {
                 if !embedded {
                 VStack(spacing: 0) {
+                    if locked { ArchivedBanner(id: id) }
                     ChannelLineBar(id: id, topic: topic, open: { togglePull() }, showAll: { withAnimation { topic = nil } },
                                    review: { details = true }, pulled: pull != .closed, pull: { openPull() })
-                    if model.offerPush && pull == .closed { PushOffer() }
+                    if model.offerPush && pull == .closed && !locked { PushOffer() }
                     if let g, g.isEvent, let e = d.eventOfGroup(id) {
                         Button { model.openEvent = e.coord } label: {
                             HStack(spacing: 8) {
@@ -172,7 +181,7 @@ struct ChannelView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    if let g, g.isPod, !g.members.contains(model.me), !g.admins.contains(model.me) {
+                    if let g, g.isPod, !locked, !g.members.contains(model.me), !g.admins.contains(model.me) {
                         PodJoinBar(group: g, asked: g.applications.contains { $0.pubkey == model.me }) { podAsk = true }
                     }
                 }
@@ -211,7 +220,7 @@ struct ChannelView: View {
                 }
                 .accessibilityLabel("\(g?.name ?? id). Show what's going on in this channel.")
             }
-            ToolbarItem(placement: .topBarLeading) { DrawerButton() }
+            if !pushed { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button { search = true } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("Search")
             }
@@ -280,7 +289,7 @@ struct ChannelView: View {
 
     /// Holding a message: its menu; in guest mode the Join sheet instead.
     func hold(_ m: Message) {
-        if model.guestReading { model.joinAsked = true } else { actionsFor = m }
+        if model.guestReading { model.joinAsked = true } else if !model.locked(id) { actionsFor = m }
     }
 
     func takeThread() {

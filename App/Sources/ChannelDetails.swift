@@ -23,7 +23,9 @@ struct ChannelDetails: View {
     var body: some View {
         let _ = model.version
         let g = model.group(id)
-        let admin = model.derive.canAdmin(g)
+        // archived (SPEC 19.30): read only, no settings
+        let locked = g?.archived == true
+        let admin = model.derive.canAdmin(g) && !locked
         NavigationStack {
             List {
                 Section {
@@ -45,7 +47,7 @@ struct ChannelDetails: View {
                     default: dismiss(); go(g)
                     }
                 }
-                case .settings: SettingsTab(id: id)
+                case .settings: if !locked { SettingsTab(id: id) }
                 }
             }
             .navigationTitle(g.map { $0.isPod ? $0.name : "#" + $0.name } ?? id)
@@ -144,7 +146,11 @@ struct AboutTab: View {
                 Label("Members can e-mail \(d.mailAddress(id)): their mail shows as their message.", systemImage: "envelope").font(.footnote)
             }
         }
-        if !d.amGuest { FollowBell(id: id) }
+        if g?.archived == true {
+            Section { Label("Archived · read only", systemImage: "archivebox").foregroundStyle(.secondary) }
+        }
+        if !d.amGuest && g?.archived != true { FollowBell(id: id) }
+        if g?.archived != true {
         Section {
             Button(action: invite) { ActionRow(icon: "person.badge.plus", title: "Invite people") }
             if let g, !g.members.contains(model.me), !g.admins.contains(model.me), !g.isPod {
@@ -153,6 +159,7 @@ struct AboutTab: View {
             if let g, g.isPod, g.members.contains(model.me) {
                 ActionButtonRow(icon: "rectangle.portrait.and.arrow.right", title: "Leave the group", destructive: true) { model.leave(id) }
             }
+        }
         }
         Section(active.isEmpty ? "Nobody active this month yet" : "Active in the last 30 days") {
             ForEach(active, id: \.pubkey) { a in
@@ -277,12 +284,15 @@ struct TodosTab: View {
 
     var body: some View {
         let tasks = model.derive.tasks(id)
+        let locked = model.locked(id)
+        if !locked {
         Section {
             HStack {
                 TextField("Add a todo", text: $newTodo).font(.body)
                 BusyButton { model.addTodo(newTodo, in: id); newTodo = "" } label: { Image(systemName: "plus.circle.fill") }
                     .disabled(newTodo.jsTrim().isEmpty)
             }
+        }
         }
         Section("To do") {
             let todo = tasks.filter { !$0.done }
@@ -300,7 +310,7 @@ struct TodosTab: View {
                 Button(open == t.id ? "Hide comments" : t.comments.isEmpty ? "Comment" : "\(t.comments.count) comments") {
                     withAnimation { open = open == t.id ? nil : t.id }
                 }
-                if t.author == model.me {
+                if t.author == model.me && !model.locked(id) {
                     BusyButton("Delete", role: .destructive) { model.todo(t, in: id, "delete") }
                 }
             }
@@ -327,9 +337,11 @@ struct TodoComments: View {
                     }
                 }
             }
+            if !model.locked(group) {
             HStack {
                 TextField("Comment", text: $text).font(.body)
                 BusyButton("Send") { model.commentTodo(t, in: group, text: text.jsTrim()); text = "" }.disabled(text.jsTrim().isEmpty)
+            }
             }
         }
         .padding(.leading, 34)
@@ -348,7 +360,9 @@ struct FilesTab: View {
         let others = files.filter { !$0.isImage }
         let links = d.dropLinks(id, now: .now)
         Section("Drop box links") {
-            Button { drop = true } label: { ActionRow(icon: "tray.and.arrow.down", title: "New drop box link", detail: "Anyone with the link can add photos and files here") }
+            if !model.locked(id) {
+                Button { drop = true } label: { ActionRow(icon: "tray.and.arrow.down", title: "New drop box link", detail: "Anyone with the link can add photos and files here") }
+            }
             ForEach(links) { l in
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
@@ -357,7 +371,7 @@ struct FilesTab: View {
                             .font(.caption2).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    if l.author == model.me { BusyButton("End", role: .destructive) { model.endDropLink(l) }.font(.caption).buttonStyle(.borderless) }
+                    if l.author == model.me && !model.locked(id) { BusyButton("End", role: .destructive) { model.endDropLink(l) }.font(.caption).buttonStyle(.borderless) }
                 }
             }
         }
@@ -455,6 +469,8 @@ struct SettingsTab: View {
             closed = g.closed
             prompt = g.prompt ?? ""
         }
+        // archiving sits where deleting would (the iPhone app has no Delete), SPEC 19.30
+        if model.derive.mayArchive(g) { ArchiveSection(id: id) }
     }
 }
 
