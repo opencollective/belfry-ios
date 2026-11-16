@@ -143,6 +143,7 @@ struct Composer: View {
         }
         .onChange(of: photos) { _, items in load(items) }
         .onChange(of: focusTrigger) { _, _ in focused = true }
+        .onChange(of: focused) { _, f in LoopWatch.mark("composer focused=\(f) \(group)") }
         .onChange(of: text) { _, t in if let k = draftKey { Drafts.set(k, t) } }
         .photosPicker(isPresented: $photoPicker, selection: $photos, maxSelectionCount: 6, matching: .images)
         .sheet(item: $create) { k in CreateSheet(kind: k, parent: group) }

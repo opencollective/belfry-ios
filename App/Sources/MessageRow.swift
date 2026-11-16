@@ -28,6 +28,7 @@ struct MessageRow: View {
     @State private var tapped = 0
 
     var body: some View {
+        let _ = LoopWatch.tick("MessageRow")
         let d = model.derive
         let pending = model.pending(m.id)
         HStack(alignment: .top, spacing: 10) {

@@ -93,7 +93,11 @@ extension View {
     /// never has to find a row; ScrollViewProxy.scrollTo("bottom") before iOS 18.
     var scrollToEnd: (_ animated: Bool) -> Void = { _ in }
 
-    func toEnd(animated: Bool = false) { scrollToEnd(animated) }
+    func toEnd(animated: Bool = false) {
+        LoopWatch.mark("toEnd begin animated=\(animated)")
+        scrollToEnd(animated)
+        LoopWatch.mark("toEnd end")
+    }
 
     /// Runs ACTION once the calls stop for 250 ms (one scroll after a height change settles).
     func settle(_ action: @escaping @MainActor () -> Void) {

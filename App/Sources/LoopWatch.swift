@@ -15,6 +15,12 @@ enum LoopWatch {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var started = false
 
+    /// Logs NAME at once (to see the last thing that ran before a stall).
+    static func mark(_ name: String) {
+        guard on else { return }
+        log.error("MARK \(name, privacy: .public)")
+    }
+
     /// Counts one call of NAME (main thread).
     static func tick(_ name: String) {
         guard on else { return }

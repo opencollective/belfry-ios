@@ -151,7 +151,7 @@ if [ -n "${XCTESTRUN:-}" ] && [ -f "$XCTESTRUN" ]; then
     grep -E "Test Case|error:" "ui-$mode.log" | tail -30 || true
     if [ $code -ne 0 ]; then UI_FAILED=1; echo "UI tests ($mode) failed"; fi
     # the app's watchdog (App/Sources/LoopWatch.swift): redraw loops and main-thread stalls
-    xcrun simctl spawn "$UDID" log show --last 30m --style compact --predicate 'subsystem == "sh.belfry.app.watchdog"' 2>/dev/null | grep -E 'STALL|LOOP' | tail -120 | tee "$OUT/watchdog-$mode.txt" || true
+    xcrun simctl spawn "$UDID" log show --last 30m --style compact --predicate 'subsystem == "sh.belfry.app.watchdog"' 2>/dev/null | grep -E 'STALL|LOOP|MARK' | tail -200 | tee "$OUT/watchdog-$mode.txt" || true
   done
   xcrun simctl ui "$UDID" appearance light || true
   # a menu the tests could not open is a failure of the job (the shots would be missing)

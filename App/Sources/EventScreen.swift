@@ -139,6 +139,7 @@ struct EventScreenBody: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             // typing in the event's chat: the header steps out of the way
             LoopWatch.tick("keyboardWillShow")
+            LoopWatch.mark("keyboardWillShow level=\(level)")
             if access && tab == .chat && level != .up { withAnimation(.snappy(duration: 0.25)) { level = .up } }
         }
         .onChange(of: tab) { _, _ in if level == .full { withAnimation(.snappy(duration: 0.28)) { level = .half } } }

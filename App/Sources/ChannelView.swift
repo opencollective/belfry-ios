@@ -112,6 +112,7 @@ struct ChannelView: View {
             .scrollDismissesKeyboard(.interactively)
             // focusing the composer shows the latest messages (iMessage)
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+                LoopWatch.mark("keyboardDidShow \(embedded ? "embedded" : id)")
                 if focus == nil && scrollTarget == nil && model.visibleChannel == id { feedPos.toEnd(animated: true) }
             }
             .refreshable { await model.refresh() }
