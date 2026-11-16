@@ -294,12 +294,13 @@ struct EventScreenBody: View {
             .frame(height: EventScreenBody.pickerH)
             .accessibilityIdentifier("event-tabs")
             ZStack {
+                // the chat stays in the tree (its place in the feed, its draft); Photos and People
+                // exist only while shown: hidden, their scroll and list views still took part in
+                // every keyboard layout of the chat, and that layout could stop returning
+                // (the freeze when typing in the event's chat, 2026-11-16)
                 pane(.chat) { ChannelView(id: e.groupId, embedded: true) }
-                // lists run under the home indicator (as Photos and Contacts do)
-                // (no ignoresSafeArea here: lists that left the bottom safe area while the
-                // keyboard rose were part of the freeze's layout)
-                pane(.photos) { EventPhotosTab(e: e) }
-                pane(.people) { EventPeopleTab(e: e, open: openProfile, checkIn: { checkingIn = true }) }
+                if tab == .photos { EventPhotosTab(e: e) }
+                if tab == .people { EventPeopleTab(e: e, open: openProfile, checkIn: { checkingIn = true }) }
             }
             .opacity(hidden ? 0 : 1)
             .allowsHitTesting(!hidden)
@@ -883,7 +884,6 @@ struct EventPeopleTab: View {
             }
         }
         .listStyle(.insetGrouped)
-        .contentMargins(.top, 8, for: .scrollContent)
         .environment(\.showProfile) { pk in open(pk) }
     }
 
