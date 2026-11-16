@@ -72,7 +72,7 @@ private struct MemberHome: View {
             if !calm && !coming.isEmpty {
                 Section {
                     ForEach(coming) { e in
-                        NavigationLink(value: EventRoute(key: e.coord, ticket: nil)) { EventLine(e: e) }
+                        NavigationLink(value: EventRoute(key: e.coord, ticket: nil)) { HomeEventLine(e: e) }
                     }
                 } header: { sectionHeader("Coming up", link: "Calendar") { model.tab = .calendar } }
             }
@@ -190,7 +190,7 @@ struct HomeRow: View {
 }
 
 /// An event in a list: the date, the title, "18:30 · you host · check-in today". No buttons.
-struct EventLine: View {
+struct HomeEventLine: View {
     @EnvironmentObject var model: AppModel
     let e: CalEvent
     var body: some View {
@@ -282,7 +282,7 @@ private struct CalmCard: View {
                 .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
             if let next {
                 NavigationLink(value: EventRoute(key: next.coord, ticket: nil)) {
-                    EventLine(e: next).padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                    HomeEventLine(e: next).padding(10).frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -338,7 +338,7 @@ private struct GuestHome: View {
             }
         }
         .listStyle(.insetGrouped)
-        .sheet(isPresented: $applying) { ApplySheet() }
+        .sheet(isPresented: $applying) { BecomeMemberSheet() }
     }
 }
 
@@ -381,7 +381,7 @@ struct ApplyCard: View {
 /// A guest asks to become a member (board Join-Apply 1): the belfry's question, the saved
 /// e-mail, the charter's agreements. The belfry can't take a guest's request yet (SERVER-NEEDS
 /// 10): the request is refused in words, except in the demo.
-struct ApplySheet: View {
+struct BecomeMemberSheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var answer = ""

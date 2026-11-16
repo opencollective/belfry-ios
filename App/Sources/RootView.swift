@@ -117,7 +117,7 @@ struct RootView: View {
                 SignInView(domainHint: nil, onCancel: { model.cancelAddingAccount() })
             }
             .sheet(isPresented: $notifications) { NavigationStack { NotificationsView() } }
-            .sheet(isPresented: $applying) { ApplySheet() }
+            .sheet(isPresented: $applying) { BecomeMemberSheet() }
     }
 
     private var routed: some View {
