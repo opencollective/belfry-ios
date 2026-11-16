@@ -91,27 +91,32 @@ struct EventScreenBody: View {
         let _ = LoopWatch.tick("EventScreenBody")
         let d = model.derive
         let access = hasAccess(d)
-        let top = page.top
-        let total = page.height + top
-        let hs = heights(top: top, total: total, access: access)
+        let total = page.height
+        let hs = heights(total: total, access: access)
         let h = height(hs, access: access)
-        // the page's size and the bar's height, read by a plain base that keeps to the safe area;
-        // the page is its overlay, so it can never change what the base measures. (A GeometryReader
-        // whose content ignored the top safe area froze the app when the keyboard rose; a ZStack
-        // sibling took its size from that content and fed back.)
+        // Nothing of the page leaves the safe area. The cover under the navigation bar is a
+        // background decoration (it never takes part in layout); the header shows a clear gap of
+        // the cover's height over it. (Content that ignored the top safe area, measured by a
+        // GeometryReader around it, froze the app when the keyboard rose in the event's chat:
+        // UIKit's safe-area and keyboard layout never settled, 2026-11-16.)
         Color.clear
             .onGeometryChange(for: PageBox.self) { PageBox(top: $0.safeAreaInsets.top.rounded(), height: $0.size.height.rounded()) } action: { p in
                 LoopWatch.tick("page"); if p != page { page = p }
             }
+            .background(alignment: .top) {
+                EventBackdrop(e: e, height: page.top + (e.hasCover ? EventCover.height : 0))
+                    .ignoresSafeArea(edges: .top)
+                    .opacity(access && level == .up ? 0 : 1)
+                    .allowsHitTesting(false)
+            }
             .overlay(alignment: .top) {
                 VStack(spacing: 0) {
-                    header(d, top: top, h: h, hs: hs, access: access)
+                    header(d, h: h, hs: hs, access: access)
                     if access {
                         handle(hs)
                         content(hidden: level == .full && drag == 0)
                     }
                 }
-                .ignoresSafeArea(.container, edges: .top)
                 .opacity(page.height > 0 ? 1 : 0)
             }
         .overlay(alignment: .top) {
@@ -155,10 +160,10 @@ struct EventScreenBody: View {
         return d.inChannel(g, model.me) || d.isHost(e) || d.eventPeople(e).holders[model.me] != nil
     }
 
-    private func heights(top: CGFloat, total: CGFloat, access: Bool) -> Heights {
+    private func heights(total: CGFloat, access: Bool) -> Heights {
         guard access else { return Heights(up: total, half: total, full: total) }
-        let up = top
-        let measured = halfContentH > 0 ? halfContentH : top + 320
+        let up: CGFloat = 0
+        let measured = halfContentH > 0 ? halfContentH : 320
         let full = max(up + 120, total - EventScreenBody.handleH - EventScreenBody.pickerH)
         let half = min(full, max(up + 120, min(measured, total * 0.72)))
         return Heights(up: up, half: half, full: full)
@@ -200,11 +205,11 @@ struct EventScreenBody: View {
 
     // ---- the header ------------------------------------------------------------------------------
 
-    private func header(_ d: Derive, top: CGFloat, h: CGFloat, hs: Heights, access: Bool) -> some View {
+    private func header(_ d: Derive, h: CGFloat, hs: Heights, access: Bool) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    halfPart(d, top: top, access: access)
+                    halfPart(d, access: access)
                         .id("event-top")
                         .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded() } action: { h in
                             // only real changes (a sub-point wobble redrew the screen for nothing)
@@ -216,6 +221,7 @@ struct EventScreenBody: View {
                                   showPeople: { withAnimation(.snappy) { tab = .people; level = .half } },
                                   edit: { editing = true }, tickets: { ticketsSheet = true }, cancel: { cancelSheet = true },
                                   delete: { confirmDelete = true })
+                        .background(PDSurface.color)
                 }
             }
             .scrollDisabled(access && level != .full)
@@ -227,13 +233,13 @@ struct EventScreenBody: View {
         .frame(height: h, alignment: .top)
         .frame(maxWidth: .infinity)
         .clipped()
-        .background(PDSurface.color)
         .accessibilityHidden(access && level == .up)
     }
 
-    private func halfPart(_ d: Derive, top: CGFloat, access: Bool) -> some View {
+    private func halfPart(_ d: Derive, access: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            EventCover(e: e, top: top)
+            // the cover itself is the page's backdrop (under the bar too): a clear gap shows it
+            Color.clear.frame(height: e.hasCover ? EventCover.height : 0).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     if e.meeting { Text("Meeting · members only").font(.footnote.weight(.semibold)).foregroundStyle(.secondary) }
@@ -248,6 +254,8 @@ struct EventScreenBody: View {
             .padding(.horizontal, 16)
             .padding(.top, 14)
             .padding(.bottom, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(PDSurface.color)
         }
     }
 
@@ -379,23 +387,31 @@ struct EventScreenBody: View {
 }
 
 /// The cover, edge to edge under the navigation bar (or the bar's height of nothing).
-struct EventCover: View {
+enum EventCover { static let height: CGFloat = 170 }
+
+extension CalEvent {
+    var hasCover: Bool { (cover ?? "").hasPrefix("https://") }
+}
+
+/// The cover, edge to edge from the top of the screen (under the bar) to the header's gap: a
+/// background decoration only. Without a cover, the page's own surface.
+struct EventBackdrop: View {
     let e: CalEvent
-    let top: CGFloat
+    let height: CGFloat
     var body: some View {
-        if let c = e.cover, let u = URL(string: c), c.hasPrefix("https://") {
+        if let c = e.cover, let u = URL(string: c), e.hasCover {
             Color.secondary.opacity(0.12)
-                .frame(height: top + 170)
+                .frame(height: height)
                 .frame(maxWidth: .infinity)
                 .overlay { CachedImage(url: u) { $0.resizable().scaledToFill() } placeholder: { Color.clear } }
                 .clipped()
                 // the bar's buttons read over any picture
                 .overlay(alignment: .top) {
-                    LinearGradient(colors: [Color.black.opacity(0.28), .clear], startPoint: .top, endPoint: .bottom).frame(height: top + 20)
+                    LinearGradient(colors: [Color.black.opacity(0.28), .clear], startPoint: .top, endPoint: .bottom).frame(height: max(0, height - EventCover.height) + 20)
                 }
                 .accessibilityHidden(true)
         } else {
-            Color.clear.frame(height: top)
+            PDSurface.color.frame(height: height).accessibilityHidden(true)
         }
     }
 }
