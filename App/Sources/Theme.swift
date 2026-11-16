@@ -109,11 +109,6 @@ extension View {
     }
 }
 
-struct BarHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
-}
-
 /// The filled button in the belfry's colour (borderedProminent's shape, with text that reads on
 /// a neutral or branded tint in light and dark mode).
 struct BrandButtonStyle: ButtonStyle {
@@ -194,12 +189,13 @@ extension View {
     /// inset: defaultScrollAnchor(.bottom) put the last rows behind and below an inset composer,
     /// and padding the feed by the composer's height left an empty band after scrollTo. Under it,
     /// the feed's end is the composer's top, whatever scrolls there.
-    func bottomBar<V: View>(height: Binding<CGFloat>? = nil, @ViewBuilder _ content: () -> V) -> some View {
+    /// No geometry reading on the composer: each one made the layout measure the composer's text
+    /// view again (part of the event-chat freeze, 2026-11-16).
+    func bottomBar<V: View>(@ViewBuilder _ content: () -> V) -> some View {
         VStack(spacing: 0) {
             self.frame(maxHeight: .infinity)
-            content().background(GeometryReader { g in Color.clear.preference(key: BarHeightKey.self, value: g.size.height) })
+            content()
         }
-        .onPreferenceChange(BarHeightKey.self) { h in height?.wrappedValue = h }
     }
 
     /// A feed stays on its last rows when it gets shorter or taller (the keyboard, the event's

@@ -122,6 +122,9 @@ struct Composer: View {
                         .frame(minHeight: h)
                     sendButton.padding(4)
                 }
+                // asked for its height at the given width only: stacks around it no longer probe
+                // the text view at several sizes (each probe is a TextKit layout)
+                .fixedSize(horizontal: false, vertical: true)
                 .composerField(radius: h / 2)
             }
         }

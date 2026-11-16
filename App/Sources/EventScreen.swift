@@ -114,7 +114,11 @@ struct EventScreenBody: View {
                     header(d, h: h, hs: hs, access: access)
                     if access {
                         handle(hs)
+                        // a fixed height: a flexible content area made every stack above it measure
+                        // the chat (and the composer's text view) at several sizes per pass, which
+                        // multiplied level by level until the main thread was busy for good
                         content(hidden: level == .full && drag == 0)
+                            .frame(height: max(0, total - h - EventScreenBody.handleH))
                     }
                 }
                 .opacity(page.height > 0 ? 1 : 0)
@@ -182,7 +186,8 @@ struct EventScreenBody: View {
 
     private func handle(_ hs: Heights) -> some View {
         Capsule().fill(Color.secondary.opacity(0.45)).frame(width: 36, height: 5)
-            .frame(maxWidth: .infinity, minHeight: EventScreenBody.handleH)
+            .frame(maxWidth: .infinity)
+            .frame(height: EventScreenBody.handleH)
             .background(PDSurface.color)
             .overlay(alignment: .bottom) { Divider() }
             .contentShape(Rectangle())
@@ -306,7 +311,7 @@ struct EventScreenBody: View {
             .allowsHitTesting(!hidden)
             .accessibilityHidden(hidden)
         }
-        .frame(maxHeight: .infinity)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     /// One tab's view, kept in the tree (switching tabs keeps the feed's place and the drafts).
