@@ -56,8 +56,11 @@ struct ChannelView: View {
         let locked = d.isArchived(id)
         ScrollViewReader { proxy in
             ScrollView {
-                // lazy always: a plain stack hung a short event chat (the meeting's) in CI
-                FeedStack(lazy: true) {
+                // an event's chat (embedded) is a plain stack: it is short, and a lazy stack's
+                // estimated rows kept the main thread re-laying out the feed when the keyboard and
+                // the event's header moved (samples of the freeze, 2026-11-16). (The meeting hang
+                // seen with a plain stack came from view state written in layout callbacks, gone.)
+                FeedStack(lazy: !embedded) {
                     if rows.isEmpty {
                         if (model.guestReading || locked) && topic == nil {
                             Text("No messages here yet.").foregroundStyle(.secondary).padding(32).frame(maxWidth: .infinity)
