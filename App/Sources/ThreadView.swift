@@ -9,10 +9,11 @@ struct ThreadView: View {
     let group: String
     let rootId: String
     var focusReply = false
+    /// Layout callbacks write here, never view state (see ChannelView).
+    @State private var feedPos = FeedPosition()
     @State private var actionsFor: Message?
     @State private var editing: Message?
     @State private var focusBox = 0
-    @State private var composerH: CGFloat = 0
 
     var body: some View {
         let _ = model.version
@@ -43,21 +44,20 @@ struct ThreadView: View {
                 }
                 .padding(.vertical, 8)
             }
-            .defaultScrollAnchor(.bottom)
-            .keepsBottomOnResize()
+            .initialScrollAnchorBottom()
             .onChange(of: replies.count) { _, _ in
                 withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
                 model.markThreadRead(group, rootId)
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
-                if #unavailable(iOS 18) { proxy.scrollTo("bottom", anchor: .bottom) }
+                feedPos.settle { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .onAppear {
                 model.markThreadRead(group, rootId)
                 DispatchQueue.main.async { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
-        .bottomBar(height: $composerH) {
+        .bottomBar {
             if model.guestReading {
                 GuestBar(group: group)
             } else if model.locked(group) {

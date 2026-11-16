@@ -22,7 +22,6 @@ struct ChannelView: View {
     @State private var openThreads = Set<String>()
     @State private var pull: PullLevel = .closed
     @State private var detailsTab: InfoTab = .about
-    @State private var composerH: CGFloat = 0
     @State private var details = false
     @State private var invite = false
     @State private var search = false
@@ -37,8 +36,11 @@ struct ChannelView: View {
     @State private var podAsk = false
     @State private var proposeSite: Message?
     /// The feed shows its last rows: it stays there when its height changes (keyboard, header).
-    @State private var atBottom = true
-    @State private var resizeScroll: Task<Void, Never>?
+    /// Where the feed stands, written from layout callbacks. A reference, not view state: writing
+    /// @State from onScrollGeometryChange / onGeometryChange re-rendered the feed while it was
+    /// being laid out, and with the lazy rows' estimates and the keyboard that never settled
+    /// (the event chat froze when its composer was focused, 2026-11-16).
+    @State private var feedPos = FeedPosition()
 
     var body: some View {
         let _ = model.version
@@ -94,21 +96,15 @@ struct ChannelView: View {
                 }
                 .padding(.vertical, 8)
             }
-            .defaultScrollAnchor(.bottom)
-            .keepsBottomOnResize()
-            .trackAtBottom($atBottom)
-            // a lazy feed's bottom anchor lands short when rows are estimated: scroll to the end
-            // when the feed's height changes while it showed its end
-            // back to the end when the height changes, debounced: scrolling on every frame of the
-            // event header's animation looped with the lazy rows' estimates (a UI test timed out)
+            // the end at the first frame only: the size-change anchor fought the lazy rows'
+            // estimates while the keyboard and the event's header moved (a feedback loop)
+            .initialScrollAnchorBottom()
+            .trackAtBottom(feedPos)
+            // back to the end once a height change has settled (keyboard, the event's header), if
+            // the feed showed its end; nothing here writes view state
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
-                // once the height has settled (not every frame of the header's animation)
-                guard atBottom && focus == nil && scrollTarget == nil else { return }
-                resizeScroll?.cancel()
-                resizeScroll = Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 250_000_000)
-                    if !Task.isCancelled { proxy.scrollTo("bottom", anchor: .bottom) }
-                }
+                guard feedPos.atBottom && focus == nil && scrollTarget == nil else { return }
+                feedPos.settle { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             .scrollDismissesKeyboard(.interactively)
             // focusing the composer shows the latest messages (iMessage)
@@ -137,7 +133,7 @@ struct ChannelView: View {
             .onChange(of: scrollTarget) { _, t in if let t { jump(to: t, proxy); scrollTarget = nil } }
             .onChange(of: model.openThread) { _, _ in takeThread() }
             .onDisappear { if model.visibleChannel == id { model.visibleChannel = nil } }
-            .bottomBar(height: $composerH) {
+            .bottomBar {
                 VStack(spacing: 0) {
                 if model.guestReading {
                     // guest mode: reading only; Join opens the sheet (SPEC 19.26)

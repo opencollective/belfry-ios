@@ -191,7 +191,10 @@ struct EventScreenBody: View {
                 VStack(alignment: .leading, spacing: 0) {
                     halfPart(d, top: top, access: access)
                         .id("event-top")
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { halfContentH = $0 }
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded() } action: { h in
+                            // only real changes (a sub-point wobble redrew the screen for nothing)
+                            if abs(h - halfContentH) >= 1 { halfContentH = h }
+                        }
                     // kept in the tree at every level (clipped away): nothing pops in while pulling
                     EventFullPart(e: e, api: api, error: $error, coHost: $coHost, open: openProfile,
                                   showPeople: { withAnimation(.snappy) { tab = .people; level = .half } },

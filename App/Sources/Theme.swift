@@ -43,6 +43,21 @@ extension Color {
     static var brand: Color { Theme.accent }
 }
 
+/// A feed's position as layout callbacks see it: a plain reference, so writing it never redraws.
+@MainActor final class FeedPosition {
+    var atBottom = true
+    private var pending: Task<Void, Never>?
+
+    /// Runs ACTION once the calls stop for 250 ms (one scroll after a height change settles).
+    func settle(_ action: @escaping @MainActor () -> Void) {
+        pending?.cancel()
+        pending = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            if !Task.isCancelled { action() }
+        }
+    }
+}
+
 struct BarHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
@@ -138,18 +153,21 @@ extension View {
 
     /// A feed stays on its last rows when it gets shorter or taller (the keyboard, the event's
     /// header moving): iOS 18's size-change anchor; before, the caller scrolls on a height change.
-    /// Whether a feed shows its end (iOS 18's scroll geometry; before: always told yes).
-    @ViewBuilder func trackAtBottom(_ at: Binding<Bool>) -> some View {
+    /// Whether a feed shows its end (iOS 18's scroll geometry; before: always told yes), kept in
+    /// POS without touching view state.
+    @ViewBuilder func trackAtBottom(_ pos: FeedPosition) -> some View {
         if #available(iOS 18, *) {
             self.onScrollGeometryChange(for: Bool.self) { g in
                 g.contentOffset.y + g.containerSize.height >= g.contentSize.height - 80
-            } action: { _, v in at.wrappedValue = v }
+            } action: { _, v in pos.atBottom = v }
         } else {
             self
         }
     }
 
-    @ViewBuilder func keepsBottomOnResize() -> some View {
-        if #available(iOS 18, *) { self.defaultScrollAnchor(.bottom, for: .sizeChanges) } else { self }
+    /// A feed opens at its end. iOS 18+: for the first frame only (the plain modifier also anchors
+    /// size changes, which looped with lazy rows and the keyboard).
+    @ViewBuilder func initialScrollAnchorBottom() -> some View {
+        if #available(iOS 18, *) { self.defaultScrollAnchor(.bottom, for: .initialOffset) } else { self.defaultScrollAnchor(.bottom) }
     }
 }
