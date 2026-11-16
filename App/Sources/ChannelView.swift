@@ -100,18 +100,19 @@ struct ChannelView: View {
             // the end at the first frame only: the size-change anchor fought the lazy rows'
             // estimates while the keyboard and the event's header moved (a feedback loop)
             .initialScrollAnchorBottom()
+            .feedScroll(feedPos, proxy)
             .trackAtBottom(feedPos)
             // back to the end once a height change has settled (keyboard, the event's header), if
             // the feed showed its end; nothing here writes view state
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
                 LoopWatch.tick("feedHeight")
                 guard feedPos.atBottom && focus == nil && scrollTarget == nil else { return }
-                feedPos.settle { proxy.scrollTo("bottom", anchor: .bottom) }
+                feedPos.settle { feedPos.toEnd() }
             }
             .scrollDismissesKeyboard(.interactively)
             // focusing the composer shows the latest messages (iMessage)
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
-                if focus == nil && scrollTarget == nil && model.visibleChannel == id { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+                if focus == nil && scrollTarget == nil && model.visibleChannel == id { feedPos.toEnd(animated: true) }
             }
             .refreshable { await model.refresh() }
             .onAppear {
@@ -128,7 +129,7 @@ struct ChannelView: View {
                 if UIApplication.shared.applicationState == .active { model.markChannelRead(id) }
                 // a new message: glide to it; the first load (or many at once): jump and settle
                 if focus == nil && scrollTarget == nil {
-                    if old > 0 && new - old <= 3 { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } else { toEnd(proxy) }
+                    if old > 0 && new - old <= 3 { feedPos.toEnd(animated: true) } else { toEnd(proxy) }
                 }
                 if pendingThreadLaunch { openBusiestThread(proxy) }
             }
@@ -151,7 +152,7 @@ struct ChannelView: View {
                 } else {
                     Composer(group: id, placeholder: "Message \(g.map { $0.isPod ? $0.name : "#" + $0.name } ?? id)", canAnnounce: d.canAdmin(g), topic: topic, draftKey: "c:" + id) { text, attachments, announce in
                         model.post(text, in: id, attachments: attachments, announce: announce, topic: topic)
-                        withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                        feedPos.toEnd(animated: true)
                     }
                 }
                 }
@@ -298,10 +299,10 @@ struct ChannelView: View {
 
     /// Opening a channel: its end, once the lazy rows are laid out (twice: they settle).
     func toEnd(_ proxy: ScrollViewProxy) {
-        DispatchQueue.main.async { proxy.scrollTo("bottom", anchor: .bottom) }
+        DispatchQueue.main.async { feedPos.toEnd() }
         // lazy rows are estimated first: scroll again once they are measured
         for t in [0.2, 0.5, 1.0] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + t) { if scrollTarget == nil && focus == nil { proxy.scrollTo("bottom", anchor: .bottom) } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + t) { if scrollTarget == nil && focus == nil { feedPos.toEnd() } }
         }
     }
 

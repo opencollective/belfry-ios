@@ -43,10 +43,57 @@ extension Color {
     static var brand: Color { Theme.accent }
 }
 
+/// Wires a feed's FeedPosition to its scroll view. iOS 18+: a ScrollPosition scrolled by edge.
+/// ScrollViewProxy.scrollTo with the id of the lazy feed's last row had to resolve that row
+/// through estimated heights while the keyboard and the event's header resized the feed, and could
+/// keep the main thread busy for good (the event-chat freeze of 2026-11-16).
+struct FeedScroll: ViewModifier {
+    let pos: FeedPosition
+    let proxy: ScrollViewProxy
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18, *) {
+            content.modifier(FeedScroll18(pos: pos))
+        } else {
+            content.onAppear {
+                pos.scrollToEnd = { animated in
+                    if animated { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } else { proxy.scrollTo("bottom", anchor: .bottom) }
+                }
+            }
+        }
+    }
+}
+
+@available(iOS 18, *)
+private struct FeedScroll18: ViewModifier {
+    let pos: FeedPosition
+    @State private var position = ScrollPosition(edge: .bottom)
+
+    func body(content: Content) -> some View {
+        content
+            .scrollPosition($position)
+            .onAppear {
+                let binding = $position
+                pos.scrollToEnd = { animated in
+                    if animated { withAnimation { binding.wrappedValue.scrollTo(edge: .bottom) } } else { binding.wrappedValue.scrollTo(edge: .bottom) }
+                }
+            }
+    }
+}
+
+extension View {
+    func feedScroll(_ pos: FeedPosition, _ proxy: ScrollViewProxy) -> some View { modifier(FeedScroll(pos: pos, proxy: proxy)) }
+}
+
 /// A feed's position as layout callbacks see it: a plain reference, so writing it never redraws.
 @MainActor final class FeedPosition {
     var atBottom = true
     private var pending: Task<Void, Never>?
+    /// Scrolls the feed to its end (set by `feedScroll`): iOS 18's ScrollPosition by edge, which
+    /// never has to find a row; ScrollViewProxy.scrollTo("bottom") before iOS 18.
+    var scrollToEnd: (_ animated: Bool) -> Void = { _ in }
+
+    func toEnd(animated: Bool = false) { scrollToEnd(animated) }
 
     /// Runs ACTION once the calls stop for 250 ms (one scroll after a height change settles).
     func settle(_ action: @escaping @MainActor () -> Void) {

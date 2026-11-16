@@ -45,16 +45,17 @@ struct ThreadView: View {
                 .padding(.vertical, 8)
             }
             .initialScrollAnchorBottom()
+            .feedScroll(feedPos, proxy)
             .onChange(of: replies.count) { _, _ in
-                withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                feedPos.toEnd(animated: true)
                 model.markThreadRead(group, rootId)
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
-                feedPos.settle { proxy.scrollTo("bottom", anchor: .bottom) }
+                feedPos.settle { feedPos.toEnd() }
             }
             .onAppear {
                 model.markThreadRead(group, rootId)
-                DispatchQueue.main.async { proxy.scrollTo("bottom", anchor: .bottom) }
+                DispatchQueue.main.async { feedPos.toEnd() }
             }
         }
         .bottomBar {
