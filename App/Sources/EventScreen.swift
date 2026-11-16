@@ -66,6 +66,8 @@ struct EventScreenBody: View {
     @State private var tab: EventTab = .chat
     @State private var drag: CGFloat = 0
     @State private var halfContentH: CGFloat = 0
+    /// The page's height below the bar and the bar's height (see body).
+    @State private var page = PageBox(top: 0, height: 0)
     @State private var showTicket = false
     @State private var checkingIn = false
     @State private var scanCard: String?
@@ -83,16 +85,25 @@ struct EventScreenBody: View {
     static let pickerH: CGFloat = 48
 
     struct Heights { let up, half, full: CGFloat }
+    struct PageBox: Equatable, Sendable { let top: CGFloat; let height: CGFloat }
 
     var body: some View {
         let _ = LoopWatch.tick("EventScreenBody")
         let d = model.derive
         let access = hasAccess(d)
-        GeometryReader { geo in
-            let top = geo.safeAreaInsets.top
-            let total = geo.size.height + top
-            let hs = heights(top: top, total: total, access: access)
-            let h = height(hs, access: access)
+        let top = page.top
+        let total = page.height + top
+        let hs = heights(top: top, total: total, access: access)
+        let h = height(hs, access: access)
+        ZStack(alignment: .top) {
+            // the page's size and the bar's height, read by a sibling that keeps to the safe area.
+            // (A GeometryReader whose content ignored the top safe area and used its insets froze
+            // the app when the keyboard rose: layout fed back through the safe area.)
+            Color.clear
+                .onGeometryChange(for: PageBox.self) { PageBox(top: $0.safeAreaInsets.top.rounded(), height: $0.size.height.rounded()) } action: { p in
+                    LoopWatch.tick("page"); if p != page { page = p }
+                }
+                .accessibilityHidden(true)
             VStack(spacing: 0) {
                 header(d, top: top, h: h, hs: hs, access: access)
                 if access {
@@ -101,6 +112,7 @@ struct EventScreenBody: View {
                 }
             }
             .ignoresSafeArea(.container, edges: .top)
+            .opacity(page.height > 0 ? 1 : 0)
         }
         .overlay(alignment: .top) {
             if let code = scanCard, model.mayCheckIn(e) {
@@ -275,8 +287,10 @@ struct EventScreenBody: View {
             ZStack {
                 pane(.chat) { ChannelView(id: e.groupId, embedded: true) }
                 // lists run under the home indicator (as Photos and Contacts do)
-                pane(.photos) { EventPhotosTab(e: e).ignoresSafeArea(.container, edges: .bottom) }
-                pane(.people) { EventPeopleTab(e: e, open: openProfile, checkIn: { checkingIn = true }).ignoresSafeArea(.container, edges: .bottom) }
+                // (no ignoresSafeArea here: lists that left the bottom safe area while the
+                // keyboard rose were part of the freeze's layout)
+                pane(.photos) { EventPhotosTab(e: e) }
+                pane(.people) { EventPeopleTab(e: e, open: openProfile, checkIn: { checkingIn = true }) }
             }
             .opacity(hidden ? 0 : 1)
             .allowsHitTesting(!hidden)
