@@ -210,7 +210,7 @@ The app codes against the contract (SPEC 19.29). For the belfry:
   send them.
 
 
-## 10. A guest applies to become a member (2026-11-16, board Join-Apply) — screen built, refused in words
+## 10. A guest applies to become a member (2026-11-16, board Join-Apply) — DONE (Belfry 9d03d4a, guestapply.py; the app sends it since round 2)
 
 The guest's Home leads with "Apply to become a member" (the owner's ask). Today a request to
 join exists only as the web form `pass.<domain>/apply` (apply.py), which makes a new person from
@@ -228,7 +228,7 @@ request from the app yet. Ask the person who invited you, or a steward." (the de
 was sent). Also needed for the request card in the Gates: `kind: "guest"` and the inviter in the
 list answer.
 
-## 11. Public events for guests (2026-11-16, board Join-Guest 5) — list built from what the phone holds
+## 11. Public events for guests (2026-11-16, board Join-Guest 5) — DONE (`GET /api/v1/events?visibility=public&from=`, docs/checkin.md; the app caches the answer)
 
 A guest's Calendar shows "Public events · Going": events with `visibility` public plus those of
 the channels they were let into. A guest reads only their channels on the groups relay and not
@@ -238,7 +238,7 @@ more than the events they opened by link (`GET /api/v1/events/<link>`). **Ask**:
 `/events/<link>`, newest 100), or let guests read kinds 31922 / 31923 with `visibility` public
 on the community relay. The app would merge it into the guest's list unchanged.
 
-## 12. The charter for guests and people applying (2026-11-16, SPEC 19.32)
+## 12. The charter for guests and people applying (2026-11-16, SPEC 19.32) — DONE except (1) (`GET /api/v1/charter`, belfry.json `charter`, `agreed` on a guest's request, ticks signed for the new member: docs/charter.md)
 
 The charter is the group `charter` on the groups relay (a fixed id; agreements = 2100 with
 `["each","1"]`; ticks = each person's own 2101 `done`). Members read it like any open group.
@@ -261,3 +261,15 @@ The boards' "Which belfry?" / the belfry's card / "Ask to join" need a JSON form
 same limits as the web form) and belfry.json `membership.accept` (`admins` | `vouches`) and
 `membership.question` so the card can say how one gets in. Not built on iOS: the app still
 starts on the sign-in screen (name@domain, or a guest link).
+
+Round 2 (2026-11-16): 10, 11 and 12 are done on the belfry; what stays open of 12 is (1), zooid
+letting guests and applicants read the `charter` group (the public read stands in for it). 13 is
+still open: the app still starts on sign-in or a guest link.
+
+## 14. Small things seen while building round 2
+
+- **E-mail threads**: the app joins a shared inbox's e-mails into threads itself (SPEC 19.33) and
+  trusts `belfry-mail` / `belfry-mail-out` posts only from `_groups@<domain>`'s key. Push for a
+  follow-up e-mail names the e-mail's own event id; the app opens its thread from any of its ids.
+- **First minutes**: the app shows them only after it saw the account's guest become a member on
+  this phone (the web's rule). A member made directly by a member link on another device gets none.

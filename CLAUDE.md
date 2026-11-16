@@ -9,7 +9,7 @@ don't guess. The Android app (opencollective/belfry-android) is a second reading
 
 `vectors/` is the contract shared with Android: keep both repos' files identical (copy, don't
 edit one side). SPEC.md differs from Android's only in the paragraph that opens section 19 and the (iOS) notes
-that end 19.19, 19.20 and 19.26, the iOS-only 19.28 and 19.29, 19.30 (deleted and archived groups, written here 2026-11-16: Android has not got it yet), and 19.31 / 19.32 (five places, names, roles; the charter, written here 2026-11-16; `vectors/charter.json` is ours: copy it to Android) (Android's 19.21 to 19.25 and 19.27 copied 2026-11-15; what the iPhone app does of them is in PARITY.md). `vectors/guestmode.json` and `vectors/readstate.json` are Android's.
+that end 19.19, 19.20 and 19.26, the iOS-only 19.28 and 19.29, 19.30 (deleted and archived groups, written here 2026-11-16: Android has not got it yet), and 19.31 / 19.32 / 19.33 (five places, names, roles; the charter; e-mail threads in a channel, written here 2026-11-16; `vectors/charter.json` and `vectors/mailthreads.json` are ours: copy them to Android) (Android's 19.21 to 19.25 and 19.27 copied 2026-11-15; what the iPhone app does of them is in PARITY.md). `vectors/guestmode.json` and `vectors/readstate.json` are Android's.
 
 ## Layout
 
@@ -232,6 +232,14 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
 - The charter (SPEC 19.32, `Model/Charter.swift`, `CharterUI.swift`, `AppModel+Charter`): group
   `charter`, agreements = 2100 with `each`, ticks per author; only belfry admins' rules count.
 - Add an agent (`AgentUI.swift`): on my own profile, a modal by the owner's request.
+- Round 2 (2026-11-16, `AppModel+Apply`): a guest's request (`POST /applications {"apply"}`,
+  `applyState` stored per account), the public charter (`publicCharter`, `charterRules` = the
+  group's own or the public copy), guests' public events (`publicEventsRaw`), a new member's first
+  minutes (`WelcomeUI.swift`, `welcomeDue` = the web's rule). E-mail threads (SPEC 19.33):
+  `Model/MailInbox.swift` + `MailUI.swift`; `ThreadView` hands an e-mail's thread to
+  `MailThreadView`; answers go out from `Derive.mailLocal` (the plain alias); "Full e-mail" =
+  `model.fullMail` → `FullMailSheet`. Screens `mailfeed`, `mailthread`, `mailreply`, `fullmail`,
+  `welcome`, `welcomecharter`, `welcomeprofile`, `-guest applied`.
 - People lists of a channel / group / event: `PersonRow` (face, name, role there as secondary
   text), never a label icon; the profile opened from them gets the group (`ProfileKey.group`).
 - The channel line pulls down FROM THE TOP (`PullDownPanel`: one surface with the navigation

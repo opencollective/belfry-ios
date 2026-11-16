@@ -491,8 +491,8 @@ kept identical in both repositories (opencollective/belfry-ios and opencollectiv
 and this file differs only in this paragraph and the (iOS) notes that end 19.19 and 19.20:
 change both in both. Android's 19.21 (web changes of 2026-11-11 / 12) and 19.22 (snapshots built
 on the one before), 19.23 to 19.25 are not ported here yet. 19.26 (guest mode) is Android's text
-with the (iOS) notes at its end. 19.31 (five places, names, roles) and 19.32 (the charter) were
-written here on 2026-11-16 for the web and Android to follow.
+with the (iOS) notes at its end. 19.31 (five places, names, roles), 19.32 (the charter) and 19.33
+(e-mail threads in a channel) were written here on 2026-11-16 for the web and Android to follow.
 
 `KINDS_GROUPS` (section 4) now also has **1010** (edits).
 
@@ -1745,9 +1745,65 @@ A short list of agreements that every person ticks for themselves. It reuses the
   yet · Write the first agreement"; everyone else sees no Charter row, and joining skips the step.
 - **Older clients** see the `charter` group as a channel named "Charter" with to-dos marked done
   by whoever ticked first. Clients that know this section hide it.
-- **Open**: guests and people applying from outside can't read the groups relay's `charter`
-  group (SERVER-NEEDS 12); first minutes of a new member (Welcome → charter → profile) are not
-  built on iOS yet.
+- **People who can't read the group** (guests, applicants): `GET https://belfry.<domain>/api/v1/charter`
+  (no auth) → `{"agreements": [{"id", "title", "about", "order" (null = none), "added", "text_at"}]}`;
+  belfry.json `charter: true|false`. A guest's request carries the ids ticked (`agreed`); once a
+  member, the belfry signs those ticks for them (collective-belfry docs/charter.md), so a
+  just-accepted member is not asked again.
+- **A new member's first minutes** (web `welcomeDue`): shown once on a device that saw the
+  account's guest become a member, when a charter exists and the person never ticked an agreement
+  (any 2101 of theirs in the list), not to a member's agent or a steward: Welcome (mark, name,
+  description, who let them in) → each agreement ticked ("4 of 6 agreed" until all) → name and
+  photo, with Skip.
 - Core-tested in `CharterTests` (the vector: admins only, `each` only, reorder without asking
   again, a text change making a tick stale, outsiders' edits and removals ignored, removal by
   another steward; the actions' tags; the names; the charter group out of the channel list).
+
+### 19.33 E-mail threads in a channel (iOS, 2026-11-16; web mailthreads.ts at mail-chat 338d296; collective-belfry docs/mail.md; `vectors/mailthreads.json`)
+
+Nothing new on the wire; each client joins a shared inbox's e-mails into threads.
+
+- **An e-mail from outside** = a kind 9 in the group **by the groups key** with `client belfry-mail`
+  and `mail-from` (plus `mail-name`, `subject`, `message-id`, `in-reply-to`, `references` (at most
+  10 ids), `belfry-auth` = `pass` when DKIM or SPF aligned, `mail-original` url / key / nonce).
+  **What went out** = a kind 9 by the groups key with `client belfry-mail-out`, `mail-to`,
+  `subject`, `message-id`, `sent-by` and `e` = the e-mail it answers. Anyone else's kind 9 with
+  `client belfry-mail` is **a member's own mail**: an ordinary message with a small "via e-mail"
+  beside its time and "Full e-mail" in its menu (the original on Blossom, AES-GCM).
+- **Joining**, oldest first: an e-mail whose References + In-Reply-To (taken newest first) name the
+  `message-id` of one already in a thread joins it; else the same sender (address, lower case) with
+  the same base subject (Re:, Fwd:, AW:, SV:, TR:, WG:, Antw:, Rif:, R: and `[n]` aside; spaces
+  folded; lower case) joins theirs; else it starts a thread and is its **root** (the thread's id:
+  route, labels, replies). What went out joins the thread of its `e`. Subject of a thread = the
+  root's base subject; its name = the first `mail-name` given; `lastIn` = the latest e-mail received;
+  `refs` = every Message-ID in it, oldest first.
+- **The team's talk** = NIP-22 replies (kind 1111) under any e-mail of the thread (older clients
+  hung them under a later e-mail): counted, and shown in the thread with the e-mails.
+- **State**: walk the thread's e-mails and its `belfry/inbox` labels (kind 1985, `e` = any of its
+  e-mails) by time (then id): `l open` / `l closed` set it; `l assigned` + `p` sets who has it (no
+  `p` = nobody); an outgoing e-mail counts an answer and turns Open into **Answered** (`waiting`);
+  an incoming one other than the root turns it back to Open (they wrote back).
+- **The feed** shows one row per thread at its latest activity (the latest e-mail either way or
+  team reply): sender, subject, a line of the latest e-mail, state, who has it, counts. Its e-mails
+  are not shown as messages, and its replies don't resurface as thread activity.
+- **The thread**: the e-mails in frames (received light, sent solid, "unverified sender" when
+  `belfry-auth` isn't `pass`, "Full e-mail"), the team's replies, the state with Take / Close for
+  the channel's admins, "Team only: <sender> sees only what is sent by e-mail." ONE composer with
+  a line above it: "Message will be sent in this thread" (a NIP-22 reply under the root) and, for the
+  channel's admins while the inbox is on, "Reply by e-mail instead"; then "This will be sent to
+  <name> by e-mail", "From <address> · Re: <subject>", "Only send in this thread instead", the
+  composer in the e-mail colour. Sending by e-mail waits 8 seconds for Undo (leaving the thread
+  sends at once), then goes back to thread mode.
+- **Answering by e-mail**: a kind 1301 (Nostr Mail) to the bridge: `mail-from` = the channel's
+  address, `rcpt-to` = `lastIn`'s address, `subject` = "Re: " + `lastIn`'s base subject, `e` =
+  `lastIn`'s event id; the MIME From = "<my name> for <channel name>" <address>, In-Reply-To =
+  `lastIn`'s Message-ID, References = the thread's other Message-IDs (the last 10) then In-Reply-To.
+- **The channel's address** (web model.ts `mailLocal`, server `mail.channel_by_slug`): its plain
+  alias `slug(raw name)` (else the id without a `-xxxx` suffix of 3–8 [0-9a-z]) when a belfry admin
+  (or the relay's own key) made it (its first 9007; none known: yes) and exactly one group answers
+  to that alias (by its suffix-less id or its slugged raw name); else its id. slug = lower case,
+  accents folded, runs of anything else → "-", trimmed, 40 at most. The raw name is the
+  metadata's, before the on-brand names of 19.31.
+- (iOS) `Model/MailInbox.swift` (`mailThreads`, `mailLocal`), `MailUI.swift`, core-tested in
+  `MailInboxTests` (the vector: joining by references, by subject, the answer, the team reply,
+  labels on a later e-mail, the feed; the address rules).
