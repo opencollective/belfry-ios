@@ -68,6 +68,8 @@ struct EventScreenBody: View {
     @State private var halfContentH: CGFloat = 0
     /// The page's height below the bar and the bar's height (see body).
     @State private var page = PageBox(top: 0, height: 0)
+    /// The header is out of the tree once it has been pulled up (after its animation).
+    @State private var headerGone = false
     @State private var showTicket = false
     @State private var checkingIn = false
     @State private var scanCard: String?
@@ -117,8 +119,7 @@ struct EventScreenBody: View {
                         // a fixed height: a flexible content area made every stack above it measure
                         // the chat (and the composer's text view) at several sizes per pass, which
                         // multiplied level by level until the main thread was busy for good
-                        content(hidden: level == .full && drag == 0)
-                            .frame(height: max(0, total - h - EventScreenBody.handleH))
+                        content(hidden: level == .full && drag == 0, height: max(0, total - h - EventScreenBody.handleH))
                     }
                 }
                 .opacity(page.height > 0 ? 1 : 0)
@@ -152,6 +153,15 @@ struct EventScreenBody: View {
             if access && tab == .chat && level != .up { withAnimation(.snappy(duration: 0.25)) { level = .up } }
         }
         .onChange(of: tab) { _, _ in if level == .full { withAnimation(.snappy(duration: 0.28)) { level = .half } } }
+        .onChange(of: level) { _, l in
+            if l == .up {
+                // once the pull-up has finished; back in at once (at height 0) when it comes down
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if level == .up { headerGone = true } }
+            } else {
+                headerGone = false
+            }
+        }
+        .onChange(of: drag) { _, v in if v != 0 { headerGone = false } }
         .onChange(of: showTicket || checkingIn || getTickets || editing) { _, open in if open { hideKeyboard() } }
         .task(id: e.d) { await model.loadViewer(e) }
         .onAppear(perform: applyLaunch)
@@ -210,7 +220,17 @@ struct EventScreenBody: View {
 
     // ---- the header ------------------------------------------------------------------------------
 
-    private func header(_ d: Derive, h: CGFloat, hs: Heights, access: Bool) -> some View {
+    @ViewBuilder private func header(_ d: Derive, h: CGFloat, hs: Heights, access: Bool) -> some View {
+        if headerGone {
+            // pulled up (the keyboard is up, or the chat takes the screen): nothing of the header
+            // stays to be laid out with every change of the chat
+            Color.clear.frame(height: 0)
+        } else {
+            headerBody(d, h: h, hs: hs, access: access)
+        }
+    }
+
+    private func headerBody(_ d: Derive, h: CGFloat, hs: Heights, access: Bool) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -289,7 +309,7 @@ struct EventScreenBody: View {
 
     // ---- the content ---------------------------------------------------------------------------
 
-    private func content(hidden: Bool) -> some View {
+    private func content(hidden: Bool, height: CGFloat) -> some View {
         VStack(spacing: 0) {
             Picker("Show", selection: $tab) {
                 ForEach(EventTab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -307,11 +327,12 @@ struct EventScreenBody: View {
                 if tab == .photos { EventPhotosTab(e: e) }
                 if tab == .people { EventPeopleTab(e: e, open: openProfile, checkIn: { checkingIn = true }) }
             }
+            .frame(height: max(0, height - EventScreenBody.pickerH))
             .opacity(hidden ? 0 : 1)
             .allowsHitTesting(!hidden)
             .accessibilityHidden(hidden)
         }
-        .frame(maxHeight: .infinity, alignment: .top)
+        .frame(height: height, alignment: .top)
     }
 
     /// One tab's view, kept in the tree (switching tabs keeps the feed's place and the drafts).
