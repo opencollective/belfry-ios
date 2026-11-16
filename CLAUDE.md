@@ -193,6 +193,17 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   sheet: channels, Members (requests on top), Events (`EventsScreen`, events pushed on the
   stack), @Mentions, Direct messages, Belfry settings. Sheets are for short tasks started from
   a screen (invite, a new event, editing a profile).
+- Layout that can freeze the main thread (the event-chat freeze, 2026-11-16, found with the
+  watchdog `LoopWatch` + `sample` in the screenshot job): never write view state from
+  onGeometryChange / onScrollGeometryChange / preferences on a hot path (use a plain reference such
+  as `FeedPosition`); no GeometryReader around content that ignores the safe area (reach under
+  the bar with a background decoration only); give the event screen's header, handle, tabs and
+  panes frames fixed in BOTH width and height (a flexible child makes every stack around it measure
+  the chat and the composer's text view at several sizes, multiplied level by level); the
+  composer's field is `fixedSize(vertical)`; feeds scroll to their end by edge (`FeedScroll`,
+  iOS 18 ScrollPosition), never by the id of a lazy row; an event's chat is a plain stack. The UI
+  test `testEventChatTyping` focuses, types and dismisses three times and fails with "it hangs"
+  when a query takes over 20 s; on a stall the job saves `sample-<mode>-*.txt` and `watchdog-*.txt`.
 - Views inside animated containers stay in the tree (opacity / allowsHitTesting /
   accessibilityHidden), never inserted mid-animation (drawer shade fix 4c549e1, pull-down).
 - An event is one screen, pushed on the stack (`model.openEvent` → `EventRoute`; an `ev-` group
