@@ -95,25 +95,25 @@ struct EventScreenBody: View {
         let total = page.height + top
         let hs = heights(top: top, total: total, access: access)
         let h = height(hs, access: access)
-        ZStack(alignment: .top) {
-            // the page's size and the bar's height, read by a sibling that keeps to the safe area.
-            // (A GeometryReader whose content ignored the top safe area and used its insets froze
-            // the app when the keyboard rose: layout fed back through the safe area.)
-            Color.clear
-                .onGeometryChange(for: PageBox.self) { PageBox(top: $0.safeAreaInsets.top.rounded(), height: $0.size.height.rounded()) } action: { p in
-                    LoopWatch.tick("page"); if p != page { page = p }
-                }
-                .accessibilityHidden(true)
-            VStack(spacing: 0) {
-                header(d, top: top, h: h, hs: hs, access: access)
-                if access {
-                    handle(hs)
-                    content(hidden: level == .full && drag == 0)
-                }
+        // the page's size and the bar's height, read by a plain base that keeps to the safe area;
+        // the page is its overlay, so it can never change what the base measures. (A GeometryReader
+        // whose content ignored the top safe area froze the app when the keyboard rose; a ZStack
+        // sibling took its size from that content and fed back.)
+        Color.clear
+            .onGeometryChange(for: PageBox.self) { PageBox(top: $0.safeAreaInsets.top.rounded(), height: $0.size.height.rounded()) } action: { p in
+                LoopWatch.tick("page"); if p != page { page = p }
             }
-            .ignoresSafeArea(.container, edges: .top)
-            .opacity(page.height > 0 ? 1 : 0)
-        }
+            .overlay(alignment: .top) {
+                VStack(spacing: 0) {
+                    header(d, top: top, h: h, hs: hs, access: access)
+                    if access {
+                        handle(hs)
+                        content(hidden: level == .full && drag == 0)
+                    }
+                }
+                .ignoresSafeArea(.container, edges: .top)
+                .opacity(page.height > 0 ? 1 : 0)
+            }
         .overlay(alignment: .top) {
             if let code = scanCard, model.mayCheckIn(e) {
                 CheckInCard(e: e, code: code) { withAnimation { scanCard = nil } }
