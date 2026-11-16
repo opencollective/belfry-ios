@@ -438,6 +438,9 @@ struct ReplyRow: View {
     }
 }
 
+/// A reply to an older message, where it lands in the feed (Discord's reply): one grey line with
+/// the message it answers (small face, name, first words) hooked to the reply by an elbow, then
+/// the reply as an ordinary message. A tap opens the thread.
 struct ThreadActivity: View {
     @EnvironmentObject var model: AppModel
     let root: Message
@@ -447,23 +450,57 @@ struct ThreadActivity: View {
 
     var body: some View {
         let d = model.derive
-        Button(action: toggle) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "arrow.turn.down.right").foregroundStyle(.secondary).padding(.top, 2)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(model.name(last.ev.pubkey)) replied to \(model.name(root.ev.pubkey)): “\(d.activitySnippet(root))”")
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    Text(d.activityReply(last)).font(.subheadline).foregroundStyle(.primary).lineLimit(3)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                ReplyElbow()
+                    .stroke(Color(uiColor: .tertiaryLabel), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                    .frame(width: 24, height: 13)
+                    .alignmentGuide(VerticalAlignment.center) { _ in 0 }
+                    .padding(.leading, 18)
+                Avatar(pubkey: root.ev.pubkey, size: 16)
+                Text(model.name(root.ev.pubkey)).font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
+                    .layoutPriority(1)
+                Text(d.activitySnippet(root)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if root.text.isEmpty, !root.media.isEmpty { Image(systemName: "photo").font(.caption2).foregroundStyle(.secondary) }
+                Spacer(minLength: 0)
+            }
+            HStack(alignment: .top, spacing: 10) {
+                Avatar(pubkey: last.ev.pubkey, size: 36)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(model.name(last.ev.pubkey)).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        AgentTag(pubkey: last.ev.pubkey)
+                        Text(Format.time(last.ev.createdAt)).font(.caption).foregroundStyle(.secondary)
+                        if last.edited != nil { Text("edited").font(.caption2).foregroundStyle(.secondary) }
+                    }
+                    if !last.text.isEmpty { MarkdownText(text: last.text).lineLimit(8) }
+                    ForEach(last.media, id: \.url) { MediaView(media: $0, all: last.media) }
                 }
                 Spacer(minLength: 0)
-                Text(Format.time(last.ev.createdAt)).font(.caption2).foregroundStyle(.secondary)
             }
-            .padding(.leading, 46)
-            .padding(.horizontal)
-            .padding(.vertical, 6)
         }
-        .buttonStyle(.plain)
-        .accessibilityHint(open ? "Hides the thread" : "Shows the thread")
+        .padding(.horizontal)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: toggle)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(model.name(last.ev.pubkey)) replied to \(model.name(root.ev.pubkey)): \(d.activityReply(last))")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Opens the thread")
+    }
+}
+
+/// The hook from a reply's face up to the line of the message it answers.
+struct ReplyElbow: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        let c: CGFloat = 6
+        p.move(to: CGPoint(x: r.minX, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.minX, y: r.minY + c))
+        p.addQuadCurve(to: CGPoint(x: r.minX + c, y: r.minY), control: CGPoint(x: r.minX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
+        return p
     }
 }
 
