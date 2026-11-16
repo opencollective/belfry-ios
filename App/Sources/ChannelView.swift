@@ -47,9 +47,8 @@ struct ChannelView: View {
         let pinnedIds = Set(d.pinned(id).map(\.id))
         ScrollViewReader { proxy in
             ScrollView {
-                // an event's chat (embedded) is short: a plain stack, every row measured, so its
-                // end is exact at any height of the event's header (lazy rows left it blank)
-                FeedStack(lazy: !embedded) {
+                // lazy always: a plain stack hung a short event chat (the meeting's) in CI
+                FeedStack(lazy: true) {
                     if rows.isEmpty {
                         if model.guestReading && topic == nil {
                             Text("No messages here yet.").foregroundStyle(.secondary).padding(32).frame(maxWidth: .infinity)

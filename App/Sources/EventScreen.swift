@@ -476,9 +476,9 @@ struct EventStatusControl: View {
         let real = (api.map { $0.tickets.map(\.ticket) } ?? d.tickets(e)).filter { !$0.implicit }
         if model.viewer(e)?.ticketCode != nil {
             wide("Show my ticket", symbol: "ticket", action: showTicket)
-        } else if d.isHost(e) && !e.meeting {
+        } else if e.hosts.contains(model.me) || (d.isHost(e) && !e.meeting) {
             let asking = people.applications.count
-            Text(asking > 0 ? "You’re hosting · \(asking) \(asking == 1 ? "person asks" : "people ask") for a place" : "You’re hosting")
+            Text(asking > 0 ? "You’re hosting · \(asking) \(asking == 1 ? "person asks" : "people ask") for a place" : e.meeting ? "You’re hosting this meeting" : "You’re hosting")
                 .font(.subheadline.weight(.semibold))
         } else {
             switch state {
