@@ -12,7 +12,11 @@ public struct MyApplication: Codable, Hashable, Sendable {
     public var needed: Int
     /// (pubkey, name)
     public var vouchedBy: [Voucher]
-    public struct Voucher: Codable, Hashable, Sendable { public var pubkey: String; public var name: String }
+    public struct Voucher: Codable, Hashable, Sendable {
+        public var pubkey: String
+        public var name: String
+        public init(pubkey: String, name: String) { self.pubkey = pubkey; self.name = name }
+    }
     public init(id: Int, state: String, vouches: Int, needed: Int, vouchedBy: [Voucher]) {
         self.id = id; self.state = state; self.vouches = vouches; self.needed = needed; self.vouchedBy = vouchedBy
     }
