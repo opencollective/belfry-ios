@@ -23,7 +23,7 @@ final class AppModel: ObservableObject {
     enum Phase: Equatable { case signedOut, ready }
 
     @Published var phase: Phase = .signedOut
-    @Published var version = 0
+    @Published var version = 0 { didSet { LoopWatch.tick("model.version") } }
     /// A guest link waiting to be used (kept through sign-in; only its domain and token).
     @Published var pendingInvite: PendingInvite? = (UserDefaults.standard.data(forKey: "belfry-invite")).flatMap { try? JSONDecoder().decode(PendingInvite.self, from: $0) } {
         didSet { UserDefaults.standard.set(pendingInvite.flatMap { try? JSONEncoder().encode($0) }, forKey: "belfry-invite") }
@@ -178,7 +178,10 @@ final class AppModel: ObservableObject {
     static let redirectScheme = "sh.belfry.app"
     static let redirectURI = "sh.belfry.app://connect"
 
+    private var watchChanges: Any?
+
     init() {
+        if LoopWatch.on { watchChanges = objectWillChange.sink { _ in LoopWatch.tick("model.objectWillChange") } }
         if let g = launch.guest {
             pendingInvite = nil
             if g == "opening" { opening = Opening(channel: "garden-3f2a", name: "Garden") } else { startDemo(reader: true) }

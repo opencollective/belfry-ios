@@ -38,6 +38,7 @@ struct Composer: View {
     @ScaledMetric(relativeTo: .body) private var h: CGFloat = 38
 
     var body: some View {
+        let _ = LoopWatch.tick("Composer")
         let d = model.derive
         let g = model.group(group)
         VStack(spacing: 6) {

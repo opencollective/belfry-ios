@@ -111,6 +111,8 @@ final class MenuShots: XCTestCase {
             XCTAssertTrue(fields.firstMatch.waitForExistence(timeout: 10))
             guard let field = fields.allElementsBoundByIndex.last else { XCTFail("no composer on screen"); return }
             field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            // the screen right after the tap, twice (no query: these work while the app hangs)
+            if round == 1 { sleep(1); shot("83-after-tap-a"); sleep(2); shot("83-after-tap-b") }
             answers(app, after: "focusing the composer (round \(round))")
             if !app.keyboards.firstMatch.waitForExistence(timeout: 3) { field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
             XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "no keyboard (round \(round))")

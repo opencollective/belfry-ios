@@ -159,7 +159,7 @@ extension View {
         if #available(iOS 18, *) {
             self.onScrollGeometryChange(for: Bool.self) { g in
                 g.contentOffset.y + g.containerSize.height >= g.contentSize.height - 80
-            } action: { _, v in pos.atBottom = v }
+            } action: { _, v in LoopWatch.tick("atBottom"); pos.atBottom = v }
         } else {
             self
         }

@@ -43,6 +43,7 @@ struct ChannelView: View {
     @State private var feedPos = FeedPosition()
 
     var body: some View {
+        let _ = LoopWatch.tick("ChannelView " + (embedded ? "embedded" : id))
         let _ = model.version
         let d = model.derive
         let g = model.group(id)
@@ -103,6 +104,7 @@ struct ChannelView: View {
             // back to the end once a height change has settled (keyboard, the event's header), if
             // the feed showed its end; nothing here writes view state
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
+                LoopWatch.tick("feedHeight")
                 guard feedPos.atBottom && focus == nil && scrollTarget == nil else { return }
                 feedPos.settle { proxy.scrollTo("bottom", anchor: .bottom) }
             }

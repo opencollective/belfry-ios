@@ -85,6 +85,7 @@ struct EventScreenBody: View {
     struct Heights { let up, half, full: CGFloat }
 
     var body: some View {
+        let _ = LoopWatch.tick("EventScreenBody")
         let d = model.derive
         let access = hasAccess(d)
         GeometryReader { geo in
@@ -125,6 +126,7 @@ struct EventScreenBody: View {
         } message: { Text("It disappears for everyone. This can't be undone.") }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             // typing in the event's chat: the header steps out of the way
+            LoopWatch.tick("keyboardWillShow")
             if access && tab == .chat && level != .up { withAnimation(.snappy(duration: 0.25)) { level = .up } }
         }
         .onChange(of: tab) { _, _ in if level == .full { withAnimation(.snappy(duration: 0.28)) { level = .half } } }
@@ -193,6 +195,7 @@ struct EventScreenBody: View {
                         .id("event-top")
                         .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded() } action: { h in
                             // only real changes (a sub-point wobble redrew the screen for nothing)
+                            LoopWatch.tick("halfContentH")
                             if abs(h - halfContentH) >= 1 { halfContentH = h }
                         }
                     // kept in the tree at every level (clipped away): nothing pops in while pulling
