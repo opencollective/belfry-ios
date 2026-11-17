@@ -176,6 +176,15 @@ final class SettingsQueueTests: XCTestCase {
 
     func name(_ e: SyncEngine) -> String? { Derive(events: e.snapshot(), me: e.me).group("website")?.name }
 
+    /// Flushes until UNTIL holds (enqueue's own flushSoon may be running: a flush then returns at once).
+    func settle(_ e: SyncEngine, until: () -> Bool) async {
+        for _ in 0..<100 {
+            await e.flush()
+            if until() { return }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
     func testRefusedCallShowsThenDiscardRestores() async throws {
         let path = NSTemporaryDirectory() + "belfry-test-\(UUID().uuidString).sqlite"
         let me = try LocalSigner(secret: Keys.generateSecret())
@@ -193,11 +202,11 @@ final class SettingsQueueTests: XCTestCase {
         e.enqueueCall(HttpCall(url: "https://belfry.example.org/api/v1/group-meta", json: ["channel": "website", "name": "Our website"]), display: display)
         // shown at once, before anything is sent
         XCTAssertEqual(name(e), "Our website")
-        XCTAssertTrue(SettingsQueue.failed(e.outboxItems(), channel: "website").isEmpty)
-        await e.flush()
+        await settle(e) { e.outboxItems().first?.status == .failed }
         // NIP-98 signed when sent
         XCTAssertEqual(seen.count, 1)
-        XCTAssertTrue(seen[0].value(forHTTPHeaderField: "Authorization")?.hasPrefix("Nostr ") == true)
+        guard let first = seen.first else { return XCTFail("no request") }
+        XCTAssertTrue(first.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Nostr ") == true)
         let failed = SettingsQueue.failed(e.outboxItems(), channel: "website")
         XCTAssertEqual(failed.count, 1)
         XCTAssertEqual(SettingsQueue.message(failed[0]), "The new name and description weren't saved: you're not allowed to change this channel.")
@@ -218,12 +227,12 @@ final class SettingsQueueTests: XCTestCase {
         e.add([meta("website")], verify: false)
         let g = try XCTUnwrap(Derive(events: e.snapshot(), me: me.pubkey).group("website"))
         e.enqueueCall(HttpCall(url: "https://belfry.example.org/api/v1/group-meta", json: ["channel": "website"]), display: Actions.groupMeta(g, name: "Site"))
-        await e.flush()
+        await settle(e) { (e.outboxItems().first?.tries ?? 0) > 0 }
         XCTAssertEqual(e.outboxItems().count, 1)
         XCTAssertEqual(e.outboxItems()[0].status, .queued)
         XCTAssertEqual(e.outboxItems()[0].tries, 1)
         status = 200
-        await e.flush()
+        await settle(e) { e.outboxItems().isEmpty }
         XCTAssertTrue(e.outboxItems().isEmpty)
         // still shown until the relay's copy arrives
         XCTAssertEqual(name(e), "Site")
