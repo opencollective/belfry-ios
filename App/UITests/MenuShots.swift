@@ -196,7 +196,9 @@ final class MenuShots: XCTestCase {
         shot("57-channel-archive-row")
         app.buttons["Cancel"].firstMatch.tap()
         sleep(1)
+        // the Tool library is at the end of Community life, below the fold of a lazy list
         let tools = app.buttons["channels-row-tools-2b8e"].firstMatch
+        for _ in 0..<4 where !tools.isHittable { app.swipeUp(); sleep(1) }
         XCTAssertTrue(tools.waitForExistence(timeout: 5), "no Tool library row")
         tools.tap()
         XCTAssertTrue(end.waitForExistence(timeout: 5))
