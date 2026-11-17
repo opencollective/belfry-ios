@@ -6,7 +6,7 @@ import Foundation
 // punctuation stays outside). A bare host without a scheme is not a link.
 
 public enum Links {
-    static let urlRx = Rx("https?://[^\\s<>()]+[^\\s<>().,;:!?'\"]")
+    public static let urlRx = Rx("https?://[^\\s<>()]+[^\\s<>().,;:!?'\"]")
 
     /// The bare addresses in TEXT, in order.
     public static func find(_ text: String) -> [String] { urlRx.matches(text).map(\.whole) }

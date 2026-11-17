@@ -133,7 +133,7 @@ extension AppModel {
     private func demoAnswer(_ m: Message, group: String, _ b: MessageButton, press: NostrEvent) {
         let who: LocalSigner
         if b.isBelfry { who = Demo.signer("groups") }
-        else if let k = (Demo.people.map(\.0) + ["helper"]).first(where: { Demo.signer($0).pubkey == m.ev.pubkey }) { who = Demo.signer(k) }
+        else if let k = (Demo.people.map { $0.0 } + ["helper"]).first(where: { Demo.signer($0).pubkey == m.ev.pubkey }) { who = Demo.signer(k) }
         else { return }
         let publish = b.action == Buttons.websitePublish
         var tags: [Tag] = [["L", Buttons.resultNS], ["l", "ok", Buttons.resultNS], ["e", m.ev.id], ["press", press.id], ["p", press.pubkey], ["h", group]]

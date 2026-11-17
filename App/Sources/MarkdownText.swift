@@ -136,7 +136,7 @@ struct MarkdownText: View {
         guard let u = URL(string: href), ["http", "https", "mailto"].contains(u.scheme?.lowercased() ?? "") else { return s }
         var a = s
         a.link = u
-        a.underlineStyle = .single
+        a.underlineStyle = Text.LineStyle.single
         a.foregroundColor = .brand
         return a
     }
