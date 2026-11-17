@@ -194,6 +194,10 @@ struct TownDrawer: View {
         let open = model.openToEveryone
         return List {
             Section {
+                placeRow(icon: "sun.max", title: "Today", note: nil, badge: 0, on: onHome, action: today)
+                    .accessibilityIdentifier("drawer-today")
+            }
+            Section {
                 Button(action: apply) {
                     Text(model.guestApplied ? "Request sent" : "Apply to become a member").frame(maxWidth: .infinity)
                 }
