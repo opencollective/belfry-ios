@@ -245,6 +245,7 @@ final class AppModel: ObservableObject {
         var ctx = WorldContext(me: me, domain: config.domain, communityName: config.name, communityAdmins: Set(config.admins),
                                groupsKey: groupsKey, bridgeKey: dms?.bridge, groupsRelay: config.groupsRelay,
                                agents: config.agents, kinds: kinds, pending: pendingIds, groupsAbsent: groupsAbsent)
+        ctx.belfryKey = isDemo ? Demo.signer("belfry").pubkey : config.belfryKey
         ctx.placeNames = true // #general reads Townsquare (SPEC 19.31)
         let list = engine?.snapshot() ?? []
         let d = Derive(events: list, context: ctx)
@@ -389,7 +390,11 @@ final class AppModel: ObservableObject {
                 if let pk = s.pubkey ?? db.get("pubkey", as: String.self) { self.accountKnown(pk) }
                 await self.revalidateConfig(force: true)
                 if let k = db.get("groups-key", as: String.self) { self.groupsKey = k }
-                if let k = await Discovery.nip05(name: "_groups", domain: s.domain) {
+                // belfry.json `groups_key` first; `_groups@domain` for a belfry not yet updated
+                if let k = self.config.groupsKeyHex {
+                    db.set("groups-key", k)
+                    self.groupsKey = k
+                } else if let k = await Discovery.nip05(name: "_groups", domain: s.domain) {
                     db.set("groups-key", k)
                     self.groupsKey = k
                 }
@@ -540,7 +545,16 @@ final class AppModel: ObservableObject {
         groupsAbsent = [Demo.deletedGroup: 0] // what the relay's answer would leave (SPEC 19.30)
         if reader { joinedChannel = generalId }
         if let e = engine, let d = dms {
-            Task { await Demo.seed(engine: e, dms: d) ; self.updateAddress() }
+            Task {
+                await Demo.seed(engine: e, dms: d)
+                self.updateAddress()
+                // SPEC 19.37: a settings change the relay refused (the mark by the channel's name)
+                if self.launch.screen?.hasPrefix("settingsfailed") == true {
+                    e.demoPut(OutboxItem(target: .groups, kind: 9002, content: "",
+                                         tags: [["h", "garden-3f2a"], ["name", "Garden & orchard"], ["about", "Beds, seeds, fruit trees and the watering rota"], ["open"], SyncEngine.clientTag],
+                                         createdAt: Int.now - 30, status: .failed, tries: 1, error: "restricted: not an admin of this group"))
+                }
+            }
         }
     }
 

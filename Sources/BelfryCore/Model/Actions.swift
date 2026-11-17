@@ -3,7 +3,9 @@ import Foundation
 // Every user action as the event(s) it queues (SPEC 7-13), before the client tag is appended and
 // before signing. Mirrors the web chat's src/core/actions.ts; checked against vectors/actions.json.
 
-public enum Target: String, Codable, Sendable { case groups, main }
+/// Where an outbox item goes: the groups relay, the community relay, or (`api`) a call to the
+/// belfry's HTTP API queued like an event (SPEC 19.37: signed with NIP-98 when it is sent).
+public enum Target: String, Codable, Sendable { case groups, main, api }
 
 public struct Draft: Hashable, Sendable {
     public var target: Target

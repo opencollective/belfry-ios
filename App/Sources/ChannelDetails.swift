@@ -192,7 +192,7 @@ struct TodoComments: View {
                     Avatar(pubkey: c.author, size: 20)
                     VStack(alignment: .leading) {
                         Text(model.name(c.author)).font(.caption.weight(.semibold))
-                        Text(c.text).font(.caption)
+                        Text(MarkdownText.plainLinks(c.text)).font(.caption)
                     }
                 }
             }
@@ -284,6 +284,7 @@ struct DropLinkSheet: View {
 
 struct SettingsTab: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
     let id: String
     @State private var name = ""
     @State private var about = ""
@@ -309,15 +310,33 @@ struct SettingsTab: View {
             Text(inbox ? "Anyone can e-mail \(id)@\(model.config.domain). Mails land here as cards and the channel's admins answer as the channel."
                  : "Only members can e-mail \(id)@\(model.config.domain); their mail shows as their message.")
         }
+        // Save (SPEC 19.37): applied here at once and queued; back to the channel, which shows the
+        // new name and description. Only a final refusal shows (the mark by the channel's name).
         Section {
-            BusyButton(saved ? "Saved" : "Save") {
+            Button {
+                guard !saved else { return }
+                saved = true
+                hideKeyboard()
                 let n = name.jsTrim(), a = about.jsTrim()
                 if g?.isPod == true { model.editPod(id, name: n, about: a, closed: closed, prompt: prompt) }
                 else { model.editChannel(id, name: n, about: a, inbox: nil) }
                 if inbox != model.derive.isInbox(g) { model.editChannelInbox(id, inbox) }
-                saved = true
+                dismiss()
+            } label: {
+                Text("Save").frame(maxWidth: .infinity)
             }
-            .disabled(name.jsTrim().isEmpty)
+            .buttonStyle(.brand)
+            .controlSize(.large)
+            .disabled(name.jsTrim().isEmpty || saved)
+            .accessibilityIdentifier("settings-save")
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            // archiving sits under Save as a plain centred link (SPEC 19.30)
+            if model.derive.mayArchive(g) {
+                ArchiveLink(id: id)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 4, trailing: 0))
+            }
         }
         .onAppear {
             guard !loaded, let g else { return }
@@ -328,8 +347,6 @@ struct SettingsTab: View {
             closed = g.closed
             prompt = g.prompt ?? ""
         }
-        // archiving sits where deleting would (the iPhone app has no Delete), SPEC 19.30
-        if model.derive.mayArchive(g) { ArchiveSection(id: id) }
     }
 }
 

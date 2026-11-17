@@ -178,20 +178,36 @@ extension AppModel {
         engine?.add(evs, verify: false)
     }
 
-    /// A group's name / description / picture / access (SPEC 19.29): my own 9002 keeping every other
-    /// tag when the relay lets me (its 39001, the creator, a belfry admin); else the belfry's
-    /// POST /group-meta (an admin by role). Errors come back in `website` as a fixed message.
+    /// A group's name / description / picture / access (SPEC 19.29, 19.37): my own 9002 keeping
+    /// every other tag when the relay lets me (its 39001, the creator, a belfry admin); else the
+    /// belfry's POST /group-meta (an admin by role). Both go through the outbox: shown at once,
+    /// sent in order, a final refusal marks the channel's name (`failedSettings`).
     func editGroupMeta(_ id: String, name: String? = nil, about: String? = nil, picture: String? = nil, closed: Bool? = nil, prompt: String? = nil) {
         guard let g = group(id) else { return }
+        let display = Actions.groupMeta(g, name: name, about: about, picture: picture, closed: closed, prompt: prompt)
         if derive.mayModerate(g) || engine?.localOnly == true {
-            engine?.enqueue(Actions.groupMeta(g, name: name, about: about, picture: picture, closed: closed, prompt: prompt))
+            engine?.enqueue(display)
             return
         }
-        Task {
-            do { try await api.groupMeta(channel: id, name: name.map { PlaceNames.wire(id: id, name: $0) }, about: about, picture: picture, closed: closed, prompt: prompt); await refresh() }
-            catch let x as ApiError { website = x.message } catch { website = BelfryAPI.network }
-        }
+        var body: [String: Any] = ["channel": id]
+        if let name { body["name"] = PlaceNames.wire(id: id, name: name) }
+        if let about { body["about"] = about }
+        if let picture { body["picture"] = picture }
+        if let closed { body["closed"] = closed }
+        if let prompt { body["prompt"] = prompt }
+        engine?.enqueueCall(HttpCall(url: config.apiBase + "/group-meta", json: body), display: display)
     }
+
+    /// The settings changes of channel ID that failed for good (SPEC 19.37).
+    func failedSettings(_ id: String) -> [OutboxItem] {
+        SettingsQueue.failed(engine?.outboxItems() ?? [], channel: id)
+    }
+
+    /// "Try again" on the error mark: every failed settings change of ID goes back in the queue.
+    func retrySettings(_ id: String) { for i in failedSettings(id) { engine?.retry(i.localId) } }
+
+    /// "Discard": drops them; the channel reads what the relay has again.
+    func discardSettings(_ id: String) { for i in failedSettings(id) { engine?.cancel(i.localId) } }
 
     /// An event address or a ticket link opened from outside: only the domain, link and code.
     func handleTicketURL(_ url: URL) -> Bool {

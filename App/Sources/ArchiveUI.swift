@@ -192,7 +192,7 @@ struct ArchivedScreen: View {
 }
 
 /// "Archive this group" in a group's settings, with the confirmation.
-struct ArchiveSection: View {
+struct ArchiveLink: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let id: String
@@ -204,19 +204,22 @@ struct ArchiveSection: View {
         let g = model.group(id)
         let word = g?.isPod == true ? "group" : "channel"
         let name: String = g.map { $0.isPod ? $0.name : "#" + $0.name } ?? "it"
-        Section {
+        VStack(spacing: 4) {
             Button { asking = true } label: {
-                HStack {
-                    ActionRow(icon: "archivebox", title: "Archive this \(word)")
+                HStack(spacing: 6) {
+                    Text("Archive this \(word)")
                     if busy { ProgressView().controlSize(.small) }
                 }
             }
+            .buttonStyle(.borderless)
+            .font(.subheadline)
             .disabled(busy)
             .accessibilityIdentifier("archive")
-            if let error { Text(error).font(.caption).foregroundStyle(.red) }
-        } footer: {
             Text("A softer way than deleting: it leaves the channel list and becomes read only.")
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            if let error { Text(error).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center) }
         }
+        .frame(maxWidth: .infinity)
         .alert("Archive \(name)?", isPresented: $asking) {
             Button("Archive") {
                 guard !busy else { return }

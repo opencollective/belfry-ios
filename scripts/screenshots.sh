@@ -76,6 +76,13 @@ shot 135c-pulldown-dark pulldown dark
 shot 136-channel-members members light
 shot 136b-channel-members-invite membersinvitech light
 shot 137-channel-settings chsettings light
+# 2026-11-17 round 5: buttons on messages (#website: to approve, an error, published), links,
+# the channel settings (Save + Archive link) and a refused settings change (the mark, its alert)
+shot 150-website-buttons website light
+shot 150b-website-buttons-dark website dark
+shot 151-settings-failed settingsfailed light
+shot 152-settings-failed-alert settingsfailedalert light
+shot 152b-settings-failed-alert-dark settingsfailedalert dark
 shot 138-pinned pinned light
 # 2026-11-16: the bottom bar (Home · Calendar · Create · Groups · Town), the charter, Add an agent, guests' places
 # 2026-11-16 round 2: e-mail threads in a channel, a guest's request, the first minutes

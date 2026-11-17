@@ -50,6 +50,7 @@ struct MessageRow: View {
                     Text("Created \(created)").font(.caption).foregroundStyle(.secondary)
                 }
                 SpecialBody(m: m, group: group)
+                MessageButtonsView(m: m, group: group)
                 if !m.eventRefs.isEmpty {
                     ForEach(m.eventRefs, id: \.self) { r in EventCardView(ref: r) }
                 }
@@ -373,6 +374,7 @@ struct ReplyRow: View {
                     if let p = model.pending(r.id) { Text(p.stateText).font(.caption2).foregroundStyle(p.status == .failed ? .red : .secondary) }
                 }
                 if !r.text.isEmpty { MarkdownText(text: r.text).font(.subheadline) }
+                MessageButtonsView(m: r, group: group.isEmpty ? (r.ev.tag("h") ?? "") : group)
                 ForEach(r.media, id: \.url) { MediaView(media: $0, all: r.media) }
             }
             Spacer(minLength: 0)
@@ -392,6 +394,7 @@ struct ThreadActivity: View {
     let last: Message
     let open: Bool
     let toggle: () -> Void
+    private var hasLinks: Bool { !Links.inMarkdown(last.text).isEmpty }
 
     var body: some View {
         let d = model.derive
@@ -409,6 +412,8 @@ struct ThreadActivity: View {
                 if root.text.isEmpty, !root.media.isEmpty { Image(systemName: "photo").font(.caption2).foregroundStyle(.secondary) }
                 Spacer(minLength: 0)
             }
+            .contentShape(Rectangle())
+            .onTapIf(hasLinks, perform: toggle)
             HStack(alignment: .top, spacing: 10) {
                 Avatar(pubkey: last.ev.pubkey, size: 36)
                 VStack(alignment: .leading, spacing: 4) {
@@ -428,7 +433,10 @@ struct ThreadActivity: View {
         .padding(.top, 8)
         .padding(.bottom, 4)
         .contentShape(Rectangle())
-        .onTapGesture(perform: toggle)
+        // a tap on the row opens the thread, except on a reply with links: a tap gesture over
+        // the whole row took the taps on its links (Xavier, 2026-11-17: "urls always clickable"),
+        // so there only the grey line and the names open it
+        .onTapIf(!hasLinks, perform: toggle)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(model.name(last.ev.pubkey)) replied to \(model.name(root.ev.pubkey)): \(d.activityReply(last))")
         .accessibilityAddTraits(.isButton)
@@ -473,5 +481,12 @@ struct JoinLine: View {
         let what = join.agent ? "an agent" : "a guest"
         guard let by = join.by else { return "\(who) joined as \(what)" }
         return "\(who) joined as \(what), invited by **\(model.name(by))**" + (join.unsaved && !join.agent ? " · not saved" : "")
+    }
+}
+
+extension View {
+    /// A tap gesture only when ON (a tap gesture over text takes the taps on its links).
+    @ViewBuilder func onTapIf(_ on: Bool, perform: @escaping () -> Void) -> some View {
+        if on { self.onTapGesture(perform: perform) } else { self }
     }
 }

@@ -340,6 +340,28 @@ enum Demo {
         evs.append(ev(ps["dev"]!, 9, now - 7000, [["h", generalId], ["client", "belfry-mail"], ["subject", "Minutes of the meeting"], ["message-id", "<min@dev>"],
                                                   ["mail-original", "https://blossom.demo.belfry.sh/min", "AAAA", "AAAA"]],
                       "Here are the minutes: we keep the café on Saturdays and buy a second ladder."))
+        // SPEC 19.36: #website with an agent's versions: one to approve (a `belfry:` button), one
+        // whose press got an error, one published (closed for everyone); links in every form
+        channel("website", "website", "Versions of our website", admins: [me, ps["ana"]!.pubkey], members: all, at: now - 12 * day)
+        let helper = signer("helper")
+        let site = "35128:\(helper.pubkey):website"
+        let preview = "https://preview.demo.belfry.sh/p/\(Bech32.npub(helper.pubkey)!)@website"
+        let button: Tag = ["button", "publish", "Approve and publish", "primary", Buttons.websitePublish]
+        let v1 = ev(helper, 9, now - 3 * day, [["h", "website"], ["a", site], button],
+                    "**Website updated**: the opening hours are on the front page. Preview: \(preview)")
+        let v2 = ev(helper, 9, now - day, [["h", "website"], ["a", site], button],
+                    "New version with the summer photos (see the preview: \(preview)). An admin can approve it here or at https://belfry.demo.belfry.sh/website.")
+        let v3 = ev(helper, 9, now - 3600, [["h", "website"], ["a", site], button],
+                    "**Website updated**: the repair café has its own page, https://demo.belfry.sh/events/repair-cafe, and the map works again! Preview: \(preview) · live now at https://demo.belfry.sh")
+        evs += [v1, v2, v3]
+        let p1 = ev(ps["ana"]!, 1985, now - 3 * day + 600, Buttons.press(messageId: v1.id, author: helper.pubkey, group: "website", button: "publish").tags)
+        evs.append(p1)
+        evs.append(ev(groupsKey, 1985, now - 3 * day + 605, [["L", Buttons.resultNS], ["l", "ok", Buttons.resultNS], ["e", v1.id], ["press", p1.id], ["p", p1.pubkey], ["h", "website"], ["closed", "1"]],
+                      "Published by Ana."))
+        let p2 = ev(you, 1985, now - day + 600, Buttons.press(messageId: v2.id, author: helper.pubkey, group: "website", button: "publish").tags)
+        evs.append(p2)
+        evs.append(ev(groupsKey, 1985, now - day + 604, [["L", Buttons.resultNS], ["l", "error", Buttons.resultNS], ["e", v2.id], ["press", p2.id], ["p", p2.pubkey], ["h", "website"], ["code", "failed"]],
+                      "Couldn't publish: the preview has no front page."))
         // guest mode: two people opened a guest link of #general and only read ("2 guests are reading")
         for k in ["reader-1", "reader-2"] {
             evs.append(ev(groupsKey, 9000, now - 900, [["h", "general"], ["p", signer(k).pubkey, "member"], ["guest", "2026-12-12"], ["invited-by", ps["ana"]!.pubkey], ["unsaved", "1"], ["reading", "1"]]))

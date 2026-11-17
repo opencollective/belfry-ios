@@ -22,6 +22,42 @@ public struct Attachment: Codable, Hashable, Sendable {
     }
 }
 
+/// A call to the belfry's HTTP API waiting in the outbox (SPEC 19.37). Its NIP-98 header is
+/// signed when it is sent, never when it is queued.
+public struct HttpCall: Codable, Hashable, Sendable {
+    public var method: String
+    public var url: String
+    /// The JSON body as text.
+    public var body: String
+
+    public init(method: String = "POST", url: String, json: [String: Any]) {
+        self.method = method
+        self.url = url
+        let data = (try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])) ?? Data("{}".utf8)
+        self.body = String(decoding: data, as: UTF8.self)
+    }
+
+    public var json: [String: Any] {
+        (try? JSONSerialization.jsonObject(with: Data(body.utf8))) as? [String: Any] ?? [:]
+    }
+
+    /// What an answer means for the outbox: nil = done; else an error message for
+    /// `Outbox.classify`: 401 / 408 / 429 / 5xx / no answer are tried again, any other 4xx fails
+    /// for good with its `error` code.
+    public static func outcome(status: Int, body: Data) -> String? {
+        if (200..<300).contains(status) { return nil }
+        let code = ((try? JSONSerialization.jsonObject(with: body)) as? [String: Any])?["error"] as? String ?? ""
+        if status == 0 || status >= 500 || [401, 408, 429].contains(status) { return "timeout: http \(status)" }
+        return "error: http \(status)" + (code.isEmpty ? "" : " " + code)
+    }
+
+    /// The `error` code of a failed call's message ("error: http 403 not_allowed" → not_allowed).
+    public static func code(of message: String?) -> String? {
+        guard let m = message, let x = Rx("^error: http \\d+ ([a-z_]+)").first(m) else { return nil }
+        return x[1]
+    }
+}
+
 public struct OutboxItem: Codable, Hashable, Sendable, Identifiable {
     public enum Status: String, Codable, Sendable { case queued, failed }
 
@@ -39,11 +75,15 @@ public struct OutboxItem: Codable, Hashable, Sendable, Identifiable {
     public var signed: NostrEvent?
     /// The direct message (rumor id) it carries.
     public var dm: String?
+    /// Target `api`: the call to make. KIND / TAGS then describe the change it makes (a 9002 for
+    /// a channel's settings), shown in the log until it is out, as a queued event is.
+    public var http: HttpCall?
 
     public var id: String { localId }
 
     public init(localId: String = "local-" + Crypto.random(8).hex, target: Target, kind: Int, content: String, tags: [Tag], createdAt: Int,
-                attachments: [Attachment] = [], status: Status = .queued, tries: Int = 0, error: String? = nil, signed: NostrEvent? = nil, dm: String? = nil) {
+                attachments: [Attachment] = [], status: Status = .queued, tries: Int = 0, error: String? = nil, signed: NostrEvent? = nil, dm: String? = nil,
+                http: HttpCall? = nil) {
         self.localId = localId
         self.target = target
         self.kind = kind
@@ -56,6 +96,7 @@ public struct OutboxItem: Codable, Hashable, Sendable, Identifiable {
         self.error = error
         self.signed = signed
         self.dm = dm
+        self.http = http
     }
 
     /// How it shows in the feed until it is out (pubkey = me).

@@ -26,6 +26,9 @@ struct ChannelView: View {
     @State private var place: ChannelPlace?
     @State private var invite = false
     @State private var search = false
+    @State private var settingsIssue = false
+    /// Settings changes of this channel refused for good (SPEC 19.37).
+    private var failedSettings: [OutboxItem] { model.failedSettings(id) }
     @State private var didLaunch = false
     @State private var pendingThreadLaunch = false
     @State private var topic: String?
@@ -212,6 +215,7 @@ struct ChannelView: View {
         .toolbar {
             if !embedded {
             ToolbarItem(placement: .principal) {
+                HStack(spacing: 6) {
                 Button { togglePull() } label: {
                     VStack(spacing: 0) {
                         HStack(spacing: 4) {
@@ -224,12 +228,28 @@ struct ChannelView: View {
                     }
                 }
                 .accessibilityLabel("\(g?.name ?? id). Show what's going on in this channel.")
+                // a settings change refused for good (SPEC 19.37): tap for what failed
+                if !failedSettings.isEmpty {
+                    Button { settingsIssue = true } label: {
+                        Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red).font(.body)
+                    }
+                    .accessibilityLabel("A change wasn't saved")
+                    .accessibilityIdentifier("settings-failed")
+                }
+                }
             }
             if !pushed { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button { search = true } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("Search")
             }
             }
+        }
+        .alert("Not saved", isPresented: $settingsIssue) {
+            Button("Try again") { model.retrySettings(id) }
+            Button("Discard", role: .destructive) { model.discardSettings(id) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(failedSettings.map(SettingsQueue.message).first ?? "")
         }
         .navigationDestination(item: $thread) { r in ThreadView(group: r.group, rootId: r.root, focusReply: r.reply) }
         .navigationDestination(item: $place) { p in
@@ -271,7 +291,11 @@ struct ChannelView: View {
                 model.openProfile = pk
                 return .handled
             }
-            return .systemAction
+            switch Links.target(url, domain: model.config.domain) {
+            case .channel(let gid): openChannel(gid, nil); return .handled
+            case .app: model.handle(url: url); return .handled
+            case .browser: return .systemAction
+            }
         })
     }
 
@@ -364,6 +388,7 @@ struct ChannelView: View {
         case "files": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .photos }
         case "log": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .log }
         case "chsettings": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .settings }
+        case "settingsfailedalert": DispatchQueue.main.asyncAfter(deadline: .now() + 2) { settingsIssue = true }
         case "pinned": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .pinned }
         case "pullempty": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }
         case "invite": invite = true

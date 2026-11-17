@@ -38,6 +38,8 @@ public struct WorldContext: Hashable, Sendable {
     /// while the group's own name is still its default. Display only; ids never change. Off in
     /// the shared vectors (vectors/placenames.json tests it on its own).
     public var placeNames: Bool = false
+    /// belfry.json `nostr.pubkey`: with the groups key, the handler of `belfry:` buttons.
+    public var belfryKey: String?
 
     public init(me: String, domain: String = "", communityName: String = "", communityAdmins: Set<String> = [],
                 groupsKey: String? = nil, bridgeKey: String? = nil, groupsRelay: String = "",
@@ -108,6 +110,9 @@ public struct Group: Identifiable, Hashable, Sendable {
     /// Archived (SPEC 19.30): the latest 9002 that says so has `["archived", "1"]`. In no list;
     /// readable from its card, a link, search; nobody writes in it.
     public var archived = false
+    /// Tags of the relay's latest copy of the metadata (39000) this app doesn't model; every
+    /// 9002 keeps them (zooid replaces the whole metadata with each 9002; web actions.metaTags).
+    public var metaExtra: [Tag] = []
     /// The name its metadata gives, before the on-brand names (SPEC 19.31); empty if none.
     public var rawName = ""
 
@@ -398,6 +403,15 @@ public final class Derive {
     // ---- indexes -------------------------------------------------------------------------------
 
     public private(set) lazy var sortedEvents: [NostrEvent] = events.sorted(by: Derive.byTime)
+    /// Button presses and answers (kind 1985, L belfry/action and belfry/action-result) by the
+    /// message they point at (`e`), SPEC 19.36.
+    public private(set) lazy var actionLabels: [String: [NostrEvent]] = {
+        var out = [String: [NostrEvent]]()
+        for e in ofKind(1985) where Buttons.isPress(e) || Buttons.isAnswer(e) {
+            if let m = e.tag("e") { out[m, default: []].append(e) }
+        }
+        return out
+    }()
     /// The ids in this snapshot (to tell what the next one adds).
     public private(set) lazy var idSet: Set<String> = Set(events.map(\.id))
 
@@ -592,6 +606,10 @@ public final class Derive {
             if e.kind == 9007, creatorOf[id] == nil { creatorOf[id] = e.pubkey }
             // admins (SPEC 19.29, web checkin model.ts): the relay's latest 39001 (zooid lists only
             // its own keys, the belfry's admins and the creator), the creator, and admins by role
+            if e.kind == 39000, (m["extra"] ?? 0) <= e.createdAt {
+                g.metaExtra = e.tags.filter { !Derive.metaKnown.contains($0.first ?? "") && !($0.first ?? "").isEmpty }
+                m["extra"] = e.createdAt
+            }
             if e.kind == 39001 { listedAdmins[id] = Set(e.tags.filter { $0.first == "p" && $0.count > 1 }.map { $0[1] }) }
             if e.kind == 39002 { g.members = Set(e.tags.filter { $0.first == "p" && $0.count > 1 }.map { $0[1] }) }
             if e.kind == 9000 || e.kind == 9001, let p = e.tag("p"), !p.isEmpty {
@@ -1141,6 +1159,8 @@ public final class Derive {
     // ---- shared inbox setting, announcements ----------------------------------------------------
 
     public static let inboxD = "belfry:inbox"
+    /// 9002 / 39000 tags the app writes itself (the rest of the relay's copy is kept as it is).
+    public static let metaKnown: Set<String> = ["d", "h", "-", "name", "about", "picture", "open", "closed", "prompt", "vouches", "archived", "client"]
 
     public func isInbox(_ g: Group?) -> Bool {
         guard let g else { return false }

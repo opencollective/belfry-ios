@@ -139,6 +139,7 @@ public extension Actions {
         if isClosed && g.vouches > 0 { tags.append(["vouches", String(g.vouches)]) }
         // archived (SPEC 19.30): said when it changes, kept while it is on
         if let archived { tags.append(["archived", archived ? "1" : "0"]) } else if g.archived { tags.append(["archived", "1"]) }
+        tags += g.metaExtra // what the relay's copy holds that this app doesn't model (web metaTags)
         return Draft(kind: 9002, tags: tags)
     }
 

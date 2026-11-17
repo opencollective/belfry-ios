@@ -134,18 +134,31 @@ struct RootView: View {
             .task { try? await Task.sleep(nanoseconds: 1_500_000_000); checkWelcome() }
     }
 
+    private func openChat(_ id: String, _ message: String?) {
+        closeDrawer()
+        // a chat pushes over the place it was opened from (Home, Calendar, Groups)
+        if phone && model.tab != .town {
+            pushChat(id, message)
+            return
+        }
+        focus = message.map { SearchTarget(channel: id, message: $0) }
+        if selection == .channel(id) { path = NavigationPath() } else { selection = .channel(id) }
+    }
+
     private var routed: some View {
         layout
-        .environment(\.openChannel) { id, message in
-            closeDrawer()
-            // a chat pushes over the place it was opened from (Home, Calendar, Groups)
-            if phone && model.tab != .town {
-                pushChat(id, message)
-                return
+        .environment(\.openChannel) { id, message in openChat(id, message) }
+        // links in people's text (SPEC 19.36 note): this belfry's channel / guest / event links
+        // open here, the rest in the browser
+        .environment(\.openURL, OpenURLAction { url in
+            if url.scheme == "belfry-channel", let gid = url.pathComponents.last?.removingPercentEncoding { openChat(gid, nil); return .handled }
+            if url.scheme == "belfry-user", let pk = url.pathComponents.last, isHex64(pk) { model.openProfile = pk; return .handled }
+            switch Links.target(url, domain: model.config.domain) {
+            case .channel(let gid): openChat(gid, nil); return .handled
+            case .app: model.handle(url: url); return .handled
+            case .browser: return .systemAction
             }
-            focus = message.map { SearchTarget(channel: id, message: $0) }
-            if selection == .channel(id) { path = NavigationPath() } else { selection = .channel(id) }
-        }
+        })
         .onChange(of: model.pushRoute) { _, r in
             guard let r else { return }
             model.pushRoute = nil
@@ -520,6 +533,8 @@ struct RootView: View {
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { account = true }
         case "members", "todos", "files", "log", "chsettings", "pinned", "membersinvitech": selection = .channel(generalId)
+        case "website", "websitethread": selection = .channel("website")
+        case "settingsfailed", "settingsfailedalert": selection = .channel("garden-3f2a")
         case "homedrawer":
             model.tab = .home
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }

@@ -32,6 +32,11 @@ public struct BelfryConfig: Codable, Hashable, Sendable {
     /// belfry.json `charter` (docs/charter.md): true = at least one agreement, false = none, nil =
     /// not said (an older belfry, or its relay couldn't say).
     public var charter: Bool?
+    /// belfry.json `nostr.pubkey`: the belfry's own key (it answers `belfry:` buttons, docs/actions.md).
+    public var belfryKey: String?
+    /// belfry.json `groups_key.pubkey`: the groups key (it posts e-mail cards, guest joins and the
+    /// answers to `belfry:` buttons). Nil = an older belfry: `_groups@domain` in nostr.json instead.
+    public var groupsKeyHex: String?
 
     public var agents: [String: String] { agentsMap ?? [:] }
 
@@ -82,6 +87,8 @@ public struct BelfryConfig: Codable, Hashable, Sendable {
         }
         c.agentsMap = agents
         c.charter = doc["charter"] as? Bool
+        if let k = (doc["nostr"] as? [String: Any])?["pubkey"] as? String, isHex64(k) { c.belfryKey = k }
+        if let k = (doc["groups_key"] as? [String: Any])?["pubkey"] as? String, isHex64(k) { c.groupsKeyHex = k }
         if let b = doc["branding"] as? [String: Any] {
             let clean = Branding.clean(b)
             c.branding = clean.isEmpty ? nil : clean

@@ -330,3 +330,12 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   to-dos made from a message: "Open its thread". vectors/categories.json changed and
   vectors/placenames.json is new: copy both to Android. Screens `channelend`, `channelendconfirm`,
   `channelarchive`, `calendardrawer`; demo channel "Tool library" (`tools-2b8e`) has no messages.
+- 2026-11-17 round 5 (branch ios-r5): buttons on messages (SPEC 19.36, `Model/Buttons.swift`,
+  `MessageButtons.swift`, `vectors/message-actions.json` = collective-belfry docs/actions-vectors.json
+  unchanged; `vectors/actions.json` is the older user-actions file), links (`Markdown/Links.swift`:
+  underlined in the tint, chat links of this belfry handled in the app by the OpenURLAction in
+  RootView / ChannelView; never put a tap gesture over a whole row with text: it eats link taps),
+  channel settings saved through the outbox (SPEC 19.37: `SettingsQueue`, outbox target `api` =
+  `HttpCall` signed at send time, `SyncEngine.transport` for tests; every 9002 keeps the relay's
+  unknown 39000 tags, `Group.metaExtra`). belfry.json `nostr.pubkey` / `groups_key.pubkey` →
+  `BelfryConfig.belfryKey / groupsKeyHex`. Screens `website`, `settingsfailed`, `settingsfailedalert`.

@@ -460,7 +460,7 @@ struct TodoRow: View {
             .disabled(model.locked(group))
             .accessibilityLabel(t.done ? "Done. Mark as not done" : "Tick off")
             VStack(alignment: .leading, spacing: 2) {
-                Text(t.title).font(.subheadline).strikethrough(t.done)
+                Text(MarkdownText.plainLinks(t.title)).font(.subheadline).strikethrough(t.done)
                 HStack(spacing: 6) {
                     if t.isWorking(now: Int.now), let since = t.workingSince { WorkingRing(since: since) }
                     Text(model.derive.todoWho(t)).font(.caption).foregroundStyle(.secondary)

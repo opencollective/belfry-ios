@@ -228,3 +228,11 @@ Not in the web chat or Android yet: the iPhone app leads here. Screenshots 100�
 | Belfry settings → Channels: tap a channel → "Delete the channel" (nobody wrote in it) or "Archive the channel", confirmed in the sheet, button locks while it runs (SPEC 19.35, `POST /group-delete`) | done, never run live | `ChannelEnd.swift`, `AppModel.channelIsEmpty / deleteChannel`; UI test `testDeleteEmptyChannel` (demo); screenshots 133c–133f. |
 | A to-do made from a message: "Open its thread" in the channel's To-dos | done | Web 2026-11-17. |
 | Joining from the App Store ("Which belfry?", the belfry's card, Ask to join) | not yet | SERVER-NEEDS 13. |
+
+## Round 5 (iOS first, 2026-11-17; SPEC 19.36 / 19.37)
+
+| Item | Status | Notes |
+|---|---|---|
+| Buttons on messages (collective-belfry docs/actions.md): parse, press (1985, published at once), trusted answers (author; belfry key / groups key from belfry.json, `_groups` fallback), closed for everyone, my ok / error line, 20 s "No answer yet.", unknown `belfry:` action disabled, confirmations with the app's own text, Join sheet for a reading guest | done, never run live | `vectors/message-actions.json` (= docs/actions-vectors.json, copy to Android under this name), `ButtonsTests`. Demo #website, screenshots 150. The web has none yet. |
+| Links always look and act like links (underlined in the tint), this belfry's chat links open in the app | done, never run on a device | `Links` (core, `LinksTests`); `ThreadActivity` no longer takes the taps on links. |
+| Channel settings: prominent Save, Archive as a centred link, save applied at once and back to the channel; through the outbox (own 9002, or a queued `POST /group-meta` signed at send time); error mark by the name with Try again / Discard | done, never run live | SPEC 19.37, `SettingsQueueTests`, screenshots 151–152. |

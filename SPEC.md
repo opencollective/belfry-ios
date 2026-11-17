@@ -1915,3 +1915,96 @@ end it:
 - Never offered for `general`, events, meetings or proposals.
 - (iOS) `ChannelsSettings` → `ChannelEndSheet`; `Derive.hasContent(id)`, `ChannelContent.kinds`,
   `AppModel.channelIsEmpty` / `deleteChannel`, `BelfryAPI.groupDelete`.
+
+### 19.36 Buttons on messages (collective-belfry `docs/actions.md`, 2026-11-17; `vectors/message-actions.json`)
+
+A message can carry buttons. Someone taps one, their own key signs "I pressed this", and whoever
+handles it answers with what happened. First use: approving a website version from the message
+that proposes it. No accepted NIP exists; the text stays an ordinary message (older clients show
+something sensible) and the buttons are tags; presses and answers are NIP-32 labels (kind 1985).
+The vectors file is the belfry's `docs/actions-vectors.json` copied unchanged (named
+`message-actions.json` because `vectors/actions.json` is the older "events each action queues").
+
+- **The message**: kind 9 or 1111 in a group with up to 4 tags
+  `["button", id, label, style, action]`. `id` = `[a-z0-9-]{1,32}`, unique in the message;
+  `label` = 1–40 characters after trimming, shown as is (never Markdown); `style` = `""`,
+  `"primary"`, `"danger"` (anything else: plain; may be absent); `action` absent / empty = the
+  message's **author** handles it, `belfry:<name>` = the **belfry** does. A tag that breaks a rule,
+  a repeated id and a fifth valid button are ignored. Shown under the text in tag order; an edit
+  (1010) never changes them. Not on e-mail cards or other special messages.
+- **The press** (signed by whoever tapped, on the groups relay, published at once, NOT through
+  the outbox; when it can't be sent the buttons say so and unlock):
+  `kind 1985, tags ["L","belfry/action"] ["l",<button id>,"belfry/action"] ["e",<message id>]
+  ["p",<message author>] ["h",<group>], content ""` (+ the client tag). A reading guest gets the
+  Join sheet instead.
+- **Confirmation**: before a `belfry:` action the client asks with **its own fixed text** for that
+  action, never the button's label (`belfry:website-publish`: "Publish this version as the
+  website? Everyone will see it at https://<domain>." · Publish / Cancel). A `danger` button
+  handled by its author asks "<label>?" with the label as the destructive button and Cancel.
+  Plain and primary author buttons press at once.
+- **The answer** (by the handler, on the groups relay): `kind 1985, ["L","belfry/action-result"]
+  ["l","ok"|"error","belfry/action-result"] ["e",<message>] ["press",<press id>] ["p",<presser>]
+  ["h",<group>]`, `["code",<code>]` on an error, `["closed","1"]` optionally on ok; content = one
+  sentence for people.
+- **Trusted answers only**: for a button without action, the message's author; for `belfry:`,
+  the belfry key (belfry.json `nostr.pubkey`) or the groups key (belfry.json
+  `groups_key.pubkey`; an older belfry: `_groups` in `/.well-known/nostr.json`). Others are
+  ignored. (Interpretation, iOS) An answer to a press this device holds is checked against the
+  handler of THAT press's button; an answer to a press it never saw (someone else's, for the
+  closed state) counts when its signer handles any of the message's buttons.
+- **State** (`Buttons.state`): *closed* = the latest trusted `ok` + `closed` answer, whoever
+  pressed: the buttons are replaced for everyone by its content ("Done." when empty). *Mine* = my
+  latest press (by created_at) of one of the message's buttons, and the latest trusted answer
+  with `press` = its id: `ok` → its content as a line under the buttons (nothing when empty);
+  `error` → its content as an error line and the buttons unlock; empty content → the fixed text
+  of the code, an unknown code "That didn't work." (`fixed_text` in the vectors). No answer: all
+  the message's buttons stay locked with a spinner on the pressed one for 20 s after the press,
+  then "No answer yet." and they unlock; an answer that comes later still shows. State comes from
+  the relay and the local store, so closed shows offline and after a restart (1985 is in the
+  groups subscription and kept like every event).
+- An unknown `belfry:` action: the button disabled, "Update the app to use this." under the row.
+  Known: `belfry:website-publish` (an admin of the belfry; the site is the message's first `a`
+  `35128:<pubkey>:<name>`, else its first preview link; answer `ok` + `closed` "Published by
+  <name>.").
+- (iOS) Core `Model/Buttons.swift` (`Buttons.parse / press / state / confirmText`,
+  `Derive.buttons / buttonState / actionLabels`), `SyncEngine.publishNow`, UI
+  `MessageButtons.swift` (bordered buttons, `.borderedProminent` for primary, destructive role
+  for danger, `confirmationDialog`), shown in the feed (`MessageRow`) and in threads
+  (`ReplyRow`). Demo: #website with an agent's three versions (to approve, an error, published).
+
+Links (2026-11-17, the owner: "make sure that urls are always clickable"): an address in
+people's text (messages, thread replies, DMs, e-mail frames, channel and group descriptions,
+event descriptions, profile about, to-do titles and comments) is a link when it matches the
+Markdown rule of section 9 (`https?://[^\s<>()]+` ending in none of `. , ; : ! ? ' "`, so a
+sentence's dot or a closing parenthesis stays outside; a bare host without a scheme is not a
+link). Links look like links everywhere: underlined, in the tint. A link to this belfry's chat
+(`chat.<domain>/join/…`, `/events/…`, `#/c/<id>`) opens in the app; any other in the browser
+(`Links.target`). A tap gesture over a whole row must not cover text with links (iOS:
+`ThreadActivity` only opens the thread from its grey line when the reply has links).
+
+### 19.37 Saving a channel's settings (iOS, 2026-11-17; the owner's TestFlight remarks)
+
+- The Settings screen of a channel (name, description, a group's access, "E-mails from anyone")
+  has one prominent **Save**; "Archive this channel" is a small centred link under it with its
+  one-line explanation (19.30).
+- Save is **immediate**: the change is applied to the local log at once and the screen goes back
+  to the channel, which already shows the new name and description. No "Saved" state stays on a
+  screen.
+- Every part goes through the **outbox** (section 5), so it survives a restart and a bad
+  connection and is sent in order: the name / description / access as the client's own 9002
+  (keeping every other tag of the group's metadata, including the relay's 39000 tags the client
+  doesn't model: zooid replaces the whole metadata with each 9002) when the relay lets it publish
+  one (in the group's 39001, its creator, a belfry admin); else `POST <api>/group-meta` (which acts
+  as the groups key and keeps every tag), queued as an outbox item of target `api`: the call's
+  NIP-98 header is signed when it is sent, never when queued; 2xx = done; no answer, 401, 408,
+  429 and 5xx = tried again later; any other 4xx = failed for good with its `error` code. While
+  queued, the item shows in the log as the 9002 it stands for; after a 2xx that copy stays (in
+  memory) until the relay's own 39000 arrives. The e-mail switch = the 30078 `belfry:inbox` of
+  section 13, same rule.
+- While queued nothing special shows. When a part fails for good (a relay refusal, a 4xx), an
+  error mark sits next to the channel's name in its header; tapping it says what failed in one
+  fixed sentence by part and kind of refusal ("The new name and description weren't saved: you're
+  not allowed to change this channel.") with **Try again** (back in the queue) and **Discard**
+  (dropped: the channel shows what the relay has again). Never the relay's or server's own words.
+- (iOS) `SettingsQueue` (core), `HttpCall` + `SyncEngine.enqueueCall`, `AppModel.editGroupMeta /
+  failedSettings / retrySettings / discardSettings`, the mark in `ChannelView`'s title.

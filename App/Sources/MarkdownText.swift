@@ -65,9 +65,7 @@ struct MarkdownText: View {
             case .strike(let c): out += adding(.strikethrough, attr(c))
             case .code(let s): out += adding(.code, AttributedString(s))
             case .link(let href, let c):
-                var a = attr(c)
-                if let u = URL(string: href), ["http", "https", "mailto"].contains(u.scheme?.lowercased() ?? "") { a.link = u }
-                out += a
+                out += MarkdownText.linked(attr(c), href)
             case .mention(let npub):
                 let pk = Bech32.pubkey(npub: npub) ?? ""
                 let name = pk.isEmpty ? "nostr:" + npub : "@" + (model.realName(pk).isEmpty ? model.name(pk) : model.realName(pk))
@@ -116,6 +114,31 @@ struct MarkdownText: View {
         }
         out += AttributedString(ns.substring(from: at))
         return out
+    }
+
+    /// Plain text (a to-do's title, a comment) with its addresses as links, nothing else.
+    static func plainLinks(_ text: String) -> AttributedString {
+        let ns = text as NSString
+        var out = AttributedString()
+        var at = 0
+        for m in Links.urlRx.matches(text) {
+            out += AttributedString(ns.substring(with: NSRange(location: at, length: m.range.location - at)))
+            out += linked(AttributedString(m.whole), m.whole)
+            at = m.range.location + m.range.length
+        }
+        out += AttributedString(ns.substring(from: at))
+        return out
+    }
+
+    /// A link as every text of the app shows it: tappable, underlined in the tint (the neutral
+    /// look's ink, or the belfry's colour). Long addresses wrap like words.
+    static func linked(_ s: AttributedString, _ href: String) -> AttributedString {
+        guard let u = URL(string: href), ["http", "https", "mailto"].contains(u.scheme?.lowercased() ?? "") else { return s }
+        var a = s
+        a.link = u
+        a.underlineStyle = .single
+        a.foregroundColor = .brand
+        return a
     }
 
     func adding(_ intent: InlinePresentationIntent, _ s: AttributedString) -> AttributedString {

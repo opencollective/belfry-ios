@@ -48,6 +48,8 @@ public final class SyncEngine: @unchecked Sendable {
     public var onNewEvents: (([NostrEvent]) -> Void)?
     /// A relay answered the live subscription (EOSE).
     public var onEOSE: ((Target) -> Void)?
+    /// Makes an HTTP request (tests, the demo); nil = URLSession. Returns the body and the status.
+    public var transport: ((URLRequest) async throws -> (Data, Int))?
 
     public init(config: BelfryConfig, db: Database, signer: Signer, localOnly: Bool, attachmentsDir: URL) {
         self.config = config
@@ -140,6 +142,35 @@ public final class SyncEngine: @unchecked Sendable {
         return item.localId
     }
 
+    /// A call to the belfry's API queued like an event (SPEC 19.37): DISPLAY is the change it
+    /// makes as the log should show it until the relay has the result (a 9002 for a channel's
+    /// settings); CALL is made, NIP-98 signed, when the item's turn comes.
+    @discardableResult
+    public func enqueueCall(_ call: HttpCall, display: Draft) -> String {
+        if guestMode.refuse() { return "" }
+        lock.lock(); let locked = lockedGroups; lock.unlock()
+        if GroupLock.refuses(display, locked: locked) { return "" }
+        let item = OutboxItem(target: .api, kind: display.kind, content: display.content, tags: display.tags,
+                              createdAt: nextCreatedAt(), http: call)
+        put(item)
+        flushSoon()
+        return item.localId
+    }
+
+    /// Signs D and publishes it at once, NOT through the outbox (a button's press, SPEC 19.36):
+    /// throws when it can't be sent; stored and shown once the relay took it.
+    @discardableResult
+    public func publishNow(_ d: Draft) async throws -> NostrEvent {
+        try guestMode.check()
+        let ev = try await signer.sign(EventTemplate(kind: d.kind, content: d.content, tags: d.tags + [SyncEngine.clientTag], createdAt: nextCreatedAt()))
+        if !localOnly {
+            guard online else { throw BelfryError.relay("timeout: offline") }
+            try await publish(d.target, ev)
+        }
+        add([ev], verify: false)
+        return ev
+    }
+
     @discardableResult
     public func enqueueSigned(_ ev: NostrEvent, target: Target, dm: String?) -> String {
         if guestMode.refuse() { return "" }
@@ -148,6 +179,9 @@ public final class SyncEngine: @unchecked Sendable {
         flushSoon()
         return item.localId
     }
+
+    /// The demo's screenshots: an outbox item in a given state (a refused settings change).
+    public func demoPut(_ item: OutboxItem) { put(item) }
 
     func put(_ item: OutboxItem) {
         lock.lock(); outbox[item.localId] = item; lock.unlock()
@@ -207,7 +241,18 @@ public final class SyncEngine: @unchecked Sendable {
         if again { await flush() }
     }
 
-    private func send(_ item: OutboxItem) async throws -> NostrEvent {
+    private func send(_ item: OutboxItem) async throws -> NostrEvent? {
+        if let call = item.http {
+            // signed now, not when queued; a 4xx that isn't 401 / 408 / 429 fails for good
+            // the demo (local only, no transport): nothing leaves the device
+            let (data, status) = localOnly && transport == nil ? (Data("{}".utf8), 200) : try await signedRequest(call.url, method: call.method, json: call.json)
+            if let err = HttpCall.outcome(status: status, body: data) { throw BelfryError.relay(err) }
+            // the change stays shown (in memory) until the relay's own copy arrives
+            let shown = item.asEvent(me: me)
+            lock.lock(); events["call-" + item.localId] = NostrEvent(id: "call-" + item.localId, pubkey: shown.pubkey, createdAt: shown.createdAt,
+                                                                       kind: shown.kind, tags: shown.tags, content: shown.content); lock.unlock()
+            return nil
+        }
         if let signed = item.signed {
             if localOnly { return signed }
             try await publish(item.target, signed)
@@ -284,6 +329,7 @@ public final class SyncEngine: @unchecked Sendable {
         req.httpMethod = method
         req.setValue("Nostr " + Data(auth.json.utf8).base64EncodedString(), forHTTPHeaderField: "Authorization")
         if let body { req.httpBody = body; req.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+        if let transport { return try await transport(req) }
         let (data, resp) = try await URLSession.shared.data(for: req)
         return (data, (resp as? HTTPURLResponse)?.statusCode ?? 0)
     }
