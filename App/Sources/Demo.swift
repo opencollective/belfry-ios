@@ -311,10 +311,10 @@ enum Demo {
         evs.append(ev(you, 30078, now - 15 * day + 5, Actions.setInbox(inbox, on: true).tags, "{\"on\":true}"))
         // SPEC 19.34: Sam (an admin of the belfry) sorted the channels into categories; the repair
         // café sits in a category of its own
-        let layout: [String: Any] = ["order": ["general", "garden-3f2a", "kitchen-7d10", inbox, "repair-cafe-91bc", "proposals"],
+        let layout: [String: Any] = ["order": ["general", "garden-3f2a", "kitchen-7d10", inbox, "repair-cafe-91bc", "proposals", "website"],
                                      "categories": [["id": "life", "channels": ["garden-3f2a", "kitchen-7d10", inbox]],
                                                     ["id": "making-4b1c", "name": "Making & mending", "channels": ["repair-cafe-91bc"]],
-                                                    ["id": "building", "channels": ["proposals"]]]]
+                                                    ["id": "building", "channels": ["proposals", "website"]]]]
         evs.append(ev(you, 30078, now - 14 * day, [["d", Derive.orderD]], JSON.encode(layout)))
         // the same by Ana, who is the belfry's admin in the `-member` demo
         evs.append(ev(ps["ana"]!, 30078, now - 14 * day, [["d", Derive.orderD]], JSON.encode(layout)))
