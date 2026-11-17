@@ -126,4 +126,35 @@ final class MenuShots: XCTestCase {
             answers(app, after: "dismissing the keyboard (round \(round))")
         }
     }
+
+    /// A steward holds a channel in the drawer and drags it into another category (SPEC 19.34).
+    func testDrawerDrag() {
+        let app = launch("towndrawer")
+        sleep(2)
+        let kitchen = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Shared kitchen")).firstMatch
+        XCTAssertTrue(kitchen.waitForExistence(timeout: 10), "the drawer shows no Shared kitchen row")
+        let header = app.staticTexts["MAKING & MENDING"].firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 5), "the drawer shows no Making & mending category")
+        guard kitchen.isHittable, header.isHittable else { XCTFail("the drawer's rows are not on screen"); return }
+        let before = kitchen.frame.minY
+        let target = header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: 70))
+        kitchen.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 1.2, thenDragTo: target, withVelocity: .slow, thenHoldForDuration: 0.6)
+        sleep(2)
+        shot("54-drawer-drag")
+        let moved = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Shared kitchen")).firstMatch
+        XCTAssertTrue(moved.exists)
+        XCTAssertGreaterThan(moved.frame.minY, header.frame.minY, "Shared kitchen did not move under Making & mending (it was at \(before))")
+    }
+
+    /// Home's ☰ opens the Town drawer, Today selected.
+    func testHomeDrawer() {
+        let app = launch("home")
+        let button = app.buttons["drawer-button"].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 10), "Home has no ☰")
+        button.tap()
+        sleep(1)
+        XCTAssertTrue(app.descendants(matching: .any)["drawer-today"].firstMatch.waitForExistence(timeout: 5), "the drawer has no Today row")
+        shot("55-home-drawer-tap")
+    }
 }

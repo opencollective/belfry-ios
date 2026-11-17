@@ -171,7 +171,12 @@ struct ChannelView: View {
                 if !embedded {
                 VStack(spacing: 0) {
                     if locked { ArchivedBanner(id: id) }
-                    if let topic { TopicFilterBar(topic: topic) { withAnimation { self.topic = nil } } }
+                    // only while something asks for attention; the counts live in the subtitle
+                    if let line = d.attentionLine(id, now: .now, topic: topic, hiddenPins: model.hiddenPins) {
+                        ChannelLineBar(id: id, line: line, open: { togglePull() }, showAll: { withAnimation { topic = nil } },
+                                       review: { model.openGroup = id }, todos: { closePull(); place = .todos },
+                                       pulled: pull != .closed, pull: { openPull() })
+                    }
                     if model.offerPush && pull == .closed && !locked { PushOffer() }
                     if let g, g.isEvent, let e = d.eventOfGroup(id) {
                         Button { model.openEvent = e.coord } label: {

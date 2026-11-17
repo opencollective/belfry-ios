@@ -533,7 +533,8 @@ final class AppModel: ObservableObject {
         var cfg = BelfryConfig.defaults(domain: "demo.belfry.sh")
         cfg.name = "Riverside Commons"
         // Sam administers the demo belfry (settings, roles, requests, the charter show); the reader is a guest
-        cfg.admins = [(try! LocalSigner(secret: Demo.meSecret)).pubkey]
+        // `-member`: the same demo as a plain member (no Belfry settings, no dragging)
+        cfg.admins = launch.member ? [Demo.signer("ana").pubkey] : [(try! LocalSigner(secret: Demo.meSecret)).pubkey]
         open(s, config: cfg)
         groupsKey = Demo.signer("groups").pubkey
         groupsAbsent = [Demo.deletedGroup: 0] // what the relay's answer would leave (SPEC 19.30)
@@ -552,6 +553,12 @@ final class AppModel: ObservableObject {
 
     /// The admins' order of the channel list.
     func setChannelOrder(_ ids: [String]) { engine?.enqueue(Actions.channelOrder(ids)) }
+
+    /// The admins' categories (SPEC 19.34): the same event, with `categories` and the flattened order.
+    func setChannelLayout(_ cats: [ChannelCategory], extra: Set<String> = []) {
+        let d = derive
+        engine?.enqueue(Actions.channelLayout(cats, previous: d.channelLayout(), known: Set(d.townChannels().map(\.id)).union(extra)))
+    }
 
     /// A post in a threads-only channel: a bold title line and the details, with a `subject` tag
     /// (as the web's New thread, so the channel's page and the chat read it the same).
@@ -798,9 +805,14 @@ final class AppModel: ObservableObject {
 
     func retry(_ localId: String) { engine?.retry(localId) }
 
-    func createChannel(name: String, about: String) -> String {
+    func createChannel(name: String, about: String, category: String? = nil) -> String {
         let id = Actions.newChannelId(name)
         for d in Actions.createChannel(id: id, name: name, about: about) { engine?.enqueue(d) }
+        // made with a category's ＋ by a belfry admin: the order event puts it at the end of that
+        // category (queued after the channel's own events; an id not yet known is kept, not lost)
+        if let category, derive.isCommunityAdmin {
+            setChannelLayout(Categories.put(id, in: category, derive.channelCategories()), extra: [id])
+        }
         return id
     }
 
@@ -903,10 +915,13 @@ struct LaunchOptions {
     let signin: String?
     /// `-guest opening|feed|join|code`: guest mode's screens in demo mode (SPEC 19.26).
     let guest: String?
+    /// `-member`: the demo's Sam is not an admin of the belfry (the member's drawer).
+    let member: Bool
 
     init() {
         let args = ProcessInfo.processInfo.arguments
         demo = args.contains("-demo")
+        member = args.contains("-member")
         if let i = args.firstIndex(of: "-screen"), i + 1 < args.count { screen = args[i + 1] } else { screen = nil }
         if let i = args.firstIndex(of: "-signin"), i + 1 < args.count { signin = args[i + 1] } else { signin = nil }
         if let i = args.firstIndex(of: "-guest"), i + 1 < args.count { guest = args[i + 1] } else { guest = nil }

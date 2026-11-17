@@ -27,11 +27,13 @@ public enum PlaceNames {
     /// What to write for a name shown on brand: the id itself (never "Square" on the wire).
     public static func wire(id: String, name: String) -> String { defaults[id] == name ? id : name }
 
-    /// Members and requests (the drawer row and its screen).
-    public static let gates = "Gates"
+    /// Members and requests (the drawer row and its screen). Called "Gates" until 2026-11-17
+    /// (the owner: "just rename Gates to Members").
+    public static let members = "Members"
 
-    /// The drawer's sections: The town (the Square, the Gates, the Charter), Community life,
-    /// Building together (proposals, the website).
+    /// The drawer's sections: The town (the Square, Members, the Charter), Community life,
+    /// Building together (proposals, the website). Since SPEC 19.34 the last two are the built-in
+    /// categories `life` and `building` (Model/Categories.swift).
     public enum Section: String, Sendable, CaseIterable {
         case town, life, building
         public var title: String {

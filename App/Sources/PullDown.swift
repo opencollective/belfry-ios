@@ -6,23 +6,25 @@ import SwiftUI
 // (one surface with the navigation bar): the description, the channel's address, the pinned
 // message I haven't hidden, then a menu of rows that push the channel's screens
 // (ChannelPlaces.swift). Tap the title, drag the handle or tap outside to close.
-// ChannelLineBar (the old one line, SPEC 19.13) is no longer shown in a channel.
+// ChannelLineBar shows under the header only while something asks for attention (a topic filter,
+// a vote, people asking to join, an unanswered event, a pinned message, to-dos on me or free).
 
+/// The line under the header, only while something asks for my attention (Derive.attentionLine).
 struct ChannelLineBar: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.openChannel) private var openChannel
     let id: String
-    let topic: String?
+    let line: ChannelLine
     let open: () -> Void
     let showAll: () -> Void
     let review: () -> Void
+    var todos: () -> Void = {}
     var pulled = false
     var pull: () -> Void = {}
 
     var body: some View {
-        let line = model.derive.channelLine(id, now: .now, topic: topic, hiddenPins: model.hiddenPins)
         HStack(spacing: 8) {
-            Button(action: open) {
+            Button { line.action == .todos ? todos() : open() } label: {
                 HStack(spacing: 6) {
                     LineIconView(line: line)
                     (Text(line.bold).fontWeight(.semibold) + Text(line.text))
@@ -68,6 +70,7 @@ struct ChannelLineBar: View {
         case .review?: review()
         case .openProposal(let g)?: openChannel(g, nil)
         case .openEvent(let c)?: model.openEvent = c
+        case .todos?: todos()
         case nil: break
         }
     }
@@ -100,32 +103,12 @@ struct LineIconView: View {
         case .pod: return "hexagon"
         case .event: return "calendar"
         case .pin: return "pin"
+        case .todo: return "checklist"
         }
     }
 }
 
 enum PullLevel { case closed, short, full }
-
-/// The channel filtered to one topic: "#topic" and Show all, under the header.
-struct TopicFilterBar: View {
-    let topic: String
-    let clear: () -> Void
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: topic == Derive.announcement ? "megaphone" : "number").font(.caption).foregroundStyle(.secondary)
-            Text(topic == Derive.announcement ? "Announcements" : topic).font(.footnote.weight(.semibold)).lineLimit(1)
-            Spacer(minLength: 4)
-            Button(action: clear) {
-                Text("Show all").font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(Color.secondary.opacity(0.15), in: Capsule())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal).padding(.vertical, 8)
-        .lineBackground()
-    }
-}
 
 extension View {
     /// The line's bar: iOS 26 lets the scroll edge effect show it; before, a bar material.

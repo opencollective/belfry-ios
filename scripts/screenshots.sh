@@ -39,6 +39,8 @@ shot() { # name screen appearance
     xcrun simctl launch "$UDID" "$BUNDLE" -signin "${2#signin-}" >/dev/null
   elif [ "${2#guest-}" != "$2" ]; then
     xcrun simctl launch "$UDID" "$BUNDLE" -guest "${2#guest-}" >/dev/null
+  elif [ "${2#member-}" != "$2" ]; then
+    xcrun simctl launch "$UDID" "$BUNDLE" -demo -member -screen "${2#member-}" >/dev/null
   elif [ "$2" = "join" ]; then
     xcrun simctl launch "$UDID" "$BUNDLE" -join >/dev/null
   else
@@ -49,6 +51,27 @@ shot() { # name screen appearance
   echo "captured $1"
 }
 
+# 2026-11-17 round 3: Home with the date and ☰, the drawer (Today, Members, categories with ＋,
+# the gear), Settings → Channels, the channel header (subtitle, attention line) and its pull-down
+# menu, the channel's pushed screens (Members with Invite, Settings, Pinned)
+shot 130-home home light
+shot 130b-home-dark home dark
+shot 131-home-drawer homedrawer light
+shot 131b-home-drawer-dark homedrawer dark
+shot 132-drawer-admin towndrawer light
+shot 132b-drawer-member member-towndrawer light
+shot 132c-drawer-member-dark member-towndrawer dark
+shot 133-settings-channels settingschannels light
+shot 133b-settings-channels-dark settingschannels dark
+shot 134-header feed light
+shot 134b-header-calm pullemptyclosed light
+shot 135-pulldown-admin pulldown light
+shot 135b-pulldown-member member-pulldown light
+shot 135c-pulldown-dark pulldown dark
+shot 136-channel-members members light
+shot 136b-channel-members-invite membersinvitech light
+shot 137-channel-settings chsettings light
+shot 138-pinned pinned light
 # 2026-11-16: the bottom bar (Home · Calendar · Create · Groups · Town), the charter, Add an agent, guests' places
 # 2026-11-16 round 2: e-mail threads in a channel, a guest's request, the first minutes
 shot 120-mail-feed mailfeed light

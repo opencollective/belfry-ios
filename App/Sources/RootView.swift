@@ -70,6 +70,8 @@ struct RootView: View {
     @Environment(\.horizontalSizeClass) private var hSize
     @State private var selection: SidebarItem?
     @State private var newChannel = false
+    /// The category a new channel goes into (the ＋ of a category header).
+    @State private var newChannelCategory: String?
     @State private var account = false
     /// The accounts on this phone (behind "you" at the drawer's bottom, SPEC 19.24).
     @State private var switcher = false
@@ -102,7 +104,12 @@ struct RootView: View {
         withSheets
             .fullScreenCover(item: $model.lightbox) { LightboxView(box: $0) }
             .sheet(isPresented: $model.joinAsked) { JoinSheet() }
-            .sheet(isPresented: $newChannel) { NewChannelSheet { id in selection = .channel(id) } }
+            .sheet(isPresented: $newChannel) {
+                NewChannelSheet(category: newChannelCategory) { id in
+                    if phone { model.tab = .town }
+                    selection = .channel(id)
+                }
+            }
             .sheet(isPresented: $account) { AccountSheet() }
             .sheet(isPresented: $switcher) {
                 AccountsSheet { switcher = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { openMe() } }
@@ -273,7 +280,14 @@ struct RootView: View {
             // the tree made every UI query of the tests time out
             SwiftUI.Group {
                 switch model.tab {
-                case .home: NavigationStack(path: $homePath) { HomeView().tabBarInset().placeDestinations() }
+                case .home:
+                    // Home's ☰ opens the same Town drawer (2026-11-17)
+                    DrawerContainer(open: $drawer, edgeSwipe: homePath.isEmpty) {
+                        drawerList(inDrawer: true)
+                    } main: {
+                        NavigationStack(path: $homePath) { HomeView().tabBarInset().placeDestinations() }
+                            .environment(\.openDrawer) { openDrawer() }
+                    }
                 case .calendar: NavigationStack(path: $calendarPath) { CalendarView().tabBarInset().placeDestinations() }
                 case .groups: NavigationStack(path: $groupsPath) { GroupsView().tabBarInset().placeDestinations() }
                 case .town:
@@ -349,12 +363,25 @@ struct RootView: View {
     }
 
     private func drawerList(inDrawer: Bool) -> some View {
-        ChannelDrawer(current: selection, inDrawer: inDrawer,
+        ChannelDrawer(current: model.tab == .home && phone ? nil : selection, inDrawer: inDrawer,
+                      onHome: phone && model.tab == .home,
                       select: { item in
+                          // from Home's drawer: the row opens in Town
+                          if phone && model.tab != .town {
+                              path = NavigationPath()
+                              selection = item
+                              model.tab = .town
+                              return
+                          }
                           if selection == item { path = NavigationPath() } else { selection = item }
                           closeDrawer()
                       },
-                      newChannel: { hideKeyboard(); newChannel = true },
+                      today: {
+                          homePath = NavigationPath()
+                          if model.tab == .home { closeDrawer() } else { model.tab = .home }
+                      },
+                      newChannel: { hideKeyboard(); newChannelCategory = nil; newChannel = true },
+                      newChannelIn: { c in hideKeyboard(); newChannelCategory = c; newChannel = true },
                       account: { hideKeyboard(); switcher = true },
                       openMe: { hideKeyboard(); openMe() },
                       apply: { hideKeyboard(); applying = true },
@@ -449,7 +476,7 @@ struct RootView: View {
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
         case "pod": selection = .channel("pod-seed-swap-5e1d")
-        case "pullempty": selection = .channel("kitchen-7d10")
+        case "pullempty", "pullemptyclosed": selection = .channel("kitchen-7d10")
         case "group":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openGroup = "pod-seed-swap-5e1d" }
@@ -479,7 +506,13 @@ struct RootView: View {
         case "editprofile", "me":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { account = true }
-        case "members", "todos", "files", "log": selection = .channel(generalId)
+        case "members", "todos", "files", "log", "chsettings", "pinned", "membersinvitech": selection = .channel(generalId)
+        case "homedrawer":
+            model.tab = .home
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
+        case "settingschannels":
+            selection = .settings
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { path.append(PlaceRoute.channels) }
         case "proposal": selection = .channel("prop-quiet-hours-after-22-00-7f3a2b")
         case "events": selection = .events
         case "eventhost":
@@ -650,18 +683,20 @@ struct ChannelDrawer: View {
     @EnvironmentObject var model: AppModel
     let current: SidebarItem?
     let inDrawer: Bool
+    var onHome = false
     let select: (SidebarItem) -> Void
+    var today: () -> Void = {}
     let newChannel: () -> Void
+    var newChannelIn: (String) -> Void = { _ in }
     let account: () -> Void
     var openMe: () -> Void = {}
     var apply: () -> Void = {}
     let open: (SearchTarget) -> Void
     @FocusState private var searching: Bool
-    @State private var ordering = false
     @State private var settings = false
 
     var body: some View {
-        if inDrawer { TownDrawer(current: current, select: select, newChannel: newChannel, account: account, me: openMe, apply: apply, open: open) } else { sidebar }
+        if inDrawer { TownDrawer(current: current, onHome: onHome, select: select, today: today, newChannel: newChannelIn, account: account, me: openMe, apply: apply, open: open) } else { sidebar }
     }
 
     /// iPad's sidebar: the list as it was before the bottom bar (Members, events, mentions,
@@ -742,10 +777,6 @@ struct ChannelDrawer: View {
                     Section {
                         Button(action: newChannel) { Label("Create a channel", systemImage: "plus") }
                             .listRowBackground(Color.clear)
-                        if d.isCommunityAdmin {
-                            Button { hideKeyboard(); ordering = true } label: { Label("Order of the channels", systemImage: "arrow.up.arrow.down") }
-                                .listRowBackground(Color.clear)
-                        }
                     }
                     // the very last row, only while something is archived: it opens a screen
                     let archived = d.myArchived()
@@ -768,7 +799,6 @@ struct ChannelDrawer: View {
             me
         }
         .background(Color(uiColor: inDrawer ? .secondarySystemBackground : .systemBackground).ignoresSafeArea())
-        .sheet(isPresented: $ordering) { ChannelOrderSheet() }
         .sheet(isPresented: $settings) { BelfrySettings() }
         .onChange(of: model.launchSettings) { _, on in if on { model.launchSettings = false; settings = true } }
         .toolbar(.hidden, for: .navigationBar)
@@ -1022,13 +1052,18 @@ struct NewChannelSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var about = ""
+    /// The category it goes into (a category's ＋; by a belfry admin the order event follows).
+    var category: String? = nil
     let created: (String) -> Void
 
     var body: some View {
         NavigationStack {
             Form {
-                TextField("Name", text: $name)
-                TextField("What is it about?", text: $about, axis: .vertical).lineLimit(2...5)
+                TextField("Name", text: $name).font(.body)
+                TextField("What is it about?", text: $about, axis: .vertical).lineLimit(2...5).font(.body)
+                if let category, let c = model.derive.channelCategories().first(where: { $0.id == category }) {
+                    Section { Label(c.name, systemImage: "folder") } header: { Text("Category") }
+                }
             }
             .navigationTitle("New channel")
             .navigationBarTitleDisplayMode(.inline)
@@ -1036,7 +1071,7 @@ struct NewChannelSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
-                        let id = model.createChannel(name: name.trimmingCharacters(in: .whitespaces), about: about.trimmingCharacters(in: .whitespaces))
+                        let id = model.createChannel(name: name.trimmingCharacters(in: .whitespaces), about: about.trimmingCharacters(in: .whitespaces), category: category)
                         dismiss()
                         created(id)
                     }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -1079,51 +1114,5 @@ struct Avatar: View {
         let palette: [Color] = [.blue, .teal, .indigo, .orange, .pink, .green, .purple, .brown]
         let n = pubkey.utf8.prefix(6).reduce(0) { $0 &+ Int($1) }
         return palette[n % palette.count]
-    }
-}
-
-/// The belfry's admins put the channels in order (web order.ts: 30078 d=belfry:channel-order).
-/// Within Public and Members only; moving a channel across changes who reads it, which is its
-/// own setting on the web (not here).
-struct ChannelOrderSheet: View {
-    @EnvironmentObject var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var pub = [Channel]()
-    @State private var members = [Channel]()
-    @State private var loaded = false
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if !pub.isEmpty {
-                    Section("Public channels") {
-                        ForEach(pub) { g in Label(g.name, systemImage: "globe") }
-                            .onMove { pub.move(fromOffsets: $0, toOffset: $1) }
-                    }
-                }
-                Section {
-                    ForEach(members) { g in Label(g.name, systemImage: "number") }
-                        .onMove { members.move(fromOffsets: $0, toOffset: $1) }
-                } header: { Text("Members only") } footer: { Text("Everyone sees the channels in this order.") }
-            }
-            .environment(\.editMode, .constant(.active))
-            .navigationTitle("Order of the channels")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    BusyButton("Save") {
-                        model.setChannelOrder((pub + members).map(\.id))
-                        dismiss()
-                    }
-                }
-            }
-            .onAppear {
-                guard !loaded else { return }
-                loaded = true
-                let s = model.derive.channelSections()
-                pub = s.pub; members = s.members
-            }
-        }
     }
 }

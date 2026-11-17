@@ -1,11 +1,12 @@
 import BelfryCore
 import SwiftUI
 
-// Home (2026-11-16, board iOS-Home): what needs me today on this belfry. Rows show only when
-// they have something: requests (stewards, vouching members), a new agreement of the charter,
-// To-dos · Mentions · Messages, Coming up, then Recent activity (unread channels and groups).
-// No buttons on event rows: the state in words; the event screen holds the actions. Nothing
-// waiting: the Arms, one sentence, the next thing on my calendar and two ways out.
+// Home (2026-11-16, board iOS-Home; 2026-11-17 the owner: "show the current date instead of
+// Today… remove the you are all caught up… keep the hamburger menu top left"): the date as the
+// big title, ☰ (the Town drawer) top left. One layout always: To-dos · Mentions · Messages tiles
+// (a calm "Nothing new" when empty, still a shortcut), then what waits for me when there is
+// something (requests, a new agreement, unread channels and groups), then the coming events.
+// No buttons on event rows: the state in words; the event screen holds the actions.
 // A guest's Home (board Join-Guest 4): Apply to become a member first, the channels they were
 // invited to, then the belfry's places open to everyone.
 
@@ -17,7 +18,7 @@ struct HomeView: View {
         SwiftUI.Group {
             if model.derive.amGuest || model.guestReading { GuestHome() } else { MemberHome() }
         }
-        .placeChrome(model.derive.amGuest || model.guestReading ? "Welcome" : "Today")
+        .homeChrome()
         .refreshable { await model.refresh(); await model.loadRequests(force: true) }
         .task { await model.loadRequests() }
     }
@@ -33,18 +34,18 @@ private struct MemberHome: View {
         let toAgree = d.charterToAgree()
         let coming = Array(model.comingUp().prefix(3))
         let recent = Array(model.unreadPlaces().prefix(6))
-        let calm = requests == 0 && toAgree.isEmpty && todos.onMe.isEmpty && model.newMentions == 0 && model.unreadDMs == 0 && recent.isEmpty
+        let next = coming.isEmpty ? model.calendar(.mine).first : nil
         List {
+            HomeDateTitle()
             Section {
-                Text(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-                    .font(.subheadline).foregroundStyle(.secondary)
+                HomeTiles(todos: todos)
                     .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+                    .listRowInsets(EdgeInsets())
             }
             if requests > 0 {
                 Section {
-                    NavigationLink(value: PlaceRoute.gates) {
-                        HomeRow(icon: "door.left.hand.open", title: requests == 1 ? "1 asking to join" : "\(requests) asking to join",
+                    NavigationLink(value: PlaceRoute.members) {
+                        HomeRow(icon: "person.2", title: requests == 1 ? "1 asking to join" : "\(requests) asking to join",
                                 detail: requestNames(), badge: requests)
                     }
                     .accessibilityIdentifier("home-requests")
@@ -59,29 +60,23 @@ private struct MemberHome: View {
                     .accessibilityIdentifier("home-charter")
                 }
             }
-            if calm {
-                Section { CalmCard(next: model.calendar(.mine).first) }
-                    .listRowBackground(Color.clear)
-            } else {
-                Section {
-                    HomeTiles(todos: todos)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets())
-                }
-            }
-            if !calm && !coming.isEmpty {
-                Section {
-                    ForEach(coming) { e in
-                        NavigationLink(value: EventRoute(key: e.coord, ticket: nil)) { HomeEventLine(e: e) }
-                    }
-                } header: { sectionHeader("Coming up", link: "Calendar") { model.tab = .calendar } }
-            }
             if !recent.isEmpty {
                 Section {
                     ForEach(recent) { g in
                         NavigationLink(value: ChatRoute(id: g.id)) { PlaceLine(group: g) }
                     }
                 } header: { sectionHeader("Recent activity", link: "Town") { model.tab = .town } }
+            }
+            if !coming.isEmpty {
+                Section {
+                    ForEach(coming) { e in
+                        NavigationLink(value: EventRoute(key: e.coord, ticket: nil)) { HomeEventLine(e: e) }
+                    }
+                } header: { sectionHeader("Coming up", link: "Calendar") { model.tab = .calendar } }
+            } else if let next {
+                Section {
+                    NavigationLink(value: EventRoute(key: next.coord, ticket: nil)) { HomeEventLine(e: next) }
+                } header: { sectionHeader("Next on your calendar", link: "Calendar") { model.tab = .calendar } }
             }
         }
         .listStyle(.insetGrouped)
@@ -90,7 +85,7 @@ private struct MemberHome: View {
 
     private func requestNames() -> String {
         let names = model.agentRequests.map { $0.name + ", an agent" } + model.belfryRequests.map(\.name)
-        if names.isEmpty { return "Waiting for you in the Gates" }
+        if names.isEmpty { return "Waiting for you in Members" }
         return names.prefix(2).joined(separator: " · ")
     }
 
@@ -113,8 +108,7 @@ private struct HomeTiles: View {
     var body: some View {
         HStack(spacing: 10) {
             Button { model.pushRoute = .todos } label: {
-                Tile(icon: "checkmark.circle", tint: .green, count: todos.onMe.count, title: "To-dos",
-                     line: todos.onMe.isEmpty ? "\(todos.open.count) open" : "on you · \(todos.open.count) open")
+                Tile(icon: "checkmark.circle", tint: .green, count: todos.onMe.count, title: "To-dos", line: todoLine())
             }
             .accessibilityIdentifier("home-todos")
             Button { model.pushRoute = .mentions } label: {
@@ -129,15 +123,20 @@ private struct HomeTiles: View {
         .buttonStyle(.plain)
     }
 
+    private func todoLine() -> String {
+        if todos.onMe.isEmpty { return todos.open.isEmpty ? "Nothing new" : "\(todos.open.count) open" }
+        return "on you · \(todos.open.count) open"
+    }
+
     private func mentionLine() -> String {
-        guard let m = model.mentions.first else { return "Nobody yet" }
+        guard model.newMentions > 0, let m = model.mentions.first else { return "Nothing new" }
         let g = m.tag("h").flatMap { model.group($0)?.name }
         return [model.name(m.pubkey).components(separatedBy: " ").first, g].compactMap { $0 }.joined(separator: ", ")
     }
 
     private func messageLine() -> String {
         let unread = (model.dms?.threads() ?? []).filter { $0.unread > 0 }
-        if unread.isEmpty { return "All read" }
+        if unread.isEmpty { return "Nothing new" }
         let names = unread.prefix(2).map { convName(model, $0.conv).components(separatedBy: " ").first ?? "" }
         return names.joined(separator: ", ") + (unread.count > 2 ? " +\(unread.count - 2)" : "")
     }
@@ -155,7 +154,8 @@ private struct Tile: View {
                 Image(systemName: icon).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                     .frame(width: 30, height: 30).background(tint, in: Circle())
                 Spacer()
-                Text("\(count)").font(.title2.bold()).monospacedDigit()
+                // a count only when something is new: the calm state has no number
+                if count > 0 { Text("\(count)").font(.title2.bold()).monospacedDigit() }
             }
             Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.75)
             Text(line).font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
@@ -267,44 +267,17 @@ struct PlaceGlyph: View {
     }
 }
 
-/// Nothing waits: calm, not empty.
-private struct CalmCard: View {
-    @EnvironmentObject var model: AppModel
-    let next: CalEvent?
+/// The date as Home's big title (it may shrink to fit; the navigation bar shows no title).
+struct HomeDateTitle: View {
     var body: some View {
-        VStack(spacing: 14) {
-            BelfryLogo(size: 52)
-                .frame(width: 84, height: 84)
-                .background(Color.brand.opacity(0.1), in: Circle())
-            Text("You're all caught up").font(.title3.bold())
-            Text(next == nil ? "No to-dos, mentions or messages waiting. Nothing on your calendar this week."
-                             : "No to-dos, mentions or messages waiting. They'll show up here when someone needs you.")
-                .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            if let next {
-                NavigationLink(value: EventRoute(key: next.coord, ticket: nil)) {
-                    HomeEventLine(e: next).padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-            HStack(spacing: 10) {
-                Button { model.tab = .town } label: { Label("Open the Square", systemImage: "building.columns") }
-                    .buttonStyle(.bordered)
-                Button { model.tab = .calendar } label: { Label("What's on", systemImage: "calendar") }
-                    .buttonStyle(.bordered)
-            }
-            .font(.subheadline.weight(.medium))
-            // as on the web's calm Home: the lists themselves, one tap away
-            HStack(spacing: 10) {
-                Button { model.pushRoute = .mentions } label: { Label("Mentions", systemImage: "at") }
-                    .buttonStyle(.bordered)
-                Button { model.pushRoute = .messages } label: { Label("Messages", systemImage: "message") }
-                    .buttonStyle(.bordered)
-            }
-            .font(.subheadline.weight(.medium))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
+        Text(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+            .font(.largeTitle.bold())
+            .lineLimit(1).minimumScaleFactor(0.6)
+            .accessibilityAddTraits(.isHeader)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+            .listRowSeparator(.hidden)
+            .accessibilityIdentifier("home-date")
     }
 }
 
@@ -318,6 +291,7 @@ private struct GuestHome: View {
         let d = model.derive
         let first = model.realName(model.me).components(separatedBy: " ").first ?? ""
         List {
+            HomeDateTitle()
             Section {
                 VStack(alignment: .leading, spacing: 2) {
                     if !first.isEmpty { Text("Hello, " + first).font(.headline) }

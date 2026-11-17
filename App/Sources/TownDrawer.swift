@@ -1,25 +1,30 @@
 import BelfryCore
 import SwiftUI
 
-// Town's drawer (☰ or a swipe from the left, board iOS-Town 2): only the town's places. The
-// belfry's cover (when branding has one), its mark, name and member count, ＋ for a new channel;
-// search; The town (Square, Gates = members and requests, Charter), Community life, Building
-// together, each in the stewards' order (a globe marks a public channel); Archived. At the bottom:
-// Belfry settings (stewards), then you (face, name, name@domain): tap for Me, ⇅ for the accounts
-// and belfries. Groups have their own tab; messages, mentions and events are on Home / Calendar.
+// Town's drawer (☰ or a swipe from the left, board iOS-Town 2; also Home's ☰ since 2026-11-17):
+// the belfry's cover (when branding has one), its mark, name and member count, a gear for Belfry
+// settings (stewards); search; Today (Home); The town (Square, Members with their requests,
+// Charter); then the categories (SPEC 19.34: Community life, Building together and the stewards'
+// own), each header with ＋ for a new channel in it (Community life for anyone who may create a
+// channel, every category for stewards); a globe marks a public channel; Archived. Stewards
+// long-press a channel and drag it to move it, within and across categories. At the bottom: you
+// (face, name, name@domain): tap for Me, ⇅ for the accounts and belfries.
 // A guest's drawer (board iOS-Town 3): Apply first, the channels they were invited to, the places
 // open to everyone, and their own row.
 
 struct TownDrawer: View {
     @EnvironmentObject var model: AppModel
     let current: SidebarItem?
+    /// Home is on screen (Today is the selected row).
+    var onHome = false
     let select: (SidebarItem) -> Void
-    let newChannel: () -> Void
+    var today: () -> Void = {}
+    /// A new channel in that category.
+    let newChannel: (String) -> Void
     let account: () -> Void
     let me: () -> Void
     let apply: () -> Void
     let open: (SearchTarget) -> Void
-    @State var ordering = false
 
     var body: some View {
         let _ = model.version
@@ -38,20 +43,9 @@ struct TownDrawer: View {
                 memberList
             }
             Divider()
-            if !guest && model.derive.isCommunityAdmin {
-                Button { select(.settings) } label: {
-                    Label("Belfry settings", systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 20).padding(.vertical, 12).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .background(current == .settings ? Color.primary.opacity(0.08) : Color.clear)
-                .accessibilityIdentifier("drawer-settings")
-                Divider()
-            }
             youRow(guest: guest)
         }
         .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea())
-        .sheet(isPresented: $ordering) { ChannelOrderSheet() }
         .toolbar(.hidden, for: .navigationBar)
     }
 
@@ -64,12 +58,13 @@ struct TownDrawer: View {
             }
             .accessibilityElement(children: .combine)
             Spacer(minLength: 8)
-            if !guest {
-                Button(action: newChannel) {
-                    Image(systemName: "plus").font(.body.weight(.semibold)).frame(width: 36, height: 36).glass(in: Circle(), interactive: true)
+            if !guest && model.derive.isCommunityAdmin {
+                Button { select(.settings) } label: {
+                    Image(systemName: "gearshape").font(.body.weight(.semibold)).frame(width: 36, height: 36).glass(in: Circle(), interactive: true)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("New channel")
+                .accessibilityLabel("Belfry settings")
+                .accessibilityIdentifier("drawer-settings")
             }
         }
         .padding(.horizontal, 16)
@@ -98,11 +93,14 @@ struct TownDrawer: View {
 
     private var memberList: some View {
         let d = model.derive
-        let s = d.channelSections()
-        let chans = d.inOrder(s.pub + s.members)
+        let admin = d.isCommunityAdmin
+        let chans = d.townChannels()
         let general = chans.first { $0.id == generalId }
-        let life = chans.filter { PlaceNames.section($0.id) == .life }
-        let building = chans.filter { PlaceNames.section($0.id) == .building }
+        let byId = Dictionary(chans.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let all = d.channelCategories()
+        let cats = Categories.shown(all, admin: admin)
+        let rows = Categories.flat(cats)
+        let names = Dictionary(all.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
         let archived = d.myArchived()
         let requests = model.requestCount
         return List {
@@ -115,28 +113,39 @@ struct TownDrawer: View {
                     }
                 }
                 Section {
+                    placeRow(icon: "sun.max", title: "Today", note: nil, badge: model.homeCount, on: onHome, action: today)
+                        .accessibilityIdentifier("drawer-today")
+                }
+                Section {
                     if let general { townRow(general) }
-                    placeRow(icon: "door.left.hand.open", title: PlaceNames.gates, note: "members", badge: requests, on: current == .members || current == .requests) { select(.members) }
-                        .accessibilityIdentifier("drawer-gates")
+                    placeRow(icon: "person.2", title: PlaceNames.members, note: nil, badge: requests, on: current == .members || current == .requests) { select(.members) }
+                        .accessibilityIdentifier("drawer-members")
                     if d.charterGroup != nil || d.isCommunityAdmin {
                         let left = d.charterToAgree().count
                         placeRow(icon: "doc.text", title: "Charter", note: nil, badge: left, on: current == .charter) { select(.charter) }
                             .accessibilityIdentifier("drawer-charter")
                     }
                 } header: { sectionTitle(PlaceNames.Section.town.title) }
-                if !life.isEmpty {
-                    Section { ForEach(life) { townRow($0) } } header: { sectionTitle(PlaceNames.Section.life.title) }
-                }
-                if !building.isEmpty {
-                    Section { ForEach(building) { townRow($0) } } header: { sectionTitle(PlaceNames.Section.building.title) }
+                // the categories as one flat list (headers are rows) so a channel can be dragged
+                // across them; only the belfry's admins can drag
+                Section {
+                    ForEach(rows, id: \.self) { r in
+                        switch r {
+                        case .header(let cid):
+                            categoryHeader(cid, names[cid] ?? cid, admin: admin)
+                                .moveDisabled(true)
+                        case .channel(let cid):
+                            if let g = byId[cid] {
+                                townRow(g).moveDisabled(!admin)
+                            }
+                        }
+                    }
+                    .onMove(perform: admin ? mover(rows, all) : nil)
                 }
                 Section {
                     if !archived.isEmpty {
                         placeRow(icon: "archivebox", title: "Archived", note: nil, badge: 0, on: current == .archived, muted: true) { select(.archived) }
                             .accessibilityIdentifier("drawer-archived")
-                    }
-                    if d.isCommunityAdmin {
-                        placeRow(icon: "arrow.up.arrow.down", title: "Order of the channels", note: nil, badge: 0, on: false, muted: true) { hideKeyboard(); ordering = true }
                     }
                 }
             }
@@ -146,6 +155,38 @@ struct TownDrawer: View {
         .scrollDismissesKeyboard(.immediately)
         .refreshable { await model.refresh(); await model.loadRequests(force: true) }
         .task { await model.loadRequests() }
+    }
+
+    /// A category's title, ＋ on its right for a new channel in it (Community life: anyone who may
+    /// create a channel; every category: the belfry's admins).
+    private func categoryHeader(_ id: String, _ name: String, admin: Bool) -> some View {
+        HStack {
+            sectionTitle(name)
+            Spacer()
+            if admin || id == ChannelCategory.life {
+                Button { newChannel(id) } label: {
+                    Image(systemName: "plus").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                        .frame(width: 32, height: 28).contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("New channel in \(name)")
+                .accessibilityIdentifier("category-add-" + id)
+            }
+        }
+        .padding(.top, 10)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    /// A drag in the flat list: the categories rebuilt, published at once (latest wins).
+    private func mover(_ rows: [CategoryRow], _ all: [ChannelCategory]) -> (IndexSet, Int) -> Void {
+        { from, to in
+            var flat = rows
+            flat.move(fromOffsets: from, toOffset: to)
+            model.setChannelLayout(Categories.rebuild(all, flat: flat))
+        }
     }
 
     private var guestList: some View {

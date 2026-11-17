@@ -178,6 +178,16 @@ struct PlaceChrome: ViewModifier {
 
 extension View {
     func placeChrome(_ title: String) -> some View { modifier(PlaceChrome(title: title)) }
+    /// Home (2026-11-17): ☰ top left (the Town drawer), the date as the list's first row instead
+    /// of a navigation title ("Home" stays for the back buttons of pushed screens, not shown).
+    func homeChrome() -> some View {
+        navigationTitle("Home")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1).accessibilityHidden(true) }
+                ToolbarItem(placement: .topBarLeading) { DrawerButton() }
+            }
+    }
 }
 
 /// A group (or proposal) route's chat, pushed over a place (Home, Groups, Calendar): the chat,
@@ -201,19 +211,20 @@ struct PlaceDestinations: ViewModifier {
 
 /// Screens a place pushes by name (the Home tiles, the drawer's town rows, the person row).
 enum PlaceRoute: Hashable {
-    case messages, mentions, todos, gates, charter, me, settings, archived, events
+    case messages, mentions, todos, members, charter, me, settings, archived, events, channels
 
     @MainActor @ViewBuilder var view: some View {
         switch self {
         case .messages: MessagesView()
         case .mentions: MentionsView()
         case .todos: MyTodosView()
-        case .gates: MembersDirectory()
+        case .members: MembersDirectory()
         case .charter: CharterView()
         case .me: AccountSheet(pushed: true)
         case .settings: BelfrySettings(screen: true)
         case .archived: ArchivedScreen()
         case .events: EventsScreen()
+        case .channels: ChannelsSettings()
         }
     }
 }

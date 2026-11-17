@@ -2,15 +2,14 @@ import BelfryCore
 import PhotosUI
 import SwiftUI
 
-// Belfry settings, for its admins (web Settings.tsx; the community's name at the top of the
-// drawer opens it, as in Discord): Branding, Roles, Membership, the order of the channels.
+// Belfry settings, for its admins (web Settings.tsx; the gear at the top of the drawer opens it):
+// Branding, Roles, Membership, Channels (their order and categories, SPEC 19.34).
 
 struct BelfrySettings: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     /// An open screen from the drawer (☰, no Done) rather than a sheet.
     var screen = false
-    @State private var ordering = false
 
     var body: some View {
         if screen { content } else { NavigationStack { content } }
@@ -22,7 +21,8 @@ struct BelfrySettings: View {
                     NavigationLink { BrandingSettings() } label: { Label("Branding", systemImage: "paintpalette") }
                     NavigationLink { RolesSettings() } label: { Label("Roles", systemImage: "person.badge.key") }
                     NavigationLink { MembershipSettingsView() } label: { Label("Membership", systemImage: "person.2.badge.gearshape") }
-                    Button { ordering = true } label: { Label("Order of the channels", systemImage: "arrow.up.arrow.down") }
+                    NavigationLink { ChannelsSettings() } label: { Label("Channels", systemImage: "list.bullet.indent") }
+                        .accessibilityIdentifier("settings-channels")
                 } footer: { Text("Mail, the website and add-ons are in the console: belfry.\(model.config.domain).") }
             }
             .navigationTitle(model.config.name)
@@ -31,7 +31,6 @@ struct BelfrySettings: View {
                 if screen { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
                 else { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             }
-            .sheet(isPresented: $ordering) { ChannelOrderSheet() }
     }
 }
 
@@ -205,5 +204,108 @@ extension UIImage {
         let k = side / s
         let to = CGSize(width: size.width * k, height: size.height * k)
         return UIGraphicsImageRenderer(size: to).image { _ in draw(in: CGRect(origin: .zero, size: to)) }
+    }
+}
+
+/// Channels (SPEC 19.34): the town (fixed), the categories (rename, add, delete, reorder) and the
+/// channels under their categories (drag to reorder or move to another category). Each change is
+/// published at once (the admins' 30078 d=belfry:channel-order; latest wins).
+struct ChannelsSettings: View {
+    @EnvironmentObject var model: AppModel
+    @State private var cats = [ChannelCategory]()
+    @State private var loaded = false
+    @State private var renaming: ChannelCategory?
+    @State private var name = ""
+    @State private var adding = false
+    @State private var saved = 0
+
+    var body: some View {
+        let d = model.derive
+        let names = Dictionary(d.townChannels().map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+        let rows = Categories.flat(cats)
+        List {
+            Section {
+                Label(model.group(generalId)?.name ?? "Square", systemImage: "number")
+                Label(PlaceNames.members, systemImage: "person.2")
+                Label("Charter", systemImage: "doc.text")
+            } header: { Text("The town") } footer: { Text("The town's places stay first and keep their names.") }
+            .foregroundStyle(.secondary)
+            Section {
+                ForEach(cats) { c in
+                    Button { name = c.name; renaming = c } label: {
+                        HStack {
+                            Label(c.name, systemImage: "folder").foregroundStyle(.primary)
+                            Spacer()
+                            Text("\(c.channels.count)").foregroundStyle(.secondary).monospacedDigit()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .deleteDisabled(c.isBuiltIn)
+                    .accessibilityHint("Rename")
+                }
+                .onMove { from, to in cats.move(fromOffsets: from, toOffset: to); save() }
+                .onDelete { idx in
+                    for id in idx.map({ cats[$0].id }) { cats = Categories.remove(id, cats) }
+                    save()
+                }
+                Button { name = ""; adding = true } label: { Label("Add a category", systemImage: "plus") }
+                    .accessibilityIdentifier("channels-add-category")
+            } header: { Text("Categories") } footer: {
+                Text("Tap one to rename it. Deleting a category moves its channels to \(ChannelCategory.defaultNames[ChannelCategory.life]!).")
+            }
+            Section {
+                ForEach(rows, id: \.self) { r in
+                    switch r {
+                    case .header(let cid):
+                        Text((cats.first { $0.id == cid }?.name ?? cid).uppercased())
+                            .font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                            .padding(.top, 6)
+                            .listRowBackground(Color.clear)
+                            .moveDisabled(true)
+                    case .channel(let cid):
+                        Label(names[cid] ?? cid, systemImage: "number")
+                    }
+                }
+                .onMove { from, to in
+                    var flat = rows
+                    flat.move(fromOffsets: from, toOffset: to)
+                    cats = Categories.rebuild(cats, flat: flat)
+                    save()
+                }
+            } header: { Text("Channels") } footer: {
+                Text(saved > 0 ? "Saved. Everyone sees the channels in this order." : "Hold a channel and drag it to move it, within a category or to another one.")
+            }
+        }
+        .navigationTitle("Channels")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { EditButton() } }
+        .sensoryFeedback(.success, trigger: saved)
+        .alert("Rename the category", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $name)
+            Button("Save") {
+                let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let r = renaming, !n.isEmpty, let i = cats.firstIndex(where: { $0.id == r.id }) { cats[i].name = String(n.prefix(60)); save() }
+                renaming = nil
+            }
+            Button("Cancel", role: .cancel) { renaming = nil }
+        }
+        .alert("New category", isPresented: $adding) {
+            TextField("Name", text: $name)
+            Button("Add") {
+                let n = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
+                if !n.isEmpty { cats.append(ChannelCategory(id: Categories.newId(n), name: n, channels: [])); save() }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .onAppear {
+            guard !loaded else { return }
+            loaded = true
+            cats = model.derive.channelCategories()
+        }
+    }
+
+    private func save() {
+        model.setChannelLayout(cats)
+        saved += 1
     }
 }

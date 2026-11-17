@@ -307,6 +307,15 @@ enum Demo {
         evs.append(ev(you, 9007, now - 15 * day, [["h", inbox]]))
         channel(inbox, "Hello", "What the world writes to hello@", admins: [me, ps["ana"]!.pubkey], members: all, at: now - 15 * day)
         evs.append(ev(you, 30078, now - 15 * day + 5, Actions.setInbox(inbox, on: true).tags, "{\"on\":true}"))
+        // SPEC 19.34: Sam (an admin of the belfry) sorted the channels into categories; the repair
+        // café sits in a category of its own
+        let layout: [String: Any] = ["order": ["general", "garden-3f2a", "kitchen-7d10", inbox, "repair-cafe-91bc", "proposals"],
+                                     "categories": [["id": "life", "channels": ["garden-3f2a", "kitchen-7d10", inbox]],
+                                                    ["id": "making-4b1c", "name": "Making & mending", "channels": ["repair-cafe-91bc"]],
+                                                    ["id": "building", "channels": ["proposals"]]]]
+        evs.append(ev(you, 30078, now - 14 * day, [["d", Derive.orderD]], JSON.encode(layout)))
+        // the same by Ana, who is the belfry's admin in the `-member` demo
+        evs.append(ev(ps["ana"]!, 30078, now - 14 * day, [["d", Derive.orderD]], JSON.encode(layout)))
         func mailIn(_ at: Int, _ from: String, _ name: String, _ subject: String, _ mid: String, _ text: String, irt: String? = nil) -> NostrEvent {
             var tags: [Tag] = [["h", inbox], ["client", "belfry-mail"], ["mail-from", from], ["mail-name", name], ["subject", subject], ["message-id", mid], ["belfry-auth", "pass"],
                                ["mail-original", "https://blossom.demo.belfry.sh/demo", "AAAA", "AAAA"]]

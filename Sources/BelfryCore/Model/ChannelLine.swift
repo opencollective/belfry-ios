@@ -24,7 +24,7 @@ public struct ChannelFacts {
     public let own: Proposal?
 }
 
-public enum LineIcon: String, Sendable { case people, topic, proposal, pod, event, pin }
+public enum LineIcon: String, Sendable { case people, topic, proposal, pod, event, pin, todo }
 
 /// What tapping the line's pill does.
 public enum LineAction: Hashable, Sendable {
@@ -35,6 +35,8 @@ public enum LineAction: Hashable, Sendable {
     case review
     case openProposal(String)
     case openEvent(String)
+    /// The channel's to-dos.
+    case todos
 }
 
 public struct LineCount: Hashable, Sendable {
@@ -162,5 +164,44 @@ extension Derive {
             LineCount(kind: "todos", n: f.todos.count, plus: false, label: "to do"),
         ].filter { $0.n > 0 }
         return line
+    }
+
+    /// The line under the header only when it must drive attention (SPEC 19.13 as of 2026-11-17,
+    /// the owner: "keep that line whenever we need to drive the attention… in normal times we can
+    /// remove it"): a topic filter, my vote in this proposal, people asking to join a group I run,
+    /// a vote I haven't cast, an event I haven't answered within 7 days, a pinned message I haven't
+    /// hidden, then open to-dos on me, then open to-dos nobody took. Anything else: nil (no line;
+    /// the counts are in the header's subtitle). No counts on it.
+    public func attentionLine(_ groupId: String, now: Int, topic: String? = nil, hiddenPins: Set<String> = []) -> ChannelLine? {
+        let f = channelFacts(groupId, now: now)
+        let g = f.group
+        if let topic {
+            return ChannelLine(.topic, "Showing ", (topic == Derive.announcement ? "announcements" : "#" + topic) + " only", pill: "Show all", ask: true, action: .showAll)
+        }
+        if g?.isProposal == true, let p = f.own, p.votingNow, p.poll?.votes[me] == nil {
+            return ChannelLine(.proposal, "Voting", " · \(p.tally["yes"] ?? 0) yes · \(p.tally["no"] ?? 0) no", pill: "Vote", ask: true, action: .open)
+        }
+        if let g, g.isPod, canAdmin(g), !g.applications.isEmpty {
+            let k = g.applications.count
+            return ChannelLine(.pod, "\(k) \(k == 1 ? "person asks" : "people ask") to join", " · " + membersWord(g.members.count), pill: "Review", ask: true, action: .review, podMembers: g.members.count)
+        }
+        if let p = f.proposals.first(where: { needsMyVote($0) }) {
+            return ChannelLine(.proposal, p.title, "", pill: "Vote", ask: true, action: .openProposal(p.groupId))
+        }
+        if let e = f.events.first(where: { stateLabel($0) == nil && $0.status != .cancelled }), e.start - now < 7 * 86400 {
+            return ChannelLine(.event, dayAt(e, now: now), " · " + e.title, pill: "RSVP", ask: true, action: .openEvent(e.coord))
+        }
+        if let pin = f.pins.first(where: { !hiddenPins.contains($0.id) }) {
+            return ChannelLine(.pin, "", pinLine(pin))
+        }
+        let mine = f.todos.filter { $0.assignee == me }
+        if let t = mine.first {
+            return ChannelLine(.todo, mine.count == 1 ? "On you" : "\(mine.count) on you", " · " + t.title, action: .todos)
+        }
+        let free = f.todos.filter { $0.assignee == nil }
+        if let t = free.first {
+            return ChannelLine(.todo, free.count == 1 ? "1 to-do" : "\(free.count) to-dos", " nobody took · " + t.title, action: .todos)
+        }
+        return nil
     }
 }

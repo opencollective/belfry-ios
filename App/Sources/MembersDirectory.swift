@@ -51,7 +51,7 @@ struct MembersDirectory: View {
         }
         .listStyle(.plain)
         .sectionIndex()
-        .navigationTitle(PlaceNames.gates)
+        .navigationTitle(PlaceNames.members)
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search")
         .toolbar {
