@@ -2,7 +2,8 @@ import BelfryCore
 import PhotosUI
 import SwiftUI
 
-// A channel: its name with ONE summary line under it (tap: the pull-down), the feed (day
+// A channel: its name with a short subtitle (lock/globe, N active, photos, groups; tap: the
+// pull-down, whose rows push the channel's screens), the feed (day
 // separators, blocks per author, cards, reactions, inline threads, resurfaced threads, join
 // lines), the composer. Holding a message opens its menu (a Discord-style list).
 
@@ -21,8 +22,8 @@ struct ChannelView: View {
     var pushed = false
     @State private var openThreads = Set<String>()
     @State private var pull: PullLevel = .closed
-    @State private var detailsTab: InfoTab = .about
-    @State private var details = false
+    /// A screen of the channel pushed from its pull-down (Members, To-dos, Settings…).
+    @State private var place: ChannelPlace?
     @State private var invite = false
     @State private var search = false
     @State private var didLaunch = false
@@ -170,8 +171,7 @@ struct ChannelView: View {
                 if !embedded {
                 VStack(spacing: 0) {
                     if locked { ArchivedBanner(id: id) }
-                    ChannelLineBar(id: id, topic: topic, open: { togglePull() }, showAll: { withAnimation { topic = nil } },
-                                   review: { details = true }, pulled: pull != .closed, pull: { openPull() })
+                    if let topic { TopicFilterBar(topic: topic) { withAnimation { self.topic = nil } } }
                     if model.offerPush && pull == .closed && !locked { PushOffer() }
                     if let g, g.isEvent, let e = d.eventOfGroup(id) {
                         Button { model.openEvent = e.coord } label: {
@@ -199,8 +199,7 @@ struct ChannelView: View {
         .overlay(alignment: .top) {
             if !embedded {
             PullDownPanel(id: id, level: $pull, topic: $topic,
-                          openDetails: { tab in closePull(); detailsTab = tab; DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { details = true } },
-                          invite: { closePull(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { invite = true } },
+                          openPlace: { p in closePull(); place = p },
                           showMessage: { mid in closePull(); scrollTarget = mid })
             }
         }
@@ -216,13 +215,7 @@ struct ChannelView: View {
                             Image(systemName: "chevron.down").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
                                 .rotationEffect(.degrees(pull == .closed ? 0 : 180))
                         }
-                        if g?.type == .channel {
-                            HStack(spacing: 3) {
-                                Image(systemName: d.isPublic(g) ? "globe" : "lock").imageScale(.small)
-                                Text(d.visibilityLine(g)).lineLimit(1)
-                            }
-                            .font(.caption2).foregroundStyle(.secondary)
-                        }
+                        if g != nil { ChannelSubtitle(id: id) }
                     }
                 }
                 .accessibilityLabel("\(g?.name ?? id). Show what's going on in this channel.")
@@ -234,6 +227,9 @@ struct ChannelView: View {
             }
         }
         .navigationDestination(item: $thread) { r in ThreadView(group: r.group, rootId: r.root, focusReply: r.reply) }
+        .navigationDestination(item: $place) { p in
+            ChannelPlaceView(id: id, place: p, go: { g in back(to: g) }, filter: { t in place = nil; withAnimation { topic = t } })
+        }
         .environment(\.messageMenu, MessageMenuHandlers(
             reply: { m in thread = ThreadRoute(group: id, root: Derive.rootOf(m.ev) ?? m.id, reply: true) },
             openThread: { m in thread = ThreadRoute(group: id, root: Derive.rootOf(m.ev) ?? m.id) },
@@ -246,18 +242,7 @@ struct ChannelView: View {
             }
         }
         // no keyboard over a sheet
-        .onChange(of: details || invite || search || podAsk || actionsFor != nil || editing != nil) { _, open in if open { hideKeyboard() } }
-        .sheet(isPresented: $details) {
-            ChannelDetails(id: id, go: { g in
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    switch g {
-                    case .message(let mid): scrollTarget = mid
-                    case .thread(let root): thread = ThreadRoute(group: id, root: root)
-                    default: break
-                    }
-                }
-            }, tab: detailsTab)
-        }
+        .onChange(of: place != nil || invite || search || podAsk || actionsFor != nil || editing != nil) { _, open in if open { hideKeyboard() } }
         .sheet(isPresented: $invite) { InviteSheet(id: id) }
         .sheet(isPresented: $search) {
             ChannelSearch(channel: id) { gid, mid in
@@ -290,6 +275,19 @@ struct ChannelView: View {
         // the town's default places read as places (board iOS-Town: "Square", not "#Square")
         if PlaceNames.defaults[g.id] == g.name { return g.name }
         return g.type == .channel ? "#" + g.name : g.name
+    }
+
+    /// From a pushed screen of the channel (Pinned, Log) back to the channel at a message or a thread.
+    func back(to g: LogGo) {
+        place = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            switch g {
+            case .message(let mid): scrollTarget = mid
+            case .thread(let root): thread = ThreadRoute(group: id, root: root)
+            case .todos: place = .todos
+            case .members: place = .members
+            }
+        }
     }
 
     func openPull() { hideKeyboard(); withAnimation(.snappy(duration: 0.3)) { pull = .short } }
@@ -346,7 +344,13 @@ struct ChannelView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 if let root = model.derive.threadsInOrder(id).max(by: { $0.info.count < $1.info.count })?.root { thread = ThreadRoute(group: id, root: root) }
             }
-        case "details", "members", "todos", "files", "log": details = true
+        case "details": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }
+        case "members", "membersinvitech": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .members }
+        case "todos": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .todos }
+        case "files": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .photos }
+        case "log": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .log }
+        case "chsettings": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .settings }
+        case "pinned": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .pinned }
         case "pullempty": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }
         case "invite": invite = true
         case "pulldown", "proposal": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }

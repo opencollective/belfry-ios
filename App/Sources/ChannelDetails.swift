@@ -2,84 +2,11 @@ import BelfryCore
 import CoreImage
 import SwiftUI
 
-// Channel info (the web's full pull-down view), in tabs: About (description, e-mail address,
-// follow bell, who was active, events, pods, proposals), Members (guests, agents, admins,
-// labels), To-dos, Files (photos, files, drop box links), Settings (admins). And the invite
-// sheet: someone who is here already, the member link, a guest link (1 / 50 people; 1 day /
+// The pieces of the channel's screens (ChannelPlaces.swift; Channel info, the tabbed sheet, is
+// gone since 2026-11-17): the Log, the follow settings, Members, To-dos, Files (photos, files,
+// drop box links), Settings (admins). And the invite sheet: someone who is here already, the member link, a guest link (1 / 50 people; 1 day /
 // 1 week / 1 month), "My own agent".
 
-enum InfoTab: String, CaseIterable { case about = "About", members = "Members", todos = "Todos", files = "Files", log = "Log", settings = "Settings" }
-
-struct ChannelDetails: View {
-    @EnvironmentObject var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    let id: String
-    /// "Go there" from the Log: a message or a thread in the channel.
-    var go: (LogGo) -> Void = { _ in }
-    @State var tab: InfoTab = .about
-    @State private var invite = false
-    @State private var profile: ProfileKey?
-
-    var body: some View {
-        let _ = model.version
-        let g = model.group(id)
-        // archived (SPEC 19.30): read only, no settings
-        let locked = g?.archived == true
-        let admin = model.derive.canAdmin(g) && !locked
-        NavigationStack {
-            List {
-                Section {
-                    Picker("Tab", selection: $tab) {
-                        ForEach(InfoTab.allCases.filter { $0 != .settings }, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .listRowBackground(Color.clear)
-                }
-                switch tab {
-                case .about: AboutTab(id: id, invite: { invite = true })
-                case .members: MembersTab(id: id) { profile = ProfileKey(pubkey: $0, group: id) }
-                case .todos: TodosTab(id: id)
-                case .files: FilesTab(id: id)
-                case .log: LogTab(id: id) { g in
-                    switch g {
-                    case .todos: tab = .todos
-                    case .members: tab = .members
-                    default: dismiss(); go(g)
-                    }
-                }
-                case .settings: if !locked { SettingsTab(id: id) }
-                }
-            }
-            .navigationTitle(g.map { $0.isPod ? $0.name : "#" + $0.name } ?? id)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-                if admin {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { tab = tab == .settings ? .about : .settings } label: { Image(systemName: tab == .settings ? "gearshape.fill" : "gearshape") }
-                            .accessibilityLabel("Channel settings")
-                    }
-                }
-            }
-            .sheet(isPresented: $invite) { InviteSheet(id: id) }
-            .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group) }
-            .onAppear {
-                switch model.launch.screen {
-                case "members": tab = .members
-                case "todos": tab = .todos
-                case "files": tab = .files
-                case "log": tab = .log
-                default: break
-                }
-            }
-            .task {
-                await model.revalidateConfig()
-                await model.askWhois(Array(g?.members ?? []).filter { model.derive.guestJoinKeys.contains($0) })
-            }
-        }
-        .presentationDetents([.large])
-    }
-}
 
 /// Everything that happened in the channel, newest first, a section per day (SPEC 19.23 Log).
 struct LogTab: View {
@@ -118,81 +45,6 @@ struct LogTab: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-}
-
-struct AboutTab: View {
-    @EnvironmentObject var model: AppModel
-    @Environment(\.openChannel) private var openChannel
-    @Environment(\.dismiss) private var dismiss
-    let id: String
-    let invite: () -> Void
-
-    var body: some View {
-        let d = model.derive
-        let g = model.group(id)
-        let active = d.recentlyActive(id)
-        Section {
-            if let p = g?.parent, let parent = model.group(p) {
-                Text("\(g?.isProposal == true ? "Proposal" : "Pod") in \(parent.isPod ? parent.name : "#" + parent.name)").font(.footnote).foregroundStyle(.secondary)
-            }
-            if let about = g?.about, !about.isEmpty { MarkdownText(text: about) } else { Text("No description yet.").foregroundStyle(.secondary) }
-            if d.isInbox(g) {
-                Label("Anyone can e-mail \(d.mailAddress(id)): mails land here as cards.", systemImage: "tray").font(.footnote)
-            } else {
-                Label("Members can e-mail \(d.mailAddress(id)): their mail shows as their message.", systemImage: "envelope").font(.footnote)
-            }
-        }
-        if g?.archived == true {
-            Section { Label("Archived · read only", systemImage: "archivebox").foregroundStyle(.secondary) }
-        }
-        if !d.amGuest && g?.archived != true { FollowBell(id: id) }
-        if g?.archived != true {
-        Section {
-            Button(action: invite) { ActionRow(icon: "person.badge.plus", title: "Invite people") }
-            if let g, !g.members.contains(model.me), !g.admins.contains(model.me), !g.isPod {
-                ActionButtonRow(icon: "person.crop.circle.badge.plus", title: "Join") { model.join(id) }
-            }
-            if let g, g.isPod, g.members.contains(model.me) {
-                ActionButtonRow(icon: "rectangle.portrait.and.arrow.right", title: "Leave the group", destructive: true) { model.leave(id) }
-            }
-        }
-        }
-        Section(active.isEmpty ? "Nobody active this month yet" : "Active in the last 30 days") {
-            ForEach(active, id: \.pubkey) { a in
-                HStack {
-                    Avatar(pubkey: a.pubkey, size: 28)
-                    Text(model.name(a.pubkey))
-                    Spacer()
-                    Text(Format.ago(a.at)).font(.caption).foregroundStyle(.secondary)
-                }
-                .accessibilityElement(children: .combine)
-            }
-        }
-        let events = d.upcoming(id, now: .now)
-        if !events.isEmpty {
-            Section("Events") { ForEach(events) { e in Button {
-                // the event slides in on the main screen once this sheet is down
-                dismiss()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { model.openEvent = e.coord }
-            } label: { EventRow(e: e) }.buttonStyle(.plain) } }
-        }
-        let pods = d.pods(id)
-        if !pods.isEmpty {
-            Section("Groups") {
-                ForEach(pods) { p in
-                    Button { openChannel(p.id, nil) } label: { HStack { ChannelGlyph(group: p, size: 20); Text(p.name) } }.buttonStyle(.plain)
-                }
-            }
-        }
-        let props = d.proposalsIn(id)
-        if !props.isEmpty {
-            Section("Proposals") {
-                ForEach(props) { p in
-                    Button { openChannel(p.groupId, nil) } label: { ActionRow(icon: "doc.text", title: p.title, detail: p.status.label) }.buttonStyle(.plain)
                 }
             }
         }

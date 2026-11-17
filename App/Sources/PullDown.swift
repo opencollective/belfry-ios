@@ -1,10 +1,12 @@
 import BelfryCore
 import SwiftUI
 
-// The ONE line under a channel's name (SPEC 19.13, the web's ChannelLine.tsx) and what it pulls
-// down: Pinned, Coming up, To decide, To do, Pods, Topics, the people line, the description.
-// The pull-down comes from the top, as on the web (ChannelHeader.tsx): the line, then a short
-// level, then the full one; drag the handle, tap the line or the title, or tap outside to close.
+// The channel's pull-down (2026-11-17, the owner: no summary line under the header any more;
+// the subtitle under the name says lock/globe, "N active", photos, groups). It comes from the top
+// (one surface with the navigation bar): the description, the channel's address, the pinned
+// message I haven't hidden, then a menu of rows that push the channel's screens
+// (ChannelPlaces.swift). Tap the title, drag the handle or tap outside to close.
+// ChannelLineBar (the old one line, SPEC 19.13) is no longer shown in a channel.
 
 struct ChannelLineBar: View {
     @EnvironmentObject var model: AppModel
@@ -104,6 +106,27 @@ struct LineIconView: View {
 
 enum PullLevel { case closed, short, full }
 
+/// The channel filtered to one topic: "#topic" and Show all, under the header.
+struct TopicFilterBar: View {
+    let topic: String
+    let clear: () -> Void
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: topic == Derive.announcement ? "megaphone" : "number").font(.caption).foregroundStyle(.secondary)
+            Text(topic == Derive.announcement ? "Announcements" : topic).font(.footnote.weight(.semibold)).lineLimit(1)
+            Spacer(minLength: 4)
+            Button(action: clear) {
+                Text("Show all").font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.15), in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal).padding(.vertical, 8)
+        .lineBackground()
+    }
+}
+
 extension View {
     /// The line's bar: iOS 26 lets the scroll edge effect show it; before, a bar material.
     func lineBackground() -> some View {
@@ -118,8 +141,7 @@ struct PullDownPanel: View {
     let id: String
     @Binding var level: PullLevel
     @Binding var topic: String?
-    let openDetails: (InfoTab) -> Void
-    let invite: () -> Void
+    let openPlace: (ChannelPlace) -> Void
     let showMessage: (String) -> Void
     @State private var drag: CGFloat = 0
     @State private var contentH: CGFloat = 0
@@ -149,7 +171,7 @@ struct PullDownPanel: View {
                     .accessibilityHidden(true)
                 VStack(spacing: 0) {
                     // always there (measured, clipped to nothing while closed): nothing pops in
-                    PullDownList(id: id, topic: $topic, full: level == .full, close: close, openDetails: openDetails, invite: invite, showMessage: showMessage)
+                    PullDownList(id: id, topic: $topic, full: level == .full, close: close, openPlace: openPlace, showMessage: showMessage)
                         .frame(maxHeight: .infinity, alignment: .top)
                     handle(short: short, full: full)
                 }
@@ -256,8 +278,7 @@ struct PullDownList: View {
     @Binding var topic: String?
     var full = false
     let close: () -> Void
-    let openDetails: (InfoTab) -> Void
-    let invite: () -> Void
+    let openPlace: (ChannelPlace) -> Void
     let showMessage: (String) -> Void
 
     private func dismiss() { close() }
@@ -265,93 +286,94 @@ struct PullDownList: View {
     var body: some View {
         let _ = model.version
         let d = model.derive
-        let now = Int.now
-        let f = d.channelFacts(id, now: now)
-        let g = f.group
-        let allTodos = d.tasks(id)
+        let g = model.group(id)
+        let c = ChannelCounts(model, id)
+        let own = g?.isProposal == true ? d.proposalFor(id) : nil
+        let pin = d.pinned(id).first { !model.hiddenPins.contains($0.id) }
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if let about = g?.about, !about.isEmpty {
                     MarkdownText(text: about).font(.subheadline).foregroundStyle(.primary)
-                        .lineLimit(full ? nil : 3)
+                        .lineLimit(full ? nil : 4)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
+                        .padding(.horizontal, 16).padding(.top, 12)
                 }
+                if g?.type == .channel || g?.isPod == true, !model.guestReading {
+                    // the channel's address (members' mail shows as their message; a shared inbox takes anyone's)
+                    Label(d.mailAddress(id), systemImage: d.isInbox(g) ? "tray" : "envelope")
+                        .font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 16).padding(.top, 6)
+                        .accessibilityLabel((d.isInbox(g) ? "Anyone can e-mail " : "Members can e-mail ") + d.mailAddress(id))
+                }
+                Color.clear.frame(height: 8)
                 if let g, let p = g.parent, let parent = model.group(p) {
                     PDRow(symbol: "arrow.up.left", title: (g.isProposal ? "Proposal in " : "Group in ") + (parent.isPod ? parent.name : "#" + parent.name)) { dismiss(); openChannel(p, nil) }
                     PDDivider()
                 }
-                if let p = f.own { ProposalBlock(p: p); PDDivider() }
+                if let p = own { ProposalBlock(p: p); PDDivider() }
                 if let g, g.isPod, !g.archived, d.canAdmin(g), !g.applications.isEmpty {
                     PDRow(symbol: "person.crop.circle.badge.questionmark", title: "Asking to join", value: "\(g.applications.count)") { dismiss(); model.openGroup = id }
                     PDDivider()
                 }
-                if !f.pins.isEmpty {
-                    if f.pins.count > 1 { PDHeader(text: "Pinned") }
-                    ForEach(f.pins) { m in
-                        PDRow(symbol: "pin", title: d.pinLine(m), subtitle: model.name(m.pubkey) + " · " + Format.day(m.at)) { showMessage(m.id) }
-                        PDDivider()
-                    }
-                }
-                if !f.events.isEmpty {
-                    let shown = Array(f.events.prefix(full ? 3 : 1))
-                    if shown.count > 1 { PDHeader(text: "Coming up") }
-                    ForEach(shown) { e in
-                        PDRow(symbol: "calendar", title: e.title, subtitle: d.lineDay(e.start, now: now) + " · " + d.lineWhen(e), value: d.stateLabel(e)) { dismiss(); model.openEvent = e.coord }
-                        PDDivider()
-                    }
-                    if f.events.count > shown.count {
-                        PDRow(symbol: "calendar.badge.clock", title: "All events", value: "\(f.events.count)") { dismiss(); model.showEvents = id }
-                        PDDivider()
-                    }
-                }
-                if !f.proposals.isEmpty {
-                    if f.proposals.count > 1 { PDHeader(text: "To decide") }
-                    ForEach(f.proposals) { p in
-                        PDRow(symbol: "doc.text", title: p.title, subtitle: p.status.label, value: p.votingNow ? (d.myVote(p) == nil ? "Vote" : "Voted") : nil) { dismiss(); openChannel(p.groupId, nil) }
-                        PDDivider()
-                    }
-                }
-                if !allTodos.isEmpty {
-                    PDRow(symbol: "checklist", title: "Todos", value: "\(allTodos.filter(\.done).count) of \(allTodos.count) done") { openDetails(.todos) }
-                    PDDivider()
-                }
-                if !f.pods.isEmpty {
-                    if f.pods.count > 1 { PDHeader(text: "Groups") }
-                    ForEach(f.pods) { p in
-                        PDRow(icon: { PodShape(members: p.members.count).stroke(Color.secondary, lineWidth: 1.5).frame(width: 20, height: 20) },
-                              title: p.name, value: "\(p.members.count)") { dismiss(); openChannel(p.id, nil) }
-                        PDDivider()
-                    }
-                }
-                if full {
-                    let photos = Array(d.files(id).filter(\.isImage).prefix(12))
-                    if !photos.isEmpty {
-                        PDHeader(text: "Photos")
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 4), spacing: 3) {
-                            ForEach(photos, id: \.url) { m in
-                                Color.clear.aspectRatio(1, contentMode: .fit)
-                                    .overlay { MediaThumb(media: m, all: photos) }
-                                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                if let pin {
+                    // the pinned message I haven't hidden: first, as it is
+                    HStack(alignment: .top, spacing: 12) {
+                        Button { showMessage(pin.id) } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: "pin.fill").font(.body).foregroundStyle(Color.brand).frame(width: 28)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(d.pinLine(pin)).font(.body).foregroundStyle(.primary).lineLimit(3).multilineTextAlignment(.leading)
+                                    Text(model.name(pin.pubkey) + " · " + Format.day(pin.at)).font(.footnote).foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 4)
                             }
+                            .contentShape(Rectangle())
                         }
-                        .padding(.horizontal, 16).padding(.bottom, 8)
+                        .buttonStyle(.plain)
+                        Button { model.hidePin(pin.id) } label: { Text("Hide").font(.footnote.weight(.semibold)) }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Got it, hide the pinned message")
                     }
-                    TopicRows(id: id, topic: $topic) { dismiss() }
-                }
-                if !model.guestReading && g?.archived != true {
-                    PDRow(symbol: "person.badge.plus", title: "Invite someone") { invite() }
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .accessibilityIdentifier("pd-pin")
                     PDDivider()
                 }
-                PDRow(symbol: "person.2", title: "Members", value: "\(g?.members.count ?? 0)") { openDetails(.members) }
-                PDDivider()
-                PDRow(symbol: "info.circle", title: "Channel info") { openDetails(.about) }
+                ForEach(places(c, g), id: \.place) { item in
+                    PDRow(symbol: item.place.symbol, title: item.place.title, value: item.value) { openPlace(item.place) }
+                        .accessibilityIdentifier("pd-" + item.place.rawValue)
+                    PDDivider()
+                }
             }
             .padding(.bottom, 4)
             .background(GeometryReader { g in Color.clear.preference(key: PDHeightKey.self, value: g.size.height) })
         }
         .scrollBounceBehavior(.basedOnSize)
     }
+
+    /// The menu: Members always; Settings for those who may edit the channel; the rest only with something in it.
+    private func places(_ c: ChannelCounts, _ g: Channel?) -> [PDPlace] {
+        let locked = g?.archived == true
+        var out = [PDPlace]()
+        if c.pins > 0 { out.append(PDPlace(place: .pinned, value: "\(c.pins)")) }
+        if c.events > 0 { out.append(PDPlace(place: .events, value: "\(c.events)")) }
+        if c.proposals > 0 { out.append(PDPlace(place: .proposals, value: "\(c.proposals)")) }
+        if c.todos > 0 { out.append(PDPlace(place: .todos, value: "\(c.todos - c.todosDone)")) }
+        if c.photos > 0 { out.append(PDPlace(place: .photos, value: "\(c.photos)")) }
+        if c.files > 0 { out.append(PDPlace(place: .files, value: "\(c.files)")) }
+        if c.groups > 0 { out.append(PDPlace(place: .groups, value: "\(c.groups)")) }
+        if c.topics > 0 { out.append(PDPlace(place: .topics, value: "\(c.topics)")) }
+        out.append(PDPlace(place: .members, value: "\(c.members)"))
+        if !model.guestReading && !model.derive.amGuest && !locked { out.append(PDPlace(place: .notifications, value: nil)) }
+        if !model.guestReading { out.append(PDPlace(place: .log, value: nil)) }
+        if model.derive.canAdmin(g) && !locked && !model.guestReading { out.append(PDPlace(place: .settings, value: nil)) }
+        return out
+    }
+}
+
+struct PDPlace: Hashable {
+    let place: ChannelPlace
+    let value: String?
 }
 
 /// A proposal's own state in its pull-down: title, status, the vote while it is open.

@@ -32,6 +32,8 @@ struct Composer: View {
     @State private var makeEvent = false
     @State private var recording = false
     @State private var meeting = false
+    /// A drop box link for this channel (its Files screen lists the links; the ＋ menu makes one).
+    @State private var dropLink = false
     @State private var notes = [String: String]()
     @FocusState private var focused: Bool
     /// The field's one-line height, and so the ＋ circle's: grows with Dynamic Type.
@@ -156,6 +158,7 @@ struct Composer: View {
         .sheet(isPresented: $makeEvent) { EventFormSheet(editing: nil, channel: group) }
         .sheet(isPresented: $recording) { RecorderSheet(group: group) }
         .sheet(isPresented: $meeting) { MeetingFormSheet(channel: group) }
+        .sheet(isPresented: $dropLink) { DropLinkSheet(id: group) }
         .onChange(of: model.launchMeetingForm) { _, on in
             if on, !compact, !threadMode { model.launchMeetingForm = false; meeting = true }
         }
@@ -198,6 +201,9 @@ struct Composer: View {
                 }
                 Section {
                     Button { choose(.audio) } label: { Label("Audio recording", systemImage: "mic") }
+                    if !threadMode && !group.isEmpty {
+                        Button { choose(.dropLink) } label: { Label("Drop box link", systemImage: "tray.and.arrow.down") }
+                    }
                 }
             }
             if canAnnounce {
@@ -233,6 +239,7 @@ struct Composer: View {
         case .event: makeEvent = true
         case .audio: recording = true
         case .meeting: meeting = true
+        case .dropLink: dropLink = true
         }
     }
 
@@ -320,7 +327,7 @@ struct OutsiderNote: View {
 }
 
 enum CreateKind: String, Identifiable { case todo, pod, proposal; var id: String { rawValue } }
-enum AddChoice { case photo, announcement, event, audio, meeting, create(CreateKind) }
+enum AddChoice { case photo, announcement, event, audio, meeting, dropLink, create(CreateKind) }
 
 /// Unsent text on this phone, per channel and per thread (and per form).
 enum Drafts {
