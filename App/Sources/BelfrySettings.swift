@@ -218,14 +218,19 @@ struct ChannelsSettings: View {
     @State private var name = ""
     @State private var adding = false
     @State private var saved = 0
+    @State private var ending: String?
 
     var body: some View {
         let d = model.derive
         let names = Dictionary(d.townChannels().map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
-        let rows = Categories.flat(cats)
+        // a channel deleted or archived meanwhile leaves the list (its category keeps the rest)
+        let rows = Categories.flat(cats).filter { r in
+            if case .channel(let cid) = r { return names[cid] != nil }
+            return true
+        }
         List {
             Section {
-                Label(model.group(generalId)?.name ?? "Square", systemImage: "number")
+                Label(model.group(generalId)?.name ?? "Townsquare", systemImage: "number")
                 Label(PlaceNames.members, systemImage: "person.2")
                 Label("Charter", systemImage: "doc.text")
             } header: { Text("The town") } footer: { Text("The town's places stay first and keep their names.") }
@@ -263,7 +268,20 @@ struct ChannelsSettings: View {
                             .listRowBackground(Color.clear)
                             .moveDisabled(true)
                     case .channel(let cid):
-                        Label(names[cid] ?? cid, systemImage: "number")
+                        // tap: delete it when nobody wrote in it, else archive it (SPEC 19.35)
+                        Button { ending = cid } label: {
+                            HStack {
+                                Label(names[cid] ?? cid, systemImage: "number").foregroundStyle(.primary)
+                                Spacer()
+                                if d.mayEndChannel(model.group(cid)) {
+                                    Image(systemName: "ellipsis").foregroundStyle(.secondary)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .disabled(!d.mayEndChannel(model.group(cid)))
+                        .accessibilityIdentifier("channels-row-" + cid)
+                        .accessibilityHint("Delete or archive")
                     }
                 }
                 .onMove { from, to in
@@ -273,8 +291,11 @@ struct ChannelsSettings: View {
                     save()
                 }
             } header: { Text("Channels") } footer: {
-                Text(saved > 0 ? "Saved. Everyone sees the channels in this order." : "Hold a channel and drag it to move it, within a category or to another one.")
+                Text(saved > 0 ? "Saved. Everyone sees the channels in this order." : "Hold a channel and drag it to move it, within a category or to another one. Tap one to delete it (when nobody wrote in it) or archive it.")
             }
+        }
+        .sheet(item: Binding(get: { ending.map(EndingID.init) }, set: { ending = $0?.id })) { e in
+            ChannelEndSheet(id: e.id)
         }
         .navigationTitle("Channels")
         .navigationBarTitleDisplayMode(.inline)
@@ -301,6 +322,13 @@ struct ChannelsSettings: View {
             guard !loaded else { return }
             loaded = true
             cats = model.derive.channelCategories()
+            // screenshots: an empty channel's sheet / its confirmation; a channel with messages
+            let shot: String? = switch model.launch.screen {
+            case "channelend", "channelendconfirm": "tools-2b8e"
+            case "channelarchive": "kitchen-7d10"
+            default: nil
+            }
+            if let shot { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { ending = shot } }
         }
     }
 
@@ -309,3 +337,5 @@ struct ChannelsSettings: View {
         saved += 1
     }
 }
+
+private struct EndingID: Identifiable { let id: String }

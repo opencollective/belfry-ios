@@ -18,7 +18,8 @@ final class CategoriesTests: XCTestCase {
             XCTAssertEqual(got.map(\.id), want.map(\.id), name)
             XCTAssertEqual(got.map(\.name), want.map(\.name), name)
             XCTAssertEqual(got.map(\.channels), want.map(\.channels), name)
-            XCTAssertEqual(Categories.shown(got, admin: false).map(\.id), r.strs("shown_member"), name)
+            XCTAssertEqual(Categories.shown(got, admin: false, member: false).map(\.id), r.strs("shown_guest"), name)
+            XCTAssertEqual(Categories.shown(got, admin: false, member: true).map(\.id), r.strs("shown_member"), name)
             XCTAssertEqual(Categories.shown(got, admin: true).map(\.id), r.strs("shown_admin"), name)
         }
     }

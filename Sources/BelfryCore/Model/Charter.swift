@@ -11,10 +11,11 @@ import Foundation
 // Only the belfry's admins' agreements, edits and removals count.
 
 public enum PlaceNames {
-    /// The on-brand name of a default place, by group id.
-    public static let defaults: [String: String] = [
-        generalId: "Square", "events": "Fairground", "proposals": "Assembly", "website": "Scriptorium",
-    ]
+    /// The on-brand name of a default place, by group id. Since 2026-11-17 only #general
+    /// ("Townsquare"; the owner: "Just Townsquare (instead of Square)"): events, proposals and
+    /// website show their own names (they were Fairground, Assembly, Scriptorium, and a new belfry
+    /// no longer has them).
+    public static let defaults: [String: String] = [generalId: "Townsquare"]
 
     /// The name to show instead of NAME, or nil to keep it: only while the group's own name is
     /// still its default (empty, its id, or "#" + id, any case).
@@ -24,14 +25,14 @@ public enum PlaceNames {
         return raw.isEmpty || raw == id || raw == "#" + id ? n : nil
     }
 
-    /// What to write for a name shown on brand: the id itself (never "Square" on the wire).
+    /// What to write for a name shown on brand: the id itself (never "Townsquare" on the wire).
     public static func wire(id: String, name: String) -> String { defaults[id] == name ? id : name }
 
     /// Members and requests (the drawer row and its screen). Called "Gates" until 2026-11-17
     /// (the owner: "just rename Gates to Members").
     public static let members = "Members"
 
-    /// The drawer's sections: The town (the Square, Members, the Charter), Community life,
+    /// The drawer's sections: The town (the Townsquare, Members, the Charter), Community life,
     /// Building together (proposals, the website). Since SPEC 19.34 the last two are the built-in
     /// categories `life` and `building` (Model/Categories.swift).
     public enum Section: String, Sendable, CaseIterable {

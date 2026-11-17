@@ -1703,8 +1703,8 @@ Layout first (each client draws it its own way), then the parts other clients mu
   maybe, applied) · Invited (a meeting's `invited` with no answer) · Discover (the rest); Groups =
   My groups (pods I'm a member or admin of) · Active (mine with a message in the last 30 days) ·
   All (every listed pod; not mine: Join when open, "by application" when closed); Town = the
-  Square and a drawer with only the town's places; Create = Message, Event, Meeting, To-do, Group,
-  Proposal into a chosen channel (default: the one on screen, else the Square). Rows never carry
+  Townsquare and a drawer with only the town's places; Create = Message, Event, Meeting, To-do,
+  Group, Proposal into a chosen channel (default: the one on screen, else the Townsquare). Rows never carry
   action buttons for events: the state in words ("you host · check-in today", "going",
   "invited · not answered yet"). Chats, events and profiles push over the places; the bar shows
   only at a place's root. Guests: Home · Calendar · Town.
@@ -1717,9 +1717,18 @@ Layout first (each client draws it its own way), then the parts other clients mu
   row **Today** opens Home; Home has the same ☰ and drawer. The drawer's header has a gear for
   Belfry settings (stewards); each category's header a ＋ for a new channel in it.
 - **On-brand names** (display only; ids, mail addresses, links and wire values never change):
-  `general` → "Square", `events` → "Fairground", `proposals` → "Assembly", `website` →
-  "Scriptorium", only while the group's own name is still its default (empty, its id, or `#` +
-  id, any case: a renamed channel keeps its name). The members' directory with its requests is
+  `general` → "Townsquare", only while the group's own name is still its default (empty, its
+  id, or `#` + id, any case: a renamed channel keeps its name; `vectors/placenames.json`). Since
+  2026-11-17 that is the only one: `events`, `proposals` and `website` show their own names (they
+  read "Fairground", "Assembly", "Scriptorium", and `general` "Square", until then). Fixed rows of
+  the drawer: Townsquare, Members, Charter.
+- **A belfry may have only `general`** (collective-belfry 784d1a4, 2026-11-17): a new belfry no
+  longer gets `events`, `proposals` or `website` (`website` is made by the belfry the first time it
+  posts its changelog there). Nothing may assume they exist: Create posts into the channel on
+  screen, else `general`; Calendar and Home read events from every group; a website proposal goes
+  to `website` when it exists, else to the channel it was proposed from (web Chat.tsx
+  `group('website') ? 'website' : id`). Community life (19.34) shows, empty with its ＋, to any
+  member who is not a guest, so a member can start the first channel. The members' directory with its requests is
   called "Members" (it was "Gates" until 2026-11-17). (iOS) `WorldContext.placeNames` = true in the app, false in the shared vectors;
   `PlaceNames` in `Model/Charter.swift`.
 - **Three roles** as people read them: Steward (the built-in `admin` role, the stewards group) ·
@@ -1857,7 +1866,10 @@ belfry admin wins (anyone else's is ignored). Its content gains `categories`:
   default members not named elsewhere, `life` (inserted first). Every channel no category names
   goes to the end of `life`, in `order`'s order.
 - **Showing**: `building` only when it has channels; every other category to belfry admins
-  always (empty, with its ＋), to everyone else only with a channel.
+  always (empty, with its ＋), to everyone else only with a channel, except `life`, which every
+  member who is not a guest sees even empty (its ＋ starts a channel; web order.ts
+  `shownCategories(cats, admin, member)`, 2026-11-17). Vectors: `shown_guest`, `shown_member`,
+  `shown_admin`.
 - **Writing** (a belfry admin): `order` = `general` then every category's channels, flattened (so
   older clients, which read only `order`, keep the same order); each category with `id`, `name`
   (left out on a built-in whose name is its default) and `channels`; an empty `building` is left
@@ -1874,3 +1886,32 @@ belfry admin wins (anyone else's is ignored). Its content gains `categories`:
   in `CategoriesTests`. The drawer's channel rows are one `List` section with the headers as
   rows (`onMove` only for belfry admins); Belfry settings → Channels edits the categories.
 
+### 19.35 Deleting an empty channel (web 44df470 `Categories.tsx`, collective-belfry 784d1a4 `checkin.delete_group`, 2026-11-17)
+
+Belfry settings → Channels: a belfry admin taps a channel and gets, under its moves, one way to
+end it:
+
+- **Empty** = no event of kinds 9, 10, 11, 12, 20, 1063, 1068, 1111, 9802, 30023, 31922, 31923
+  with `["h", id]` (the belfry's `CONTENT_KINDS`: its own metadata, roles, web settings, labels
+  and reactions don't count). The client looks in what it holds first (one found: not empty),
+  then asks the groups relay `{"kinds": CONTENT_KINDS, "#h": [id], "limit": 1}` up to EOSE; no
+  answer = unknown.
+- The row reads "Delete or archive…" while checking, **"Delete the channel"** ("Nobody wrote in it
+  yet") when empty, **"Archive the channel"** ("It has messages: they stay readable, nobody can
+  post") otherwise or when unknown. It opens an in-app confirmation: delete "Nobody wrote in it
+  yet. It goes for everyone, with its settings. This can't be undone."; archive "People wrote in
+  it. It leaves the channel list and becomes read only; its messages stay. Unarchive it any time
+  from its page." (unknown adds: "The channel could not be checked for messages, so it is
+  archived (nothing is lost).") Its button locks while it runs; "Keep it" goes back.
+- **Delete** = `POST <api>/group-delete {"channel": id}` (NIP-98), by the group's admins or the
+  belfry's; the belfry checks emptiness again and publishes the 9008 as the groups key →
+  `{"channel", "deleted": true}`. Errors: 409 `not_empty` ("People wrote in this channel: archive
+  it instead." — someone wrote meanwhile; the sheet then offers Archive), 409 `always_open`, 422
+  `invalid` (events `ev-`, meetings `ws-`, proposals `prop-`, a bad id), 403 `not_allowed`, 404
+  `not_found`, 503 `relay`. A belfry from before this route (404 without an `error` code): the
+  client publishes the 9008 itself only when the relay lets it (it is in the group's 39001 or a
+  belfry admin), else `not_allowed`. Afterwards the channel is deleted as in 19.30.
+- **Archive** = the archive of 19.30.
+- Never offered for `general`, events, meetings or proposals.
+- (iOS) `ChannelsSettings` → `ChannelEndSheet`; `Derive.hasContent(id)`, `ChannelContent.kinds`,
+  `AppModel.channelIsEmpty` / `deleteChannel`, `BelfryAPI.groupDelete`.

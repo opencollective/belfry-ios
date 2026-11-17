@@ -159,7 +159,7 @@ struct ChannelView: View {
                 if let only = d.webPage(g)?.posts, ["thread", "proposal", "event"].contains(only) {
                     OnlyBar(id: id, only: only, isPublic: d.isPublic(g))
                 } else {
-                    Composer(group: id, placeholder: "Message \(g.map { $0.isPod ? $0.name : "#" + $0.name } ?? id)", canAnnounce: d.canAdmin(g), topic: topic, draftKey: "c:" + id) { text, attachments, announce in
+                    Composer(group: id, placeholder: composerPlaceholder(g), canAnnounce: d.canAdmin(g), topic: topic, draftKey: "c:" + id) { text, attachments, announce in
                         model.post(text, in: id, attachments: attachments, announce: announce, topic: topic)
                         feedPos.toEnd(animated: true)
                     }
@@ -275,9 +275,17 @@ struct ChannelView: View {
         })
     }
 
+    /// "Message the Townsquare" for #general under its default name (as Create's "Post in the
+    /// Townsquare"), "Message #name" for a channel, "Message <name>" for a group.
+    func composerPlaceholder(_ g: Channel?) -> String {
+        guard let g else { return "Message " + id }
+        if PlaceNames.defaults[g.id] == g.name { return "Message the " + g.name }
+        return "Message " + (g.isPod ? g.name : "#" + g.name)
+    }
+
     func titleText(_ g: Channel?) -> String {
         guard let g else { return id }
-        // the town's default places read as places (board iOS-Town: "Square", not "#Square")
+        // the town's default places read as places (board iOS-Town: "Townsquare", not "#Townsquare")
         if PlaceNames.defaults[g.id] == g.name { return g.name }
         return g.type == .channel ? "#" + g.name : g.name
     }

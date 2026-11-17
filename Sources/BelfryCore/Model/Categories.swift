@@ -112,9 +112,13 @@ public enum Categories {
     }
 
     /// The categories a list shows: `building` only with channels; others always for the
-    /// belfry's admins (empty, with their ＋), with channels for everyone else.
-    public static func shown(_ cats: [ChannelCategory], admin: Bool) -> [ChannelCategory] {
-        cats.filter { !$0.channels.isEmpty || (admin && $0.id != ChannelCategory.building) }
+    /// belfry's admins (empty, with their ＋), with channels for everyone else, except Community
+    /// life, which any MEMBER (not a guest) sees even empty: its ＋ is how a member starts the first
+    /// channel of a belfry that has only #general (web order.ts `shownCategories`, 2026-11-17).
+    /// MEMBER defaults to ADMIN.
+    public static func shown(_ cats: [ChannelCategory], admin: Bool, member: Bool? = nil) -> [ChannelCategory] {
+        let member = member ?? admin
+        return cats.filter { !$0.channels.isEmpty || (admin && $0.id != ChannelCategory.building) || ($0.id == ChannelCategory.life && (admin || member)) }
     }
 
     /// The content of the admins' event for CATS (the whole arrangement as edited). The flattened

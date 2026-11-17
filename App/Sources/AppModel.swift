@@ -245,7 +245,7 @@ final class AppModel: ObservableObject {
         var ctx = WorldContext(me: me, domain: config.domain, communityName: config.name, communityAdmins: Set(config.admins),
                                groupsKey: groupsKey, bridgeKey: dms?.bridge, groupsRelay: config.groupsRelay,
                                agents: config.agents, kinds: kinds, pending: pendingIds, groupsAbsent: groupsAbsent)
-        ctx.placeNames = true // Square, Fairground, Assembly, Scriptorium (SPEC 19.31)
+        ctx.placeNames = true // #general reads Townsquare (SPEC 19.31)
         let list = engine?.snapshot() ?? []
         let d = Derive(events: list, context: ctx)
         // offline first: the channels nothing arrived in keep what the last snapshot worked out

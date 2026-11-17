@@ -165,4 +165,49 @@ final class MenuShots: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["drawer-today"].firstMatch.waitForExistence(timeout: 5), "the drawer has no Today row")
         shot("55-home-drawer-tap")
     }
+
+    /// Calendar and Groups have the same ☰ and drawer as Home (2026-11-17); no belfry switcher.
+    func testCalendarAndGroupsDrawer() {
+        for screen in ["calendar", "groups"] {
+            let app = launch(screen)
+            XCTAssertFalse(app.buttons["belfry-switch"].exists, "\(screen) still has the belfry switcher")
+            let button = app.buttons["drawer-button"].firstMatch
+            XCTAssertTrue(button.waitForExistence(timeout: 10), "\(screen) has no ☰")
+            button.tap()
+            sleep(1)
+            XCTAssertTrue(app.descendants(matching: .any)["drawer-today"].firstMatch.waitForExistence(timeout: 5), "\(screen): the drawer has no Today row")
+            shot("56-\(screen)-drawer")
+            app.terminate()
+        }
+    }
+
+    /// Settings → Channels: the empty Tool library offers Delete, confirmed in the app; it leaves
+    /// the list. The Shared kitchen (messages) offers Archive (SPEC 19.35).
+    func testDeleteEmptyChannel() {
+        let app = launch("settingschannels")
+        let kitchen = app.buttons["channels-row-kitchen-7d10"].firstMatch
+        XCTAssertTrue(kitchen.waitForExistence(timeout: 10), "no Shared kitchen row in Settings → Channels")
+        kitchen.tap()
+        let end = app.buttons["channel-end"].firstMatch
+        XCTAssertTrue(end.waitForExistence(timeout: 5), "no end row for the kitchen")
+        let archive = NSPredicate(format: "label CONTAINS 'Archive the channel'")
+        expectation(for: archive, evaluatedWith: end)
+        waitForExpectations(timeout: 10)
+        shot("57-channel-archive-row")
+        app.buttons["Cancel"].firstMatch.tap()
+        sleep(1)
+        let tools = app.buttons["channels-row-tools-2b8e"].firstMatch
+        XCTAssertTrue(tools.waitForExistence(timeout: 5), "no Tool library row")
+        tools.tap()
+        XCTAssertTrue(end.waitForExistence(timeout: 5))
+        expectation(for: NSPredicate(format: "label CONTAINS 'Delete the channel'"), evaluatedWith: end)
+        waitForExpectations(timeout: 10)
+        end.tap()
+        let confirm = app.buttons["channel-end-confirm"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "no confirmation")
+        shot("57-channel-delete-confirm")
+        confirm.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: tools)
+        waitForExpectations(timeout: 10)
+    }
 }

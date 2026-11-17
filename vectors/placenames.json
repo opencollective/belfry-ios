@@ -1,0 +1,101 @@
+{
+ "about": "SPEC 19.31 on-brand names (display only; ids, mail aliases, links and wire values never change). display(id, name) = the name to show instead of the group's own NAME, or null to keep it. Since 2026-11-17 only general -> \"Townsquare\" (it was Square; events/proposals/website read Fairground/Assembly/Scriptorium until then and now show their own names). Shown only while the group's own name is still its default: empty, its id, or \"#\" + id, trimmed, any case. wire: what to write back for a shown name (the id; never the on-brand name). fixed_rows: the drawer's fixed rows of The town.",
+ "generated_by": "belfry-ios (hand-written from web places.ts PLACE_NAMES, 44df470, 2026-11-17)",
+ "names": {
+  "general": "Townsquare"
+ },
+ "display": [
+  {
+   "id": "general",
+   "name": "general",
+   "expected": "Townsquare"
+  },
+  {
+   "id": "general",
+   "name": "",
+   "expected": "Townsquare"
+  },
+  {
+   "id": "general",
+   "name": "#general",
+   "expected": "Townsquare"
+  },
+  {
+   "id": "general",
+   "name": "  GENERAL ",
+   "expected": "Townsquare"
+  },
+  {
+   "id": "general",
+   "name": "#General",
+   "expected": "Townsquare"
+  },
+  {
+   "id": "general",
+   "name": "Town square",
+   "expected": null
+  },
+  {
+   "id": "general",
+   "name": "Square",
+   "expected": null
+  },
+  {
+   "id": "events",
+   "name": "events",
+   "expected": null
+  },
+  {
+   "id": "events",
+   "name": "",
+   "expected": null
+  },
+  {
+   "id": "proposals",
+   "name": "proposals",
+   "expected": null
+  },
+  {
+   "id": "proposals",
+   "name": "#proposals",
+   "expected": null
+  },
+  {
+   "id": "website",
+   "name": "website",
+   "expected": null
+  },
+  {
+   "id": "garden-3f2a",
+   "name": "garden-3f2a",
+   "expected": null
+  },
+  {
+   "id": "charter",
+   "name": "Charter",
+   "expected": null
+  }
+ ],
+ "wire": [
+  {
+   "id": "general",
+   "name": "Townsquare",
+   "expected": "general"
+  },
+  {
+   "id": "general",
+   "name": "Town square",
+   "expected": "Town square"
+  },
+  {
+   "id": "events",
+   "name": "Fairground",
+   "expected": "Fairground"
+  }
+ ],
+ "fixed_rows": [
+  "Townsquare",
+  "Members",
+  "Charter"
+ ]
+}

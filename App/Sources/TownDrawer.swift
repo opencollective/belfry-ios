@@ -3,7 +3,7 @@ import SwiftUI
 
 // Town's drawer (☰ or a swipe from the left, board iOS-Town 2; also Home's ☰ since 2026-11-17):
 // the belfry's cover (when branding has one), its mark, name and member count, a gear for Belfry
-// settings (stewards); search; Today (Home); The town (Square, Members with their requests,
+// settings (stewards); search; Today (Home); The town (Townsquare, Members with their requests,
 // Charter); then the categories (SPEC 19.34: Community life, Building together and the stewards'
 // own), each header with ＋ for a new channel in it (Community life for anyone who may create a
 // channel, every category for stewards); a globe marks a public channel; Archived. Stewards
@@ -98,7 +98,7 @@ struct TownDrawer: View {
         let general = chans.first { $0.id == generalId }
         let byId = Dictionary(chans.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let all = d.channelCategories()
-        let cats = Categories.shown(all, admin: admin)
+        let cats = Categories.shown(all, admin: admin, member: true) // never a guest here: Community life shows, empty with its ＋
         let rows = Categories.flat(cats)
         let names = Dictionary(all.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
         let archived = d.myArchived()
@@ -217,7 +217,7 @@ struct TownDrawer: View {
                 } header: { sectionTitle("Open to everyone") }
             }
             Section {
-                Text("Read-only for guests. Members also have the Square, its events, groups and more.")
+                Text("Read-only for guests. Members also have the Townsquare, every channel and Members.")
                     .font(.footnote).foregroundStyle(.secondary)
                     .listRowBackground(Color.clear)
             }

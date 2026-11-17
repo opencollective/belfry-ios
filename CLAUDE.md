@@ -9,7 +9,7 @@ don't guess. The Android app (opencollective/belfry-android) is a second reading
 
 `vectors/` is the contract shared with Android: keep both repos' files identical (copy, don't
 edit one side). SPEC.md differs from Android's only in the paragraph that opens section 19 and the (iOS) notes
-that end 19.19, 19.20 and 19.26, the iOS-only 19.28 and 19.29, 19.30 (deleted and archived groups, written here 2026-11-16: Android has not got it yet), and 19.31 / 19.32 / 19.33 (five places, names, roles; the charter; e-mail threads in a channel, written here 2026-11-16; `vectors/charter.json` and `vectors/mailthreads.json` are ours: copy them to Android) (Android's 19.21 to 19.25 and 19.27 copied 2026-11-15; what the iPhone app does of them is in PARITY.md). `vectors/guestmode.json` and `vectors/readstate.json` are Android's.
+that end 19.19, 19.20 and 19.26, the iOS-only 19.28 and 19.29, 19.30 (deleted and archived groups, written here 2026-11-16: Android has not got it yet), 19.34 / 19.35 (categories; deleting an empty channel, 2026-11-17), and 19.31 / 19.32 / 19.33 (five places, names, roles; the charter; e-mail threads in a channel, written here 2026-11-16; `vectors/charter.json` and `vectors/mailthreads.json` are ours: copy them to Android) (Android's 19.21 to 19.25 and 19.27 copied 2026-11-15; what the iPhone app does of them is in PARITY.md). `vectors/guestmode.json` and `vectors/readstate.json` are Android's.
 
 ## Layout
 
@@ -164,7 +164,7 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   session key, later the bunker address) lives in the Keychain (service
   `sh.belfry.app.session.keys`, account `native-signin`) for at most 15 minutes. Never test it
   against a live belfry with a real member's name: it mails that person a code.
-- Universal links: `applinks:chat.belfry.sh`, `applinks:chat.enspiral.eu` (project.yml
+- Universal links: `applinks:chat.belfry.sh`, `chat.enspiral.eu`, `chat.belfry.brussels`, `chat.opensourcevillage.org` (2026-11-17; the staging host left) (project.yml
   entitlement) for `/join/<token>` and `/events/<link>`; the chat hosts must serve
   apple-app-site-association (SERVER-NEEDS 5). A guest's join session key lives in the Keychain
   (service `sh.belfry.app.session.keys`, account `join-<token>`) until the join works.
@@ -191,7 +191,8 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   and the drawer under it (`DrawerContainer` + `TownDrawer`: Today, the town's places, the
   categories, you → Me pushed, ⇅ → accounts). Home has the same ☰ and drawer (2026-11-17; a
   drawer row other than Today switches to Town). Guests: Home · Calendar · Town. No own face in
-  any header. The belfry's name at the top of Calendar / Groups opens the accounts switcher. iPad: the old
+  any header. Calendar and Groups have the same ☰ and drawer (2026-11-17; the "Belfry ⌄" pill is
+  gone: accounts are on the drawer's person row). iPad: the old
   sidebar (`ChannelDrawer.sidebar`) in a split view, no bar.
 - Deleted and archived groups (SPEC 19.30, `Model/Archive.swift`, `ArchiveUI.swift`,
   `AppModel+Archive`): `Derive.groups()` = the listed ones (not archived, not deleted);
@@ -228,9 +229,10 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
 - The feed's end is a 1 pt anchor with NO padding: the composer is the scroll view's safe-area
   inset, and scrollTo / defaultScrollAnchor(.bottom) stop above it (a pad of the composer's
   height showed as an empty band, fixed 2026-11-15).
-- Names (SPEC 19.31): `WorldContext.placeNames` (true in the app) shows general / events /
-  proposals / website as Square / Fairground / Assembly / Scriptorium while their own name is the
-  default; members+requests = "Members" (was "Gates" until 2026-11-17); roles Steward (admin) · Member · Guest; the check-in role
+- Names (SPEC 19.31): `WorldContext.placeNames` (true in the app) shows general as "Townsquare"
+  while its own name is the default (`vectors/placenames.json`); since 2026-11-17 nothing else is
+  renamed (Square / Fairground / Assembly / Scriptorium are gone). A belfry may have only #general:
+  never assume #events / #proposals / #website exist; members+requests = "Members" (was "Gates" until 2026-11-17); roles Steward (admin) · Member · Guest; the check-in role
   `steward` reads "Door". Display only: never write these names back.
 - The charter (SPEC 19.32, `Model/Charter.swift`, `CharterUI.swift`, `AppModel+Charter`): group
   `charter`, agreements = 2100 with `each`, ticks per author; only belfry admins' rules count.
@@ -320,4 +322,11 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   implements the same format); the channel header's subtitle, the attention-only line, the
   pull-down as a menu of pushed screens, Channel info removed, drop box link in the ＋ menu.
   UI tests `testDrawerDrag` (long press + drag, asserts the move) and `testHomeDrawer`.
-
+- 2026-11-17 round 4 (branch ios-r4, web 44df470 + collective-belfry 784d1a4): only #general is
+  renamed (Townsquare); a belfry may have only #general (Community life shows empty to members:
+  `Categories.shown(admin:member:)`, vectors/categories.json gains `shown_guest`); Settings →
+  Channels → a channel: Delete (empty, `POST /group-delete`) or Archive (SPEC 19.35,
+  `ChannelEnd.swift`); ☰ + drawer on Calendar and Groups; `applinks:chat.opensourcevillage.org`;
+  to-dos made from a message: "Open its thread". vectors/categories.json changed and
+  vectors/placenames.json is new: copy both to Android. Screens `channelend`, `channelendconfirm`,
+  `channelarchive`, `calendardrawer`; demo channel "Tool library" (`tools-2b8e`) has no messages.

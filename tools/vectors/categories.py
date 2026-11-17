@@ -72,8 +72,13 @@ def arrange(content, channels):
     return out
 
 
-def shown(cats, admin):
-    return [c["id"] for c in cats if c["channels"] or (admin and c["id"] != BUILDING)]
+def shown(cats, admin, member=None):
+    """The categories a list shows. Admins: every one with channels, and the empty ones but
+    `building`. Members (not guests): those with channels, and Community life even empty (its +
+    is how a member starts the first channel of a belfry that has only #general; web order.ts
+    shownCategories, 2026-11-17). Guests: only those with channels."""
+    member = admin if member is None else member
+    return [c["id"] for c in cats if c["channels"] or (admin and c["id"] != BUILDING) or (c["id"] == LIFE and (admin or member))]
 
 
 def encode(cats, previous, known):
@@ -144,6 +149,9 @@ READ = [
          {"id": "empty-3333", "name": "Empty", "channels": []}]})),
     ("building named explicitly but empty: proposals and website go to life; building hidden",
      json.dumps({"order": ["proposals"], "categories": [{"id": "life", "channels": ["garden"]}, {"id": "building", "channels": []}]})),
+    ("a new belfry: #general alone; Community life shows empty to members and admins, not guests", None, ["general"]),
+    ("a custom category with the only channel: life empty (members still see it with its +)",
+     json.dumps({"order": [], "categories": [{"id": "making-4b1c", "name": "Making", "channels": ["repair"]}]}), ["general", "repair"]),
 ]
 
 WRITE = [
@@ -175,18 +183,19 @@ FLAT = [
 def main():
     out = {
         "about": "SPEC 19.34 channel categories: 30078 d=belfry:channel-order by a belfry admin, content {order, categories}. "
-                 "read: arrange(content, channels in natural order) -> categories with their visible channels; shown_member / shown_admin = the "
-                 "categories the drawer shows. write: encode(categories, previous content, channels the writer sees). flat: a drag in the flat "
+                 "read: arrange(content, channels in natural order) -> categories with their visible channels; shown_guest / shown_member / shown_admin = the "
+                 "categories the drawer shows (a member = not a guest: Community life even empty). write: encode(categories, previous content, channels the writer sees). flat: a drag in the flat "
                  "list of headers (h:) and channels (c:) -> categories.",
-        "generated_by": "belfry-ios tools/vectors/categories.py (2026-11-17)",
+        "generated_by": "belfry-ios tools/vectors/categories.py (2026-11-17, members see Community life empty)",
         "default_names": DEFAULT_NAMES,
         "building_default": BUILDING_DEFAULT,
         "read": [], "write": [], "flat": [],
     }
-    for name, content in READ:
-        cats = arrange(content, NAT)
-        out["read"].append({"name": name, "content": content, "channels": NAT, "expected": cats,
-                            "shown_member": shown(cats, False), "shown_admin": shown(cats, True)})
+    for name, content, *rest in READ:
+        chans = rest[0] if rest else NAT
+        cats = arrange(content, chans)
+        out["read"].append({"name": name, "content": content, "channels": chans, "expected": cats,
+                            "shown_guest": shown(cats, False, False), "shown_member": shown(cats, False, True), "shown_admin": shown(cats, True)})
     for name, cats, prev, known in WRITE:
         out["write"].append({"name": name, "categories": cats, "previous": prev, "known": known, "expected": encode(cats, prev, known)})
     for name, cats, flat in FLAT:

@@ -34,9 +34,9 @@ public struct WorldContext: Hashable, Sendable {
     public var groupsAbsent: [String: Int]
     /// For day separators and all-day calendar events.
     public var timeZone: TimeZone
-    /// The on-brand names of the town's default places (SPEC 19.31): general reads "Square",
-    /// events "Fairground", proposals "Assembly", website "Scriptorium" while the group's own name
-    /// is still its id. Display only; ids never change. Off in the shared vectors.
+    /// The on-brand name of the town's default place (SPEC 19.31): general reads "Townsquare"
+    /// while the group's own name is still its default. Display only; ids never change. Off in
+    /// the shared vectors (vectors/placenames.json tests it on its own).
     public var placeNames: Bool = false
 
     public init(me: String, domain: String = "", communityName: String = "", communityAdmins: Set<String> = [],

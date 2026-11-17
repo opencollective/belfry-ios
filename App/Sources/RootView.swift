@@ -288,8 +288,21 @@ struct RootView: View {
                         NavigationStack(path: $homePath) { HomeView().tabBarInset().placeDestinations() }
                             .environment(\.openDrawer) { openDrawer() }
                     }
-                case .calendar: NavigationStack(path: $calendarPath) { CalendarView().tabBarInset().placeDestinations() }
-                case .groups: NavigationStack(path: $groupsPath) { GroupsView().tabBarInset().placeDestinations() }
+                case .calendar:
+                    // Calendar and Groups have the same ☰ and drawer as Home (2026-11-17)
+                    DrawerContainer(open: $drawer, edgeSwipe: calendarPath.isEmpty) {
+                        drawerList(inDrawer: true)
+                    } main: {
+                        NavigationStack(path: $calendarPath) { CalendarView().tabBarInset().placeDestinations() }
+                            .environment(\.openDrawer) { openDrawer() }
+                    }
+                case .groups:
+                    DrawerContainer(open: $drawer, edgeSwipe: groupsPath.isEmpty) {
+                        drawerList(inDrawer: true)
+                    } main: {
+                        NavigationStack(path: $groupsPath) { GroupsView().tabBarInset().placeDestinations() }
+                            .environment(\.openDrawer) { openDrawer() }
+                    }
                 case .town:
                     DrawerContainer(open: $drawer, edgeSwipe: path.isEmpty) {
                         drawerList(inDrawer: true)
@@ -363,10 +376,10 @@ struct RootView: View {
     }
 
     private func drawerList(inDrawer: Bool) -> some View {
-        ChannelDrawer(current: model.tab == .home && phone ? nil : selection, inDrawer: inDrawer,
+        ChannelDrawer(current: model.tab != .town && phone ? nil : selection, inDrawer: inDrawer,
                       onHome: phone && model.tab == .home,
                       select: { item in
-                          // from Home's drawer: the row opens in Town
+                          // from the drawer of Home, Calendar or Groups: the row opens in Town
                           if phone && model.tab != .town {
                               path = NavigationPath()
                               selection = item
@@ -510,7 +523,10 @@ struct RootView: View {
         case "homedrawer":
             model.tab = .home
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
-        case "settingschannels":
+        case "calendardrawer":
+            model.tab = .calendar
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
+        case "settingschannels", "channelend", "channelendconfirm", "channelarchive":
             selection = .settings
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { path.append(PlaceRoute.channels) }
         case "proposal": selection = .channel("prop-quiet-hours-after-22-00-7f3a2b")

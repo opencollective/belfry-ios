@@ -67,4 +67,48 @@ extension AppModel {
             return BelfryAPI.network
         }
     }
+
+    /// Whether nobody posted in channel ID (SPEC 19.35): what this device holds first, then the
+    /// groups relay. nil = the relay did not answer (offline): the settings offer Archive.
+    func channelIsEmpty(_ id: String) async -> Bool? {
+        if derive.hasContent(id) { return false }
+        guard let engine else { return nil }
+        if engine.localOnly { return true }
+        let answer = await engine.query(.groups, ChannelContent.filters(id), timeout: 8)
+        guard self.engine === engine else { return nil }
+        if derive.hasContent(id) { return false }
+        return ChannelContent.empty(id, answer: answer)
+    }
+
+    /// Delete the empty channel ID (SPEC 19.35): `POST /group-delete`; the belfry publishes the
+    /// 9008 and the channel shows deleted (19.30) once it arrives. A belfry without the route:
+    /// my own 9008 when the relay lets me. Returns a fixed message when it did not work;
+    /// `ChannelEnd.notEmpty` when someone wrote meanwhile (archive is offered then).
+    func deleteChannel(_ id: String) async -> String? {
+        guard let engine, let g = group(id) else { return "That did not work. Try again." }
+        guard derive.mayEndChannel(g) else { return "Only the admins can change this." }
+        if engine.localOnly {
+            engine.enqueue(Actions.deleteGroup(id))
+            version += 1
+            return nil
+        }
+        do {
+            try await api.groupDelete(channel: id)
+            await refresh()
+            return nil
+        } catch let x as ApiError where x.code == "update_needed" {
+            guard derive.mayModerate(g) else { return "Only the admins can change this." }
+            engine.enqueue(Actions.deleteGroup(id))
+            version += 1
+            return nil
+        } catch let x as ApiError {
+            return x.code == "not_empty" ? ChannelEnd.notEmpty : x.message
+        } catch {
+            return BelfryAPI.network
+        }
+    }
+}
+
+enum ChannelEnd {
+    static let notEmpty = "People wrote in this channel: archive it instead."
 }

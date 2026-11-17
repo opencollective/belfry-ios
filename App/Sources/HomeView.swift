@@ -375,7 +375,7 @@ struct ApplyCard: View {
     }
 
     private func acceptLine() -> String {
-        let base = "Members see the whole town: the Square, its events and groups."
+        let base = "Members see the whole town: the Townsquare, its events and groups."
         if (model.applyState?.accept ?? model.membership.accept) == "vouches" {
             let n = model.membership.vouches
             return base + " " + (n == 1 ? "One vouch" : "\(n) vouches") + " or a steward's yes."

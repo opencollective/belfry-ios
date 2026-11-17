@@ -131,6 +131,9 @@ struct MembersTab: View {
 struct TodosTab: View {
     @EnvironmentObject var model: AppModel
     let id: String
+    /// Back to the channel at a thread: a to-do made from a message offers "Open its thread"
+    /// (where its history is written; web ChannelInfo TaskRow, 2026-11-17).
+    var go: ((LogGo) -> Void)? = nil
     @State private var newTodo = ""
     @State private var open: String?
 
@@ -161,6 +164,10 @@ struct TodosTab: View {
             HStack(spacing: 14) {
                 Button(open == t.id ? "Hide comments" : t.comments.isEmpty ? "Comment" : "\(t.comments.count) comments") {
                     withAnimation { open = open == t.id ? nil : t.id }
+                }
+                if let src = t.source, let go {
+                    Button { go(.thread(src)) } label: { Label("Open its thread", systemImage: "bubble.left.and.bubble.right") }
+                        .accessibilityIdentifier("todo-thread")
                 }
                 if t.author == model.me && !model.locked(id) {
                     BusyButton("Delete", role: .destructive) { model.todo(t, in: id, "delete") }

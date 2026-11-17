@@ -1,6 +1,6 @@
 {
- "about": "SPEC 19.34 channel categories: 30078 d=belfry:channel-order by a belfry admin, content {order, categories}. read: arrange(content, channels in natural order) -> categories with their visible channels; shown_member / shown_admin = the categories the drawer shows. write: encode(categories, previous content, channels the writer sees). flat: a drag in the flat list of headers (h:) and channels (c:) -> categories.",
- "generated_by": "belfry-ios tools/vectors/categories.py (2026-11-17)",
+ "about": "SPEC 19.34 channel categories: 30078 d=belfry:channel-order by a belfry admin, content {order, categories}. read: arrange(content, channels in natural order) -> categories with their visible channels; shown_guest / shown_member / shown_admin = the categories the drawer shows (a member = not a guest: Community life even empty). write: encode(categories, previous content, channels the writer sees). flat: a drag in the flat list of headers (h:) and channels (c:) -> categories.",
+ "generated_by": "belfry-ios tools/vectors/categories.py (2026-11-17, members see Community life empty)",
  "default_names": {
   "life": "Community life",
   "building": "Building together"
@@ -41,6 +41,10 @@
       "proposals"
      ]
     }
+   ],
+   "shown_guest": [
+    "life",
+    "building"
    ],
    "shown_member": [
     "life",
@@ -83,6 +87,10 @@
      ]
     }
    ],
+   "shown_guest": [
+    "life",
+    "building"
+   ],
    "shown_member": [
     "life",
     "building"
@@ -123,6 +131,10 @@
       "website"
      ]
     }
+   ],
+   "shown_guest": [
+    "life",
+    "building"
    ],
    "shown_member": [
     "life",
@@ -170,6 +182,11 @@
       "website"
      ]
     }
+   ],
+   "shown_guest": [
+    "making-4b1c",
+    "life",
+    "building"
    ],
    "shown_member": [
     "making-4b1c",
@@ -219,6 +236,11 @@
       "repair"
      ]
     }
+   ],
+   "shown_guest": [
+    "life",
+    "building",
+    "making-4b1c"
    ],
    "shown_member": [
     "life",
@@ -280,6 +302,12 @@
      ]
     }
    ],
+   "shown_guest": [
+    "life",
+    "a-1111",
+    "b-2222",
+    "building"
+   ],
    "shown_member": [
     "life",
     "a-1111",
@@ -325,11 +353,78 @@
      "channels": []
     }
    ],
+   "shown_guest": [
+    "life"
+   ],
    "shown_member": [
     "life"
    ],
    "shown_admin": [
     "life"
+   ]
+  },
+  {
+   "name": "a new belfry: #general alone; Community life shows empty to members and admins, not guests",
+   "content": null,
+   "channels": [
+    "general"
+   ],
+   "expected": [
+    {
+     "id": "life",
+     "name": "Community life",
+     "channels": []
+    },
+    {
+     "id": "building",
+     "name": "Building together",
+     "channels": []
+    }
+   ],
+   "shown_guest": [],
+   "shown_member": [
+    "life"
+   ],
+   "shown_admin": [
+    "life"
+   ]
+  },
+  {
+   "name": "a custom category with the only channel: life empty (members still see it with its +)",
+   "content": "{\"order\": [], \"categories\": [{\"id\": \"making-4b1c\", \"name\": \"Making\", \"channels\": [\"repair\"]}]}",
+   "channels": [
+    "general",
+    "repair"
+   ],
+   "expected": [
+    {
+     "id": "life",
+     "name": "Community life",
+     "channels": []
+    },
+    {
+     "id": "making-4b1c",
+     "name": "Making",
+     "channels": [
+      "repair"
+     ]
+    },
+    {
+     "id": "building",
+     "name": "Building together",
+     "channels": []
+    }
+   ],
+   "shown_guest": [
+    "making-4b1c"
+   ],
+   "shown_member": [
+    "life",
+    "making-4b1c"
+   ],
+   "shown_admin": [
+    "life",
+    "making-4b1c"
    ]
   }
  ],

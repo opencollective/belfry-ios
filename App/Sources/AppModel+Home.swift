@@ -163,7 +163,7 @@ extension AppModel {
         return d.groups().filter { $0.type == .channel && d.isPublic($0) && !mine.contains($0.id) }
     }
 
-    /// Members of the belfry (the Square's people, guests and agents left out): "38 of 41 members".
+    /// Members of the belfry (the Townsquare's people, guests and agents left out): "38 of 41 members".
     var memberKeys: Set<String> {
         let d = derive
         let base = d.group(generalId)?.members ?? []

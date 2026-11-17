@@ -37,7 +37,7 @@ targets:
         com.apple.developer.associated-domains:
           - applinks:chat.belfry.sh
           - applinks:chat.enspiral.eu
-          - applinks:chat.staging.opensourcevillage.org
+          - applinks:chat.opensourcevillage.org
           - applinks:chat.belfry.brussels
     info:
       path: App/Info.plist

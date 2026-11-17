@@ -339,6 +339,29 @@ public extension BelfryAPI {
         return a.body?["archived"] as? Bool
     }
 
+    /// Delete an empty channel (SPEC 19.35): the belfry checks it is empty and publishes the 9008
+    /// as the groups key. Codes: `not_empty` (archive instead), `always_open`, `invalid` (events,
+    /// meetings, proposals), `not_allowed`, `not_found`, `relay`; `update_needed` from a belfry
+    /// without the route (404 with no code): the caller may publish the 9008 itself.
+    func groupDelete(channel: String) async throws {
+        let a = try await signed(base + "/group-delete", method: "POST", json: ["channel": channel])
+        guard a.ok else {
+            if a.status == 404 && a.error.isEmpty { throw ApiError("update_needed", 404, BelfryAPI.updateNeeded) }
+            if a.status == 405 { throw ApiError("update_needed", 405, BelfryAPI.updateNeeded) }
+            throw BelfryAPI.eventFail(a, "The channel could not be deleted. Try again.", BelfryAPI.deleteErrors)
+        }
+    }
+
+    static let deleteErrors = [
+        // the web chat's words where it has them (checkin.ts CHECK_ERRORS); fixed messages only
+        "not_empty": "People wrote in this channel: archive it instead.",
+        "always_open": "#general can’t be deleted.",
+        "invalid": "Events, meetings and proposals can’t be deleted here.",
+        "not_allowed": "Only the admins can change this.",
+        "not_found": "This channel isn’t here any more.",
+        "relay": "The channel could not be reached. Try again.",
+    ]
+
     internal static let roleCodes: Set<String> = ["not_allowed", "not_in_group", "last_admin", "guest_not_saved", "agent", "events_only", "always_admin", "invalid", "relay", "archived"]
 
     static let checkinErrors = [

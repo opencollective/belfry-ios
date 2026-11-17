@@ -132,4 +132,40 @@ public enum GroupLock {
 public extension Actions {
     /// Archive / unarchive G: a 9002 keeping every other setting.
     static func archive(_ g: Group, _ on: Bool) -> Draft { groupMeta(g, archived: on) }
+    /// Delete group ID (NIP-29 9008): only on a belfry without `/group-delete`, by someone the
+    /// relay lets moderate, and in the demo (SPEC 19.35).
+    static func deleteGroup(_ id: String) -> Draft { Draft(.groups, kind: 9008, tags: [["h", id]]) }
+}
+
+/// What people post in a group (SPEC 19.35; the belfry's `checkin.CONTENT_KINDS`): a channel
+/// with none of these is empty and may be deleted; its own metadata, roles, web settings, labels
+/// and reactions don't count.
+public enum ChannelContent {
+    public static let kinds = [9, 10, 11, 12, 20, 1063, 1068, 1111, 9802, 30023, 31922, 31923]
+
+    /// The question to the groups relay: one content event of ID, plus #general's metadata as the
+    /// proof that the relay answered at all (an empty answer proves nothing, as in 19.30).
+    public static func filters(_ id: String) -> [[String: Any]] {
+        [["kinds": kinds, "#h": [id], "limit": 1], ["kinds": [39000], "#d": [generalId], "limit": 1]]
+    }
+
+    /// The relay's ANSWER read: false = it has content, true = empty, nil = no proof of an answer.
+    public static func empty(_ id: String, answer: [NostrEvent]) -> Bool? {
+        if answer.contains(where: { kinds.contains($0.kind) && $0.tag("h") == id }) { return false }
+        return answer.contains(where: { $0.kind == 39000 && $0.tag("d") == generalId }) ? true : nil
+    }
+}
+
+public extension Derive {
+    /// Whether this device holds anything posted in group ID (SPEC 19.35).
+    func hasContent(_ id: String) -> Bool {
+        events.contains { ChannelContent.kinds.contains($0.kind) && $0.tag("h") == id }
+    }
+
+    /// Whether I may end G from Belfry settings → Channels (delete when empty, else archive): a
+    /// channel (not #general, events, meetings or proposals) I may archive.
+    func mayEndChannel(_ g: Group?) -> Bool {
+        guard let g, g.type == .channel else { return false }
+        return mayArchive(g)
+    }
 }

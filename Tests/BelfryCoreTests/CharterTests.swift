@@ -47,9 +47,12 @@ final class CharterTests: XCTestCase {
     }
 
     func testPlaceNames() {
-        XCTAssertEqual(PlaceNames.display(id: "general", name: "general"), "Square")
-        XCTAssertEqual(PlaceNames.display(id: "general", name: ""), "Square")
-        XCTAssertEqual(PlaceNames.display(id: "events", name: "#Events"), "Fairground")
+        XCTAssertEqual(PlaceNames.display(id: "general", name: "general"), "Townsquare")
+        XCTAssertEqual(PlaceNames.display(id: "general", name: ""), "Townsquare")
+        XCTAssertNil(PlaceNames.display(id: "events", name: "#Events")) // own name since 2026-11-17
+        XCTAssertNil(PlaceNames.display(id: "proposals", name: "proposals"))
+        XCTAssertNil(PlaceNames.display(id: "website", name: ""))
+        XCTAssertEqual(PlaceNames.wire(id: "general", name: "Townsquare"), "general")
         XCTAssertNil(PlaceNames.display(id: "general", name: "Town square"))
         XCTAssertNil(PlaceNames.display(id: "garden-3f2a", name: "garden-3f2a"))
         XCTAssertEqual(PlaceNames.section("general"), .town)
@@ -60,7 +63,38 @@ final class CharterTests: XCTestCase {
         var ctx = WorldContext(me: String(repeating: "a", count: 64))
         XCTAssertEqual(Derive(events: [meta], context: ctx).group("general")?.name, "general")
         ctx.placeNames = true
-        XCTAssertEqual(Derive(events: [meta], context: ctx).group("general")?.name, "Square")
+        XCTAssertEqual(Derive(events: [meta], context: ctx).group("general")?.name, "Townsquare")
+    }
+
+    func testPlaceNamesVectors() throws {
+        let v = try vector("placenames")
+        XCTAssertEqual(v.dict("names") as? [String: String], PlaceNames.defaults)
+        for c in v.list("display") {
+            let id = c.str("id") ?? "", name = c.str("name") ?? ""
+            XCTAssertEqual(PlaceNames.display(id: id, name: name), c.str("expected"), "\(id) / \(name)")
+        }
+        for c in v.list("wire") {
+            XCTAssertEqual(PlaceNames.wire(id: c.str("id") ?? "", name: c.str("name") ?? ""), c.str("expected"))
+        }
+        XCTAssertEqual(v.strs("fixed_rows"), [PlaceNames.defaults[generalId]!, PlaceNames.members, "Charter"])
+    }
+
+    func testChannelContent() {
+        let h = String(repeating: "c", count: 64)
+        func e(_ kind: Int, _ tags: [Tag]) -> NostrEvent {
+            NostrEvent(id: String(repeating: "\(kind % 10)", count: 64), pubkey: h, createdAt: 1, kind: kind, tags: tags, content: "")
+        }
+        let general = e(39000, [["d", "general"]])
+        XCTAssertEqual(ChannelContent.empty("tools", answer: [general]), true)
+        XCTAssertNil(ChannelContent.empty("tools", answer: []))
+        XCTAssertEqual(ChannelContent.empty("tools", answer: [general, e(9, [["h", "tools"]])]), false)
+        XCTAssertEqual(ChannelContent.empty("tools", answer: [general, e(9, [["h", "other"]])]), true)
+        // metadata, roles, labels and reactions are no content
+        let d = Derive(events: [e(9002, [["h", "tools"]]), e(1985, [["h", "tools"]]), e(7, [["h", "tools"]])], me: h)
+        XCTAssertFalse(d.hasContent("tools"))
+        XCTAssertTrue(Derive(events: [e(1111, [["h", "tools"]])], me: h).hasContent("tools"))
+        XCTAssertEqual(Actions.deleteGroup("tools").kind, 9008)
+        XCTAssertEqual(Actions.deleteGroup("tools").tags, [["h", "tools"]])
     }
 
     func testCharterIsNoChannel() {

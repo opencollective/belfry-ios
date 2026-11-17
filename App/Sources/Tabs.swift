@@ -131,25 +131,6 @@ private struct OptionalTabBar: ViewModifier {
     }
 }
 
-/// The belfry's mark and name at the top of Home, Calendar and Groups: it switches belfry
-/// (the accounts on this phone).
-struct BelfrySwitchButton: View {
-    @EnvironmentObject var model: AppModel
-    var body: some View {
-        Button { hideKeyboard(); model.showAccounts = true } label: {
-            HStack(spacing: 6) {
-                BelfryLogo(size: 24)
-                Text(model.config.name).font(.headline).lineLimit(1).foregroundStyle(.primary)
-                Image(systemName: "chevron.down").font(.caption.weight(.bold)).foregroundStyle(.secondary)
-            }
-            .fixedSize()
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(model.config.name): switch belfry or account")
-        .accessibilityIdentifier("belfry-switch")
-    }
-}
-
 /// The belfry's logo from its branding, else the Arms.
 struct BelfryLogo: View {
     @EnvironmentObject var model: AppModel
@@ -165,14 +146,16 @@ struct BelfryLogo: View {
     }
 }
 
-/// A place's large title screen with the belfry's name above it (Home, Calendar, Groups).
+/// A place's large title screen with ☰ top left (Calendar, Groups): the same Town drawer as Home
+/// (2026-11-17, for consistency with Home; it replaced the belfry's name with ⌄). Switching
+/// belfry or account is on the person row at the drawer's bottom.
 struct PlaceChrome: ViewModifier {
     let title: String
     func body(content: Content) -> some View {
         content
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.large)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { BelfrySwitchButton() } }
+            .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
     }
 }
 

@@ -58,11 +58,16 @@ shot 130-home home light
 shot 130b-home-dark home dark
 shot 131-home-drawer homedrawer light
 shot 131b-home-drawer-dark homedrawer dark
+shot 131c-calendar-drawer calendardrawer light
 shot 132-drawer-admin towndrawer light
 shot 132b-drawer-member member-towndrawer light
 shot 132c-drawer-member-dark member-towndrawer dark
 shot 133-settings-channels settingschannels light
 shot 133b-settings-channels-dark settingschannels dark
+shot 133c-channel-delete channelend light
+shot 133d-channel-delete-confirm channelendconfirm light
+shot 133e-channel-archive channelarchive light
+shot 133f-channel-delete-confirm-dark channelendconfirm dark
 shot 134-header feed light
 shot 134b-header-calm pullemptyclosed light
 shot 135-pulldown-admin pulldown light

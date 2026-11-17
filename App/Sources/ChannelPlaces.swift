@@ -73,7 +73,7 @@ struct ChannelPlaceView: View {
             switch place {
             case .pinned: PinnedSection(id: id, go: go)
             case .proposals: ProposalsSection(id: id)
-            case .todos: TodosTab(id: id)
+            case .todos: TodosTab(id: id, go: go)
             case .photos: PhotosSection(id: id)
             case .files: FilesTab(id: id)
             case .groups: GroupsSection(id: id)

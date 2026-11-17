@@ -2,7 +2,7 @@ import BelfryCore
 import SwiftUI
 
 // Create (the bar's ＋, board iOS-Home 3): one sheet, an icon list. Where = the channel on screen
-// (Town), else the Square; tap it to pick another channel. Each row opens its form in the same
+// (Town), else the Townsquare; tap it to pick another channel. Each row opens its form in the same
 // sheet (the forms are the composer's own); Message opens that channel with the keyboard up.
 // Inside a channel, the composer's own ＋ keeps photo, audio and announcement.
 
@@ -142,10 +142,10 @@ struct CreateMenuSheet: View {
         }
     }
 
-    /// "the Square" for the Square, else "#name".
+    /// "the Townsquare" for the Townsquare, else "#name".
     private func placeName(_ id: String) -> String {
         let n = model.group(id)?.name ?? id
-        return id == generalId && n == PlaceNames.defaults[generalId] ? "the Square" : "#" + n
+        return id == generalId && n == PlaceNames.defaults[generalId] ? "the Townsquare" : "#" + n
     }
 
     private func channels() -> [Channel] {

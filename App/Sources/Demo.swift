@@ -94,6 +94,8 @@ enum Demo {
         channel("garden-3f2a", "Garden", "Beds, seeds and the watering rota", admins: [ps["ben"]!.pubkey], members: all, at: now - 20 * day)
         channel("repair-cafe-91bc", "Repair café", "First Saturday of the month, bring what's broken", admins: [ps["dev"]!.pubkey], members: Array(all.prefix(4)), at: now - 10 * day)
         channel("kitchen-7d10", "Shared kitchen", "Who cooks, who cleans", admins: [ps["emma"]!.pubkey], members: all, at: now - 5 * day)
+        // 2026-11-17 (SPEC 19.35): a channel nobody wrote in yet, so Settings → Channels offers Delete
+        channel("tools-2b8e", "Tool library", "Borrow and lend tools", admins: [me], members: all, at: now - 2 * day)
         // the repair café's page is public (Public channels in the drawer); the admins' order
         evs.append(ev(relay, 30078, now - 10 * day, [["d", "belfry:web:repair-cafe-91bc"], ["h", "repair-cafe-91bc"]],
                       "{\"on\":true,\"slug\":\"repair-cafe\",\"visibility\":\"public\"}"))
@@ -267,7 +269,7 @@ enum Demo {
         msg(ps["chloe"]!, "garden-3f2a", now - 2 * day, "The basil did not survive the cold night 🥲")
         msg(ps["dev"]!, "repair-cafe-91bc", now - 3 * day, "Who can fix a **sewing machine**? Asking for Mrs. Dupont.")
         msg(ps["emma"]!, "kitchen-7d10", now - 6 * 3600, "Soup on Thursday, I need two helpers to chop.")
-        // 2026-11-16 (bottom bar): Assembly (#proposals under its default name), a group Sam is in
+        // 2026-11-16 (bottom bar): #proposals (under its default name: shown as is since 2026-11-17), a group Sam is in
         // with news, a to-do on Sam, and the charter (six agreements Sam wrote; the newest not
         // ticked by Sam yet: Home shows "1 new agreement to read")
         channel("proposals", "proposals", "Proposals and votes", admins: [ps["emma"]!.pubkey], members: all, at: now - 25 * day)
@@ -289,7 +291,7 @@ enum Demo {
             ("What's said here stays here", "Ask before sharing a message or photo outside."),
             ("Shared things come back", "Return tools within a week, clean and working."),
             ("Quiet hours after 22:00", "In the hall and the garden, every day."),
-            ("Big changes go to the Assembly", "Proposed and voted on, not just done."),
+            ("Big changes are proposed first", "Proposed and voted on, not just done."),
             ("Leave it better than you found it", "Tidy the hall and the kitchen after use."),
         ]
         for (i, r) in rules.enumerated() {
