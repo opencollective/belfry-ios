@@ -88,4 +88,27 @@ final class CategoriesTests: XCTestCase {
         // the flattened order still reads for older clients
         XCTAssertEqual(d.channelOrder(), ["general", "kitchen", "garden"])
     }
+
+    /// The line under the header only for attention (SPEC 19.13, iOS note of 2026-11-17).
+    func testAttentionLine() {
+        let me = String(repeating: "a", count: 64), other = String(repeating: "c", count: 64), relay = String(repeating: "d", count: 64)
+        var n = 0
+        func ev(_ pk: String, _ kind: Int, _ at: Int, _ tags: [Tag], _ content: String = "") -> NostrEvent {
+            n += 1
+            return NostrEvent(id: String(format: "%064x", 8000 + n), pubkey: pk, createdAt: at, kind: kind, tags: tags, content: content)
+        }
+        let base = [ev(relay, 39000, 100, [["d", "garden"], ["name", "garden"]]), ev(other, 9, 200, [["h", "garden"]], "hello")]
+        let calm = Derive(events: base, me: me)
+        XCTAssertNil(calm.attentionLine("garden", now: 1000), "normal times: no line")
+        XCTAssertEqual(calm.attentionLine("garden", now: 1000, topic: "seeds")?.icon, .topic)
+        let task = ev(other, 2100, 300, Actions.addTask("garden", title: "Water the beds").tags, "Water the beds")
+        let free = Derive(events: base + [task], me: me)
+        XCTAssertEqual(free.attentionLine("garden", now: 1000)?.icon, .todo)
+        XCTAssertEqual(free.attentionLine("garden", now: 1000)?.action, .todos)
+        let claimed = Derive(events: base + [task, ev(other, 2101, 400, Actions.taskAction("garden", taskId: task.id, action: "claim").tags)], me: me)
+        XCTAssertNil(claimed.attentionLine("garden", now: 1000), "someone else's to-do asks nothing of me")
+        let mine = Derive(events: base + [task, ev(me, 2101, 400, Actions.taskAction("garden", taskId: task.id, action: "claim").tags)], me: me)
+        XCTAssertEqual(mine.attentionLine("garden", now: 1000)?.bold, "On you")
+    }
 }
+

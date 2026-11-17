@@ -98,7 +98,9 @@ result card), checkincard (a ticket link opened), eventrole (a profile with "In 
 membersinvite; and since 2026-11-16 groupcards (the cards of a deleted and an archived group),
 groupdeleted, grouparchived, archivedlist; and since 2026-11-16 home, calendar, groups, groupsall,
 create, town, towndrawer, mytodos, charter, whoagreed, agreement, myprofile, addagent, meplace;
-`-guest home|calendar|drawer|apply` for a guest's places). In the demo Sam is an admin of the belfry (settings, roles, requests show), and
+`-guest home|calendar|drawer|apply` for a guest's places; and since 2026-11-17 homedrawer,
+settingschannels, chsettings, pinned, membersinvitech, pullemptyclosed, and `-member` (Sam is
+not a belfry admin; the screenshot script's `member-<screen>`)). In the demo Sam is an admin of the belfry (settings, roles, requests show), and
 the steward of today's Repair café (Dev hosts, Emma co-hosts; two ticket types; Sam holds a
 Volunteer ticket; Ana and Ben checked in; photos drawn on the device by `DemoPictures`). `-join` (no
 `-demo`) opens a demo guest link signed out (the loading screen, then guest mode). `-guest
@@ -186,9 +188,10 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   openGroup / messageAuthor` and `openChannel` (outside Town) push there. Home (`HomeView`),
   Calendar (`CalendarView`), Groups (`GroupsView`), Create (`CreateMenuSheet`, the forms open in
   the same sheet). Town = the old phone layout: the open channel with ☰ (unread town channels)
-  and the drawer under it (`DrawerContainer` + `TownDrawer`: the town's sections, Belfry settings,
-  you → Me pushed, ⇅ → accounts). Guests: Home · Calendar · Town. No own face in any header. The
-  belfry's name at the top of Home / Calendar / Groups opens the accounts switcher. iPad: the old
+  and the drawer under it (`DrawerContainer` + `TownDrawer`: Today, the town's places, the
+  categories, you → Me pushed, ⇅ → accounts). Home has the same ☰ and drawer (2026-11-17; a
+  drawer row other than Today switches to Town). Guests: Home · Calendar · Town. No own face in
+  any header. The belfry's name at the top of Calendar / Groups opens the accounts switcher. iPad: the old
   sidebar (`ChannelDrawer.sidebar`) in a split view, no bar.
 - Deleted and archived groups (SPEC 19.30, `Model/Archive.swift`, `ArchiveUI.swift`,
   `AppModel+Archive`): `Derive.groups()` = the listed ones (not archived, not deleted);
@@ -201,8 +204,8 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   must be hidden when `model.locked(id)`; `SyncEngine.setLocked` + `GroupLock` refuse it anyway.
   Every 9002 goes through `Actions.groupMeta` (keeps every setting and `archived`).
 - Every row of the drawer opens an open screen (☰ top left, the row highlighted), never a
-  sheet: channels, the Gates (members, requests on top), the Charter, Archived, Belfry
-  settings; you (the last row) push Me. Home's tiles push Messages, @Mentions, My to-dos. Sheets are for short tasks started from
+  sheet: Today (Home), channels, Members (requests on top), the Charter, Archived; the gear in
+  its header opens Belfry settings; you (the last row) push Me. Home's tiles push Messages, @Mentions, My to-dos. Sheets are for short tasks started from
   a screen (invite, a new event, editing a profile).
 - Layout that can freeze the main thread (the event-chat freeze, 2026-11-16, found with the
   watchdog `LoopWatch` + `sample` in the screenshot job): never write view state from
@@ -227,7 +230,7 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   height showed as an empty band, fixed 2026-11-15).
 - Names (SPEC 19.31): `WorldContext.placeNames` (true in the app) shows general / events /
   proposals / website as Square / Fairground / Assembly / Scriptorium while their own name is the
-  default; members+requests = "Gates"; roles Steward (admin) · Member · Guest; the check-in role
+  default; members+requests = "Members" (was "Gates" until 2026-11-17); roles Steward (admin) · Member · Guest; the check-in role
   `steward` reads "Door". Display only: never write these names back.
 - The charter (SPEC 19.32, `Model/Charter.swift`, `CharterUI.swift`, `AppModel+Charter`): group
   `charter`, agreements = 2100 with `each`, ticks per author; only belfry admins' rules count.
@@ -242,12 +245,22 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   `welcome`, `welcomecharter`, `welcomeprofile`, `-guest applied`.
 - People lists of a channel / group / event: `PersonRow` (face, name, role there as secondary
   text), never a label icon; the profile opened from them gets the group (`ProfileKey.group`).
-- The channel line pulls down FROM THE TOP (`PullDownPanel`: one surface with the navigation
-  bar, plain system rows `PDRow`: description, pinned, coming up, to decide, Todos "n of m
-  done", groups, then Invite someone / Members / Channel info; short and full levels, handle
-  drag, tap outside) as on the web, not a bottom sheet. The channel header's right side is
-  search only (Invite lives in the pull-down). Channel info stays a sheet (tabs About,
-  Members, Todos, Files, Log, Settings).
+- The channel header (2026-11-17): the name, then the subtitle lock/globe · "N active" · photos ·
+  groups (`ChannelSubtitle`); the line under it (`ChannelLineBar`) only while
+  `Derive.attentionLine` returns one. The pull-down comes FROM THE TOP (`PullDownPanel`: one
+  surface with the navigation bar; handle drag, tap outside): description, the address, the
+  pinned message not hidden, then `PDRow`s that PUSH the channel's screens (`ChannelPlace` →
+  `ChannelPlaceView` in `ChannelPlaces.swift`, via `navigationDestination(item:)` on ChannelView):
+  Pinned, Events, To decide, To-dos, Photos, Files, Groups, Topics, Members (Invite inside),
+  Notifications, Log, Settings (canAdmin). Never a sheet, never a list unfolded in place. Channel
+  info (the tabbed sheet) is gone; its tab views (`MembersTab`, `TodosTab`, `FilesTab`,
+  `LogTab`, `SettingsTab`, `FollowBell`) are the screens' contents. The header's right side is
+  search only.
+- Channel categories (SPEC 19.34, `Model/Categories.swift`): the drawer's categories are one
+  `List` section with header rows (so `onMove` crosses categories; belfry admins only, header
+  rows `moveDisabled`); every change publishes the order event at once
+  (`AppModel.setChannelLayout`). Belfry settings → Channels (`ChannelsSettings`). Demo: Sam's
+  (and, for `-member`, Ana's) order event puts the repair café in "Making & mending".
 - Look: neutral like the web's Belfry theme (ink on white / near-white on black) unless
   belfry.json `branding.primary` is set; then that colour is the tint (`Theme`, `Color.brand`,
   `Theme.onAccent` for text on it, `Theme.toggle` for switches: system green when neutral).
@@ -298,3 +311,13 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
 - Nothing has run on a device or against a real belfry (see PARITY.md). The UI has no XCTest
   (only the core); screenshots are the check.
 - Day and time labels in the channel line are fixed English / 24 h (as Android).
+
+## Notes
+
+- 2026-11-17 round 3 (branch ios-r3, the owner's TestFlight remarks): Home = the date + ☰ + one
+  layout; drawer Today / Members / categories with ＋ / gear / steward drag; Settings → Channels;
+  categories on the wire (SPEC 19.34, vectors/categories.json: copy to Android, the web
+  implements the same format); the channel header's subtitle, the attention-only line, the
+  pull-down as a menu of pushed screens, Channel info removed, drop box link in the ＋ menu.
+  UI tests `testDrawerDrag` (long press + drag, asserts the move) and `testHomeDrawer`.
+

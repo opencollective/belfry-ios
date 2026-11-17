@@ -776,6 +776,27 @@ hide"); **Coming up** (3 events, then "All N events"); **To decide** (open propo
 to-dos"); **Pods** (shape, name, members); **Topics**; the people line leading to members,
 files and settings; the first line of the description.
 
+**(iOS, 2026-11-17: the owner's header.)** The iPhone app no longer shows the line in normal
+times. Under the channel's name a short subtitle: a lock (members only) or a globe (public),
+"**N active**" (the people of section 11), then a photo icon + the number of photos and a group
+shape + the number of groups (sub-groups of 19.8), each only above zero; no other words. The
+line comes back only while something asks for my attention, first match (Derive.attentionLine):
+1 (a topic filter), 2 only while the vote is open and mine is not cast, 3, 4, 5, 6, then **to-dos
+on me** ("On you · <title>" / "N on you · …") and **to-dos nobody took** ("N to-dos nobody
+took · <title>"), both opening the to-dos; never 7–10 and no counts on it. The pull-down is: the
+description; the channel's address (19.33, a tray when it is a shared inbox); "Pod in …"; a
+proposal's own state; the people asking to join; the pinned message I haven't hidden (its line,
+author and day, "Hide"); then a menu, each row with an icon, a title, a count and a chevron,
+pushing its own screen (never a sheet, never a list unfolded in place): **Pinned**, **Events**,
+**To decide**, **To-dos** (count = open ones), **Photos**, **Files** (other files + drop box
+links), **Groups**, **Topics**, **Members** (always; the screen has Invite at its top and top
+right, the people active in the last 30 days, Join / Leave the group), **Notifications** (members
+who can follow: the e-mail of its announcements and the push level), **Log**, **Settings** (those
+who may edit the channel: name, description, who can join a group, the shared inbox, archive).
+Rows other than Members, Notifications, Log and Settings show only with at least one item.
+Channel info (the tabbed sheet) and the pull-down's "Invite someone" are gone. A drop box link
+is made from the composer's ＋ menu ("Drop box link") or the Files screen.
+
 ### 19.14 Channel references (`nostr:naddr1…`)
 
 (Web `belfry-chat` 4d5682d: `model.ts` channelRef / channelOfNaddr / plainRefs / NADDR,
@@ -1687,16 +1708,19 @@ Layout first (each client draws it its own way), then the parts other clients mu
   action buttons for events: the state in words ("you host · check-in today", "going",
   "invited · not answered yet"). Chats, events and profiles push over the places; the bar shows
   only at a place's root. Guests: Home · Calendar · Town.
-- **The drawer's sections** (by group id): The town = `general`, the Gates (members and their
-  requests), the Charter (19.32: shown when the `charter` group exists, or to stewards); Building
-  together = `proposals` and `website`; Community life = every other channel. The stewards'
-  order (`belfry:channel-order`) holds inside each section. Pods are not in the drawer (their own
-  place); the `charter` group is never listed as a channel.
+- **The drawer's sections** (by group id): The town = `general`, Members (the members and their
+  requests; called "the Gates" until 2026-11-17), the Charter (19.32: shown when the `charter`
+  group exists, or to stewards); then the categories of 19.34 (without them: Building together =
+  `proposals` and `website`; Community life = every other channel). The stewards' order
+  (`belfry:channel-order`) holds inside each section. Pods are not in the drawer (their own
+  place); the `charter` group is never listed as a channel. (iOS, 2026-11-17) Above The town a
+  row **Today** opens Home; Home has the same ☰ and drawer. The drawer's header has a gear for
+  Belfry settings (stewards); each category's header a ＋ for a new channel in it.
 - **On-brand names** (display only; ids, mail addresses, links and wire values never change):
   `general` → "Square", `events` → "Fairground", `proposals` → "Assembly", `website` →
   "Scriptorium", only while the group's own name is still its default (empty, its id, or `#` +
   id, any case: a renamed channel keeps its name). The members' directory with its requests is
-  called "Gates". (iOS) `WorldContext.placeNames` = true in the app, false in the shared vectors;
+  called "Members" (it was "Gates" until 2026-11-17). (iOS) `WorldContext.placeNames` = true in the app, false in the shared vectors;
   `PlaceNames` in `Model/Charter.swift`.
 - **Three roles** as people read them: Steward (the built-in `admin` role, the stewards group) ·
   Member · Guest. A belfry's `GET /roles` label "Admin" for the `admin` role is shown as
@@ -1807,3 +1831,46 @@ Nothing new on the wire; each client joins a shared inbox's e-mails into threads
 - (iOS) `Model/MailInbox.swift` (`mailThreads`, `mailLocal`), `MailUI.swift`, core-tested in
   `MailInboxTests` (the vector: joining by references, by subject, the answer, the team reply,
   labels on a later e-mail, the feed; the address rules).
+
+### 19.34 Channel categories (iOS, 2026-11-17; `vectors/categories.json`, reference `tools/vectors/categories.py`)
+
+The stewards sort the town's channels into categories. Same event as the channel order: kind
+30078, `d` = `belfry:channel-order`, on the community relay, by a belfry admin; the latest by a
+belfry admin wins (anyone else's is ignored). Its content gains `categories`:
+
+    {"order": ["general", "garden-3f2a", "kitchen-7d10", "repair-cafe-91bc", "proposals"],
+     "categories": [{"id": "life", "channels": ["garden-3f2a", "kitchen-7d10"]},
+                    {"id": "making-4b1c", "name": "Making & mending", "channels": ["repair-cafe-91bc"]},
+                    {"id": "building", "channels": ["proposals"]}]}
+
+- **Built-in ids**: `life` ("Community life", the default) and `building` ("Building together",
+  default members `proposals`, `website`). The town (`general`, Members, the Charter) is never a
+  category; an entry with id `town` is ignored. A custom id is a short slug of its name and 4
+  random characters ("making-4b1c"). A missing or empty `name` on a built-in means its default
+  title; on a custom one, its id.
+- **Reading** (the town's listed channels, `general` left out, in their natural order sorted by
+  `order`): without `categories` exactly as before (life = everything but proposals and website,
+  then building = those two). With it: each entry in its order; its channels are the ids it
+  names that are listed now, a channel named twice counting in the first, unknown ids ignored;
+  entries that aren't objects, have no string id, or repeat an id are skipped (100 entries,
+  1000 ids each at most). A built-in left out still exists: `building` (appended last) with its
+  default members not named elsewhere, `life` (inserted first). Every channel no category names
+  goes to the end of `life`, in `order`'s order.
+- **Showing**: `building` only when it has channels; every other category to belfry admins
+  always (empty, with its ＋), to everyone else only with a channel.
+- **Writing** (a belfry admin): `order` = `general` then every category's channels, flattened (so
+  older clients, which read only `order`, keep the same order); each category with `id`, `name`
+  (left out on a built-in whose name is its default) and `channels`; an empty `building` is left
+  out (it hides anyway; its default members are named in `life` when they were moved there, so
+  they don't fall back). Ids the writer can't see (an archived channel) stay at the end of their
+  category from the previous event.
+- **Editing**: moving a channel = a drag in the flat list of headers and channels (a channel
+  belongs to the header above it; above the first header: the first category); deleting a
+  custom category moves its channels to the end of `life` (built-ins can't be deleted); a
+  channel made with a category's ＋ by a belfry admin is followed by the order event putting it
+  at the end of that category (a member's new channel lands in `life` by the reading rule).
+- (iOS) `Model/Categories.swift` (`ChannelLayout.parse`, `Categories.arrange / shown / encode /
+  rebuild / put / remove / newId`, `Derive.channelCategories`, `Actions.channelLayout`), core-tested
+  in `CategoriesTests`. The drawer's channel rows are one `List` section with the headers as
+  rows (`onMove` only for belfry admins); Belfry settings → Channels edits the categories.
+
