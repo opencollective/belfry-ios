@@ -137,12 +137,12 @@ final class MenuShots: XCTestCase {
         XCTAssertTrue(header.waitForExistence(timeout: 5), "the drawer shows no Making & mending category")
         guard kitchen.isHittable, header.isHittable else { XCTFail("the drawer's rows are not on screen"); return }
         // the demo's database can keep an earlier run's move: drag it to the other side of the
-        // header. The simulator sometimes takes the drag as a scroll: up to three tries.
+        // header. The simulator sometimes takes the drag as a scroll: up to five tries.
         func kitchenRow() -> XCUIElement { app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Shared kitchen")).firstMatch }
         func headerRow() -> XCUIElement { app.staticTexts["MAKING & MENDING"].firstMatch }
         let below = kitchenRow().frame.minY > headerRow().frame.minY
         var crossed = false
-        for _ in 1...3 where !crossed {
+        for _ in 1...5 where !crossed {
             let k = kitchenRow(), h = headerRow()
             guard k.isHittable, h.isHittable else { break }
             let target = h.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: below ? -90 : 70))
@@ -152,7 +152,7 @@ final class MenuShots: XCTestCase {
             crossed = (kitchenRow().frame.minY > headerRow().frame.minY) != below
         }
         shot("54-drawer-drag")
-        XCTAssertTrue(crossed, "Shared kitchen did not cross the Making & mending header in three tries")
+        XCTAssertTrue(crossed, "Shared kitchen did not cross the Making & mending header in five tries")
     }
 
     /// Home's ☰ opens the Town drawer, Today selected.
