@@ -295,7 +295,8 @@ struct ChannelView: View {
         }
     }
 
-    func openPull() { hideKeyboard(); withAnimation(.snappy(duration: 0.3)) { pull = .short } }
+    /// The pull-down opens as tall as its menu (up to the screen): a menu cut at half hid its rows.
+    func openPull() { hideKeyboard(); withAnimation(.snappy(duration: 0.3)) { pull = .full } }
     func closePull() { withAnimation(.snappy(duration: 0.25)) { pull = .closed } }
     func togglePull() { if pull == .closed { openPull() } else { closePull() } }
 

@@ -236,14 +236,6 @@ struct ChannelMembersScreen: View {
         }
         .navigationTitle("Members")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if mayInvite {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { hideKeyboard(); invite = true } label: { Image(systemName: "person.badge.plus") }
-                        .accessibilityLabel("Invite someone")
-                }
-            }
-        }
         .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group) }
         .sheet(isPresented: $invite) { InviteSheet(id: id) }
         .task {
