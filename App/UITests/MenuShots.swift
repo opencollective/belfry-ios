@@ -136,15 +136,17 @@ final class MenuShots: XCTestCase {
         let header = app.staticTexts["MAKING & MENDING"].firstMatch
         XCTAssertTrue(header.waitForExistence(timeout: 5), "the drawer shows no Making & mending category")
         guard kitchen.isHittable, header.isHittable else { XCTFail("the drawer's rows are not on screen"); return }
-        let before = kitchen.frame.minY
-        let target = header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: 70))
+        // the demo's database can keep an earlier run's move: drag it to the other side of the header
+        let below = kitchen.frame.minY > header.frame.minY
+        let target = header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: below ? -90 : 70))
         kitchen.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .press(forDuration: 1.2, thenDragTo: target, withVelocity: .slow, thenHoldForDuration: 0.6)
         sleep(2)
         shot("54-drawer-drag")
         let moved = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Shared kitchen")).firstMatch
         XCTAssertTrue(moved.exists)
-        XCTAssertGreaterThan(moved.frame.minY, header.frame.minY, "Shared kitchen did not move under Making & mending (it was at \(before))")
+        let nowBelow = moved.frame.minY > app.staticTexts["MAKING & MENDING"].firstMatch.frame.minY
+        XCTAssertNotEqual(nowBelow, below, "Shared kitchen did not cross the Making & mending header")
     }
 
     /// Home's ☰ opens the Town drawer, Today selected.
