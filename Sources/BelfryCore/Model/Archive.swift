@@ -67,41 +67,52 @@ public extension Derive {
         return name.isEmpty ? nil : name
     }
 
-    /// The ids to ask the groups relay about (does it still have them?): the channels and groups
-    /// this device knows, and the groups named by cards it knows nothing about. Never one I am
-    /// still creating.
+    /// Can a group be deleted by the relay's "nothing" at all (web `archivable`): channels and
+    /// groups; never #general, events (ev-, ws-) or proposals (prop-), which have their own cancel /
+    /// status and are deleted only by a 9008.
+    static func deletableByAbsence(_ id: String) -> Bool {
+        let t = Group.typeOf(id)
+        return id != generalId && (t == .channel || t == .pod)
+    }
+
+    /// This device holds the group's own metadata (9007 / 9002 / 39000, my queued or just-sent
+    /// creation events included): it is there, whatever an earlier answer said (web `g.known`).
+    func knowsMeta(_ id: String) -> Bool { groupIndex.newestMeta[id] != nil }
+
+    /// The ids to ask the groups relay about (web groupstate.ts): channels and groups this
+    /// device has nothing of their own about, named by cards, by messages in them, or marked
+    /// absent before (asked again: a relay that lost and found its data). Never #general, an
+    /// event, a proposal, nor one this device knows the metadata of (my own creation included).
     func presenceCandidates() -> [String] {
         var out = [String]()
         var seen: Set<String> = [generalId]
-        for g in groupIndex.all where (g.type == .channel || g.type == .pod) && !g.pending && !seen.contains(g.id) {
-            seen.insert(g.id)
-            out.append(g.id)
-        }
-        // ones already said absent are asked again (a relay that lost and found its data)
-        let creating = Set(groupIndex.all.filter(\.pending).map(\.id))
-        for id in ctx.groupsAbsent.keys.sorted() where !seen.contains(id) && !creating.contains(id) {
-            let t = Group.typeOf(id)
-            guard t == .channel || t == .pod else { continue }
+        func add(_ id: String) {
+            guard !seen.contains(id), Derive.deletableByAbsence(id), !knowsMeta(id) else { return }
             seen.insert(id)
             out.append(id)
         }
-        for e in events where e.kind == 9 {
-            guard let p = Derive.podOf(e), !seen.contains(p), !isPending(e.id) else { continue }
-            seen.insert(p)
-            out.append(p)
+        for id in ctx.groupsAbsent.keys.sorted() { add(id) }
+        for e in events where e.kind == 9 && !isPending(e.id) {
+            if let p = Derive.podOf(e) { add(p) }
         }
+        for g in groupIndex.all { add(g.id) }
         return out
     }
 
     /// What `groupsAbsent` becomes after the relay answered a question about ASKED with ANSWER
-    /// (its kind 39000 events). Nil when the answer can't be trusted: it must name #general,
-    /// which is always asked along and always there.
-    func presenceAfter(asked: [String], answer: [NostrEvent], was: [String: Int]? = nil) -> [String: Int]? {
-        let there = Set(answer.filter { $0.kind == 39000 }.compactMap { $0.tag("d") })
-        guard there.contains(generalId) else { return nil }
+    /// (the 39000s by `d`, the 9007 / 9002 / 9008s by `h`, up to EOSE). Nil when it did not answer
+    /// to EOSE: still unknown, nothing changes. An id with any event in the answer is there (its
+    /// events go into the log); one with none is absent since NOW.
+    func presenceAfter(asked: [String], answer: [NostrEvent]?, was: [String: Int]? = nil, now: Int = .now) -> [String: Int]? {
+        guard let answer else { return nil }
+        var there = Set<String>()
+        for e in answer {
+            if e.kind == 39000, let d = e.tag("d") { there.insert(d) }
+            if [9007, 9002, 9008].contains(e.kind), let h = e.tag("h") { there.insert(h) }
+        }
         var out = was ?? ctx.groupsAbsent
-        for id in asked where id != generalId {
-            if there.contains(id) { out[id] = nil } else { out[id] = groupIndex.newestMeta[id] ?? 0 }
+        for id in asked where Derive.deletableByAbsence(id) {
+            if there.contains(id) { out[id] = nil } else { out[id] = now }
         }
         return out
     }
@@ -109,14 +120,30 @@ public extension Derive {
 
 public enum GroupPresence {
     public static let chunk = 100
+    /// A group marked absent is asked again after 5 minutes; an unknown one after 10 seconds.
+    public static let againAbsent = 300
+    public static let againUnknown = 10
 
-    /// One filter per question: #general (the proof the relay answered) and up to 100 ids.
+    /// The questions: up to 100 ids each.
     public static func questions(_ ids: [String]) -> [[String]] {
         let list = ids.filter { $0 != generalId }
-        return stride(from: 0, to: list.count, by: chunk).map { [generalId] + Array(list[$0..<min($0 + chunk, list.count)]) }
+        return stride(from: 0, to: list.count, by: chunk).map { Array(list[$0..<min($0 + chunk, list.count)]) }
     }
 
-    public static func filter(_ ids: [String]) -> [String: Any] { ["kinds": [39000], "#d": ids] }
+    /// One question (web checkGroup): the groups' 39000 and their own 9007 / 9002 / 9008.
+    public static func filters(_ ids: [String]) -> [[String: Any]] {
+        [["kinds": [39000], "#d": ids], ["kinds": [9007, 9002, 9008], "#h": ids]]
+    }
+
+    /// The ids of ASKED to put to the relay now: not while my outbox still holds events for the
+    /// group (OUTBOX = their `h`), not asked a moment ago (LAST = when each was asked).
+    public static func due(_ asked: [String], outbox: Set<String>, last: [String: Int], absent: [String: Int], now: Int) -> [String] {
+        asked.filter { id in
+            if outbox.contains(id) { return false }
+            guard let at = last[id] else { return true }
+            return now - at >= (absent[id] != nil ? againAbsent : againUnknown)
+        }
+    }
 }
 
 /// The last check before anything is queued for a group nothing is written in.

@@ -1692,6 +1692,20 @@ groups (ids `pod-…`). Events and proposals keep their own cancel / status mech
   deleted; a stale copy; coming back; one being created; archived by the latest 9002, unarchive,
   `general`; the 9002 keeps every setting; the outbox lock; the card's name; the questions).
 
+**Revised 2026-11-17 (the web's groupstate.ts; a just-made proposal showed "This group has been
+deleted" on the iPhone):** a group this device holds its own metadata of (9007 / 9002 / 39000,
+including my queued or just-sent creation events) is there, whatever an earlier answer said; it
+is never asked about. Only channels and groups can be deleted by absence: #general, events
+(`ev-`, `ws-`) and proposals (`prop-`) only by a 9008 not older than their latest 9007. The
+question per group is `[{"kinds":[39000],"#d":[ids]}, {"kinds":[9007,9002,9008],"#h":[ids]}]`
+and counts only when answered to EOSE: events found go into the log and clear the mark; nothing
+= absent; no EOSE (timeout, CLOSED) = unknown, which shows the normal screen, never the deleted
+one. Never asked while the outbox holds events of that group; an unknown one at most every 10 s,
+one marked absent again after 5 min. (iOS) `Derive.deletableByAbsence / knowsMeta /
+presenceCandidates / presenceAfter`, `GroupPresence.filters / due`, `Relay.queryComplete`; the
+app's snapshot follows the outbox at once (`SyncEngine.outboxVersion`), so a screen opened right
+after my own action sees it.
+
 ### 19.31 Five places, on-brand names, three roles (iOS, 2026-11-16; the owner's canvas "One belfry, five places")
 
 Layout first (each client draws it its own way), then the parts other clients must agree on.

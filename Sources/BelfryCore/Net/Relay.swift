@@ -224,7 +224,7 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
         case "EOSE":
             guard arr.count >= 2, let sub = arr[1] as? String else { return }
             lock.lock(); let q = queries[sub]; lock.unlock()
-            if let q { q.finish() } else { onEOSE?(sub) }
+            if let q { q.finish(eose: true) } else { onEOSE?(sub) }
         case "OK":
             guard arr.count >= 3, let id = arr[1] as? String else { return }
             let ok = (arr[2] as? Bool) ?? ((arr[2] as? NSNumber)?.boolValue ?? false)
@@ -272,9 +272,20 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
 
     /// One-off query up to EOSE (or the timeout).
     public func query(_ filters: [[String: Any]], timeout: TimeInterval = 8) async -> [NostrEvent] {
+        await queryOutcome(filters, timeout: timeout).events
+    }
+
+    /// The events up to EOSE, or nil when the relay did not answer to EOSE in time (a timeout, a
+    /// CLOSED, no connection): "nothing" counts only with an EOSE.
+    public func queryComplete(_ filters: [[String: Any]], timeout: TimeInterval = 8) async -> [NostrEvent]? {
+        let r = await queryOutcome(filters, timeout: timeout)
+        return r.eose ? r.events : nil
+    }
+
+    func queryOutcome(_ filters: [[String: Any]], timeout: TimeInterval) async -> (events: [NostrEvent], eose: Bool) {
         let id = "q" + Crypto.random(4).hex
         let box = QueryBox()
-        return await withCheckedContinuation { (c: CheckedContinuation<[NostrEvent], Never>) in
+        return await withCheckedContinuation { (c: CheckedContinuation<(events: [NostrEvent], eose: Bool), Never>) in
             box.cont = c
             box.onFinish = { [weak self] in
                 guard let self else { return }
@@ -292,17 +303,17 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
 final class QueryBox: @unchecked Sendable {
     private let lock = NSLock()
     private var events = [NostrEvent]()
-    var cont: CheckedContinuation<[NostrEvent], Never>?
+    var cont: CheckedContinuation<(events: [NostrEvent], eose: Bool), Never>?
     var onFinish: (() -> Void)?
     func add(_ e: NostrEvent) { lock.lock(); events.append(e); lock.unlock() }
-    func finish() {
+    func finish(eose: Bool = false) {
         lock.lock()
         let c = cont
         cont = nil
         let list = events
         let f = onFinish
         lock.unlock()
-        if let c { f?(); c.resume(returning: list) }
+        if let c { f?(); c.resume(returning: (list, eose)) }
     }
 }
 

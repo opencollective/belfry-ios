@@ -339,3 +339,9 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   `HttpCall` signed at send time, `SyncEngine.transport` for tests; every 9002 keeps the relay's
   unknown 39000 tags, `Group.metaExtra`). belfry.json `nostr.pubkey` / `groups_key.pubkey` →
   `BelfryConfig.belfryKey / groupsKeyHex`. Screens `website`, `settingsfailed`, `settingsfailedalert`.
+  Also round 5: deleted by absence follows the web (SPEC 19.30 revised): a group with its own
+  metadata here is live and never asked; prop-/ev-/ws- never by absence; the question is answered
+  to EOSE or it is unknown. Cause of the false "deleted" proposal: Create opened the new channel
+  before the model's debounced bump, so the stale snapshot had no group, `lookFor` asked the relay
+  before the 9007 left the outbox, the "nothing" was stored, and the relay's 39000 of the same
+  second did not clear it (`<=`). The snapshot now follows `SyncEngine.outboxVersion` at once.

@@ -54,45 +54,73 @@ final class ArchiveTests: XCTestCase {
         XCTAssertFalse(before.isDeleted(pod))
         XCTAssertEqual(before.presenceCandidates(), [pod])
 
-        // an answer without #general proves nothing (a timeout, a relay that refused)
-        XCTAssertNil(before.presenceAfter(asked: [pod], answer: []))
-        // the relay answered: it has #general and no such group
-        let absent = before.presenceAfter(asked: [pod], answer: [meta("general", "general")])
-        XCTAssertEqual(absent, [pod: 0])
+        // no answer to EOSE (a timeout, a CLOSED): still unknown, nothing changes
+        XCTAssertNil(before.presenceAfter(asked: [pod], answer: nil))
+        // answered to EOSE with nothing
+        let absent = before.presenceAfter(asked: [pod], answer: [], now: 1000)
+        XCTAssertEqual(absent, [pod: 1000])
         let after = world(events, absent: absent ?? [:])
         XCTAssertEqual(after.groupState(pod), .deleted)
         XCTAssertEqual(after.groupState("general"), .open)
         // a group never asked about stays unknown
         XCTAssertEqual(after.groupState("pod-other-0000"), .unknown)
+        // asked again while marked; an answer with its 9007 clears the mark
+        XCTAssertEqual(after.presenceCandidates(), [pod])
+        XCTAssertEqual(after.presenceAfter(asked: [pod], answer: [ev(ANA, 9007, 90, [["h", pod]])], now: 2000), [:])
     }
 
-    func testAbsenceWithAStaleCopyAndComingBack() {
-        // this device still holds the group's metadata; the relay no longer has the group
+    func testAKnownGroupIsLiveWhateverTheMark() {
+        // this device holds the group's metadata: it is there (web g.known), never asked
         let events = [meta("general", "general"), meta("garden", "garden", 100), ev(ANA, 9007, 90, [["h", "garden"]]), ev(ANA, 9, 150, [["h", "garden"]], "hi")]
-        let d = world(events)
+        let d = world(events, absent: ["garden": 5000])
         XCTAssertEqual(d.groupState("garden"), .open)
-        XCTAssertEqual(d.presenceCandidates(), ["garden"])
-        let absent = d.presenceAfter(asked: ["garden"], answer: [meta("general", "general")]) ?? [:]
-        XCTAssertEqual(absent, ["garden": 100])
-        let gone = world(events, absent: absent)
-        XCTAssertEqual(gone.groupState("garden"), .deleted)
-        XCTAssertFalse(gone.channelSections().members.contains { $0.id == "garden" })
-        // something newer about it arrives (made again, or the answer was wrong): it is there
-        let back = world(events + [meta("garden", "garden", 500)], absent: absent)
-        XCTAssertEqual(back.groupState("garden"), .open)
-        // and the next answer that names it clears the mark; it is asked again while marked
-        XCTAssertEqual(gone.presenceCandidates(), ["garden"])
-        XCTAssertEqual(gone.presenceAfter(asked: ["garden"], answer: [meta("general", "general"), meta("garden", "garden")]), [:])
+        XCTAssertFalse(d.presenceCandidates().contains("garden"))
+        // a stored absent mark is cleared in effect by a later 39000 of the group
+        let marked = world([meta("general", "general"), card("pod-quay-1a2b", "⬡ New pod: Quay")], absent: ["pod-quay-1a2b": 5000])
+        XCTAssertEqual(marked.groupState("pod-quay-1a2b"), .deleted)
+        let back = world([meta("general", "general"), card("pod-quay-1a2b", "⬡ New pod: Quay"), meta("pod-quay-1a2b", "Quay", 6000)], absent: ["pod-quay-1a2b": 5000])
+        XCTAssertEqual(back.groupState("pod-quay-1a2b"), .open)
         // #general is never deleted by absence
         XCTAssertEqual(world(events, absent: ["general": 999]).groupState("general"), .open)
+        // only a 9008 not older than the latest 9007 deletes a known group
+        XCTAssertEqual(world(events + [ev(ANA, 9008, 200, [["h", "garden"]])]).groupState("garden"), .deleted)
+        XCTAssertEqual(world(events + [ev(ANA, 9008, 200, [["h", "garden"]]), ev(ANA, 9007, 300, [["h", "garden"]])]).groupState("garden"), .open)
     }
 
     func testAGroupIAmCreatingIsNeverAbsent() {
-        let made = ev(ME, 9007, 100, [["h", pod]])
-        let events = [meta("general", "general"), made, ev(ME, 9002, 100, [["h", pod], ["name", "Canal"], ["about", ""]])]
-        let d = world(events, absent: [pod: 100], pending: [made.id])
-        XCTAssertEqual(d.groupState(pod), .open)
-        XCTAssertFalse(d.presenceCandidates().contains(pod))
+        // created on this device: queued, then sent; an "absent" answer that raced the creation
+        // (the question went out before the 9007) never makes it deleted
+        for (id, kind) in [(pod, "pod"), ("prop-let-s-buy-stickers-8f58b2", "proposal"), ("book-club-1a2b", "channel")] {
+            let made = ev(ME, 9007, 100, [["h", id]])
+            let events = [meta("general", "general"), made, ev(ME, 9002, 100, [["h", id], ["name", "New"], ["about", ""]])]
+            let queued = world(events, absent: [id: 100], pending: [made.id])
+            XCTAssertEqual(queued.groupState(id), .open, kind)
+            XCTAssertFalse(queued.presenceCandidates().contains(id), kind)
+            let sent = world(events + [ev(RELAY, 39000, 100, [["d", id], ["name", "New"]])], absent: [id: 100])
+            XCTAssertEqual(sent.groupState(id), .open, kind)
+            XCTAssertFalse(sent.presenceCandidates().contains(id), kind)
+        }
+    }
+
+    func testEventsAndProposalsAreNeverDeletedByAbsence() {
+        for id in ["prop-let-s-buy-stickers-8f58b2", "ev-20261120-ab12", "ws-20261120-cd34"] {
+            let events = [meta("general", "general"), ev(ANA, 9, 100, [["h", "proposals"], ["proposal", id]], "📝 Proposal: Stickers")]
+            XCTAssertNil(world(events).presenceAfter(asked: [id], answer: [])?[id], id)
+            XCTAssertNotEqual(world(events, absent: [id: 999]).groupState(id), .deleted, id)
+            XCTAssertFalse(world(events, absent: [id: 999]).presenceCandidates().contains(id), id)
+            XCTAssertFalse(Derive.deletableByAbsence(id))
+            // a 9008 still deletes one
+            XCTAssertEqual(world(events + [ev(ANA, 9007, 90, [["h", id]]), ev(ANA, 9008, 200, [["h", id]])]).groupState(id), .deleted, id)
+        }
+    }
+
+    func testNotAskedWhileQueuedOrJustAsked() {
+        let ids = ["pod-a", "pod-b", "pod-c"]
+        XCTAssertEqual(GroupPresence.due(ids, outbox: ["pod-a"], last: ["pod-b": 995], absent: [:], now: 1000), ["pod-c"])
+        XCTAssertEqual(GroupPresence.due(["pod-b"], outbox: [], last: ["pod-b": 980], absent: [:], now: 1000), ["pod-b"])
+        // marked absent: again after 5 minutes
+        XCTAssertEqual(GroupPresence.due(["pod-b"], outbox: [], last: ["pod-b": 900], absent: ["pod-b": 900], now: 1000), [])
+        XCTAssertEqual(GroupPresence.due(["pod-b"], outbox: [], last: ["pod-b": 600], absent: ["pod-b": 600], now: 1000), ["pod-b"])
     }
 
     func testArchivedByTheLatest9002AndUnarchive() {
@@ -170,9 +198,10 @@ final class ArchiveTests: XCTestCase {
         let ids = (0..<150).map { "pod-\($0)" } + ["general"]
         let q = GroupPresence.questions(ids)
         XCTAssertEqual(q.count, 2)
-        XCTAssertEqual(q[0].count, 101)
-        XCTAssertEqual(q[0].first, "general")
-        XCTAssertEqual(q[1].count, 51)
+        XCTAssertEqual(q[0].count, 100)
+        XCTAssertEqual(q[1].count, 50)
+        XCTAssertFalse(q.joined().contains("general"))
+        XCTAssertEqual(GroupPresence.filters(["pod-1"]).count, 2)
         XCTAssertTrue(GroupPresence.questions([]).isEmpty)
     }
 }

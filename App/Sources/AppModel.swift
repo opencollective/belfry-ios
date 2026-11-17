@@ -68,6 +68,8 @@ final class AppModel: ObservableObject {
     @Published var openGroup: String?
     /// Groups the relay said it does not have (SPEC 19.30; stored as `groups-absent`).
     @Published var groupsAbsent = [String: Int]()
+    /// When each group was last put to the relay (SPEC 19.30; memory only).
+    var presenceAsked = [String: Int]()
     var presenceAt: Date?
     /// The drawer's search field (all channels).
     @Published var drawerQuery = ""
@@ -190,7 +192,10 @@ final class AppModel: ObservableObject {
     private(set) var engine: SyncEngine?
     private(set) var dms: DirectMessages?
     private(set) var session: StoredSession?
-    private var cachedDerive: (Int, Derive)?
+    /// (model version, the engine's outbox version, snapshot): the outbox's too, so a screen opened
+    /// right after my own action (a group I just made, a saved setting) sees it in the same frame
+    /// (the model's own bump is debounced; incoming events only bump the model).
+    private var cachedDerive: (Int, Int, Derive)?
     private var cachedGroups: (Int, [BelfryCore.Group])?
     private var cachedProfiles: (Int, [String: Profile])?
     private var seenSentHere = [String: Int]()
@@ -240,7 +245,8 @@ final class AppModel: ObservableObject {
     var isDemo: Bool { session?.demo ?? false }
 
     var derive: Derive {
-        if let c = cachedDerive, c.0 == version { return c.1 }
+        let ev = engine?.outboxVersion ?? -1
+        if let c = cachedDerive, c.0 == version, c.1 == ev { return c.2 }
         let pendingIds = Set((engine?.outboxItems() ?? []).filter { $0.signed == nil }.map(\.localId))
         var ctx = WorldContext(me: me, domain: config.domain, communityName: config.name, communityAdmins: Set(config.admins),
                                groupsKey: groupsKey, bridgeKey: dms?.bridge, groupsRelay: config.groupsRelay,
@@ -250,12 +256,12 @@ final class AppModel: ObservableObject {
         let list = engine?.snapshot() ?? []
         let d = Derive(events: list, context: ctx)
         // offline first: the channels nothing arrived in keep what the last snapshot worked out
-        if let prev = cachedDerive?.1, list.count >= prev.events.count, list.count - prev.events.count < 500 {
+        if let prev = cachedDerive?.2, list.count >= prev.events.count, list.count - prev.events.count < 500 {
             let known = prev.idSet
             let fresh = list.filter { !known.contains($0.id) }
             if fresh.count == list.count - prev.events.count { d.carry(from: prev, newEvents: fresh) }
         }
-        cachedDerive = (version, d)
+        cachedDerive = (version, ev, d)
         // nothing is queued for an archived or deleted group (SPEC 19.30)
         engine?.setLocked(d.lockedGroups)
         return d

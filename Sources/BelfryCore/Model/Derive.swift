@@ -559,6 +559,7 @@ public final class Derive {
         var appliedOrder = [String]()
         var decided = [String: Int]()
         var gone = Set<String>()
+        var last9007 = [String: Int](), last9008 = [String: Int]()
         var newestMeta = [String: Int]()
         var creatorOf = [String: String]()
         var listedAdmins = [String: Set<String>]()
@@ -572,7 +573,8 @@ public final class Derive {
             }
             var g = map[id]!
             var m = metaAt[id] ?? [:]
-            if e.kind == 9008 { gone.insert(id) }
+            if e.kind == 9008 { last9008[id] = max(last9008[id] ?? 0, e.createdAt) }
+            if e.kind == 9007 { last9007[id] = max(last9007[id] ?? 0, e.createdAt) }
             if e.kind == 9007 {
                 g.createdAt = min(g.createdAt, e.createdAt)
                 if isPending(e.id) { g.pending = true }
@@ -687,7 +689,11 @@ public final class Derive {
         }
         // deleted (SPEC 19.30): a 9008, or the relay said it has no such group and nothing newer
         // about it arrived since (never one I am still creating, never #general)
-        for (id, at) in ctx.groupsAbsent where id != generalId && (newestMeta[id] ?? 0) <= at && map[id]?.pending != true {
+        // (web groupstate.ts): a 9008 not older than its latest 9007; or, for a channel or group
+        // this device holds nothing of its own about (no 9007 / 9002 / 39000, my queued creation
+        // included), the relay's "nothing" answered to EOSE. Never #general, events, proposals.
+        for (id, at) in last9008 where at >= (last9007[id] ?? 0) { gone.insert(id) }
+        for id in ctx.groupsAbsent.keys where Derive.deletableByAbsence(id) && newestMeta[id] == nil && map[id]?.pending != true {
             gone.insert(id)
         }
         let all = order.compactMap { map[$0] }.filter { !gone.contains($0.id) }.enumerated().sorted { x, y in

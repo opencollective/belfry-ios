@@ -167,6 +167,7 @@ public final class SyncEngine: @unchecked Sendable {
             guard online else { throw BelfryError.relay("timeout: offline") }
             try await publish(d.target, ev)
         }
+        lock.lock(); outboxVersion += 1; lock.unlock() // my own action: shown at once
         add([ev], verify: false)
         return ev
     }
@@ -183,14 +184,17 @@ public final class SyncEngine: @unchecked Sendable {
     /// The demo's screenshots: an outbox item in a given state (a refused settings change).
     public func demoPut(_ item: OutboxItem) { put(item) }
 
+    /// Bumped by every change of the outbox (my own actions): the app's snapshot follows it at once.
+    public private(set) var outboxVersion = 0
+
     func put(_ item: OutboxItem) {
-        lock.lock(); outbox[item.localId] = item; lock.unlock()
+        lock.lock(); outbox[item.localId] = item; outboxVersion += 1; lock.unlock()
         db.putOutbox(item)
         changed()
     }
 
     func drop(_ localId: String) {
-        lock.lock(); outbox[localId] = nil; lock.unlock()
+        lock.lock(); outbox[localId] = nil; outboxVersion += 1; lock.unlock()
         db.dropOutbox(localId)
         changed()
     }
@@ -382,6 +386,13 @@ public final class SyncEngine: @unchecked Sendable {
     func publish(_ t: Target, _ ev: NostrEvent) async throws {
         let r = try await relay(t)
         try await r.publish(ev)
+    }
+
+    /// One-off query that counts only when answered to EOSE (nil: no answer).
+    public func queryComplete(_ t: Target, _ filters: [[String: Any]], timeout: TimeInterval = 8) async -> [NostrEvent]? {
+        if localOnly { return nil }
+        guard let r = try? await relay(t) else { return nil }
+        return await r.queryComplete(filters, timeout: timeout)
     }
 
     /// One-off query up to EOSE.

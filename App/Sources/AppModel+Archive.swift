@@ -9,9 +9,12 @@ extension AppModel {
     /// Nothing is written in this group here: it is archived or deleted.
     func locked(_ id: String) -> Bool { derive.isLocked(id) }
 
-    /// Asks the groups relay for the metadata (kind 39000) of ONLY, or of every channel and group
-    /// this device knows: what it does not name is deleted. Never as a guest (the relay shows a
-    /// guest only their own channels), never in the demo. At most once a minute for the full list.
+    /// Asks the groups relay about ONLY, or about every channel and group this device has nothing
+    /// of its own about (`Derive.presenceCandidates`, web groupstate.ts): its 39000 and its own
+    /// 9007 / 9002 / 9008, up to EOSE. Found: its events go into the log and any absent mark goes.
+    /// Answered with nothing: absent (deleted). No answer: unknown, nothing changes. Never as a
+    /// guest, never in the demo, never for a group my outbox still holds events of, never one
+    /// asked a moment ago (10 s; an absent one after 5 min).
     func checkGroups(_ only: [String]? = nil) async {
         guard let engine, !engine.localOnly, !guestReading, phase == .ready else { return }
         let d = derive
@@ -20,12 +23,18 @@ extension AppModel {
             if let at = presenceAt, Date().timeIntervalSince(at) < 60 { return }
             presenceAt = Date()
         }
-        let ids = only ?? d.presenceCandidates()
+        let candidates = (only ?? d.presenceCandidates()).filter { Derive.deletableByAbsence($0) && !d.knowsMeta($0) }
+        let outbox = Set(engine.outboxItems().compactMap { $0.tags.first { $0.count >= 2 && $0[0] == "h" }?[1] })
+        let ids = GroupPresence.due(candidates, outbox: outbox, last: presenceAsked, absent: groupsAbsent, now: .now)
+        guard !ids.isEmpty else { return }
+        for id in ids { presenceAsked[id] = .now }
         var now = groupsAbsent
         for q in GroupPresence.questions(ids) {
-            let answer = await engine.query(.groups, [GroupPresence.filter(q)], timeout: 8)
+            let answer = await engine.queryComplete(.groups, GroupPresence.filters(q), timeout: 8)
             guard self.engine === engine else { return } // signed out or switched meanwhile
+            if let answer, !answer.isEmpty { engine.add(answer) }
             if let next = derive.presenceAfter(asked: q, answer: answer, was: now) { now = next }
+            else { for id in q { presenceAsked[id] = nil } } // no answer: asked again next time
         }
         if now != groupsAbsent {
             groupsAbsent = now
@@ -34,9 +43,10 @@ extension AppModel {
         }
     }
 
-    /// A group opened that this device knows nothing about: ask the relay about it.
+    /// A group opened that this device holds nothing of its own about: ask the relay about it.
     func lookFor(_ id: String) {
-        guard derive.groupState(id) == .unknown else { return }
+        let d = derive
+        guard Derive.deletableByAbsence(id), !d.knowsMeta(id) else { return }
         Task { await checkGroups([id]) }
     }
 
