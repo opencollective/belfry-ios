@@ -136,17 +136,23 @@ final class MenuShots: XCTestCase {
         let header = app.staticTexts["MAKING & MENDING"].firstMatch
         XCTAssertTrue(header.waitForExistence(timeout: 5), "the drawer shows no Making & mending category")
         guard kitchen.isHittable, header.isHittable else { XCTFail("the drawer's rows are not on screen"); return }
-        // the demo's database can keep an earlier run's move: drag it to the other side of the header
-        let below = kitchen.frame.minY > header.frame.minY
-        let target = header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: below ? -90 : 70))
-        kitchen.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .press(forDuration: 1.2, thenDragTo: target, withVelocity: .slow, thenHoldForDuration: 0.6)
-        sleep(2)
+        // the demo's database can keep an earlier run's move: drag it to the other side of the
+        // header. The simulator sometimes takes the drag as a scroll: up to three tries.
+        func kitchenRow() -> XCUIElement { app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Shared kitchen")).firstMatch }
+        func headerRow() -> XCUIElement { app.staticTexts["MAKING & MENDING"].firstMatch }
+        let below = kitchenRow().frame.minY > headerRow().frame.minY
+        var crossed = false
+        for _ in 1...3 where !crossed {
+            let k = kitchenRow(), h = headerRow()
+            guard k.isHittable, h.isHittable else { break }
+            let target = h.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: below ? -90 : 70))
+            k.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                .press(forDuration: 1.6, thenDragTo: target, withVelocity: .slow, thenHoldForDuration: 0.8)
+            sleep(2)
+            crossed = (kitchenRow().frame.minY > headerRow().frame.minY) != below
+        }
         shot("54-drawer-drag")
-        let moved = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Shared kitchen")).firstMatch
-        XCTAssertTrue(moved.exists)
-        let nowBelow = moved.frame.minY > app.staticTexts["MAKING & MENDING"].firstMatch.frame.minY
-        XCTAssertNotEqual(nowBelow, below, "Shared kitchen did not cross the Making & mending header")
+        XCTAssertTrue(crossed, "Shared kitchen did not cross the Making & mending header in three tries")
     }
 
     /// Home's ☰ opens the Town drawer, Today selected.
