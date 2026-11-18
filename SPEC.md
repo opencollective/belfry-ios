@@ -686,7 +686,8 @@ assigning adds `["l","assigned","belfry/inbox"],["e",card],["p",assignee]`.
   ["l",label,"osv/member-label"]…,["p",member]]`, latest per member. (The namespace keeps the
   web's historical name.)
 - **Task list** (tasklist.sh): list id = `sha256hex("osv-village:"+group)[:16]`; kinds 2100
-  (task, content = title ≤ 300), 2101 (`["e",task],["action","claim|unclaim|done|undone|delete"]`),
+  (task, content = title ≤ 300), 2101 (`["e",task],["action","claim|unclaim|done|undone|delete"]`;
+  since 2026-11-18 also `assign` with an optional `["p",<hex>]`, 19.41),
   2103 (comment), each with `["t",list id],["h",group]`.
 - **Following a channel by e-mail** is not an event: `GET/POST <api>/me/follows` (NIP-98).
 - The web chat has **no unread count per channel** (only for direct messages and e-mail).
@@ -2127,3 +2128,81 @@ link). Links look like links everywhere: underlined, in the tint. A link to this
   cache). The uploaded picture is put in the cache under its new address, so no download is needed.
 - (iOS) `PictureSlot` (core, `ProfileEverywhereTests`), `CachedImage`, `AppModel.saveProfile`.
 
+
+### 19.41 To-dos: claim, assign, unassign; a to-do's own screen (iOS, 2026-11-18; `vectors/todo-assign.json`)
+
+The owner, testing on phones: "a way to claim, assign and unassign a todo. Put a > on the right to
+open a todo to discuss it". The web's tasklist reads `claim` (the author takes it) and `unclaim`
+(the assignee lets go, only theirs). Putting it on **someone else** is new:
+
+- **Assign** = kind 2101 `[["e",<task>],["action","assign"],["p",<hex>]]` + `t`, `h`: the to-do is on
+  that key, whoever sent it (anyone who can write in the channel). Without `p` (or with a `p` that
+  is not 64 hex) it is on nobody. In created_at order with claim / unclaim: the latest wins. An
+  `assign` to oneself counts as a claim. `assigned by` = the sender when it is not the assignee
+  (a claim clears it); the who-line reads "Ben is on it · assigned by Ana".
+- **What a client sends** for a choice by ME: me → `claim` (every client reads it); nobody while it
+  is on me → `unclaim`; anyone else, or nobody while it is on someone else → `assign` (with or
+  without `p`). So a web chat that does not read `assign` yet still sees every claim and let-go.
+- **Rows** (a channel's To-dos, My to-dos, anywhere to-dos are listed): the tick box is its own
+  44 pt button (done / not done); the rest of the row opens the to-do's screen, with a chevron at
+  its end and a comment count. No per-row Comment / Delete buttons.
+- **A to-do's screen**: the title with its tick, the channel and who made it; "Who is on it" with
+  **Claim it** (or **Take it over**), **Assign to…** (a pushed list of the people who can read the
+  channel, me first, a search; the one it is on has a checkmark; **Nobody** unassigns) and
+  **Unassign** (**Let it go** when it is mine); "Open its thread" when it was made from a message;
+  the discussion (2103 comments) with a field to add one; the ⋯ menu deletes it (its author only,
+  with a confirmation: the web's rule, only the author's `delete` counts). There is still no edit of a
+  to-do's title on the wire.
+- (iOS) `Derive.tasks` (`assignedBy`), `Actions.assignTask`, `TodoScreen.swift` (`TodoRow`,
+  `TodoTick`, `TodoScreen`, `AssignPicker`), `TodoAssignTests`.
+- **Open question**: the web should read `assign` too (until it does, it keeps showing the last
+  claim's author for a to-do assigned on a phone).
+
+### 19.42 A channel's name, and what a member reads (iOS, 2026-11-18)
+
+- **The display is always the metadata's `name`** (39000, else the newest 9007 / 9002 with one).
+  Before any of these is on the device the name is the id without its random ending
+  (`issues-5fce` → `issues`; `pod-bees-1a2b` → `bees`; events and proposals keep their id: their
+  title comes from their own event). The suffix belongs to the id only. Every view is drawn from the
+  snapshot, so a row drawn before the metadata re-renders with the name when it arrives.
+- **The metadata is always asked whole**: the groups relay subscription has a second filter
+  `{kinds:[39000,39001,39002,39003], limit: 2000}` without `since`. With only `since` = the newest
+  stored event − 1 h, the metadata of a channel this key could not read before (a guest who became a
+  member, a channel made readable) is older than the window and never came.
+- **What a member reads** (web invite.ts `inChannel`): a member reads every live (not deleted, not
+  archived) open channel without being in its 39002 list, and the closed ones they are in; a guest
+  only their own (and, me, a guest in guest mode too). The drawer lists every listed channel; a
+  closed one I am not in shows its Ask to join bar (19.38). The relay subscription is not limited by
+  group (no `#h`): the relay decides what a key may read.
+- (iOS) `Group.fallbackName`, `SyncEngine.metadataFilter`, `Derive.readableChannels`, `inChannel`,
+  `ChannelNamesTests`, `MemberLinkTests`.
+
+### 19.43 Member links and a guest who becomes a member (iOS, 2026-11-18; collective-belfry docs/roles.md "Member links"; web 2e9a76b)
+
+- **Telling a member link**: `GET /channel-invites/<token>` (no auth) and the `/join` answer carry
+  `"as": "guest" | "member"`; a member link adds `member_role`, `member_role_label`, `membership`
+  (`month` | `year` | `permanent`; anything else reads permanent; an empty label reads Member).
+- **A member link shows no channel.** One screen: "You're invited to join <community> as a <role>"
+  (the community from the belfry's answer, never from the URL), "Join as a Member, for a year. No
+  password: a 6-digit code by e-mail.", **Sign up**, **I have an account: log in**, Not now.
+  (iOS) Signed out, the app reads the link first and does **not** use it until Sign up (Log in must
+  not spend a one-person link on a throwaway key): Sign up = the guest-mode join with a new key
+  (`{}`), then the Join sheet at once (name + e-mail → code); Log in = the usual sign-in, then the
+  link is used by that account (Join with your account, worded for the belfry). The web uses the
+  link on opening and shows the screen over guest mode; a phone that got there that way (the GET
+  failed) shows the same screen, both buttons opening the Join sheet (an e-mail that has an account
+  here ends in "Sign in instead").
+- **When the belfry says member** — `/guest/save/verify` answers `"member": true`, or the join of
+  a saved guest answers `"member": true` — the person is a member at once, on this device: the
+  register's word is kept (`whois` kind `member` for me, stored), guest joins and `reading` 9000s
+  no longer make me a guest, the session forgets its guest channel and member link, the guest's
+  stored request, co-host token and pending invite go, guest-only places (guest Home, the save
+  bar, the Become a member card and form) are gone, every subscription asks from the start once
+  (19.42; kept until each relay's EOSE, also across a restart), belfry.json and whois are asked
+  again, and the channel of the link opens. The new member's first minutes (welcome) may follow.
+- **The application form is for guests only.** It is unreachable for a member (never offered; an
+  open form closes when the person becomes a member). A `not_guest` answer — to `/applications`
+  (apply or status) or to `/guest/save/verify` — first asks `whois` for me: a member (or agent)
+  means "member already": switch as above and go on, no error shown.
+- (iOS) `MemberLinkInfo`, `GuestSaved`, `JoinedAccount.member`, `AppModel+MemberLink.swift`
+  (`becameMember`, `memberAlready`), `MemberInviteScreen` (GuestUI.swift), screens `-join member`.

@@ -29,7 +29,9 @@ extension Derive {
         guard let g else { return true }
         if g.members.contains(pubkey) || g.admins.contains(pubkey) { return true }
         if g.closed { return false }
-        return !isGuest(pubkey)
+        // me: guest mode counts too (a reading guest has no guest join line yet), and the
+        // register's word that I am a member wins (SPEC 19.43)
+        return pubkey == me ? !amGuest : !isGuest(pubkey)
     }
 
     /// What someone is, when not a plain member: "Kofi's agent", "Agent, a guest", "Guest"; nil for a member.

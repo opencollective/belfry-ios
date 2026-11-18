@@ -29,6 +29,8 @@ extension AppModel {
         do {
             let j = try await api.joinWithAccount(token: token)
             pendingInvite = nil
+            // a saved guest who used a member link: a member now (SPEC 19.43)
+            if j.member && derive.amGuest { becameMember() }
             joinedChannel = j.channel
             await refresh()
             return nil

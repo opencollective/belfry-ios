@@ -18,6 +18,9 @@ struct BelfryApp: App {
                 if let o = model.opening {
                     // a guest link: one loading screen until its channel can be drawn (SPEC 19.26)
                     OpeningScreen(opening: o)
+                } else if model.phase == .signedOut, let mi = model.memberInvite {
+                    // a member link, not used yet: sign up or log in, no channel behind it (SPEC 19.43)
+                    MemberInviteScreen(invite: mi)
                 } else {
                     switch model.phase {
                     case .signedOut:
@@ -28,7 +31,8 @@ struct BelfryApp: App {
                         } else {
                             SignInView(domainHint: model.signInDomainHint ?? model.pendingInvite?.domain)
                         }
-                    case .ready: RootView()
+                    case .ready:
+                        if model.guestReading, model.sessionMemberLink != nil { MemberInviteScreen() } else { RootView() }
                     }
                 }
             }

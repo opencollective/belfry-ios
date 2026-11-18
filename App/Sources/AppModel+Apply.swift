@@ -24,7 +24,11 @@ extension AppModel {
 
     func loadApplyStatus() async {
         guard engine?.localOnly == false, derive.amGuest || applyState?.application != nil else { return }
-        if let s = try? await api.applyStatus() { setApply(s) }
+        do { setApply(try await api.applyStatus()) }
+        catch let e as ApiError where e.code == "not_guest" {
+            // a member already (a member link, or accepted meanwhile): no request to show (SPEC 19.43)
+            if await memberAlready() { return }
+        } catch {}
     }
 
     private func setApply(_ s: ApplyStatus) {
@@ -41,8 +45,14 @@ extension AppModel {
                                  until: Int.now + 7 * 86400, accept: "vouches"))
             return nil
         }
+        // the form is for guests only: a member never sends it (SPEC 19.43)
+        if !derive.amGuest && !guestReading { return nil }
         do { setApply(try await api.guestApply(answer: answer, agreed: agreed)); return nil }
-        catch let e as ApiError { return e }
+        catch let e as ApiError {
+            // "Only guests apply from here": I am a member already; refresh and go on, no error
+            if e.code == "not_guest", await memberAlready() { return nil }
+            return e
+        }
         catch { return ApiError("network", 0, BelfryAPI.network) }
     }
 

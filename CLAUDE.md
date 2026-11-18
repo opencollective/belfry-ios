@@ -357,3 +357,11 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   `chpublic`, `closedask` (with `-member`), `closedrequests`, `proposalup`, `proposalfull`,
   `mailcomment`.
 
+- 2026-11-18 round 7 (branch ios-r7, the owner's remarks from phones): to-dos claim / assign /
+  unassign (SPEC 19.41, `vectors/todo-assign.json`: ours, copy to Android; new 2101 action
+  `assign` + `p`), every to-do row = its tick (own target) + the rest pushing `TodoScreen` (comments,
+  delete in ⋯, Assign to… pushed); member links (SPEC 19.43: `MemberInviteScreen`, the link read
+  before it is used, `becameMember()` drops every piece of guest state, `memberAlready()` on
+  `not_guest`); a channel's name before its metadata = id without its random ending, metadata
+  always subscribed without `since`, `SyncEngine.catchUpFromStart` after access changed (19.42).
+  `kinds` (whois) is stored per account (`db "kinds"`). Screens `todo`, `todoassign`, `join-member`.

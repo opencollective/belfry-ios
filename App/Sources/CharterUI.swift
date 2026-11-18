@@ -278,6 +278,7 @@ private struct WhoAgreed: View {
 
 struct MyTodosView: View {
     @EnvironmentObject var model: AppModel
+    @State private var open: TodoKey?
     var body: some View {
         let _ = model.version
         let t = model.myTodos
@@ -287,31 +288,22 @@ struct MyTodosView: View {
                                        description: Text("To-dos made in your channels and groups show here."))
                     .listRowBackground(Color.clear)
             }
-            if !t.onMe.isEmpty { Section("On you") { ForEach(t.onMe) { TodoLine(ref: $0) } } }
-            if !t.open.isEmpty { Section("Open · nobody on it yet") { ForEach(t.open) { TodoLine(ref: $0) } } }
+            if !t.onMe.isEmpty { Section("On you") { ForEach(t.onMe) { r in TodoLine(ref: r) { open = TodoKey(group: r.group, task: r.task.id) } } } }
+            if !t.open.isEmpty { Section("Open · nobody on it yet") { ForEach(t.open) { r in TodoLine(ref: r) { open = TodoKey(group: r.group, task: r.task.id) } } } }
         }
         .listStyle(.insetGrouped)
         .navigationTitle("My to-dos")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $open) { k in TodoScreen(key: k) }
     }
 }
 
 private struct TodoLine: View {
     @EnvironmentObject var model: AppModel
     let ref: TodoRef
+    let open: () -> Void
     var body: some View {
-        HStack(spacing: 12) {
-            Button { model.todo(ref.task, in: ref.group, ref.task.done ? "undone" : "done") } label: {
-                Image(systemName: ref.task.done ? "checkmark.circle.fill" : "circle").font(.title3).foregroundStyle(Color.secondary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Done: " + ref.task.title)
-            NavigationLink(value: ChatRoute(id: ref.group)) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(ref.task.title).foregroundStyle(.primary)
-                    Text("#" + (model.group(ref.group)?.name ?? ref.group)).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-        }
+        let name = model.group(ref.group).map { $0.type == .channel ? "#" + $0.name : $0.name } ?? "#" + BelfryCore.Group.fallbackName(ref.group)
+        TodoRow(t: ref.task, group: ref.group, subtitle: name, open: open)
     }
 }

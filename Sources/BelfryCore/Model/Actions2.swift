@@ -189,6 +189,16 @@ public extension Actions {
         Draft(kind: 2101, tags: [["e", taskId], ["action", action]] + taskTags(group))
     }
 
+    /// Who a to-do is on (SPEC 19.41). TO = me: a `claim` (what every client reads); nobody while
+    /// it is on me: an `unclaim`; anyone else, or nobody while it is on someone else: an `assign`
+    /// with `["p", TO]` (no `p` = nobody).
+    static func assignTask(_ group: String, task: TodoTask, to: String?, me: String) -> Draft {
+        if let to, to == me { return taskAction(group, taskId: task.id, action: "claim") }
+        if to == nil, task.assignee == me { return taskAction(group, taskId: task.id, action: "unclaim") }
+        let p: [Tag] = to.map { [["p", $0]] } ?? []
+        return Draft(kind: 2101, tags: [["e", task.id], ["action", "assign"]] + p + taskTags(group))
+    }
+
     static func commentTask(_ group: String, taskId: String, text: String) -> Draft {
         Draft(kind: 2103, content: text.sliceUnits(2000), tags: [["e", taskId]] + taskTags(group))
     }

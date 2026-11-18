@@ -177,7 +177,13 @@ final class GuestModeTests: XCTestCase {
         XCTAssertEqual(asked, 0, "joining itself passes the gate")
         StubBelfry.enqueue(200, #"{"saved":true,"joined":true}"#)
         let joined = try await api.guestVerify(email: "ana@example.org", code: "123456", name: "Ana Silva")
-        XCTAssertTrue(joined)
+        XCTAssertTrue(joined.joined)
+        XCTAssertFalse(joined.member)
+        // a member link (docs/roles.md): the answer says they are a member now
+        StubBelfry.enqueue(200, #"{"saved":true,"joined":true,"member":true,"role":"member"}"#)
+        let member = try await api.guestVerify(email: "ana@example.org", code: "123456", name: "Ana Silva")
+        XCTAssertTrue(member.member)
+        XCTAssertEqual(member.role, "member")
         // refusals by code, never the server's text
         for (status, json, want, moved) in [
             (422, #"{"error":"wrong_code","message":"x"}"#, GuestJoinError.wrongCode, false),

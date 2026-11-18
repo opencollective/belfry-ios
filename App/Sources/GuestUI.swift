@@ -120,7 +120,9 @@ struct JoinSheet: View {
         switch step {
         case .code: return "Check your e-mail"
         case .taken: return "You have an account here"
-        case .who: return saveOnly ? "Save your account" : (label.isEmpty ? "Join" : "Join \(label)")
+        case .who:
+            if model.sessionMemberLink != nil { return "Join \(model.config.name)" }
+            return saveOnly ? "Save your account" : (label.isEmpty ? "Join" : "Join \(label)")
         }
     }
 
@@ -152,7 +154,8 @@ struct JoinSheet: View {
     @ViewBuilder var who: some View {
         Text(saveOnly
              ? "Add your e-mail address to come back from any device. We’ll send a 6-digit code to it."
-             : "Your name and e-mail address, and you can write here. We’ll send a 6-digit code to your e-mail to confirm it.")
+             : model.sessionMemberLink.map { "Your name and e-mail address, and you join as \($0.asWho). We’ll send a 6-digit code to your e-mail to confirm it." }
+                ?? "Your name and e-mail address, and you can write here. We’ll send a 6-digit code to your e-mail to confirm it.")
             .foregroundStyle(.secondary)
         if askName {
             field("Your name") {
@@ -283,5 +286,57 @@ struct JoinSheet: View {
         maybeReachedAt = nil
         onSaved?(sentTo)
         dismiss()
+    }
+}
+
+/// A belfry member link (SPEC 19.43; web MemberInviteScreen): no channel behind it, only "sign up
+/// or log in". Signed out (`invite` set): Sign up uses the link with a new key and opens the Join
+/// sheet; Log in signs in first and the link is used by that account after. Already reading with
+/// such a link (`invite` nil): both open the Join sheet (an e-mail that has an account here signs
+/// in with it).
+struct MemberInviteScreen: View {
+    @EnvironmentObject var model: AppModel
+    var invite: MemberInvite? = nil
+
+    var body: some View {
+        let link = invite?.member ?? model.sessionMemberLink ?? MemberLinkInfo(role: "member", label: "Member", membership: "permanent")
+        let community = communityName
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                BelfryMark().frame(width: 56, height: 56).accessibilityHidden(true)
+                Text("You’re invited to join \(community) as \(link.asWho)").font(.title.bold())
+                    .accessibilityIdentifier("member-invite-title")
+                if let by = invite?.info.inviter, !by.isEmpty { Text("\(by) invited you.").foregroundStyle(.secondary) }
+                Text("Join as \(link.asWho)\(link.lengthLine). No password: a 6-digit code by e-mail.")
+                    .foregroundStyle(.secondary)
+                BusyButton {
+                    if invite != nil { model.memberSignUp() } else { hideKeyboard(); model.joinAsked = true }
+                } label: { Text("Sign up").frame(maxWidth: .infinity).padding(.vertical, 6) }
+                .buttonStyle(.brand)
+                .accessibilityIdentifier("member-signup")
+                Button {
+                    if invite != nil { model.memberLogIn() } else { hideKeyboard(); model.joinAsked = true }
+                } label: { Text("I have an account: log in").frame(maxWidth: .infinity).padding(.vertical, 6) }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("member-login")
+                if invite != nil {
+                    Button("Not now") { model.dropMemberInvite() }.frame(maxWidth: .infinity)
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: 520)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Color(uiColor: .systemBackground))
+        .sheet(isPresented: invite == nil ? $model.joinAsked : Binding<Bool>.constant(false)) { JoinSheet() }
+    }
+
+    /// The community's name from the belfry's answer (or its domain); never from the link.
+    private var communityName: String {
+        if let i = invite {
+            let n = i.info.community.jsTrim()
+            return n.isEmpty ? i.invite.domain : n
+        }
+        return model.config.name
     }
 }

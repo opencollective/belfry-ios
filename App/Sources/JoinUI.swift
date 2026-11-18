@@ -19,7 +19,12 @@ struct JoinWithAccountSheet: View {
                 if invite.domain != model.config.domain {
                     Label("This invite is for another community (\(invite.domain)). Sign out first to use it.", systemImage: "exclamationmark.triangle")
                 } else {
-                    if let info {
+                    if let info, let m = info.member {
+                        // a member link (SPEC 19.43): the belfry, not a channel
+                        Text("You’re invited to join \(info.community.isEmpty ? model.config.name : info.community) as \(m.asWho)").font(.title2.bold())
+                        if !info.inviter.isEmpty { Text("\(info.inviter) invited you.").foregroundStyle(.secondary) }
+                        if let closed = info.closedMessage { Label(closed, systemImage: "xmark.octagon").foregroundStyle(.red) }
+                    } else if let info {
                         Text("Join \(info.channelName)").font(.title2.bold())
                         if !info.inviter.isEmpty { Text("\(info.inviter) invited you.").foregroundStyle(.secondary) }
                         if let closed = info.closedMessage { Label(closed, systemImage: "xmark.octagon").foregroundStyle(.red) }

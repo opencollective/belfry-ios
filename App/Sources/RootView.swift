@@ -532,7 +532,7 @@ struct RootView: View {
         case "editprofile", "me":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { account = true }
-        case "members", "todos", "files", "log", "chsettings", "pinned", "membersinvitech": selection = .channel(generalId)
+        case "members", "todos", "todo", "todoassign", "files", "log", "chsettings", "pinned", "membersinvitech": selection = .channel(generalId)
         case "website", "websitethread", "notify", "chvisibility", "chpublic": selection = .channel("website")
         case "closedask", "closedpending", "closedrequests": selection = .channel("board-5d1e")
         case "settingsfailed", "settingsfailedalert": selection = .channel("garden-3f2a")

@@ -131,79 +131,33 @@ struct MembersTab: View {
 struct TodosTab: View {
     @EnvironmentObject var model: AppModel
     let id: String
-    /// Back to the channel at a thread: a to-do made from a message offers "Open its thread"
-    /// (where its history is written; web ChannelInfo TaskRow, 2026-11-17).
-    var go: ((LogGo) -> Void)? = nil
+    /// Opens a to-do's own screen (pushed by the screen this list is in).
+    let open: (TodoTask) -> Void
     @State private var newTodo = ""
-    @State private var open: String?
 
     var body: some View {
         let tasks = model.derive.tasks(id)
-        let locked = model.locked(id)
+        let locked = model.locked(id) || model.guestReading
         if !locked {
         Section {
             HStack {
-                TextField("Add a todo", text: $newTodo).font(.body)
-                BusyButton { model.addTodo(newTodo, in: id); newTodo = "" } label: { Image(systemName: "plus.circle.fill") }
+                TextField("Add a to-do", text: $newTodo).font(.body)
+                    .submitLabel(.done)
+                    .accessibilityIdentifier("todo-new")
+                BusyButton { model.addTodo(newTodo, in: id); newTodo = "" } label: { Image(systemName: "plus.circle.fill").font(.title2) }
+                    .buttonStyle(.borderless)
                     .disabled(newTodo.jsTrim().isEmpty)
+                    .accessibilityLabel("Add the to-do")
             }
         }
         }
         Section("To do") {
             let todo = tasks.filter { !$0.done }
             if todo.isEmpty { Text("Nothing to do.").foregroundStyle(.secondary) }
-            ForEach(todo) { t in todoRow(t) }
+            ForEach(todo) { t in TodoRow(t: t, group: id) { open(t) } }
         }
         let done = tasks.filter(\.done)
-        if !done.isEmpty { Section("Done") { ForEach(done) { t in todoRow(t) } } }
-    }
-
-    @ViewBuilder func todoRow(_ t: TodoTask) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            TodoRow(t: t, group: id)
-            HStack(spacing: 14) {
-                Button(open == t.id ? "Hide comments" : t.comments.isEmpty ? "Comment" : "\(t.comments.count) comments") {
-                    withAnimation { open = open == t.id ? nil : t.id }
-                }
-                if let src = t.source, let go {
-                    Button { go(.thread(src)) } label: { Label("Open its thread", systemImage: "bubble.left.and.bubble.right") }
-                        .accessibilityIdentifier("todo-thread")
-                }
-                if t.author == model.me && !model.locked(id) {
-                    BusyButton("Delete", role: .destructive) { model.todo(t, in: id, "delete") }
-                }
-            }
-            .font(.caption.weight(.semibold))
-            .buttonStyle(.borderless)
-            if open == t.id { TodoComments(t: t, group: id) }
-        }
-    }
-}
-
-struct TodoComments: View {
-    @EnvironmentObject var model: AppModel
-    let t: TodoTask
-    let group: String
-    @State private var text = ""
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(t.comments.enumerated()), id: \.offset) { _, c in
-                HStack(alignment: .top, spacing: 6) {
-                    Avatar(pubkey: c.author, size: 20)
-                    VStack(alignment: .leading) {
-                        Text(model.name(c.author)).font(.caption.weight(.semibold))
-                        Text(MarkdownText.plainLinks(c.text)).font(.caption)
-                    }
-                }
-            }
-            if !model.locked(group) {
-            HStack {
-                TextField("Comment", text: $text).font(.body)
-                BusyButton("Send") { model.commentTodo(t, in: group, text: text.jsTrim()); text = "" }.disabled(text.jsTrim().isEmpty)
-            }
-            }
-        }
-        .padding(.leading, 34)
+        if !done.isEmpty { Section("Done") { ForEach(done) { t in TodoRow(t: t, group: id) { open(t) } } } }
     }
 }
 

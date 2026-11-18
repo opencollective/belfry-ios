@@ -16,6 +16,8 @@ struct StoredSession: Codable, Equatable {
     var reading: Bool? = nil
     /// The channel the guest link opened.
     var guestChannel: String? = nil
+    /// The link was a belfry member link (SPEC 19.43): joining makes this key a member.
+    var memberLink: MemberLinkInfo? = nil
 }
 
 @MainActor
@@ -183,6 +185,11 @@ final class AppModel: ObservableObject {
     @Published var inviteProblem: InviteProblem?
     /// "I have an account: sign in" on that screen: the sign-in first, the link after.
     @Published var inviteSignInFirst = false
+    /// A belfry member link opened signed out, not used yet (SPEC 19.43): "You're invited to …"
+    /// with Sign up / Log in, no channel behind it.
+    @Published var memberInvite: MemberInvite?
+    /// Sign up from a member invite is under way: the Join sheet opens as soon as the link is used.
+    var signUpForMember = false
     /// The domain to suggest on the sign-in screen (after "Sign in instead").
     @Published var signInDomainHint: String?
     /// A fixed line on the sign-in screen after "Sign in instead" (no address to prefill).
@@ -386,6 +393,7 @@ final class AppModel: ObservableObject {
         dms = d
         // offline first: the last copies at once, refreshed in the background
         roles = db.get("roles", as: RolesInfo.self) ?? RolesInfo()
+        kinds = s.demo ? [:] : db.get("kinds", as: [String: String].self) ?? [:]
         groupsAbsent = db.get("groups-absent", as: [String: Int].self) ?? [:]
         presenceAt = nil
         membership = db.get("membership", as: MembershipSettings.self) ?? MembershipSettings()
@@ -443,7 +451,10 @@ final class AppModel: ObservableObject {
         if let got = try? await api.whois(list) {
             var k = kinds
             for p in list { k[p] = got[p] }
+            // what I became through a member link stays until the register says otherwise
+            if got[me] == nil, list.contains(me), kinds[me] == "member" { k[me] = "member" }
             kinds = k
+            engine.db.set("kinds", k)
             version += 1
         }
     }
@@ -499,6 +510,14 @@ final class AppModel: ObservableObject {
         Keychain.slot = ""
         phase = .signedOut
         version += 1
+    }
+
+    /// Changes the open session and keeps it (the Keychain copy of the open slot).
+    func updateSession(_ change: (inout StoredSession) -> Void) {
+        guard var s = session else { return }
+        change(&s)
+        session = s
+        if !s.demo { Keychain.save(s) }
     }
 
     /// Forgets what the open session held in memory (its engine, caches, guest state).
@@ -616,6 +635,11 @@ final class AppModel: ObservableObject {
     /// ACTION: claim | unclaim | done | undone | delete
     func todo(_ t: TodoTask, in group: String, _ action: String) {
         engine?.enqueue(Actions.taskAction(group, taskId: t.id, action: action))
+    }
+
+    /// Who a to-do is on (SPEC 19.41): TO = me claims it; nil lets it go / unassigns it.
+    func assignTodo(_ t: TodoTask, in group: String, to: String?) {
+        engine?.enqueue(Actions.assignTask(group, task: t, to: to, me: me))
     }
 
     func commentTodo(_ t: TodoTask, in group: String, text: String) {
@@ -943,11 +967,14 @@ struct LaunchOptions {
     let guest: String?
     /// `-member`: the demo's Sam is not an admin of the belfry (the member's drawer).
     let member: Bool
+    /// `-join member`: the demo invite is a belfry member link (SPEC 19.43).
+    let joinMember: Bool
 
     init() {
         let args = ProcessInfo.processInfo.arguments
         demo = args.contains("-demo")
         member = args.contains("-member")
+        if let i = args.firstIndex(of: "-join"), i + 1 < args.count { joinMember = args[i + 1] == "member" } else { joinMember = false }
         if let i = args.firstIndex(of: "-screen"), i + 1 < args.count { screen = args[i + 1] } else { screen = nil }
         if let i = args.firstIndex(of: "-signin"), i + 1 < args.count { signin = args[i + 1] } else { signin = nil }
         if let i = args.firstIndex(of: "-guest"), i + 1 < args.count { guest = args[i + 1] } else { guest = nil }

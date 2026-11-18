@@ -54,6 +54,8 @@ struct ChannelPlaceView: View {
     /// Back to the channel, at a message (Pinned, Log) or a thread (Log); a topic filter (Topics).
     let go: (LogGo) -> Void
     let filter: (String) -> Void
+    /// A to-do opened from the To-dos screen (its own screen, pushed).
+    @State private var todo: TodoKey?
 
     var body: some View {
         let _ = model.version
@@ -66,6 +68,14 @@ struct ChannelPlaceView: View {
         }
         .navigationTitle(place.title)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $todo) { k in TodoScreen(key: k, go: go) }
+        .onAppear {
+            // screenshots: a to-do's own screen (and its Assign to…)
+            if place == .todos, todo == nil, ["todo", "todoassign"].contains(model.launch.screen ?? ""),
+               let t = model.derive.tasks(id).first(where: { !$0.done }) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { todo = TodoKey(group: id, task: t.id) }
+            }
+        }
     }
 
     private var list: some View {
@@ -73,7 +83,7 @@ struct ChannelPlaceView: View {
             switch place {
             case .pinned: PinnedSection(id: id, go: go)
             case .proposals: ProposalsSection(id: id)
-            case .todos: TodosTab(id: id, go: go)
+            case .todos: TodosTab(id: id) { t in todo = TodoKey(group: id, task: t.id) }
             case .photos: PhotosSection(id: id)
             case .files: FilesTab(id: id)
             case .groups: GroupsSection(id: id)

@@ -11,6 +11,8 @@ import Foundation
 struct Opening: Equatable {
     var channel: String?
     var name: String?
+    /// A member link: "Opening <community>…", never a channel's name.
+    var member = false
 }
 
 /// A guest link that can't be used: a fixed message; `closed` = no use trying again.
@@ -23,26 +25,39 @@ extension AppModel {
     static let openAfterSignInKey = "belfry-open-channel"
 
     /// Start using a guest link (signed out). Idempotent per token while it runs.
-    func openInvite(_ invite: PendingInvite) {
+    /// MEMBER: a member link already read (Sign up on its screen): use it at once.
+    func openInvite(_ invite: PendingInvite, member: MemberLinkInfo? = nil) {
         guard openingToken != invite.token else { return }
         openingToken = invite.token
         inviteProblem = nil
-        if opening == nil { opening = Opening() }
-        Task { await runOpening(invite) }
+        memberInvite = nil
+        if opening == nil { opening = Opening(member: member != nil) }
+        Task { await runOpening(invite, member: member) }
     }
 
     private func pause(_ ms: UInt64) async { try? await Task.sleep(nanoseconds: ms * 1_000_000) }
 
-    private func runOpening(_ invite: PendingInvite) async {
+    private func runOpening(_ invite: PendingInvite, member known: MemberLinkInfo?) async {
         if invite.domain == "demo.belfry.sh" { // the demo: what the belfry would answer, after a moment
             await pause(300)
-            opening = Opening(channel: generalId, name: "general")
+            if known == nil, launch.joinMember {
+                // `-join member`: a member link's own screen, nothing used yet
+                memberInvite = MemberInvite(invite: invite, info: InviteInfo(community: "Riverside Commons", channel: generalId, channelName: "general", about: "",
+                                                                              inviter: "Ana", state: "open", days: 0,
+                                                                              member: MemberLinkInfo(role: "member", label: "Member", membership: "year")))
+                opening = nil
+                openingToken = nil
+                return
+            }
+            opening = Opening(channel: generalId, name: "general", member: known != nil)
             await pause(300)
             pendingInvite = nil
             startDemo(reader: true)
+            if let known { updateSession { $0.memberLink = known } }
             await pause(600)
             opening = nil
             openingToken = nil
+            if signUpForMember { signUpForMember = false; joinAsked = true }
             return
         }
         let cfg = (try? await Discovery.fetch(domain: invite.domain)) ?? .defaults(domain: invite.domain)
@@ -52,22 +67,33 @@ extension AppModel {
             do { return .success(try await api.inviteInfo(invite.token)) }
             catch let e as ApiError { return .failure(e) } catch { return .failure(ApiError("http", 0, BelfryAPI.generic)) }
         }
+        // a member link is never used before Sign up (SPEC 19.43): read it first, its own screen
+        if known == nil, case .success(let i) = await info.value, i.isOpen, i.member != nil {
+            memberInvite = MemberInvite(invite: invite, info: i)
+            opening = nil
+            openingToken = nil
+            return
+        }
         Task {
-            if case .success(let i) = await info.value, i.isOpen, self.opening != nil, self.opening?.name == nil {
+            if case .success(let i) = await info.value, i.isOpen, i.member == nil, self.opening != nil, self.opening?.name == nil {
                 self.opening = Opening(channel: i.channel, name: i.channelName)
             }
         }
         // … while this phone uses it
         do {
             let (j, secret) = try await joinWithNewKey(invite, api: api)
-            let s = StoredSession(domain: invite.domain, bunkerURL: j.bunkerURL, clientSecret: secret, pubkey: j.pubkey,
+            let link = j.member ?? known
+            var s = StoredSession(domain: invite.domain, bunkerURL: j.bunkerURL, clientSecret: secret, pubkey: j.pubkey,
                                   reading: j.reading ? true : nil, guestChannel: j.channel)
+            s.memberLink = link
             store(s)
             pendingInvite = nil
-            joinedChannel = j.channel
-            if opening?.name == nil { opening = Opening(channel: j.channel, name: nil) }
+            if link == nil { joinedChannel = j.channel }
+            if opening?.name == nil { opening = Opening(channel: j.channel, name: nil, member: link != nil) }
             open(s, config: cfg)
-            if j.emailNeeded { coHostToken = invite.token }
+            // a member link needs no second use: saving the e-mail makes them a member (web auth.ts)
+            if j.emailNeeded && link == nil { coHostToken = invite.token }
+            if link != nil { signUpForMember = false; joinAsked = true }
             // until the relay let this key in and sent what it has (or said no), at most 10 s more
             let deadline = Date().addingTimeInterval(10)
             while Date() < deadline, engine?.access == .unknown { await pause(200) }
@@ -148,12 +174,20 @@ extension AppModel {
                 e.add([try! gk.signNow(EventTemplate(kind: 9000, content: "", tags: [["h", ch], ["p", me, "member"], ["guest", "2026-12-12"], ["invited-by", Demo.signer("ana").pubkey], ["name", GuestJoinForm.cleanName(name)]], createdAt: now)),
                        try! gk.signNow(EventTemplate(kind: 1985, content: "", tags: [["h", ch], ["L", "belfry/guest"], ["l", "saved", "belfry/guest"], ["p", me]], createdAt: now + 1))], verify: false)
             }
+            if sessionMemberLink != nil { becameMember(); return nil }
         } else {
-            do { try await api.guestVerify(email: email, code: code, name: name) }
-            catch let f as GuestJoinFailure {
+            do {
+                let saved = try await api.guestVerify(email: email, code: code, name: name)
+                // a member link made me a member (SPEC 19.43): no guest state, no application form
+                if saved.member { becameMember(); return nil }
+            } catch let f as GuestJoinFailure {
+                // "not a guest": a member already (this link, or before)? then that is what happened
+                if f.error == .notGuest, await memberAlready() { return nil }
                 guard let since, f.error.mayMeanSavedAlready, await guestSavedOnRelay(since: since - 5) else { return f }
+                if sessionMemberLink != nil, await memberAlready() { return nil }
             } catch { return GuestJoinFailure(.failed) }
         }
+        if sessionMemberLink != nil { updateSession { $0.memberLink = nil } }
         finishJoining()
         // a co-host link waiting for a proven e-mail: now it makes them a host
         if let t = coHostToken {

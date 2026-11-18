@@ -390,7 +390,7 @@ struct ChannelView: View {
             }
         case "details": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }
         case "members", "membersinvitech": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .members }
-        case "todos": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .todos }
+        case "todos", "todo", "todoassign": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .todos }
         case "files": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .photos }
         case "log": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .log }
         case "chsettings", "chvisibility", "chpublic": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .settings }

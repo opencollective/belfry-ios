@@ -116,6 +116,22 @@ public struct Group: Identifiable, Hashable, Sendable {
     /// The name its metadata gives, before the on-brand names (SPEC 19.31); empty if none.
     public var rawName = ""
 
+    /// What a channel or group is called before its metadata (39000 / 9007 / 9002 `name`) is here
+    /// (SPEC 19.42): the id without its random ending (`issues-5fce` → `issues`; `pod-bees-1a2b` →
+    /// `bees`). Events and proposals keep their id (their title comes from their own event).
+    public static func fallbackName(_ id: String) -> String {
+        switch typeOf(id) {
+        case .event, .proposal: return id
+        case .pod:
+            let s = Group.randomEnd.replace(String(id.dropFirst(4)), with: "")
+            return s.isEmpty ? id : s
+        case .channel:
+            let s = Group.randomEnd.replace(id, with: "")
+            return s.isEmpty ? id : s
+        }
+    }
+    static let randomEnd = Rx("-[0-9a-f]{4}$")
+
     public static func typeOf(_ id: String) -> ChannelType {
         if id.hasPrefix("ws-") || id.hasPrefix("ev-") { return .event }
         if id.hasPrefix("pod-") { return .pod }
@@ -338,6 +354,8 @@ public struct TodoTask: Hashable, Sendable, Identifiable {
     public let title: String
     public let author: String
     public var assignee: String?
+    /// Who put it on the assignee, when it was someone else (a 2101 `assign`, SPEC 19.41).
+    public var assignedBy: String?
     public var done = false
     public let pending: Bool
     public var comments: [TaskComment] = []
@@ -571,7 +589,7 @@ public final class Derive {
             let gid = (39000...39003).contains(e.kind) ? e.tag("d") : e.tag("h")
             guard let id = gid, !id.isEmpty else { continue }
             if map[id] == nil {
-                map[id] = Group(id: id, name: id, about: "", createdAt: e.createdAt, lastActivity: e.createdAt)
+                map[id] = Group(id: id, name: Group.fallbackName(id), about: "", createdAt: e.createdAt, lastActivity: e.createdAt)
                 order.append(id)
             }
             var g = map[id]!
@@ -1009,7 +1027,10 @@ public final class Derive {
     }()
 
     /// Am I reading CHANNEL in guest mode, as the events say (the app's own flag comes first).
-    public func amReading(_ groupId: String) -> Bool { group(groupId)?.reading.contains(me) ?? false }
+    public func amReading(_ groupId: String) -> Bool {
+        if let k = ctx.kinds[me], k == "member" || k == "agent" { return false }
+        return group(groupId)?.reading.contains(me) ?? false
+    }
 
     /// Everyone brought in by a link or as a member's agent: the keys to ask the register about.
     public lazy var guestJoinKeys: [String] = {
@@ -1027,7 +1048,12 @@ public final class Derive {
     public func guestJoinsOf(_ pubkey: String) -> [GuestJoin] { allGuestJoins.filter { $0.pubkey == pubkey } }
 
     /// Am I (still) a guest here, and not a member.
-    public var amGuest: Bool { allGuestJoins.contains { $0.pubkey == me } || groupList.contains { $0.reading.contains(me) } }
+    /// The register's word wins (`/whois`, or the app's own after `/guest/save/verify` answered
+    /// `member: true`, SPEC 19.43): a member is never a guest, whatever the 9000s still say.
+    public var amGuest: Bool {
+        if let k = ctx.kinds[me], k == "member" || k == "agent" { return false }
+        return allGuestJoins.contains { $0.pubkey == me } || groupList.contains { $0.reading.contains(me) }
+    }
 
     /// Why this person can't be made an admin of the belfry (fixed text), or nil when they can.
     public func noAdminReason(_ pubkey: String) -> String? {
@@ -1340,8 +1366,11 @@ public final class Derive {
                 guard let tid = e.tag("e"), var t = tasks[tid] else { continue }
                 if e.kind == 2103 { t.comments.append(TaskComment(author: e.pubkey, text: e.content.sliceUnits(2000), at: e.createdAt)) }
                 switch e.tag("action") ?? "" {
-                case "claim": t.assignee = e.pubkey
-                case "unclaim": if t.assignee == e.pubkey { t.assignee = nil }
+                case "claim": t.assignee = e.pubkey; t.assignedBy = nil
+                case "unclaim": if t.assignee == e.pubkey { t.assignee = nil; t.assignedBy = nil }
+                case "assign":
+                    // SPEC 19.41: someone puts it on PUBKEY (`p`), or on nobody (no `p`)
+                    if let p = e.tag("p"), isHex64(p) { t.assignee = p; t.assignedBy = p == e.pubkey ? nil : e.pubkey } else { t.assignee = nil; t.assignedBy = nil }
                 case "done": t.done = true
                 case "undone": t.done = false
                 case "delete":
@@ -1397,7 +1426,9 @@ public final class Derive {
     /// Who is on a to-do, as the pull-down says it.
     public func todoWho(_ t: TodoTask) -> String {
         guard let a = t.assignee else { return "Nobody on it yet" }
-        return a == me ? "You are on it" : displayName(a) + " is on it"
+        let who = a == me ? "You are on it" : displayName(a) + " is on it"
+        guard let by = t.assignedBy, by != a else { return who }
+        return who + " · assigned by " + (by == me ? "you" : displayName(by))
     }
 
     // ---- drop box links -------------------------------------------------------------------------

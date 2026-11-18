@@ -212,4 +212,58 @@ final class MenuShots: XCTestCase {
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: tools)
         waitForExpectations(timeout: 10)
     }
+    /// Round 7: a to-do row opens its own screen (not the tick); Assign to… puts it on someone,
+    /// Unassign takes it off again.
+    func testTodoAssign() {
+        let app = launch("todos")
+        let row = app.buttons["todo-open"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "no to-do row")
+        row.tap()
+        let assign = app.buttons["todo-assign"].firstMatch
+        XCTAssertTrue(assign.waitForExistence(timeout: 5), "the to-do's screen did not open")
+        shot("58-todo")
+        assign.tap()
+        let person = app.buttons["assign-person"].element(boundBy: 1)
+        XCTAssertTrue(person.waitForExistence(timeout: 5), "no one to assign")
+        shot("58-todo-assign")
+        person.tap()
+        let unassign = app.buttons["todo-unassign"].firstMatch
+        XCTAssertTrue(unassign.waitForExistence(timeout: 5), "assigning did not show Unassign")
+        unassign.tap()
+        expectation(for: NSPredicate(format: "label CONTAINS 'Nobody on it yet'"), evaluatedWith: app.descendants(matching: .any)["todo-who"].firstMatch)
+        waitForExpectations(timeout: 8)
+        XCTAssertTrue(app.buttons["todo-claim"].firstMatch.waitForExistence(timeout: 5))
+    }
+
+    /// Round 7: a member link shows "You're invited…" (no channel); Sign up → name, e-mail, the
+    /// code (demo 123456) → a member: no guest Home, no application form.
+    func testMemberLinkSignUp() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-join", "member"]
+        app.launch()
+        let signup = app.buttons["member-signup"].firstMatch
+        XCTAssertTrue(signup.waitForExistence(timeout: 15), "no member invite screen")
+        XCTAssertTrue(app.staticTexts["member-invite-title"].exists)
+        shot("59-member-invite")
+        signup.tap()
+        let name = app.textFields["The name people here will see"].firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 15), "the Join sheet did not open")
+        name.tap()
+        name.typeText("Lou")
+        let email = app.textFields["you@example.org"].firstMatch
+        email.tap()
+        email.typeText("lou@example.org")
+        app.buttons["Continue"].firstMatch.tap()
+        let code = app.textFields["6-digit code"].firstMatch
+        XCTAssertTrue(code.waitForExistence(timeout: 8), "no code step")
+        sleep(1)
+        code.tap()
+        code.typeText("123456")
+        let home = app.descendants(matching: .any)["home-date"].firstMatch
+        XCTAssertTrue(home.waitForExistence(timeout: 15), "not in the belfry after the code")
+        sleep(2)
+        XCTAssertFalse(app.buttons["guest-apply"].exists, "a member saw the application form")
+        XCTAssertFalse(app.buttons["member-signup"].exists, "still on the invite screen")
+        shot("59-member-in")
+    }
 }

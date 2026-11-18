@@ -406,13 +406,34 @@ public final class SyncEngine: @unchecked Sendable {
         return await r.query(filters, timeout: timeout)
     }
 
+    /// The groups' metadata, always asked whole (no `since`, SPEC 19.42): a channel this key could
+    /// not read before (a guest who became a member, a channel opened to everyone) has metadata
+    /// older than the newest event stored here, and would otherwise show by its id.
+    public static let metadataFilter: [String: Any] = ["kinds": [39000, 39001, 39002, 39003], "limit": 2000]
+
+    /// Ask everything again on the next subscription to T (no `since`), until its EOSE: after this
+    /// key's access changed (a guest became a member, SPEC 19.43).
+    public func catchUpFromStart() {
+        if localOnly { return }
+        lock.lock(); fullSync = [.groups, .main]; lock.unlock()
+        db.set("full-sync", [Target.groups.rawValue, Target.main.rawValue])
+        dropSockets()
+        wake()
+    }
+    private lazy var fullSync: Set<Target> = Set((db.get("full-sync", as: [String].self) ?? []).compactMap { Target(rawValue: $0) })
+
+    func sinceFor(_ t: Target, _ kinds: [Int], back: Int) -> Int {
+        lock.lock(); let full = fullSync.contains(t); lock.unlock()
+        return full ? 0 : max(0, latest(kinds) - back)
+    }
+
     func filters(_ t: Target) -> [[String: Any]] {
         let kinds = t == .groups ? SyncEngine.kindsGroups : SyncEngine.kindsMain
-        let since = max(0, latest(kinds) - 3600)
-        if t == .groups { return [["kinds": kinds, "since": since, "limit": 2000]] }
+        let since = sinceFor(t, kinds, back: 3600)
+        if t == .groups { return [["kinds": kinds, "since": since, "limit": 2000], SyncEngine.metadataFilter] }
         let wraps = max(0, latest([1059]) - 3 * 86400)
         let old = max(0, latest([4]) - 3600)
-        let extras = max(0, latestProfileExtras() - 3600)
+        let extras = since == 0 ? 0 : max(0, latestProfileExtras() - 3600)
         return [
             ["kinds": kinds, "since": since, "limit": 2000],
             ["kinds": [30078], "#d": [Derive.profileD], "since": extras, "limit": 2000],
@@ -429,7 +450,14 @@ public final class SyncEngine: @unchecked Sendable {
     }
 
     func eose(_ t: Target, _ sub: String) {
-        if sub.hasPrefix("live-") { onEOSE?(t) }
+        if sub.hasPrefix("live-") {
+            lock.lock()
+            let was = fullSync.remove(t) != nil
+            let left = fullSync
+            lock.unlock()
+            if was { db.set("full-sync", left.map(\.rawValue)) }
+            onEOSE?(t)
+        }
         guard t == .groups else { return }
         if access != .ok { access = .ok; changed() }
         firstChannel()

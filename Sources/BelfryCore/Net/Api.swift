@@ -50,9 +50,12 @@ public struct InviteInfo: Hashable, Sendable {
     /// open | used | expired | revoked
     public let state: String
     public let days: Int
-    public init(community: String, channel: String, channelName: String, about: String, inviter: String, state: String, days: Int) {
+    /// A belfry member link (`"as": "member"`, docs/roles.md): joining makes them a member, with
+    /// this role. Nil for a guest link (SPEC 19.43).
+    public var member: MemberLinkInfo?
+    public init(community: String, channel: String, channelName: String, about: String, inviter: String, state: String, days: Int, member: MemberLinkInfo? = nil) {
         self.community = community; self.channel = channel; self.channelName = channelName; self.about = about
-        self.inviter = inviter; self.state = state; self.days = days
+        self.inviter = inviter; self.state = state; self.days = days; self.member = member
     }
     public var isOpen: Bool { state == "open" }
     public var closedMessage: String? {
@@ -65,6 +68,44 @@ public struct InviteInfo: Hashable, Sendable {
     }
 }
 
+/// What a member link gives (web auth.ts memberLinkOf): the role's id and label, and how long.
+public struct MemberLinkInfo: Codable, Hashable, Sendable {
+    public var role: String
+    public var label: String
+    /// month | year | permanent
+    public var membership: String
+    public init(role: String, label: String, membership: String) { self.role = role; self.label = label; self.membership = membership }
+
+    /// From an answer of GET /channel-invites/<token> or of its /join: only when `"as": "member"`.
+    /// Fixed values only: an unknown membership reads permanent; an empty label reads "Member".
+    public static func parse(_ b: [String: Any]) -> MemberLinkInfo? {
+        guard b["as"] as? String == "member" else { return nil }
+        let m = b["membership"] as? String
+        let label = (b["member_role_label"] as? String ?? "").jsTrim()
+        return MemberLinkInfo(role: (b["member_role"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "member",
+                              label: label.isEmpty ? "Member" : label.sliceUnits(40),
+                              membership: m == "month" || m == "year" ? m! : "permanent")
+    }
+
+    /// "as a Member", "as an Admin": the role with its article (web asWho).
+    public var asWho: String {
+        let first = label.lowercased().first.map(String.init) ?? ""
+        return ("aeiou".contains(first) && !first.isEmpty ? "an " : "a ") + label
+    }
+
+    /// ", for a month" / ", for a year" / "" (permanent).
+    public var lengthLine: String { membership == "month" ? ", for a month" : membership == "year" ? ", for a year" : "" }
+}
+
+/// `/guest/save/verify`'s answer: `joined` (they were reading), `member` (a member link made them a
+/// member of the belfry, SPEC 19.43; false: it couldn't, they stay a saved guest).
+public struct GuestSaved: Hashable, Sendable {
+    public var joined: Bool
+    public var member: Bool
+    public var role: String?
+    public init(joined: Bool, member: Bool, role: String? = nil) { self.joined = joined; self.member = member; self.role = role }
+}
+
 public struct JoinedNew: Hashable, Sendable {
     public let bunkerURL: String
     public let channel: String
@@ -73,8 +114,15 @@ public struct JoinedNew: Hashable, Sendable {
     /// Guest mode (SPEC 19.26): a nameless guest who reads until they join. False for a guest
     /// who joined by name (older clients) and for an older belfry that does not say.
     public var reading = false
+    /// A member link (SPEC 19.43).
+    public var member: MemberLinkInfo?
 }
-public struct JoinedAccount: Hashable, Sendable { public let channel: String; public let already: Bool; public let guest: Bool }
+public struct JoinedAccount: Hashable, Sendable {
+    public let channel: String; public let already: Bool; public let guest: Bool
+    /// A member link used by a saved guest: a member now (docs/roles.md, SPEC 19.43).
+    public var member = false
+    public init(channel: String, already: Bool, guest: Bool, member: Bool = false) { self.channel = channel; self.already = already; self.guest = guest; self.member = member }
+}
 public struct Places: Hashable, Sendable { public let places: [Place]; public let attribution: String? }
 /// E-mail follows of channels' announcements: channel id → `asap` | `monthly`.
 public struct Follows: Hashable, Sendable { public let email: String; public let byChannel: [String: String] }
@@ -252,7 +300,8 @@ public struct BelfryAPI: Sendable {
         }
         return InviteInfo(community: (b["community"] as? String ?? "").sliceUnits(100), channel: channel,
                           channelName: (b["channel_name"] as? String ?? channel).sliceUnits(80), about: (b["about"] as? String ?? "").sliceUnits(300),
-                          inviter: (b["inviter"] as? String ?? "").sliceUnits(100), state: b["state"] as? String ?? "used", days: BelfryAPI.int(b["days"]) ?? 30)
+                          inviter: (b["inviter"] as? String ?? "").sliceUnits(100), state: b["state"] as? String ?? "used", days: BelfryAPI.int(b["days"]) ?? 30,
+                          member: MemberLinkInfo.parse(b))
     }
 
     /// A new guest: this device's fresh session key signs the request; the belfry answers with
@@ -278,6 +327,7 @@ public struct BelfryAPI: Sendable {
         var j = JoinedNew(bunkerURL: bunker, channel: (b["channel"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? generalId,
                           pubkey: (b["pubkey"] as? String).flatMap { isHex64($0) ? $0 : nil }, emailNeeded: b["email_needed"] as? Bool ?? false)
         j.reading = name == nil && b["reading"] as? Bool != false && b["guest"] as? Bool != false
+        j.member = MemberLinkInfo.parse(b)
         return j
     }
 
@@ -289,7 +339,8 @@ public struct BelfryAPI: Sendable {
             m["name_needed"] = "This account can’t use invites."
             throw BelfryAPI.fail(a, m, "The invite could not be used just now.")
         }
-        return JoinedAccount(channel: channel, already: b["already"] as? Bool ?? false, guest: b["guest"] as? Bool ?? false)
+        return JoinedAccount(channel: channel, already: b["already"] as? Bool ?? false, guest: b["guest"] as? Bool ?? false,
+                             member: b["member"] as? Bool == true)
     }
 
     /// Join from guest mode, or save a named guest's account (SPEC 19.26): a 6-digit code goes
@@ -300,14 +351,15 @@ public struct BelfryAPI: Sendable {
         _ = try await guestCall("/guest/save", body)
     }
 
-    /// The code from the e-mail. Returns `joined` (true: they were in guest mode and are now in
-    /// the channel with their name).
+    /// The code from the e-mail. `joined`: they were in guest mode and are now in the channel with
+    /// their name; `member`: a member link made them a member of the belfry (SPEC 19.43).
     @discardableResult
-    public func guestVerify(email: String, code: String, name: String? = nil) async throws -> Bool {
+    public func guestVerify(email: String, code: String, name: String? = nil) async throws -> GuestSaved {
         var body: [String: Any] = ["email": email.jsTrim(), "code": code.jsTrim()]
         if let name { body["name"] = GuestJoinForm.cleanName(name) }
         let b = try await guestCall("/guest/save/verify", body)
-        return b["joined"] as? Bool ?? false
+        return GuestSaved(joined: b["joined"] as? Bool ?? false, member: b["member"] as? Bool == true,
+                          role: (b["role"] as? String).map { $0.sliceUnits(40) })
     }
 
     func guestCall(_ path: String, _ body: [String: Any]) async throws -> [String: Any] {

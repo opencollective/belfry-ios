@@ -43,6 +43,8 @@ shot() { # name screen appearance
     xcrun simctl launch "$UDID" "$BUNDLE" -demo -member -screen "${2#member-}" >/dev/null
   elif [ "$2" = "join" ]; then
     xcrun simctl launch "$UDID" "$BUNDLE" -join >/dev/null
+  elif [ "$2" = "join-member" ]; then
+    xcrun simctl launch "$UDID" "$BUNDLE" -join member >/dev/null
   else
     xcrun simctl launch "$UDID" "$BUNDLE" -demo -screen "$2" >/dev/null
   fi
@@ -54,6 +56,14 @@ shot() { # name screen appearance
 # 2026-11-17 round 3: Home with the date and ☰, the drawer (Today, Members, categories with ＋,
 # the gear), Settings → Channels, the channel header (subtitle, attention line) and its pull-down
 # menu, the channel's pushed screens (Members with Invite, Settings, Pinned)
+# 2026-11-18 round 7: a to-do's own screen (claim / assign / unassign, discussion), Assign to…,
+# a belfry member link's own screen (no channel behind it)
+shot 140-todos todos light
+shot 141-todo todo light
+shot 141b-todo-dark todo dark
+shot 142-todo-assign todoassign light
+shot 143-member-invite join-member light
+shot 143b-member-invite-dark join-member dark
 shot 130-home home light
 shot 130b-home-dark home dark
 shot 131-home-drawer homedrawer light

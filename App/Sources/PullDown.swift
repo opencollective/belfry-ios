@@ -444,40 +444,6 @@ struct MediaThumb: View {
     }
 }
 
-/// A to-do with a box that ticks it off and who is on it.
-struct TodoRow: View {
-    @EnvironmentObject var model: AppModel
-    let t: TodoTask
-    let group: String
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            BusyButton {
-                model.todo(t, in: group, t.done ? "undone" : "done")
-            } label: {
-                Image(systemName: t.done ? "checkmark.square.fill" : "square").font(.title3).foregroundStyle(t.done ? Color.green : Color.secondary)
-            }
-            .buttonStyle(.plain)
-            .disabled(model.locked(group))
-            .accessibilityLabel(t.done ? "Done. Mark as not done" : "Tick off")
-            VStack(alignment: .leading, spacing: 2) {
-                Text(MarkdownText.plainLinks(t.title)).font(.subheadline).strikethrough(t.done)
-                HStack(spacing: 6) {
-                    if t.isWorking(now: Int.now), let since = t.workingSince { WorkingRing(since: since) }
-                    Text(model.derive.todoWho(t)).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            if !t.done && !model.locked(group) {
-                if t.assignee == model.me {
-                    BusyButton("Let go") { model.todo(t, in: group, "unclaim") }.font(.caption).buttonStyle(.borderless)
-                } else if t.assignee == nil {
-                    BusyButton("I'll do it") { model.todo(t, in: group, "claim") }.font(.caption).buttonStyle(.borderless)
-                }
-            }
-        }
-    }
-}
-
 /// Someone is on this todo now: a ring filling clockwise with the minutes of the current
 /// stretch, "1h", "2h"… in it past an hour (web d6cfae1).
 struct WorkingRing: View {

@@ -233,6 +233,13 @@ public extension Derive {
         groups().filter { $0.type == .channel && $0.id != Derive.charterId }
     }
 
+    /// The town's channels I can read (SPEC 19.42, web invite.ts inChannel): a member reads every
+    /// open one without being in its 39002 list, and the closed ones they are in; a guest only their
+    /// own. (The drawer lists `townChannels()`: a closed channel I am not in shows with Ask to join.)
+    func readableChannels() -> [Group] {
+        townChannels().filter { inChannel($0, me) }
+    }
+
     /// The drawer's categories with their channels (general is never in one).
     func channelCategories() -> [ChannelCategory] {
         Categories.arrange(channelLayout(), channels: townChannels().map(\.id))

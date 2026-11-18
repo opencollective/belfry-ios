@@ -457,6 +457,8 @@ struct BecomeMemberSheet: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
             .task { await model.loadPublicCharter() }
             .onChange(of: model.unsavedGuest) { _, v in if !v { mustSave = false } }
+            // a member now (a member link, or accepted): the form is not theirs (SPEC 19.43)
+            .onChange(of: model.derive.amGuest) { _, guest in if !guest && !model.guestReading { dismiss() } }
         }
     }
 }

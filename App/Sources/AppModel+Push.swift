@@ -215,7 +215,7 @@ struct NotificationsView: View {
                     toggle("Pinned messages", s.pins) { ["pins": $0] }
                 }
                 Section {
-                    ForEach(model.groups.filter { $0.members.contains(model.me) || $0.admins.contains(model.me) }) { g in
+                    ForEach(model.groups.filter { $0.members.contains(model.me) || $0.admins.contains(model.me) || ($0.type == .channel && model.derive.inChannel($0, model.me)) }) { g in
                         Picker(selection: Binding(get: { s.level(g.id) }, set: { l in set(["channels": [g.id: l]]) })) {
                             ForEach(NotificationSettings.levels, id: \.id) { Text($0.label).tag($0.id) }
                         } label: { HStack(spacing: 8) { ChannelGlyph(group: g, size: 18); Text(g.name) } }
