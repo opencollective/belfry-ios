@@ -15,6 +15,19 @@ final class MenuShots: XCTestCase {
         return app
     }
 
+    /// The first element of LIST that can be tapped, waiting up to TIMEOUT seconds for one.
+    private func hittable(_ list: XCUIElementQuery, timeout: TimeInterval) -> XCUIElement? {
+        let end = Date().addingTimeInterval(timeout)
+        repeat {
+            for i in 0..<min(list.count, 6) {
+                let e = list.element(boundBy: i)
+                if e.exists && e.isHittable { return e }
+            }
+            usleep(500_000)
+        } while Date() < end
+        return nil
+    }
+
     private func shot(_ name: String) {
         let env = ProcessInfo.processInfo.environment
         guard let dir = env["SHOTS_DIR"], !dir.isEmpty else { return }
@@ -40,9 +53,13 @@ final class MenuShots: XCTestCase {
     func testMessageMenu() {
         let app = launch("feed")
         // a message row of the feed (the drawer, kept in the tree, holds the same words in a preview)
-        let msg = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == 'message-row' AND label CONTAINS %@", "read it tonight")).firstMatch
-        XCTAssertTrue(msg.waitForExistence(timeout: 10))
-        XCTAssertTrue(msg.isHittable, "the message row is not on screen")
+        let rows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == 'message-row' AND label CONTAINS %@", "read it tonight"))
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 20))
+        // a slow simulator may still be scrolling the feed to its end (or drawing the drawer's
+        // copy first): wait for a copy that is on screen instead of asserting at once
+        let msg = hittable(rows, timeout: 30)
+        XCTAssertNotNil(msg, "the message row is not on screen")
+        guard let msg else { return }
         msg.press(forDuration: 1.2)
         XCTAssertTrue(app.buttons["Reply"].waitForExistence(timeout: 4), "the message's menu did not open")
         sleep(1)
