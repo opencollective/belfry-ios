@@ -27,6 +27,17 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
     public var onState: ((State) -> Void)?
     /// Called when the socket closes or fails (not after an explicit close()).
     public var onDisconnect: (() -> Void)?
+    /// After AUTH succeeds, the filters a subscription is sent again with (nil: as first sent). The
+    /// engine gives its live subscriptions from 0: an answer that came before AUTH held only public
+    /// events, and its newest would otherwise move `since` past every older members-only one (the
+    /// web's missing agreement and channels, chat 458704e).
+    public var refilter: ((String) -> [[String: Any]]?)?
+    /// The relay asked for NIP-42 AUTH on this connection / it accepted ours.
+    public var challenged: Bool { lock.lock(); defer { lock.unlock() }; return challengedFlag }
+    public var authed: Bool { lock.lock(); defer { lock.unlock() }; return authEventId == "done" }
+    private var challengedFlag = false
+    /// Tests: frames that would go to the socket.
+    var testSink: ((String) -> Void)?
 
     public init(url: String) {
         self.url = url
@@ -49,7 +60,7 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
         cfg.timeoutIntervalForRequest = 30
         let s = URLSession(configuration: cfg, delegate: self, delegateQueue: nil)
         let t = s.webSocketTask(with: u)
-        lock.lock(); session = s; task = t; opened = false; lock.unlock()
+        lock.lock(); session = s; task = t; opened = false; authEventId = nil; challengedFlag = false; lock.unlock()
         t.resume()
         receive(t)
         let key = UUID().uuidString
@@ -121,14 +132,16 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
     // ---- sending ------------------------------------------------------------------------------
 
     private func send(_ array: [Any]) {
-        lock.lock(); let t = task; lock.unlock()
+        lock.lock(); let t = task; let sink = testSink; lock.unlock()
+        if let sink { sink(JSON.encode(array)); return }
         guard let t else { return }
         t.send(.string(JSON.encode(array))) { _ in }
     }
 
     /// Text frames with events need the canonical event JSON (JSONSerialization reorders and escapes).
     private func sendRaw(_ text: String) {
-        lock.lock(); let t = task; lock.unlock()
+        lock.lock(); let t = task; let sink = testSink; lock.unlock()
+        if let sink { sink(text); return }
         t?.send(.string(text)) { _ in }
     }
 
@@ -144,8 +157,15 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
 
     private func resubscribe() {
         lock.lock(); let all = subs; lock.unlock()
-        for (id, f) in all { send(["REQ", id] + f) }
+        for (id, old) in all {
+            let f = refilter?(id) ?? old
+            lock.lock(); if subs[id] != nil { subs[id] = f }; lock.unlock()
+            send(["REQ", id] + f)
+        }
     }
+
+    /// Tests: a frame as if it came from the relay.
+    func receiveForTest(_ text: String) { handle(text) }
 
     /// Publishes EVENT and waits for OK (15 s). Throws the relay's reason ("restricted: …").
     public func publish(_ event: NostrEvent, timeout: TimeInterval = 15) async throws {
@@ -251,6 +271,7 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
             if arr.count >= 2, let sub = arr[1] as? String { onClosed?(sub, arr.count > 2 ? (arr[2] as? String ?? "") : "") }
         case "AUTH":
             guard arr.count >= 2, let challenge = arr[1] as? String, let signer = authSigner else { return }
+            lock.lock(); challengedFlag = true; lock.unlock()
             set(.auth)
             Task {
                 do {

@@ -353,7 +353,11 @@ public final class SyncEngine: @unchecked Sendable {
         let r = Relay(url: url(t))
         r.authSigner = signer
         r.onEvent = { [weak self] _, ev in self?.add([ev]) }
-        r.onEOSE = { [weak self] sub in self?.eose(t, sub) }
+        r.onEOSE = { [weak self, weak r] sub in
+            guard let self, let r else { return }
+            self.eose(t, sub, relay: r)
+        }
+        r.refilter = { [weak self] id in id == "live-" + t.rawValue ? self?.filters(t, fromStart: true) : nil }
         r.onClosed = { [weak self] sub, reason in self?.closed(t, sub, reason) }
         r.onState = { [weak self] s in
             guard let self else { return }
@@ -446,9 +450,10 @@ public final class SyncEngine: @unchecked Sendable {
         return full ? 0 : max(0, latest(kinds) - back)
     }
 
-    func filters(_ t: Target) -> [[String: Any]] {
+    /// FROMSTART: the first subscription after AUTH (everything from 0, see `Relay.refilter`).
+    func filters(_ t: Target, fromStart: Bool = false) -> [[String: Any]] {
         let kinds = t == .groups ? SyncEngine.kindsGroups : SyncEngine.kindsMain
-        let since = sinceFor(t, kinds, back: 3600)
+        let since = fromStart ? 0 : sinceFor(t, kinds, back: 3600)
         if t == .groups { return [["kinds": kinds, "since": since, "limit": 2000], SyncEngine.metadataFilter] + SyncEngine.charterFilters }
         let wraps = max(0, latest([1059]) - 3 * 86400)
         let old = max(0, latest([4]) - 3600)
@@ -467,6 +472,23 @@ public final class SyncEngine: @unchecked Sendable {
     func subscribe(_ t: Target, _ r: Relay) {
         r.subscribe("live-" + t.rawValue, filters: filters(t))
     }
+
+    /// An end of stored events from relay R. Before AUTH the answer holds only public events: it
+    /// is not "the relay's answer" (no catch-up done, no deleted-by-absence check) while AUTH is
+    /// asked or may still be; the subscription sent again after AUTH (from 0) answers instead. A
+    /// relay that never asks for AUTH within 5 s: that first answer counts.
+    func eose(_ t: Target, _ sub: String, relay r: Relay) {
+        if sub.hasPrefix("live-"), r.authSigner != nil, !r.authed {
+            if r.challenged { return }
+            DispatchQueue.global().asyncAfter(deadline: .now() + SyncEngine.authGrace) { [weak self, weak r] in
+                guard let self, let r, !r.challenged, !r.authed else { return }
+                self.eose(t, sub)
+            }
+            return
+        }
+        eose(t, sub)
+    }
+    static var authGrace: TimeInterval = 5
 
     func eose(_ t: Target, _ sub: String) {
         if sub.hasPrefix("live-") {

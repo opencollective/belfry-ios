@@ -2196,6 +2196,13 @@ Same wire format as Android SPEC 19.40 (written there the same day; this section
   a member's view (kept as `member-view`; a fresh sign-in, a store from before this rule, or a
   guest who just became a member) asks the other filters from 0 once, until each relay's EOSE
   (same rule as Android's `groups-full-1`).
+- **An answer before AUTH is not the relay's answer** (the lead, 2026-11-18; web chat 458704e): a
+  relay may answer the first REQ (public events only) before it asks for NIP-42 AUTH. Its newest
+  public event must not move `since` past older members-only events: after AUTH succeeds, the live
+  subscription is sent again from 0; an EOSE that came before AUTH, while AUTH was asked (or
+  within 5 s of it, in case it is), neither ends a pending catch-up nor starts the deleted-by-absence
+  check. Metadata (39000–39003) and the charter (2100 / 2101) are asked without `since` anyway.
+  (iOS: `Relay.refilter`, `Relay.challenged / authed`, `SyncEngine.eose(_:_:relay:)`, `LateAuthTests`.)
 - **What a member reads** (web invite.ts `inChannel`): a member reads every live (not deleted, not
   archived) open channel without being in its 39002 list, and the closed ones they are in; a guest
   only their own (and, me, a guest in guest mode too). The drawer lists every listed channel; a
