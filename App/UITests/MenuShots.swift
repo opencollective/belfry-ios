@@ -223,7 +223,7 @@ final class MenuShots: XCTestCase {
         XCTAssertTrue(assign.waitForExistence(timeout: 5), "the to-do's screen did not open")
         shot("58-todo")
         assign.tap()
-        let person = app.buttons["assign-person"].element(boundBy: 1)
+        let person = app.buttons.matching(identifier: "assign-person").element(boundBy: 1)
         XCTAssertTrue(person.waitForExistence(timeout: 5), "no one to assign")
         shot("58-todo-assign")
         person.tap()
