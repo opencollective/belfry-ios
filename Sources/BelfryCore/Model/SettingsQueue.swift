@@ -6,12 +6,13 @@ import Foundation
 // relay has again.
 
 public enum SettingsQueue {
-    public enum Part: String, Sendable { case meta, inbox }
+    public enum Part: String, Sendable { case meta, inbox, visibility }
 
     /// Which part of a channel's settings ITEM changes, or nil when it is something else.
     public static func part(_ item: OutboxItem) -> Part? {
         if item.kind == 9002 { return .meta }
         if item.kind == 30078, item.tags.contains(where: { $0.count >= 2 && $0[0] == "d" && $0[1] == Derive.inboxD }) { return .inbox }
+        if item.kind == 30078, item.tags.contains(where: { $0.count >= 2 && $0[0] == "d" && $0[1].hasPrefix(Derive.webD) }) { return .visibility }
         return nil
     }
 
@@ -33,7 +34,8 @@ public enum SettingsQueue {
     /// One sentence on what failed: fixed text by part and by the kind of refusal (never the
     /// relay's or the server's own words).
     public static func message(_ item: OutboxItem) -> String {
-        let what = part(item) == .inbox ? "The e-mail setting wasn't saved" : "The new name and description weren't saved"
+        let p = part(item)
+        let what = p == .inbox ? "The e-mail setting wasn't saved" : p == .visibility ? "Who can read it wasn't saved" : "The new name and description weren't saved"
         let msg = item.error ?? ""
         let code = HttpCall.code(of: msg)
         if code == "not_allowed" || code == "forbidden" || Outbox.permanentWords.test(msg) || msg.hasPrefix("restricted:") || msg.hasPrefix("blocked:") {

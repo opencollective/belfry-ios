@@ -1833,7 +1833,23 @@ Nothing new on the wire; each client joins a shared inbox's e-mails into threads
 - **The feed** shows one row per thread at its latest activity (the latest e-mail either way or
   team reply): sender, subject, a line of the latest e-mail, state, who has it, counts. Its e-mails
   are not shown as messages, and its replies don't resurface as thread activity.
-- **The thread**: the e-mails in frames (received light, sent solid, "unverified sender" when
+- **Round 6 (2026-11-18, the owner's mock-ups Mail-A / Mail-B; replaces the two bullets below
+  for the look, the wire is unchanged)**: every entry of the thread is an ordinary message row
+  (face, name, a small tag, time, text): an outsider's e-mail = their initials, name (or address)
+  and the tag **"guest, by e-mail"** (no frame; "unverified sender" under it when `belfry-auth`
+  isn't `pass`; "Full e-mail" and Copy in its menu); what went out = the member of `sent-by` with
+  **"sent as <alias>@"** (alias = 19.33's `mailLocal`); a NIP-22 reply = the member's message with
+  **"team only"**. The subject is the thread's title (not repeated per e-mail). The composer has two
+  segments above the field, **"Reply to <first name>"** (the default when the thread opens; the
+  first word of `lastIn`'s name, else its address) and **"Comment"**, and one line under them:
+  reply = "An e-mail from **<alias>@<domain>** to <name>"; comment = "Only members of #<channel>
+  see this. **<First name> does not.**" The modes look different: the chosen segment filled, the
+  field's border and Send in blue for an e-mail, yellow for a comment. Someone who may not answer
+  by e-mail (not an admin of the channel, the inbox off, nothing received) gets no segments, only
+  Comment. 8 s Undo unchanged; after an e-mail the thread stays in reply mode. The feed's row is
+  shaped like a message too: initials, name, "guest, by e-mail", time; the subject; a line of the
+  latest e-mail; state, who has it, "N e-mails · N comments".
+- **The thread** (before round 6): the e-mails in frames (received light, sent solid, "unverified sender" when
   `belfry-auth` isn't `pass`, "Full e-mail"), the team's replies, the state with Take / Close for
   the channel's admins, "Team only: <sender> sees only what is sent by e-mail." ONE composer with
   a line above it: "Message will be sent in this thread" (a NIP-22 reply under the root) and, for the
@@ -2022,3 +2038,83 @@ link). Links look like links everywhere: underlined, in the tint. A link to this
   (dropped: the channel shows what the relay has again). Never the relay's or server's own words.
 - (iOS) `SettingsQueue` (core), `HttpCall` + `SyncEngine.enqueueCall`, `AppModel.editGroupMeta /
   failedSettings / retrySettings / discardSettings`, the mark in `ChannelView`'s title.
+
+### 19.38 Who reads a channel, closed channels, a channel's notifications (iOS, 2026-11-18; web c0a1cc2 ChannelInfo.tsx / actions.ts setVisibility; `vectors/visibility.json`)
+
+- **Three choices** in a channel's Settings, section "Who can read it" (channels only; groups keep
+  their own Open / Closed): **Members only** ("Everyone with a pass in this belfry"), **Public**
+  ("Anyone on the web can read it. Only members write."), **Closed** ("People ask to join. A steward
+  of this channel approves."; never for #general). Footer: "A change counts from now on. Messages
+  keep the visibility they were posted with." Choosing Public asks first: "Make #<name> public?" /
+  "From now on, anyone on the web can read what is posted here, with the names of the people who
+  post. Earlier messages stay for members only." / **Make it public** / **Keep it for members**.
+  Saved with the rest on Save, through the outbox (19.37); a final refusal shows the error mark with
+  "Who can read it wasn't saved: …".
+- **Reading it**: Public = the channel's web settings (30078 `d` = `belfry:web:<id>`, `h` = id, by
+  one of its admins or the relay's key; the latest wins) say `on` and `visibility` public (a missing
+  `visibility` reads public unless `list` = `own`). Public wins over closed; else **Closed** = the
+  group's `closed` flag (9002 / 39000 `closed` / `open`); else Members only.
+- **Public / members only on the wire** (web setVisibility): write the whole settings object back
+  (every key kept, `posts` included) with `visibility` = public | members, `slug` = the old one or
+  slug(name) when empty, `on` = true when going public (else as it was), and `periods` = when it was
+  public, `[[from, to | null], …]` in seconds. Never retroactive: going public appends `[now, null]`
+  unless the last period is open; going members only closes the open one (`to` = now). Reading
+  `periods`: pairs whose first item is a finite number and second null or a finite number (others
+  dropped), floored, sorted by start, the last 100; settings without `periods` that say public
+  count as public since ever (`[[0, null]]`). Tags: `d`, `h`, `["t", "belfry-web"]`. Nothing is
+  written when it is that already.
+- **Closed / open on the wire**: the channel's 9002 (19.37: every tag kept) with `["closed"]` +
+  `["prompt", <question, default "Why do you want to join, and what would you bring?">]`, or
+  `["open"]`. Going Closed from Public writes both (members only, then closed).
+- **A closed channel for someone not in it** (not in its member list, not its admin, not a belfry
+  admin; never #general, events, proposals): read only (no composer) and a bar: "People ask to join
+  this channel." + **Ask to join** (the question and an answer → 9021 with the answer as content);
+  after asking: "Pending · The channel's stewards will answer." The same for a group (open: Join).
+  Its **Members** screen starts with "Asking to join · N" for its admins (all requests) and, while
+  it accepts by vouches, its members; Accept / Decline = 9000 / 9001 by someone the relay takes them
+  from (its 39001, creator, a belfry admin); a steward by role sees "Its creator or a belfry admin
+  lets people in." (SERVER-NEEDS 15). The requests also count in Members' requests (19.31).
+- **A channel's notifications**: the pull-down's Notifications row opens a sheet (the one row that
+  does; medium detent, grabber) "Notify me about #<name>": **Everything** ("Every new message",
+  level `all`), **When it's for me** ("Mentions, replies to me, to-dos given to me", level
+  `default`; a stored `mentions` shows here too), **Nothing** ("I'll look when I open the channel",
+  level `off`); applied at once with a light haptic (put back with the error's fixed message if the
+  belfry refuses). A stored `default` (or none) shows "When it's for me" with " (the default here)"
+  after its line. Under them **"Also e-mail me its announcements"** ("What admins mark as an
+  announcement"; on = follow `asap`, off = `stop`; a `monthly` follow shows on, "· once a month").
+  When this phone has no permission yet, a line above offers "Turn on" (or the iPhone's Settings).
+- (iOS) `Derive.webContent / publicPeriods / channelAccess / needsJoinBar / readOnlyClosed /
+  mayClose`, `Actions.webPage / setVisibility`, `NotifyChoice` (core, `Round6Tests`);
+  `SettingsTab.whoReads`, `PodJoinBar`, `ChannelMembersScreen`, `NotifySheet`.
+
+### 19.39 A proposal at the top of its chat (iOS, 2026-11-18; the owner's mock-ups Proposal-A / B)
+
+- A proposal's chat (`prop-…` with its 30023 here) opens as one screen with the proposal on top,
+  the event screen's header mechanics (19.29: three levels, a handle that drags and snaps, opening
+  at half, the keyboard folds it): **half** = the status pill (Open for votes / feedback green /
+  blue, Passed green, Rejected red, Draft / Closed grey), "Proposal by <name> · version N", the
+  title, the start of the summary (else the text, 3 lines), "Read the full proposal" (→ full), the
+  vote buttons while votes are open on this version (the poll's own `option` tags in order, each
+  with its count; mine filled), and "You haven't voted yet · X of Y members have" (or "You voted
+  <option> · …"); **full** = also the whole summary and text, the website version's preview, Change
+  the status (its author and admins), New version (its author); **up** = one bar with the title,
+  the pill, the tally ("12 yes · 2 no · 1 abstain") and **Vote** (a menu of the options; "You:
+  <option>" once voted).
+- **Turnout**: X = the votes on the current poll; Y = the members of the channel the proposal was
+  made in (its parent, else its own chat), guests and agents left out, voters added; when that
+  list is unknown (empty): "X members have voted". No deadline (none exists in the data).
+- No Versions / Votes tabs: older versions aren't kept (30023 is replaceable; a new version is a
+  note in the chat) and no client lists who voted what. The channel's own screens (Members,
+  Notifications, Log, Settings) are in the ⋯ menu; search on its left.
+- (iOS) `Poll.options`, `Proposal.options`, `Derive.voteTurnout` (core), `ProposalScreen.swift`;
+  `ChannelScreen` sends prop- channels there.
+
+### 19.40 A new profile picture shows everywhere at once (iOS, 2026-11-18)
+
+- My new kind 0 counts the moment it is queued (the snapshot includes queued items, 19.37): every
+  face, name and past message shows it before the relay echoes it. A client caching pictures keeps
+  each picture with the address it was loaded for and never shows it for another address (the bug:
+  a view holding the old picture skipped loading when the new address was already in the memory
+  cache). The uploaded picture is put in the cache under its new address, so no download is needed.
+- (iOS) `PictureSlot` (core, `ProfileEverywhereTests`), `CachedImage`, `AppModel.saveProfile`.
+

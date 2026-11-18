@@ -240,6 +240,50 @@ public struct NotificationSettings: Hashable, Sendable {
     }
 }
 
+/// The channel's Notifications sheet (SPEC 19.38, the owner's mock-up Notif-C): three choices over
+/// the four stored levels. `default` is what the belfry sends without a choice (mentions, replies,
+/// announcements, pins: docs/push.md), shown as "When it's for me (the default here)".
+public enum NotifyChoice: String, CaseIterable, Sendable {
+    case everything, forMe, nothing
+
+    /// The choice a stored level shows as.
+    public static func of(level: String) -> NotifyChoice {
+        switch level {
+        case "all": return .everything
+        case "off": return .nothing
+        default: return .forMe // "default" and "mentions"
+        }
+    }
+
+    /// The level a tap stores: "When it's for me" goes back to the belfry's default.
+    public var level: String {
+        switch self {
+        case .everything: return "all"
+        case .forMe: return "default"
+        case .nothing: return "off"
+        }
+    }
+
+    public var title: String {
+        switch self {
+        case .everything: return "Everything"
+        case .forMe: return "When it's for me"
+        case .nothing: return "Nothing"
+        }
+    }
+
+    /// The explaining line; "(the default here)" after the one the stored `default` resolves to.
+    public func line(stored: String?) -> String {
+        let base: String
+        switch self {
+        case .everything: base = "Every new message"
+        case .forMe: base = "Mentions, replies to me, to-dos given to me"
+        case .nothing: base = "I'll look when I open the channel"
+        }
+        return stored == "default" && self == .forMe ? base + " (the default here)" : base
+    }
+}
+
 public struct PushDevice: Hashable, Sendable, Identifiable { public let id, app, name, since: String }
 
 public extension BelfryAPI {

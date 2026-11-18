@@ -200,6 +200,7 @@ struct ChannelMembersScreen: View {
     @EnvironmentObject var model: AppModel
     let id: String
     @State private var invite = false
+    @State private var asking = false
     @State private var profile: ProfileKey?
 
     var body: some View {
@@ -215,6 +216,17 @@ struct ChannelMembersScreen: View {
                         .accessibilityIdentifier("members-invite")
                 }
             }
+            // people asking to join a closed channel or group: at the top, for its stewards (and,
+            // while it accepts by vouches, its members)
+            if let g, !g.archived, g.isPod || g.closed {
+                let reqs = d.canAdmin(g) ? g.applications : d.groupRequestsFor(g)
+                if !reqs.isEmpty {
+                    Section {
+                        ForEach(reqs, id: \.id) { a in GroupRequestRow(group: g, pubkey: a.pubkey, answer: a.answer) }
+                    } header: { Text("Asking to join · \(reqs.count)") }
+                    .accessibilityIdentifier("members-requests")
+                }
+            }
             MembersTab(id: id) { profile = ProfileKey(pubkey: $0, group: id) }
             if !active.isEmpty {
                 Section("Active in the last 30 days") {
@@ -227,7 +239,16 @@ struct ChannelMembersScreen: View {
             }
             if let g, g.archived != true, !model.guestReading {
                 if !g.members.contains(model.me), !g.admins.contains(model.me), !g.isPod {
-                    Section { ActionButtonRow(icon: "person.crop.circle.badge.plus", title: "Join") { model.join(id) } }
+                    if d.needsJoinBar(g) {
+                        // a closed channel: ask, then wait for its stewards
+                        if g.applications.contains(where: { $0.pubkey == model.me }) {
+                            Section { Label("Pending: the channel's stewards will answer.", systemImage: "clock").foregroundStyle(.secondary) }
+                        } else {
+                            Section { Button { asking = true } label: { Label("Ask to join", systemImage: "person.crop.circle.badge.questionmark") } }
+                        }
+                    } else {
+                        Section { ActionButtonRow(icon: "person.crop.circle.badge.plus", title: "Join") { model.join(id) } }
+                    }
                 }
                 if g.isPod, g.members.contains(model.me) {
                     Section { ActionButtonRow(icon: "rectangle.portrait.and.arrow.right", title: "Leave the group", destructive: true) { model.leave(id) } }
@@ -238,6 +259,7 @@ struct ChannelMembersScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group) }
         .sheet(isPresented: $invite) { InviteSheet(id: id) }
+        .sheet(isPresented: $asking) { if let g { PodApplySheet(group: g) } }
         .task {
             await model.revalidateConfig()
             await model.askWhois(Array(g?.members ?? []).filter { model.derive.guestJoinKeys.contains($0) })

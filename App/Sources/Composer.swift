@@ -19,6 +19,10 @@ struct Composer: View {
     var focusTrigger = 0
     /// Where unsent text is kept on this phone (per channel, per thread; web f845d47).
     var draftKey: String?
+    /// A mode's colour (an e-mail thread: blue for an e-mail, yellow for the team): the field's
+    /// border and the Send button; ON TINT = the arrow on it.
+    var tint: Color? = nil
+    var onTint: Color = .white
     let onSend: (String, [Attachment], Bool) -> Void
     @State private var text = ""
     @State private var picked = [(name: String, pubkey: String)]()
@@ -128,6 +132,9 @@ struct Composer: View {
                 // the text view at several sizes (each probe is a TextKit layout)
                 .fixedSize(horizontal: false, vertical: true)
                 .composerField(radius: h / 2)
+                .overlay {
+                    if let tint { RoundedRectangle(cornerRadius: h / 2, style: .continuous).strokeBorder(tint, lineWidth: 1.5).allowsHitTesting(false) }
+                }
             }
         }
         .padding(.horizontal, compact ? 0 : 12)
@@ -173,9 +180,9 @@ struct Composer: View {
         Button(action: send) {
             Image(systemName: "arrow.up")
                 .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(canSend ? Theme.onAccent : Color.secondary)
+                .foregroundStyle(canSend ? (tint == nil ? Theme.onAccent : onTint) : Color.secondary)
                 .frame(width: h - 8, height: h - 8)
-                .background(canSend ? Theme.accent : Color.secondary.opacity(0.18), in: Circle())
+                .background(canSend ? (tint ?? Theme.accent) : (tint?.opacity(0.35) ?? Color.secondary.opacity(0.18)), in: Circle())
                 .padding(4).contentShape(Circle()).padding(-4) // a 38 pt target around a 30 pt mark
         }
         .buttonStyle(.plain)

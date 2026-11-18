@@ -345,3 +345,15 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   before the model's debounced bump, so the stale snapshot had no group, `lookFor` asked the relay
   before the 9007 left the outbox, the "nothing" was stored, and the relay's 39000 of the same
   second did not clear it (`<=`). The snapshot now follows `SyncEngine.outboxVersion` at once.
+- 2026-11-18 round 6 (branch ios-r6, the owner's mock-ups after build 7c2d037): the pull-down's
+  Notifications row opens `NotifySheet` (the ONE row that opens a sheet, the owner's choice);
+  Settings → "Who can read it" (SPEC 19.38, `vectors/visibility.json`: ours, copy to Android) and
+  closed channels (`Derive.needsJoinBar / readOnlyClosed`, `PodJoinBar`, requests on the channel's
+  Members); e-mail threads as message rows with tags and the Reply / Comment segments
+  (`MailUI.swift`, `Composer(tint:)`); `ProposalScreen` (SPEC 19.39: `ChannelScreen` sends prop-
+  channels with their 30023 there; the event screen's levels, `EventScreenBody.PageBox / Heights`
+  reused); pictures belong to their address (`PictureSlot`, SPEC 19.40). Demo: closed channel
+  #Board (`board-5d1e`, Emma its steward, Ben asking). Screens `notify`, `chvisibility`,
+  `chpublic`, `closedask` (with `-member`), `closedrequests`, `proposalup`, `proposalfull`,
+  `mailcomment`.
+

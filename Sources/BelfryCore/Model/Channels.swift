@@ -14,6 +14,36 @@ public struct WebPage: Hashable, Sendable {
     public var posts: String?
 }
 
+/// One stretch of time a channel was public, in seconds; `to` nil = still public.
+public struct PublicPeriod: Hashable, Sendable {
+    public var from: Int
+    public var to: Int?
+    public init(from: Int, to: Int?) { self.from = from; self.to = to }
+
+    /// web cleanPeriods: [number, number | null] pairs (floored), sorted by start, the last 100.
+    static func clean(_ raw: [Any]) -> [PublicPeriod] {
+        func num(_ x: Any?) -> Int? {
+            guard let n = x as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() else { return nil }
+            let d = n.doubleValue
+            return d.isFinite ? Int(d.rounded(.down)) : nil
+        }
+        let list = raw.compactMap { x -> PublicPeriod? in
+            guard let a = x as? [Any], a.count >= 2, let f = num(a[0]) else { return nil }
+            if a[1] is NSNull { return PublicPeriod(from: f, to: nil) }
+            guard let t = num(a[1]) else { return nil }
+            return PublicPeriod(from: f, to: t)
+        }
+        return Array(list.enumerated().sorted { $0.element.from != $1.element.from ? $0.element.from < $1.element.from : $0.offset < $1.offset }.map(\.element).suffix(100))
+    }
+
+    var json: [Any] { [from, to.map { $0 as Any } ?? NSNull()] }
+}
+
+/// Who reads a channel: the three choices of its Settings (SPEC 19.38).
+public enum ChannelAccess: String, Sendable, CaseIterable {
+    case members, `public`, closed
+}
+
 public extension Derive {
     static let webD = "belfry:web:"
     static let orderD = "belfry:channel-order"
@@ -46,6 +76,52 @@ public extension Derive {
         guard let w = webPage(g) else { return false }
         return w.on && w.visibility == "public"
     }
+
+    /// The content of the channel's own latest web-settings event (every key kept, to write it
+    /// back with a change: web setWebPage writes the whole object), or [:] when there is none.
+    func webContent(_ g: Group?) -> [String: Any] {
+        guard let g else { return [:] }
+        let relayKey = metaAuthors[g.id]
+        let own = (webEvents[Derive.webD + g.id] ?? []).filter {
+            $0.tag("h") == g.id && (g.admins.contains($0.pubkey) || $0.pubkey == relayKey)
+        }.sorted(by: Derive.byTime)
+        guard let last = own.last else { return [:] }
+        return (JSON.parse(last.content.isEmpty ? "{}" : last.content) as? [String: Any]) ?? [:]
+    }
+
+    /// When channel G was public (web publicPeriods): the `periods` of its web settings, oldest
+    /// first; a setting from before periods that says public counts as public since ever.
+    func publicPeriods(_ g: Group?) -> [PublicPeriod] {
+        guard let w = webPage(g) else { return [] }
+        if let raw = webContent(g)["periods"] as? [Any] { return PublicPeriod.clean(raw) }
+        return w.on && w.visibility == "public" ? [PublicPeriod(from: 0, to: nil)] : []
+    }
+
+    /// Who reads channel G (SPEC 19.38): public (its page on and public) wins, then closed (the
+    /// group's `closed` flag), else members only.
+    func channelAccess(_ g: Group?) -> ChannelAccess {
+        if isPublic(g) { return .public }
+        return g?.closed == true ? .closed : .members
+    }
+
+    /// The bar that asks to join (web Chat.tsx JoinBar): a group I'm not in; a closed channel I'm
+    /// not in and don't run (never #general, events, proposals).
+    func needsJoinBar(_ g: Group) -> Bool {
+        if g.members.contains(me) || g.admins.contains(me) { return false }
+        if g.isPod { return true }
+        return g.type == .channel && g.closed && g.id != generalId && !canAdmin(g)
+    }
+
+    /// Read only (web Conversation readOnly): a closed group or closed channel I'm not in (a
+    /// channel's stewards and the belfry's admins still write in it).
+    func readOnlyClosed(_ g: Group) -> Bool {
+        guard g.closed, !g.members.contains(me), !g.admins.contains(me) else { return false }
+        if g.isPod { return true }
+        return g.type == .channel && g.id != generalId && !canAdmin(g)
+    }
+
+    /// May the channel be closed (SPEC 19.38)? Channels only, never #general.
+    func mayClose(_ g: Group?) -> Bool { g?.type == .channel && g?.id != generalId }
 
     /// "Public · <domain>/<slug>" or "Members only" (the line under a channel's name).
     func visibilityLine(_ g: Group?) -> String {
@@ -163,6 +239,30 @@ public extension Actions {
     /// A vouch (or its withdrawal) for a request to join a closed group.
     static func vouch(_ groupId: String, requestId: String, applicant: String, on: Bool = true) -> Draft {
         Draft(kind: 1985, tags: [["h", groupId], ["L", Derive.vouchNS], ["l", on ? "vouch" : "withdrawn", Derive.vouchNS], ["e", requestId], ["p", applicant]])
+    }
+
+    /// A channel's web settings (30078 d=belfry:web:<id> in the group; web setWebPage).
+    static func webPage(_ groupId: String, content: [String: Any]) -> Draft {
+        Draft(kind: 30078, content: JSON.encode(content), tags: [["d", Derive.webD + groupId], ["h", groupId], ["t", "belfry-web"]])
+    }
+
+    /// Public or members only (web setVisibility, SPEC 19.38). Never retroactive: going public
+    /// opens a period from NOW (and turns the page on), going members only closes the open one.
+    /// The settings' other keys are kept. nil when it is that already.
+    static func setVisibility(_ g: Group, public pub: Bool, derive d: Derive, now: Int) -> Draft? {
+        if d.isPublic(g) == pub { return nil }
+        var c = d.webContent(g)
+        let w = d.webPage(g)
+        var periods = d.publicPeriods(g)
+        let open = periods.last.map { $0.to == nil } ?? false
+        if pub && !open { periods.append(PublicPeriod(from: now, to: nil)) }
+        if !pub && open { periods[periods.count - 1].to = now }
+        let slug = (w?.slug ?? "").isEmpty ? Derive.slugify(g.rawName.isEmpty ? g.name : g.rawName) : w!.slug
+        c["on"] = pub ? true : (w?.on ?? false)
+        c["visibility"] = pub ? "public" : "members"
+        c["periods"] = periods.map(\.json)
+        c["slug"] = slug
+        return webPage(g.id, content: c)
     }
 
     /// The admins' order of the channel list (30078 d=belfry:channel-order on the community relay).

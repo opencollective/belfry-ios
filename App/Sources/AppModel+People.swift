@@ -172,11 +172,14 @@ extension AppModel {
         if let picture {
             guard let engine else { return "Not signed in." }
             if engine.localOnly {
-                url = nil
+                // the demo: an address of its own for the picture, held in the image cache
+                url = "https://demo.belfry.sh/avatar-\(Crypto.sha256(picture).hex.prefix(16)).jpg"
             } else {
                 do { url = try await engine.upload(picture, name: "avatar.jpg", mime: "image/jpeg", sha: Crypto.sha256(picture).hex) }
                 catch { return "The picture could not be uploaded. Try again." }
             }
+            // the new picture is on this phone already: every face shows it at once, no download
+            if let url, let img = UIImage(data: picture) { ImageCache.shared.put(url, img) }
         }
         engine?.enqueue(Actions.saveProfile(current: derive.myProfileJSON, name: name, about: about, nip05: derive.profiles()[me]?.nip05, picture: url))
         return nil

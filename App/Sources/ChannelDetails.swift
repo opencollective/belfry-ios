@@ -293,11 +293,15 @@ struct SettingsTab: View {
     @State private var prompt = ""
     @State private var loaded = false
     @State private var saved = false
+    /// Who reads it (channels: members only / public / closed; SPEC 19.38)
+    @State private var access = ChannelAccess.members
+    @State private var askPublic = false
 
     var body: some View {
         let g = model.group(id)
         Section("Name") { TextField("Name", text: $name).font(.body) }
         Section("Description") { TextField("What is it about? (Markdown)", text: $about, axis: .vertical).lineLimit(3...8).font(.body) }
+        if g?.type == .channel { whoReads(g) }
         if g?.isPod == true {
             Section {
                 Picker("Who can join", selection: $closed) { Text("Anyone here").tag(false); Text("By application").tag(true) }
@@ -319,7 +323,11 @@ struct SettingsTab: View {
                 hideKeyboard()
                 let n = name.jsTrim(), a = about.jsTrim()
                 if g?.isPod == true { model.editPod(id, name: n, about: a, closed: closed, prompt: prompt) }
-                else { model.editChannel(id, name: n, about: a, inbox: nil) }
+                else if let g, g.type == .channel, (access == .closed) != g.closed {
+                    // closed or open again (one 9002 with the name and description)
+                    model.editGroupMeta(id, name: n, about: a, closed: access == .closed, prompt: g.prompt ?? "")
+                } else { model.editChannel(id, name: n, about: a, inbox: nil) }
+                if g?.type == .channel { model.setVisibility(id, public: access == .public) }
                 if inbox != model.derive.isInbox(g) { model.editChannelInbox(id, inbox) }
                 dismiss()
             } label: {
@@ -346,7 +354,56 @@ struct SettingsTab: View {
             inbox = model.derive.isInbox(g)
             closed = g.closed
             prompt = g.prompt ?? ""
+            access = model.derive.channelAccess(g)
+            if model.launch.screen == "chpublic" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { askPublic = true } }
         }
+        .alert("Make \(label(g)) public?", isPresented: $askPublic) {
+            Button("Make it public") { access = .public }
+            Button("Keep it for members", role: .cancel) {}
+        } message: {
+            Text("From now on, anyone on the web can read what is posted here, with the names of the people who post. Earlier messages stay for members only.")
+        }
+    }
+
+    private func label(_ g: Channel?) -> String {
+        guard let g else { return "#" + id }
+        return PlaceNames.defaults[g.id] == g.name ? g.name : "#" + g.name
+    }
+
+    /// "Who can read it": three choices (the owner's mock-ups Settings-A / B); Public asks first.
+    @ViewBuilder private func whoReads(_ g: Channel?) -> some View {
+        Section {
+            accessRow(.members, icon: "lock", title: "Members only", line: "Everyone with a pass in this belfry")
+            accessRow(.public, icon: "globe", title: "Public", line: "Anyone on the web can read it. Only members write.")
+            if model.derive.mayClose(g) {
+                accessRow(.closed, icon: "person.badge.plus", title: "Closed", line: "People ask to join. A steward of this channel approves.")
+            }
+        } header: {
+            Text("Who can read it")
+        } footer: {
+            Text("A change counts from now on. Messages keep the visibility they were posted with.")
+        }
+    }
+
+    private func accessRow(_ a: ChannelAccess, icon: String, title: String, line: String) -> some View {
+        Button {
+            guard access != a else { return }
+            if a == .public { hideKeyboard(); askPublic = true } else { access = a }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon).font(.body).frame(width: 24).foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).foregroundStyle(.primary)
+                    Text(line).font(.footnote).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                if access == a { Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Color.brand).accessibilityLabel("Selected") }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("access-" + a.rawValue)
+        .accessibilityAddTraits(access == a ? .isSelected : [])
     }
 }
 

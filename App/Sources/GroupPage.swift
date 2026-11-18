@@ -152,6 +152,10 @@ struct GroupRequestRow: View {
                     BusyButton("Decline", role: .destructive) { model.declineApplicant(group.id, pubkey) }.buttonStyle(.bordered)
                 }
                 .controlSize(.small)
+            } else if model.derive.canAdmin(group) {
+                // a steward by role: the relay takes Accept / Decline from its creator and the
+                // belfry's admins only, and the belfry has no call for it yet (SERVER-NEEDS 15)
+                Text("Its creator or a belfry admin lets people in.").font(.footnote).foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 2)

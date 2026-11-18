@@ -273,3 +273,23 @@ still open: the app still starts on sign-in or a guest link.
   follow-up e-mail names the e-mail's own event id; the app opens its thread from any of its ids.
 - **First minutes**: the app shows them only after it saw the account's guest become a member on
   this phone (the web's rule). A member made directly by a member link on another device gets none.
+
+## 15. Round 6 (2026-11-18): closed channels, notifications, web settings by stewards — not built
+
+- **A steward by role can't let people in.** A closed channel's (or group's) requests are 9021s;
+  Accept / Decline is a 9000 / 9001 the relay takes only from the group's 39001 (its creator, the
+  belfry's admins). `POST /api/v1/group-roles` refuses someone not in the group yet
+  (`409 not_in_group`), so an admin by role (SPEC 19.29) has no way to answer. The app shows them
+  the requests with "Its creator or a belfry admin lets people in." **Ask**: `POST
+  /api/v1/group-requests {"channel", "pubkey", "approve": bool}` by any admin of the group (39001,
+  creator, by role, belfry admins), the belfry publishing the 9000 / 9001 as the groups key.
+- **A channel's web settings (public / members only) by a steward by role.** The 30078
+  `belfry:web:<id>` counts only from the group's admins as the client sees them (39001 + creator +
+  by role) or the relay's key; the server's webthreads / website code should use the same rule
+  (or offer `POST /api/v1/group-web {"channel", "visibility"}` acting as the groups key, like
+  `/group-meta`). Not checked against the server.
+- **"To-dos given to me" in the notification choice.** The owner's wording for "When it's for
+  me" is "Mentions, replies to me, to-dos given to me". docs/push.md has no to-do type: a 2100 /
+  2101 that assigns a to-do to someone (`p`) doesn't notify. **Ask**: push type `todo` (title =
+  "☑ #channel", body = the to-do's title) under the `mentions` switch, at levels default /
+  mentions / all.

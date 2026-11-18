@@ -60,21 +60,31 @@ final class ImageCache: @unchecked Sendable {
 struct CachedImage<Content: View>: View {
     let url: URL?
     let content: (AsyncImagePhase) -> Content
-    @State private var image: UIImage?
-    @State private var failed = false
+    /// The picture loaded here and the address it is for (PictureSlot: never shown for another
+    /// address, so a new avatar shows at once wherever the old one was).
+    @State private var slot: PictureSlot<UIImage>
+    @State private var failed: String?
 
     init(url: URL?, @ViewBuilder content: @escaping (AsyncImagePhase) -> Content) {
         self.url = url
         self.content = content
-        _image = State(initialValue: url.flatMap { ImageCache.shared.cached($0.absoluteString) })
+        let u = url?.absoluteString
+        _slot = State(initialValue: PictureSlot(url: u, picture: u.flatMap { ImageCache.shared.cached($0) }))
     }
 
     var body: some View {
-        content(image.map { .success(Image(uiImage: $0)) } ?? (failed ? .failure(URLError(.cannotDecodeContentData)) : .empty))
-            .task(id: url) {
-                guard let url else { failed = true; return }
-                if image != nil, ImageCache.shared.cached(url.absoluteString) != nil { return }
-                if let img = await ImageCache.shared.load(url.absoluteString) { image = img } else { failed = true }
+        let want = url?.absoluteString
+        let image = slot.shown(for: want) { ImageCache.shared.cached($0) }
+        content(image.map { .success(Image(uiImage: $0)) } ?? (url == nil || (failed != nil && failed == want) ? .failure(URLError(.cannotDecodeContentData)) : .empty))
+            .task(id: want) {
+                guard let want else { return }
+                if let m = ImageCache.shared.cached(want) { slot.hold(m, for: want); return }
+                guard slot.needsLoad(want) else { return }
+                if let img = await ImageCache.shared.load(want) {
+                    if url?.absoluteString == want { slot.hold(img, for: want) }
+                } else {
+                    failed = want
+                }
             }
     }
 }

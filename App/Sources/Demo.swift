@@ -96,6 +96,13 @@ enum Demo {
         channel("kitchen-7d10", "Shared kitchen", "Who cooks, who cleans", admins: [ps["emma"]!.pubkey], members: all, at: now - 5 * day)
         // 2026-11-17 (SPEC 19.35): a channel nobody wrote in yet, so Settings → Channels offers Delete
         channel("tools-2b8e", "Tool library", "Borrow and lend tools", admins: [me], members: all, at: now - 2 * day)
+        // 2026-11-18 (SPEC 19.38): a closed channel: people ask to join, its steward (Emma) lets
+        // them in; Ben has asked. Sam is in no member list: in `-member` Sam sees "Ask to join".
+        channel("board-5d1e", "Board", "Budget, contracts and the association's paperwork", admins: [ps["emma"]!.pubkey],
+                members: [ps["emma"]!.pubkey, ps["ana"]!.pubkey, ps["dev"]!.pubkey], at: now - 4 * day)
+        evs.append(ev(ps["emma"]!, 9002, now - 4 * day + 10, [["h", "board-5d1e"], ["name", "Board"], ["about", "Budget, contracts and the association's paperwork"], ["closed"], ["prompt", Actions.defaultPrompt]]))
+        evs.append(ev(ps["emma"]!, 9, now - 3 * day, Actions.postMessage("board-5d1e", text: "The insurance renewal is due in December.").tags, "The insurance renewal is due in December."))
+        evs.append(ev(ps["ben"]!, 9021, now - 5 * 3600, [["h", "board-5d1e"]], "I'd like to help with the budget, I did it for the football club."))
         // the repair café's page is public (Public channels in the drawer); the admins' order
         evs.append(ev(relay, 30078, now - 10 * day, [["d", "belfry:web:repair-cafe-91bc"], ["h", "repair-cafe-91bc"]],
                       "{\"on\":true,\"slug\":\"repair-cafe\",\"visibility\":\"public\"}"))
@@ -311,10 +318,10 @@ enum Demo {
         evs.append(ev(you, 30078, now - 15 * day + 5, Actions.setInbox(inbox, on: true).tags, "{\"on\":true}"))
         // SPEC 19.34: Sam (an admin of the belfry) sorted the channels into categories; the repair
         // café sits in a category of its own
-        let layout: [String: Any] = ["order": ["general", "garden-3f2a", "kitchen-7d10", inbox, "repair-cafe-91bc", "proposals", "website"],
+        let layout: [String: Any] = ["order": ["general", "garden-3f2a", "kitchen-7d10", inbox, "repair-cafe-91bc", "proposals", "website", "board-5d1e"],
                                      "categories": [["id": "life", "channels": ["garden-3f2a", "kitchen-7d10", inbox]],
                                                     ["id": "making-4b1c", "name": "Making & mending", "channels": ["repair-cafe-91bc"]],
-                                                    ["id": "building", "channels": ["proposals", "website"]]]]
+                                                    ["id": "building", "channels": ["proposals", "website", "board-5d1e"]]]]
         evs.append(ev(you, 30078, now - 14 * day, [["d", Derive.orderD]], JSON.encode(layout)))
         // the same by Ana, who is the belfry's admin in the `-member` demo
         evs.append(ev(ps["ana"]!, 30078, now - 14 * day, [["d", Derive.orderD]], JSON.encode(layout)))

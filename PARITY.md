@@ -236,3 +236,14 @@ Not in the web chat or Android yet: the iPhone app leads here. Screenshots 100�
 | Buttons on messages (collective-belfry docs/actions.md): parse, press (1985, published at once), trusted answers (author; belfry key / groups key from belfry.json, `_groups` fallback), closed for everyone, my ok / error line, 20 s "No answer yet.", unknown `belfry:` action disabled, confirmations with the app's own text, Join sheet for a reading guest | done, never run live | `vectors/message-actions.json` (= docs/actions-vectors.json, copy to Android under this name), `ButtonsTests`. Demo #website, screenshots 150. The web has none yet. |
 | Links always look and act like links (underlined in the tint), this belfry's chat links open in the app | done, never run on a device | `Links` (core, `LinksTests`); `ThreadActivity` no longer takes the taps on links. |
 | Channel settings: prominent Save, Archive as a centred link, save applied at once and back to the channel; through the outbox (own 9002, or a queued `POST /group-meta` signed at send time); error mark by the name with Try again / Discard | done, never run live | SPEC 19.37, `SettingsQueueTests`, screenshots 151–152. |
+
+## Round 6 (iOS, 2026-11-18; the owner's mock-ups Notif-C, Settings-A/B, Mail-A/B, Proposal-A/B; SPEC 19.38–19.40)
+
+| Item | Status | Notes |
+|---|---|---|
+| A channel's Notifications = one sheet (Everything / When it's for me / Nothing, applied at once with a haptic, "(the default here)"; "Also e-mail me its announcements") | done, never run on a device | `NotifySheet.swift`, `NotifyChoice` (core). The one pull-down row that opens a sheet (the owner's choice). The server pushes no to-do assignments yet (SERVER-NEEDS 15). |
+| Settings → "Who can read it": Members only / Public (asks first) / Closed (never #general); public / members as web periods, closed as the 9002 flag; saved through the outbox | done, never run live | SPEC 19.38, `vectors/visibility.json` (ours: copy to Android), `VisibilityTests`. |
+| Closed channels: read only + "Ask to join" / "Pending" for someone outside; "Asking to join" at the top of the channel's Members for its stewards | done, never run live | Stewards by role can't accept (relay + server: SERVER-NEEDS 15). Demo #Board. |
+| E-mail thread: every entry a message row with "guest, by e-mail" / "sent as hello@" / "team only"; Reply to <name> (default, blue) / Comment (yellow) with the line under them; feed row shaped like a message | done, never run live | SPEC 19.33 (round 6 bullet). Screenshots 120–122d. |
+| A proposal at the top of its chat (three levels, votes with the poll's own options and counts, turnout, folded bar with Vote) | done, never run live | SPEC 19.39, `ProposalScreen.swift`. No Versions / Votes tabs (no data for them). |
+| A new profile picture everywhere at once | done | SPEC 19.40: the cause was `CachedImage` keeping the old picture when the new address was already cached; `PictureSlot` (core-tested). |

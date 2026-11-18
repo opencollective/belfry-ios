@@ -1,12 +1,16 @@
 import BelfryCore
 import SwiftUI
+import UIKit
 
-// E-mail threads in a channel (SPEC 19.33, web MailPost.tsx / Chat.tsx; Xavier 2026-11-16):
-// one compact row per thread in the feed; the thread shows each e-mail in a frame (received
-// light, sent solid) and the team's replies, with ONE composer and a line above it that says
-// where the message goes: "Message will be sent in this thread" / "Reply by e-mail instead",
-// or "This will be sent to <name> by e-mail" / "Only send in this thread instead" (the composer
-// takes the e-mail colour and shows From and the subject; 8 s to Undo; back to thread mode after).
+// E-mail threads in a channel (SPEC 19.33, web MailPost.tsx / Chat.tsx). Round 6 (the owner's
+// mock-ups Mail-A / Mail-B, 2026-11-18: "It should look more like a regular message from a guest.
+// Make it more clear the switch between commenting and responding. Default should be responding
+// as the address of the channel"): one row per thread in the feed, shaped like a message; in the
+// thread every e-mail and every team message is an ordinary message row with a small tag
+// ("guest, by e-mail", "sent as hello@", "team only"); the composer has two segments,
+// "Reply to <first name>" (the default, blue: an e-mail from the channel's address) and
+// "Comment" (yellow: only the channel's members see it), with one line saying who sees it.
+// 8 s to Undo an e-mail.
 
 /// A pointer to a whole e-mail on Blossom ("Full e-mail").
 struct FullMailRef: Identifiable, Hashable {
@@ -19,8 +23,84 @@ extension CardStatus {
     var tint: Color { self == .open ? .orange : self == .waiting ? .green : .secondary }
 }
 
-/// The feed's row for one e-mail thread: sender, subject, a line of the latest e-mail, state,
-/// who has it, counts. A tap opens the thread.
+/// The two modes' colours: an e-mail goes out (blue), a comment stays with the team (yellow).
+enum MailTint {
+    static let mail = Color(uiColor: .systemBlue)
+    static let team = Color(uiColor: .systemYellow)
+    /// Yellow text that reads on white too.
+    static let teamText = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? .systemYellow : UIColor(red: 0.62, green: 0.45, blue: 0, alpha: 1) })
+    static let mailText = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0.39, green: 0.71, blue: 1, alpha: 1) : .systemBlue })
+}
+
+/// Initials in a circle for someone known only by name and address (an outsider's e-mail): "MD".
+struct NameAvatar: View {
+    let name: String
+    let seed: String
+    var size: CGFloat = 36
+    var body: some View {
+        ZStack {
+            Circle().fill(Color(uiColor: .systemGray3))
+            Text(NameAvatar.initials(name)).font(.system(size: size * 0.38, weight: .semibold)).foregroundStyle(.primary)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+
+    /// Two letters from the first and last words ("Marie Dubois" → "MD"); one word → its first two.
+    static func initials(_ name: String) -> String {
+        let words = name.split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        guard let first = words.first else { return "?" }
+        if words.count == 1 { return String(first.prefix(2)).capitalized }
+        return (String(first.prefix(1)) + String(words.last!.prefix(1))).uppercased()
+    }
+}
+
+/// The small tag after a name in an e-mail thread.
+enum MailTag {
+    case guest, sentAs(String), team
+    var text: String {
+        switch self {
+        case .guest: return "guest, by e-mail"
+        case .sentAs(let a): return "sent as \(a)@"
+        case .team: return "team only"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .guest: return "envelope"
+        case .sentAs: return "paperplane"
+        case .team: return "lock"
+        }
+    }
+    var color: Color {
+        switch self {
+        case .guest: return .secondary
+        case .sentAs: return MailTint.mailText
+        case .team: return MailTint.teamText
+        }
+    }
+}
+
+struct MailTagView: View {
+    let tag: MailTag
+    var body: some View {
+        Label(tag.text, systemImage: tag.icon)
+            .labelStyle(TightLabel())
+            .font(.caption)
+            .foregroundStyle(tag.color)
+            .lineLimit(1)
+    }
+}
+
+struct TightLabel: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 3) { configuration.icon.imageScale(.small); configuration.title }
+    }
+}
+
+/// The feed's row for one e-mail thread, shaped like a message: the sender's initials, name,
+/// "guest, by e-mail", time; the subject; a line of the latest e-mail; its state and counts. A tap
+/// opens the thread.
 struct MailThreadRow: View {
     @EnvironmentObject var model: AppModel
     let t: InboxThread
@@ -29,43 +109,42 @@ struct MailThreadRow: View {
 
     var body: some View {
         let unread = model.readSync == nil ? 0 : t.ids.reduce(0) { $0 + model.derive.unreadInThread(group, $1, model.readState, now: Int.now) }
+        let name = t.name.isEmpty ? t.address : t.name
         Button(action: open) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "envelope.fill").font(.system(size: 15)).foregroundStyle(Color.brand)
-                    .frame(width: 34, height: 34)
-                    .background(Color.brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                NameAvatar(name: name, seed: t.address, size: 36)
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(t.name.isEmpty ? t.address : t.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                        Spacer(minLength: 4)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(name).font(.body.weight(.semibold)).lineLimit(1)
+                        MailTagView(tag: .guest)
                         Text(Format.short(t.last)).font(.caption).foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        if unread > 0 { CountBadge(n: unread) }
                     }
-                    Text(t.subject.isEmpty ? "(no subject)" : t.subject).font(.subheadline).lineLimit(1)
+                    Text(t.subject.isEmpty ? "(no subject)" : t.subject).font(.subheadline.weight(.semibold)).lineLimit(1)
                     if let last = t.latest {
-                        Text(snippet(last)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Text(snippet(last)).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                     }
                     HStack(spacing: 6) {
                         Chip(text: t.state.status.label, tint: t.state.status.tint)
                         if let a = t.state.assignee { Text(a == model.me ? "You have it" : "\(model.name(a)) has it").font(.caption2).foregroundStyle(.secondary) }
-                        Spacer(minLength: 0)
                         Text(counts).font(.caption2).foregroundStyle(.secondary)
-                        if unread > 0 { CountBadge(n: unread) }
+                        Spacer(minLength: 0)
                     }
+                    .padding(.top, 2)
                 }
             }
-            .padding(10)
-            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal)
+            .padding(.vertical, 6)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal)
-        .padding(.vertical, 4)
         .accessibilityIdentifier("mail-thread-row")
     }
 
     private var counts: String {
         var parts = [t.mails.count == 1 ? "1 e-mail" : "\(t.mails.count) e-mails"]
-        if t.replies > 0 { parts.append(t.replies == 1 ? "1 reply" : "\(t.replies) replies") }
+        if t.replies > 0 { parts.append(t.replies == 1 ? "1 comment" : "\(t.replies) comments") }
         return parts.joined(separator: " · ")
     }
 
@@ -75,48 +154,82 @@ struct MailThreadRow: View {
     }
 }
 
-/// One e-mail in the thread: received ones light, what went out solid.
-struct MailFrame: View {
+/// One e-mail in the thread as an ordinary message: an outsider's (initials, "guest, by e-mail")
+/// or an answer that went out (the member who wrote it, "sent as <alias>@"). Holding it offers
+/// "Full e-mail" (received ones) and Copy.
+struct MailEntryRow: View {
     @EnvironmentObject var model: AppModel
     let it: MailItem
-    let from: String
+    let alias: String
 
     var body: some View {
         let out = it.dir == .outgoing
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: out ? "paperplane.fill" : "envelope")
-                Text(header).lineLimit(2)
-                Spacer(minLength: 4)
-                Text(Format.time(it.m.at))
+        let text = it.m.body.isEmpty ? it.m.text : it.m.body
+        HStack(alignment: .top, spacing: 10) {
+            if out, let by = it.by { Avatar(pubkey: by, size: 36) } else { NameAvatar(name: who, seed: it.address, size: 36) }
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(who).font(.body.weight(.semibold)).lineLimit(1)
+                    MailTagView(tag: out ? .sentAs(alias) : .guest)
+                    Text(Format.time(it.m.at)).font(.caption).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+                if it.dir == .incoming && !it.verified {
+                    Label("unverified sender", systemImage: "exclamationmark.triangle").font(.caption2).foregroundStyle(.orange)
+                }
+                if !text.isEmpty { MarkdownText(text: text) } else { Text("(empty)").foregroundStyle(.secondary) }
+                ForEach(it.m.media, id: \.url) { media in MediaView(media: media, all: it.m.media) }
             }
-            .font(.caption)
-            .foregroundStyle(out ? Theme.onAccent.opacity(0.85) : Color.secondary)
-            if it.dir == .incoming && !it.verified {
-                Label("unverified sender", systemImage: "exclamationmark.triangle").font(.caption2).foregroundStyle(.orange)
-            }
-            if !it.subject.isEmpty { Text(it.subject).font(.subheadline.weight(.semibold)) }
-            let text = it.m.body.isEmpty ? it.m.text : it.m.body
-            if !text.isEmpty { MarkdownText(text: text) } else { Text("(empty)").foregroundStyle(.secondary) }
-            ForEach(it.m.media, id: \.url) { media in MediaView(media: media, all: it.m.media) }
-            if let o = it.original {
-                Button { model.fullMail = FullMailRef(subject: it.subject, original: o) } label: { Text("Full e-mail").font(.caption.weight(.semibold)) }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color.brand)
-            }
-            if out, let by = it.by { Text("Written by \(model.name(by))").font(.caption2).foregroundStyle(Theme.onAccent.opacity(0.8)) }
         }
-        .foregroundStyle(out ? Theme.onAccent : Color.primary)
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(out ? Theme.accent : Color.brand.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(out ? Color.clear : Color.brand.opacity(0.25)))
         .padding(.horizontal)
+        .contentShape(Rectangle())
+        .contextMenu {
+            if let o = it.original {
+                Button { model.fullMail = FullMailRef(subject: it.subject, original: o) } label: { Label("Full e-mail", systemImage: "envelope.open") }
+            }
+            if !text.isEmpty {
+                Button { UIPasteboard.general.string = text } label: { Label("Copy", systemImage: "doc.on.doc") }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(out ? "mail-entry-out" : "mail-entry-in")
     }
 
-    private var header: String {
-        if it.dir == .outgoing { return "From \(from) · to \(it.address)" }
-        return "From " + (it.name.isEmpty ? it.address : "\(it.name) <\(it.address)>")
+    private var who: String {
+        if it.dir == .outgoing { return it.by.map { model.name($0) } ?? alias + "@" }
+        return it.name.isEmpty ? it.address : it.name
+    }
+}
+
+/// A team message in an e-mail thread (a NIP-22 reply): the member's message, "team only".
+struct MailTeamRow: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.messageMenu) private var menu
+    let group: String
+    let r: Message
+    let onHold: () -> Void
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Avatar(pubkey: r.ev.pubkey, size: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(model.name(r.ev.pubkey)).font(.body.weight(.semibold)).lineLimit(1)
+                    MailTagView(tag: .team)
+                    Text(Format.time(r.ev.createdAt)).font(.caption).foregroundStyle(.secondary)
+                    if r.edited != nil { Text("edited").font(.caption2).foregroundStyle(.secondary) }
+                    if let p = model.pending(r.id) { Text(p.stateText).font(.caption2).foregroundStyle(p.status == .failed ? .red : .secondary) }
+                    Spacer(minLength: 0)
+                }
+                if !r.text.isEmpty { MarkdownText(text: r.text) }
+                MessageButtonsView(m: r, group: group)
+                ForEach(r.media, id: \.url) { MediaView(media: $0, all: r.media) }
+            }
+        }
+        .padding(.horizontal)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("mail-entry-team")
+        .messageMenu(r, group: group, handlers: menu, guest: model.guestReading || model.locked(group), hold: onHold)
     }
 }
 
@@ -127,7 +240,8 @@ struct MailThreadView: View {
     let threadId: String
     var focusReply = false
     @State private var feedPos = FeedPosition()
-    @State private var mode = Mode.thread
+    /// nil until chosen: replying by e-mail when that is allowed (the owner's default), else Comment
+    @State private var chosen: Mode?
     @State private var countdown = 0
     @State private var timer: Timer?
     @State private var pendingText = ""
@@ -136,7 +250,7 @@ struct MailThreadView: View {
     @State private var composerKey = 0
     @State private var actionsFor: Message?
 
-    enum Mode { case thread, mail }
+    enum Mode { case comment, mail }
     enum Entry: Identifiable {
         case mail(MailItem)
         case reply(Message)
@@ -159,18 +273,25 @@ struct MailThreadView: View {
         return list.sorted { $0.at != $1.at ? $0.at < $1.at : $0.id < $1.id }
     }
 
+    /// Who may answer by e-mail: the channel's admins, while it takes e-mail from anyone, when
+    /// there is an e-mail to answer.
+    private func canMail(_ t: InboxThread, _ d: Derive) -> Bool {
+        d.canAdmin(group) && d.isInbox(d.group(group)) && t.lastIn != nil && !model.locked(group)
+    }
+
     private func content(_ t: InboxThread, _ d: Derive) -> some View {
+        let alias = d.mailLocal(group)
         let from = d.channelAddress(group)
-        let canMail = d.canAdmin(group) && d.isInbox(d.group(group)) && t.lastIn != nil && !model.locked(group)
-        let mail = mode == .mail && canMail
+        let may = canMail(t, d)
+        let mail = may && (chosen ?? .mail) == .mail
         return ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
+                LazyVStack(alignment: .leading, spacing: 14) {
                     MailThreadHead(t: t, group: group, canAct: d.canAdmin(group) && !model.locked(group))
                     ForEach(entries(t, d)) { e in
                         switch e {
-                        case .mail(let it): MailFrame(it: it, from: from).id(it.m.id)
-                        case .reply(let r): ReplyRow(group: group, r: r) { actionsFor = r }.padding(.horizontal).id(r.id)
+                        case .mail(let it): MailEntryRow(it: it, alias: alias).id(it.m.id)
+                        case .reply(let r): MailTeamRow(group: group, r: r) { actionsFor = r }.id(r.id)
                         }
                     }
                     Color.clear.frame(height: 1).id("bottom")
@@ -183,7 +304,7 @@ struct MailThreadView: View {
             .onAppear {
                 for id in t.ids { model.markThreadRead(group, id) }
                 DispatchQueue.main.async { feedPos.toEnd() }
-                if model.launch.screen == "mailreply" { mode = .mail }
+                if model.launch.screen == "mailcomment" { chosen = .comment }
             }
         }
         .bottomBar {
@@ -192,17 +313,17 @@ struct MailThreadView: View {
             } else if model.locked(group) {
                 ArchivedFooter()
             } else {
-                VStack(spacing: 6) {
-                    sendLine(t, mail: mail, canMail: canMail, from: from)
-                    Composer(group: group, placeholder: mail ? "E-mail to \(first(t))…" : "Reply in the thread", autoFocus: focusReply, threadMode: true,
-                             draftKey: "t:\(group):\(t.id)") { text, _, _ in
+                VStack(alignment: .leading, spacing: 0) {
+                    if may { modePicker(t, mail: mail) }
+                    sendLine(t, mail: mail, from: from)
+                    Composer(group: group, placeholder: mail ? "Write your e-mail to \(first(t))" : "Write a comment for the team", autoFocus: focusReply, threadMode: true,
+                             draftKey: "t:\(group):\(t.id)", tint: mail ? MailTint.mail : MailTint.team, onTint: mail ? .white : .black) { text, _, _ in
                         if mail { startMail(t, text) } else if let root = t.root { model.reply(text, in: group, to: root) }
                     }
                     .id(composerKey)
                     .disabled(countdown > 0)
                 }
-                .padding(.top, 6)
-                .background(mail ? Color.brand.opacity(0.10) : Color.clear)
+                .padding(.top, 8)
             }
         }
         .navigationTitle(t.subject.isEmpty ? "E-mail" : t.subject)
@@ -214,18 +335,58 @@ struct MailThreadView: View {
         }
     }
 
+    /// "Reply to Marie" | "Comment": two segments, the chosen one filled with its colour.
+    private func modePicker(_ t: InboxThread, mail: Bool) -> some View {
+        HStack(spacing: 0) {
+            segment("Reply to \(first(t))", icon: "envelope", on: mail, fill: MailTint.mail, text: .white, id: "mail-mode-reply") { chosen = .mail }
+            segment("Comment", icon: "lock", on: !mail, fill: MailTint.team, text: .black, id: "mail-mode-comment") { chosen = .comment }
+        }
+        .padding(3)
+        .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .padding(.horizontal, 12)
+        .disabled(countdown > 0)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("What you are writing")
+    }
+
+    private func segment(_ title: String, icon: String, on: Bool, fill: Color, text: Color, id: String, pick: @escaping () -> Void) -> some View {
+        Button {
+            guard !on else { return }
+            withAnimation(.snappy(duration: 0.2)) { pick() }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon).imageScale(.small)
+                Text(title).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .font(.subheadline.weight(on ? .semibold : .regular))
+            .foregroundStyle(on ? text : Color.primary)
+            .frame(maxWidth: .infinity, minHeight: 36)
+            .background(on ? fill : Color.clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: on)
+        .accessibilityIdentifier(id)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
     private func first(_ t: InboxThread) -> String {
         let n = t.lastIn?.name ?? t.name
         return n.isEmpty ? (t.lastIn?.address ?? t.address) : (n.components(separatedBy: " ").first ?? n)
     }
 
-    @ViewBuilder private func sendLine(_ t: InboxThread, mail: Bool, canMail: Bool, from: String) -> some View {
+    private func channelLabel() -> String {
+        guard let g = model.group(group) else { return "#" + group }
+        return PlaceNames.defaults[g.id] == g.name ? g.name : (g.isPod ? g.name : "#" + g.name)
+    }
+
+    @ViewBuilder private func sendLine(_ t: InboxThread, mail: Bool, from: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             if countdown > 0 {
                 HStack {
                     Label("Sending to \(first(t)) in \(countdown) s", systemImage: "paperplane")
                     Spacer()
-                    Button("Undo") { undo() }.buttonStyle(.brand).controlSize(.small)
+                    Button("Undo") { undo() }.buttonStyle(.brand).controlSize(.small).accessibilityIdentifier("mail-undo")
                 }
             } else if let id = sentId, let r = model.dms?.report(id) {
                 HStack {
@@ -234,29 +395,22 @@ struct MailThreadView: View {
                     if r.status != "queued" { Button("OK") { sentId = nil }.font(.caption.weight(.semibold)) }
                 }
             } else if mail {
-                HStack(alignment: .firstTextBaseline) {
-                    Label("This will be sent to \(t.lastIn.map(who) ?? t.address) by e-mail", systemImage: "envelope.fill").fontWeight(.semibold)
-                    Spacer(minLength: 4)
-                }
-                Text("From \(from) · \(subject(t))").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                Button("Only send in this thread instead") { mode = .thread }.font(.caption.weight(.semibold)).foregroundStyle(Color.brand)
+                (Text("An e-mail from ") + Text(from).bold().foregroundColor(.primary) + Text(" to " + (t.lastIn.map(who) ?? t.address)))
+                    .lineLimit(2)
             } else {
-                HStack {
-                    Text("Message will be sent in this thread")
-                    Spacer(minLength: 4)
-                    if canMail { Button("Reply by e-mail instead") { mode = .mail }.font(.caption.weight(.semibold)).foregroundStyle(Color.brand) }
-                }
+                (Text("Only members of \(channelLabel()) see this. ") + Text("\(first(t)) does not.").bold().foregroundColor(.primary))
+                    .lineLimit(2)
             }
             if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) }
         }
         .font(.footnote)
-        .padding(.horizontal)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 18)
+        .padding(.top, 6)
         .accessibilityIdentifier("mail-send-line")
     }
 
     private func who(_ it: MailItem) -> String { it.name.isEmpty ? it.address : it.name }
-
-    private func subject(_ t: InboxThread) -> String { AppModel.replySubject(t) }
 
     private func startMail(_ t: InboxThread, _ text: String) {
         error = nil
@@ -271,7 +425,7 @@ struct MailThreadView: View {
                     tm.invalidate()
                     let r = await model.sendThreadMail(t, in: group, text: pendingText)
                     switch r {
-                    case .success(let id): sentId = id; mode = .thread
+                    case .success(let id): sentId = id
                     case .failure(let e): error = e.message; restore()
                     }
                 }
@@ -324,8 +478,6 @@ struct MailThreadHead: View {
                 }
             }
             .font(.caption.weight(.semibold))
-            Text("Team only: \(t.lastIn.map { $0.name.isEmpty ? $0.address : $0.name } ?? t.address) sees only what is sent by e-mail.")
-                .font(.caption2).foregroundStyle(.secondary)
         }
         .padding(.horizontal)
         .padding(.bottom, 4)

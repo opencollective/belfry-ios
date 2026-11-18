@@ -178,14 +178,14 @@ struct SpecialBody: View {
 }
 
 /// An e-mail from outside or what went out, where one shows outside its thread (a search
-/// result, an old reply's root): its frame (SPEC 19.33).
+/// result, an old reply's root): as a message with its tag (SPEC 19.33, round 6).
 struct InboxCardView: View {
     @EnvironmentObject var model: AppModel
     let m: Message
     let group: String
     var body: some View {
         let d = model.derive
-        if let it = d.mailIn(m) ?? d.mailOut(m) { MailFrame(it: it, from: d.channelAddress(group)).padding(.horizontal, -16) }
+        if let it = d.mailIn(m) ?? d.mailOut(m) { MailEntryRow(it: it, alias: d.mailLocal(group)).padding(.horizontal, -16) }
     }
 }
 

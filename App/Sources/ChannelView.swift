@@ -25,6 +25,8 @@ struct ChannelView: View {
     /// A screen of the channel pushed from its pull-down (Members, To-dos, Settings…).
     @State private var place: ChannelPlace?
     @State private var invite = false
+    /// The Notifications row's sheet (the one row that opens a sheet: the owner's Notif-C).
+    @State private var notify = false
     @State private var search = false
     @State private var settingsIssue = false
     /// Settings changes of this channel refused for good (SPEC 19.37).
@@ -159,7 +161,10 @@ struct ChannelView: View {
                 if model.unsavedGuest && d.messages(id).contains(where: { $0.pubkey == model.me }) {
                     SaveAccountCard(compact: true).padding(.horizontal).padding(.vertical, 8).background(.bar)
                 }
-                if let only = d.webPage(g)?.posts, ["thread", "proposal", "event"].contains(only) {
+                if let g, d.readOnlyClosed(g) {
+                    // a closed channel or group I'm not in: read only, the bar above asks to join
+                    EmptyView()
+                } else if let only = d.webPage(g)?.posts, ["thread", "proposal", "event"].contains(only) {
                     OnlyBar(id: id, only: only, isPublic: d.isPublic(g))
                 } else {
                     Composer(group: id, placeholder: composerPlaceholder(g), canAnnounce: d.canAdmin(g), topic: topic, draftKey: "c:" + id) { text, attachments, announce in
@@ -196,7 +201,7 @@ struct ChannelView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    if let g, g.isPod, !locked, !g.members.contains(model.me), !g.admins.contains(model.me) {
+                    if let g, !locked, d.needsJoinBar(g) {
                         PodJoinBar(group: g, asked: g.applications.contains { $0.pubkey == model.me }) { podAsk = true }
                     }
                 }
@@ -207,7 +212,7 @@ struct ChannelView: View {
         .overlay(alignment: .top) {
             if !embedded {
             PullDownPanel(id: id, level: $pull, topic: $topic,
-                          openPlace: { p in closePull(); place = p },
+                          openPlace: { p in closePull(); if p == .notifications { hideKeyboard(); notify = true } else { place = p } },
                           showMessage: { mid in closePull(); scrollTarget = mid })
             }
         }
@@ -269,6 +274,7 @@ struct ChannelView: View {
         // no keyboard over a sheet
         .onChange(of: place != nil || invite || search || podAsk || actionsFor != nil || editing != nil) { _, open in if open { hideKeyboard() } }
         .sheet(isPresented: $invite) { InviteSheet(id: id) }
+        .sheet(isPresented: $notify) { NotifySheet(id: id) }
         .sheet(isPresented: $search) {
             ChannelSearch(channel: id) { gid, mid in
                 search = false
@@ -387,9 +393,11 @@ struct ChannelView: View {
         case "todos": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .todos }
         case "files": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .photos }
         case "log": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .log }
-        case "chsettings": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .settings }
+        case "chsettings", "chvisibility", "chpublic": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .settings }
+        case "closedrequests": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .members }
         case "settingsfailedalert": DispatchQueue.main.asyncAfter(deadline: .now() + 2) { settingsIssue = true }
         case "pinned": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .pinned }
+        case "notify": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { notify = true }
         case "pullempty": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }
         case "invite": invite = true
         case "pulldown", "proposal": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }
@@ -610,20 +618,28 @@ struct PodJoinBar: View {
     let asked: Bool
     let ask: () -> Void
     var body: some View {
+        let what = group.isPod ? "group" : "channel"
         HStack {
-            Text(asked ? "You asked to join. Its members will answer." : group.closed ? "Joining takes an application." : "You're not in this group.")
-                .font(.footnote).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                if asked { Text("Pending").font(.footnote.weight(.semibold)) }
+                Text(asked ? (group.vouches > 0 ? "Its members vouch, or its stewards answer." : "The \(what)'s stewards will answer.")
+                     : group.closed ? "People ask to join this \(what)." : "You're not in this group.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
             Spacer()
             if !asked {
                 if group.closed {
-                    Button("Ask to join", action: ask).buttonStyle(.brand).controlSize(.small)
+                    Button("Ask to join", action: ask).buttonStyle(.brand).controlSize(.small).accessibilityIdentifier("ask-to-join")
                 } else {
                     BusyButton("Join") { model.join(group.id) }.buttonStyle(.brand).controlSize(.small)
                 }
+            } else {
+                Image(systemName: "clock").foregroundStyle(.secondary).accessibilityHidden(true)
             }
         }
         .padding(.horizontal).padding(.vertical, 8)
         .floatingBar()
+        .accessibilityIdentifier("join-bar")
     }
 }
 
@@ -639,9 +655,9 @@ struct PodApplySheet: View {
                 Section {
                     Text(group.prompt ?? Actions.defaultPrompt).font(.headline)
                     TextField("Your answer", text: $answer, axis: .vertical).lineLimit(3...8).font(.body)
-                } footer: { Text("Its members see your answer and let you in.") }
+                } footer: { Text(group.vouches > 0 ? "Its members see your answer and vouch for you, or a steward lets you in." : "The \(group.isPod ? "group" : "channel")'s stewards see your answer and let you in, or not.") }
             }
-            .navigationTitle("Ask to join \(group.name)")
+            .navigationTitle("Ask to join " + (group.type == .channel ? "#" + group.name : group.name))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

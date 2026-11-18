@@ -76,6 +76,19 @@ shot 135c-pulldown-dark pulldown dark
 shot 136-channel-members members light
 shot 136b-channel-members-invite membersinvitech light
 shot 137-channel-settings chsettings light
+# 2026-11-18 round 6: the Notifications sheet, "Who can read it" (+ the Public question), a closed
+# channel (Ask to join as a member, the requests for its steward), the proposal at the top of its
+# chat (half, folded, full), the e-mail thread's two modes (mailreply / mailcomment above)
+shot 160-notify notify light
+shot 160b-notify-dark notify dark
+shot 161-visibility chvisibility light
+shot 161b-visibility-dark chvisibility dark
+shot 162-visibility-public chpublic light
+shot 163-closed-ask member-closedask light
+shot 163b-closed-requests closedrequests light
+shot 164b-proposal-dark proposal dark
+shot 165-proposal-folded proposalup light
+shot 166-proposal-full proposalfull light
 # 2026-11-17 round 5: buttons on messages (#website: to approve, an error, published), links,
 # the channel settings (Save + Archive link) and a refused settings change (the mark, its alert)
 shot 150-website-buttons website light
@@ -92,6 +105,8 @@ shot 121-mail-thread mailthread light
 shot 121b-mail-thread-dark mailthread dark
 shot 122-mail-reply mailreply light
 shot 122b-mail-reply-dark mailreply dark
+shot 122c-mail-comment mailcomment light
+shot 122d-mail-comment-dark mailcomment dark
 shot 123-full-mail fullmail light
 shot 124-welcome welcome light
 shot 124b-welcome-charter welcomecharter light

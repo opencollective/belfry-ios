@@ -20,6 +20,9 @@ struct ChannelScreen: View {
         let _ = model.version
         if model.derive.isDeleted(id) {
             GroupGone(root: !pushed)
+        } else if Channel.typeOf(id) == .proposal, model.derive.proposalFor(id) != nil {
+            // a proposal's chat with the proposal at its top (round 6)
+            ProposalScreen(id: id, focus: focus, pushed: pushed).id(id)
         } else {
             ChannelView(id: id, focus: focus, pushed: pushed).id(id)
         }

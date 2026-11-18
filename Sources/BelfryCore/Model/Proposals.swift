@@ -23,6 +23,16 @@ public struct Poll: Hashable, Sendable {
     public let version: Int
     /// pubkey → option id ("yes", "no", "abstain")
     public let votes: [String: String]
+
+    /// The choices this poll really has (its NIP-88 `option` tags, in order); the three default
+    /// ones when it names none.
+    public var options: [(id: String, label: String)] {
+        var out = [(id: String, label: String)]()
+        for t in ev.tags where t.count >= 2 && t[0] == "option" && !t[1].isEmpty && !out.contains(where: { $0.id == t[1] }) {
+            out.append((t[1], t.count > 2 && !t[2].isEmpty ? t[2] : t[1]))
+        }
+        return out.isEmpty ? Proposal.voteOptions : out
+    }
 }
 
 /// The address of a website version's preview (web previewLink): preview.<domain>/p/<npub>[@name].
@@ -55,6 +65,9 @@ public struct Proposal: Hashable, Sendable, Identifiable {
         for v in (poll?.votes ?? [:]).values { out[v, default: 0] += 1 }
         return out
     }
+
+    /// The choices to vote on: the current poll's own options (Yes / No / Abstain by default).
+    public var options: [(id: String, label: String)] { poll?.options ?? Proposal.voteOptions }
 
     /// Votes are open on the current version.
     public var votingNow: Bool { status == .voting && poll != nil && poll!.version == version }
@@ -123,4 +136,16 @@ extension Derive {
 
     public func myVote(_ p: Proposal) -> String? { p.poll?.votes[me] }
     public func needsMyVote(_ p: Proposal) -> Bool { p.votingNow && p.poll?.votes[me] == nil }
+
+    /// "X of Y members have" voted (SPEC 19.39): X = votes on the current poll, Y = the members
+    /// of the channel the proposal was made in (its parent; the proposal's own chat when it has
+    /// none), counting the voters too; nil Y when that list is unknown (empty).
+    public func voteTurnout(_ p: Proposal) -> (voted: Int, of: Int?) {
+        let voters = Set((p.poll?.votes ?? [:]).keys)
+        let g = group(p.groupId)
+        let base = g?.parent.flatMap { group($0) } ?? g
+        let members = (base?.members ?? []).filter { !isGuest($0) && !isAgent($0) }
+        if members.isEmpty { return (voters.count, nil) }
+        return (voters.count, members.union(voters).count)
+    }
 }

@@ -844,6 +844,12 @@ final class AppModel: ObservableObject {
     func join(_ id: String) { engine?.enqueue(Actions.join(id)) }
     func editChannelInbox(_ id: String, _ on: Bool) { engine?.enqueue(Actions.setInbox(id, on: on)) }
 
+    /// Public or members only (SPEC 19.38): the channel's web settings, never retroactive.
+    func setVisibility(_ id: String, public pub: Bool) {
+        guard let g = group(id), let d = Actions.setVisibility(g, public: pub, derive: derive, now: .now) else { return }
+        engine?.enqueue(d)
+    }
+
     /// Opening a channel tells it, at most every 6 hours.
     func markSeen(_ id: String) {
         if guestReading { return } // guest mode: reading leaves no trace

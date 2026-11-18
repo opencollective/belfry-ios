@@ -483,7 +483,7 @@ struct RootView: View {
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openProfile = model.me } // ProfileView opens the sheet
         case "mailfeed": selection = .channel("hello-79f0")
-        case "mailthread", "mailreply":
+        case "mailthread", "mailreply", "mailcomment":
             selection = .channel("hello-79f0")
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 if let t = model.derive.mailThreads("hello-79f0").list.first { model.openThread = ThreadRoute(group: "hello-79f0", root: t.id) }
@@ -533,7 +533,8 @@ struct RootView: View {
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { account = true }
         case "members", "todos", "files", "log", "chsettings", "pinned", "membersinvitech": selection = .channel(generalId)
-        case "website", "websitethread": selection = .channel("website")
+        case "website", "websitethread", "notify", "chvisibility", "chpublic": selection = .channel("website")
+        case "closedask", "closedpending", "closedrequests": selection = .channel("board-5d1e")
         case "settingsfailed", "settingsfailedalert": selection = .channel("garden-3f2a")
         case "homedrawer":
             model.tab = .home
@@ -544,7 +545,7 @@ struct RootView: View {
         case "settingschannels", "channelend", "channelendconfirm", "channelarchive":
             selection = .settings
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { path.append(PlaceRoute.channels) }
-        case "proposal": selection = .channel("prop-quiet-hours-after-22-00-7f3a2b")
+        case "proposal", "proposalup", "proposalfull": selection = .channel("prop-quiet-hours-after-22-00-7f3a2b")
         case "events": selection = .events
         case "eventhost":
             selection = .channel(generalId)
