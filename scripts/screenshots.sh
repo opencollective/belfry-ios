@@ -23,35 +23,19 @@ for rt, devs in d.items():
             print(x["udid"]); sys.exit(0)
 '
 }
-UDID=$(pick)
+# UDID: a simulator the workflow booted already (while the app compiled); else one is picked here
+UDID="${UDID:-$(pick)}"
 echo "simulator $UDID"
-xcrun simctl boot "$UDID" || true
-xcrun simctl bootstatus "$UDID" -b
+xcrun simctl boot "$UDID" 2>/dev/null || true
+xcrun simctl bootstatus "$UDID" -b | tail -2
 xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 || true
 xcrun simctl install "$UDID" "$APP"
 
-shot() { # name screen appearance
-  xcrun simctl ui "$UDID" appearance "$3" || true
-  xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1 || true
-  if [ "$2" = "signin" ]; then
-    xcrun simctl launch "$UDID" "$BUNDLE" >/dev/null
-  elif [ "$2" = "signin-code" ] || [ "$2" = "signin-older" ]; then
-    xcrun simctl launch "$UDID" "$BUNDLE" -signin "${2#signin-}" >/dev/null
-  elif [ "${2#guest-}" != "$2" ]; then
-    xcrun simctl launch "$UDID" "$BUNDLE" -guest "${2#guest-}" >/dev/null
-  elif [ "${2#member-}" != "$2" ]; then
-    xcrun simctl launch "$UDID" "$BUNDLE" -demo -member -screen "${2#member-}" >/dev/null
-  elif [ "$2" = "join" ]; then
-    xcrun simctl launch "$UDID" "$BUNDLE" -join >/dev/null
-  elif [ "$2" = "join-member" ]; then
-    xcrun simctl launch "$UDID" "$BUNDLE" -join member >/dev/null
-  else
-    xcrun simctl launch "$UDID" "$BUNDLE" -demo -screen "$2" >/dev/null
-  fi
-  sleep "${WAIT:-6}"
-  xcrun simctl io "$UDID" screenshot "$OUT/$1.png"
-  echo "captured $1"
-}
+# The screens: each `shot <name> <screen> <light|dark>` line below is only listed here; scripts/shots.py
+# captures them after the list (one launch per screen, its dark picture without launching again,
+# SHOTS = which screens, SHARD = i/n of parallel jobs).
+LIST="$(mktemp)"
+shot() { echo "$1 $2 $3" >> "$LIST"; }
 
 # 2026-11-17 round 3: Home with the date and ☰, the drawer (Today, Members, categories with ＋,
 # the gear), Settings → Channels, the channel header (subtitle, attention line) and its pull-down
@@ -241,12 +225,18 @@ shot 41-guest-mode-dark guest-feed dark
 shot 35-sign-in-code signin-code light
 shot 36-sign-in-older-belfry signin-older light
 shot 37-sign-in-code-dark signin-code dark
-xcrun simctl ui "$UDID" appearance light || true
+python3 "$(dirname "$0")/shots.py" "$UDID" "$BUNDLE" "$OUT" "$LIST"
 
-# native menus only a touch opens: UI tests (App/UITests) write their own PNGs, light and dark
-if [ -n "${XCTESTRUN:-}" ] && [ -f "$XCTESTRUN" ]; then
+# native menus only a touch opens: UI tests (App/UITests) write their own PNGs.
+# UITESTS: "all" (default), "none", or test names ("testAddMenu testTodoAssign"); UIMODES: "light dark".
+UITESTS="${UITESTS:-all}"
+ONLY=""
+if [ "$UITESTS" != "all" ] && [ "$UITESTS" != "none" ]; then
+  for t in $UITESTS; do ONLY="$ONLY -only-testing:BelfryUITests/MenuShots/$t"; done
+fi
+if [ "$UITESTS" != "none" ] && [ -n "${XCTESTRUN:-}" ] && [ -f "$XCTESTRUN" ]; then
   ABS="$(cd "$OUT" && pwd)"
-  for mode in light dark; do
+  for mode in ${UIMODES:-light dark}; do
     xcrun simctl ui "$UDID" appearance "$mode" || true
     xcrun simctl terminate "$UDID" "$BUNDLE" >/dev/null 2>&1 || true
     # when the app's watchdog reports a stall, sample the app's threads (simulator apps are host
@@ -259,7 +249,7 @@ if [ -n "${XCTESTRUN:-}" ] && [ -f "$XCTESTRUN" ]; then
     SAMPLER=$!
     set +e
     TEST_RUNNER_SHOTS_DIR="$ABS" TEST_RUNNER_SHOTS_SUFFIX="$mode" \
-      xcodebuild test-without-building -xctestrun "$XCTESTRUN" -destination "id=$UDID" \
+      xcodebuild test-without-building -xctestrun "$XCTESTRUN" -destination "id=$UDID" $ONLY \
       -resultBundlePath "ui-$mode.xcresult" > "ui-$mode.log" 2>&1
     code=$?
     kill $SAMPLER 2>/dev/null; pkill -f "log stream --style compact --predicate subsystem" 2>/dev/null

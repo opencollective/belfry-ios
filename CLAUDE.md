@@ -72,15 +72,29 @@ that end 19.19, 19.20 and 19.26, the iOS-only 19.28 and 19.29, 19.30 (deleted an
 This Linux box has no Xcode. Push and let GitHub Actions build (`gh run watch`, `gh run view
 --log`, `gh run download <id> -n screenshots`):
 
-- `core`: `swift test` on macos-15 (Xcode 16.4, Swift 6.1). Core is Swift language mode 5.
-- `app` (macos-26, Xcode 26): `xcodegen generate`, `xcodebuild … build-for-testing -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO
-  -skipPackagePluginValidation build` (P256K uses a build-tool plugin), then
-  `scripts/screenshots.sh` boots a simulator and captures the screens in demo mode → artifact
-  `screenshots`; then the UI tests (`App/UITests/MenuShots.swift`, target `BelfryUITests`) tap
-  what only a touch opens (the ＋ menu, a held message's menu, the drawer by swipe, typing) and
-  write `50-…`–`53-…` PNGs in light and dark (`TEST_RUNNER_SHOTS_DIR`). Keep expressions small:
-  Xcode 26 gives up type-checking long `+` chains of optional strings (move them into functions).
-- `testflight`: runs on main only when these repository secrets exist (Xavier adds them):
+- What a run does is decided from the changed files (the owner, 2026-11-18: the app job took an
+  hour on every push; "only test what could likely be impacted"): the `plan` job runs
+  `scripts/ci-plan.py`. **Keep its MAP current** (file → the screens and UI tests it can touch)
+  when a screen moves to another file or a screenshot scenario is added; shared files (Kit, Theme,
+  RootView, AppModel, the core) get a small smoke set.
+- `core`: `swift test` on macos-15 (Xcode 16.4, Swift 6.1), only when `Sources/`, `Tests/`,
+  `vectors/` or the package changed. Core is Swift language mode 5.
+- `sim` (macos-26, Xcode 26): boots the simulator, `xcodegen generate`, `xcodebuild …
+  build-for-testing` (the simulator boots meanwhile), then `scripts/screenshots.sh` with `SHOTS`
+  (a regex on the screen names, "all", "none"), `SHARD` (i/n), `UITESTS` (names, "all", "none")
+  and `UIMODES`. The script only lists the screens; `scripts/shots.py` captures them: one launch
+  per screen, its dark picture by switching the appearance without launching again, and the wait
+  ends when two frames are the same (3.6 s to 6.5 s). The UI tests (`App/UITests/MenuShots.swift`)
+  tap what only a touch opens and write their own PNGs. Artifacts `screenshots-<part>`, merged into
+  `screenshots`. A branch: `gh workflow run ci.yml --ref <branch>` (optionally `-f shots='invite.*'
+  -f uitests='testTodoAssign'`, or `-f full=true`).
+- **The full suite** (three screenshot jobs side by side + the UI tests in light and in dark) runs
+  only for a release with a new minor version: a tag `vX.Y.0`, a change of the major or minor of
+  `MARKETING_VERSION`, or `-f full=true`. Between releases a run holds only the screens it took.
+- Keep expressions small: Xcode 26 gives up type-checking long `+` chains of optional strings (move
+  them into functions).
+- `testflight`: on main, **after the core tests only** (it no longer waits for screenshots or UI
+  tests: its own archive is the compile check; the owner, 2026-11-18), and only when these repository secrets exist (Xavier adds them):
   `APPLE_TEAM_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (App Store Connect API key with
   App Manager or Admin role; contents of the .p8). Signing is automatic through the API key
   (`-allowProvisioningUpdates`); the app record `sh.belfry.app` must exist in App Store Connect.

@@ -3,8 +3,21 @@ name: CI
 on:
   push:
     branches: [main]
+    # a release with a new minor version: the full suite (every screenshot, every UI test)
+    tags: ['v*.*.0']
   pull_request:
   workflow_dispatch:
+    inputs:
+      full:
+        description: The full suite (every screenshot, every UI test, light and dark)
+        type: boolean
+        default: false
+      shots:
+        description: Screens to capture (a regex on scripts/screenshots.sh's names, e.g. "invite.*|charter"); empty = from the changed files
+        default: ''
+      uitests:
+        description: UI tests to run ("testAddMenu testTodoAssign", or "all"); empty = from the changed files
+        default: ''
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -13,9 +26,40 @@ concurrency:
 env:
   XCODE: /Applications/Xcode_16.4.app
 
+# What runs (Xavier, 2026-11-18; the app job used to take an hour on every push):
+# - plan: reads the changed files (scripts/ci-plan.py) and says what they can have touched.
+# - core: BelfryCore's tests, when the core, its tests or the vectors changed.
+# - sim: the app built for the simulator, then only the screenshots and UI tests of the screens the
+#   change touched (one job; up to three for many screens). The full suite (three screenshot jobs
+#   and the UI tests in light and in dark, side by side) only for a release with a new minor
+#   version: a tag vX.Y.0, a new major or minor MARKETING_VERSION, or the `full` input.
+# - testflight: on main, after the core tests only. It does not wait for the simulator jobs: its
+#   own archive is the compile check.
 jobs:
+  plan:
+    name: Plan (what the change touched)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      core: ${{ steps.plan.outputs.core }}
+      app: ${{ steps.plan.outputs.app }}
+      parts: ${{ steps.plan.outputs.parts }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: plan
+        env:
+          BEFORE: ${{ github.event.before }}
+          INPUT_FULL: ${{ inputs.full }}
+          INPUT_SHOTS: ${{ inputs.shots }}
+          INPUT_UITESTS: ${{ inputs.uitests }}
+        run: python3 scripts/ci-plan.py
+
   core:
     name: Core tests (vectors)
+    needs: plan
+    if: needs.plan.outputs.core == 'true'
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -39,11 +83,17 @@ jobs:
           name: core-test-log
           path: swift-test.log
 
-  app:
-    name: App build + screenshots
+  sim:
+    name: Simulator (${{ matrix.part.name }})
+    needs: plan
+    if: needs.plan.outputs.parts != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJSON(needs.plan.outputs.parts) }}
     # Xcode 26 / the iOS 26 SDK: the screenshots show the glass the owner's iPhone draws
     runs-on: macos-26
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Xcode 26
@@ -51,6 +101,20 @@ jobs:
           XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -v -i beta | sort -V | tail -1)
           [ -n "$XCODE" ] || { echo "no Xcode 26 on this runner"; ls /Applications | grep -i xcode; exit 1; }
           sudo xcode-select -s "$XCODE" && xcodebuild -version
+      - name: Boot the simulator (it goes on booting while the app compiles)
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)["devices"]
+          for want in ["iPhone 17 Pro", "iPhone 16 Pro", "iPhone 17", "iPhone 16", "iPhone 15 Pro"]:
+              for rt, devs in sorted(d.items(), reverse=True):
+                  for x in devs:
+                      if x["name"] == want and "iOS" in rt:
+                          print(x["udid"]); sys.exit(0)
+          ')
+          [ -n "$UDID" ] || exit 0
+          xcrun simctl boot "$UDID" || true
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
       - name: XcodeGen
         run: brew install xcodegen && xcodegen generate
       - uses: actions/cache@v4
@@ -71,22 +135,41 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: xcodebuild-log
+          name: xcodebuild-log-${{ matrix.part.name }}
           path: xcodebuild.log
-      - name: Screenshots
+      - name: Screenshots and UI tests (${{ matrix.part.shard }})
+        env:
+          SHOTS: ${{ matrix.part.shots }}
+          SHARD: ${{ matrix.part.shard }}
+          UITESTS: ${{ matrix.part.uitests }}
+          UIMODES: ${{ matrix.part.uimodes }}
         run: |
           XCTESTRUN=$(ls build/Build/Products/*.xctestrun 2>/dev/null | head -1) \
             scripts/screenshots.sh build/Build/Products/Debug-iphonesimulator/Belfry.app screenshots
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: screenshots
+          name: screenshots-${{ matrix.part.name }}
           path: screenshots
+
+  screenshots:
+    name: Screenshots (one artifact)
+    needs: [plan, sim]
+    if: always() && needs.plan.outputs.parts != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/upload-artifact/merge@v4
+        with:
+          name: screenshots
+          pattern: screenshots-*
+          delete-merged: true
 
   testflight:
     name: TestFlight (only with signing secrets)
-    needs: [core, app]
-    if: github.ref == 'refs/heads/main'
+    # after the core tests (when the change needed them), not after the simulator jobs
+    needs: [plan, core]
+    if: always() && github.ref == 'refs/heads/main' && needs.plan.outputs.app == 'true' && (needs.core.result == 'success' || needs.core.result == 'skipped')
     # App Store Connect only takes builds made with the iOS 26 SDK (Xcode 26) or later
     runs-on: macos-26
     timeout-minutes: 60
