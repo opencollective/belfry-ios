@@ -351,13 +351,7 @@ public final class SyncEngine: @unchecked Sendable {
         if let r = relays[t], r.isUp { lock.unlock(); return r }
         lock.unlock()
         let r = Relay(url: url(t))
-        r.authSigner = signer
-        r.onEvent = { [weak self] _, ev in self?.add([ev]) }
-        r.onEOSE = { [weak self, weak r] sub in
-            guard let self, let r else { return }
-            self.eose(t, sub, relay: r)
-        }
-        r.refilter = { [weak self] id in id == "live-" + t.rawValue ? self?.filters(t, fromStart: true) : nil }
+        wireAnswers(r, t)
         r.onClosed = { [weak self] sub, reason in self?.closed(t, sub, reason) }
         r.onState = { [weak self] s in
             guard let self else { return }
@@ -471,6 +465,18 @@ public final class SyncEngine: @unchecked Sendable {
 
     func subscribe(_ t: Target, _ r: Relay) {
         r.subscribe("live-" + t.rawValue, filters: filters(t))
+    }
+
+    /// A relay's events, its ends of stored events and its subscriptions after AUTH (every
+    /// connection: a reconnect or the next launch asks again from 0 once AUTH succeeds).
+    func wireAnswers(_ r: Relay, _ t: Target) {
+        r.authSigner = signer
+        r.onEvent = { [weak self] _, ev in self?.add([ev]) }
+        r.onEOSE = { [weak self, weak r] sub in
+            guard let self, let r else { return }
+            self.eose(t, sub, relay: r)
+        }
+        r.refilter = { [weak self] id in id == "live-" + t.rawValue ? self?.filters(t, fromStart: true) : nil }
     }
 
     /// An end of stored events from relay R. Before AUTH the answer holds only public events: it
