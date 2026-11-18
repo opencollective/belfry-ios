@@ -47,7 +47,15 @@ final class ModelTests: XCTestCase {
     }
 
     func testReactions() throws {
-        for c in try vector("reactions").list("cases") {
+        // reply-reactions.json: a reaction on a reply in a thread (k = 1111; readers never filter on k)
+        for c in try vector("reply-reactions").list("cases") {
+            for w in c.list("write") {
+                let dr = Actions.react(c.str("group")!, messageId: w.str("target")!, author: w.str("author")!, emoji: w.str("emoji")!, kind: w.int("target_kind")!)
+                XCTAssertEqual(dr.kind, 7)
+                XCTAssertEqual(dr.tags, w["tags"] as? [[String]])
+            }
+        }
+        for c in try vector("reactions").list("cases") + vector("reply-reactions").list("cases") {
             let d = Derive(events: try events(c["events"]), me: c.str("me")!)
             let got = d.reactions(c.str("group")!)
             let want = c.dict("expect").dict("reactions")

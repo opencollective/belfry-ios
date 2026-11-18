@@ -243,7 +243,11 @@ content longer than 16 UTF-16 code units is ignored; per message, per emoji, the
 reacting keys; sorted by count descending (ties: first seen first). Tapping my reaction again
 removes it: kind 5 `[["h",g],["e",<my reaction id>],["k","7"]]` (if my reaction is still in the
 outbox, it is not sent at all). Default emoji row `👍 ❤️ 😂 🎉 🙏 👀`, the person's most used first.
-Vectors: `reactions.json`.
+A reaction on a **reply in a thread** (2026-11-18) is the same event with `e` = the reply's id,
+`p` = its author and `k` = "1111": `k` is always the kind of the event reacted to (NIP-25), never
+hard-coded. Readers key on the last `e` tag and never filter on `k`; a reply shows its reactions
+under it, and holding it offers the same reactions as a message.
+Vectors: `reactions.json`, `reply-reactions.json` (ours: copy to Android and the web).
 
 **Threads** (NIP-22, `postThreadReply`): kind 1111 in the group:
 `["h",g],["E",root.id,"",root.pubkey],["K","9"],["P",root.pubkey],["e",root.id,"",root.pubkey],
@@ -440,6 +444,7 @@ or private state, `tools/vectors/gen.ts` copies it line for line. Each file has 
 | `groups.json` | channel derivation |
 | `messages.json` | feed, deletion, media |
 | `reactions.json` | reaction aggregation and undo |
+| `reply-reactions.json` | a reaction on a thread reply: the tags written (`k` = 1111) and how it is read |
 | `threads.json` | thread grouping, inline window, feed with resurfacing and guest joins |
 | `mail-threads.json` | base subjects, thread keys, thread assignment by references |
 | `mentions.json` | mention tags, picker, substitution, hashtags |

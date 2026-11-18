@@ -846,7 +846,7 @@ final class AppModel: ObservableObject {
             engine.enqueue(Actions.unreact(group, reactionId: mine))
         } else {
             EmojiUsage.used(emoji)
-            engine.enqueue(Actions.react(group, messageId: m.ev.id, author: m.ev.pubkey, emoji: emoji, kind: m.ev.kind == 1111 ? 1111 : 9))
+            engine.enqueue(Actions.react(group, messageId: m.ev.id, author: m.ev.pubkey, emoji: emoji, kind: m.ev.kind))
         }
     }
 
