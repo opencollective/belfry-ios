@@ -165,7 +165,7 @@ public enum EventsTab: String, Sendable, CaseIterable {
 
 /// Ids, links and URL names.
 public enum EventLinks {
-    public static let dRx = Rx("^\\d{4}-[a-z0-9]{6}$")
+    public static let dRx = Rx("^(\\d{4}-)?[a-z0-9]{6}$")
     public static let slugRx = Rx("^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$")
     static let reserved: Set<String> = ["new", "slug", "feed", "past", "mine"]
     public static let statusNS = "belfry/event-status"
@@ -173,12 +173,9 @@ public enum EventLinks {
 
     public static func isD(_ s: String) -> Bool { dRx.test(s) }
 
-    /// A new event's id: the year it is made in (UTC) and 6 random characters.
-    public static func newD(now: Int, random: Data = Crypto.random(6)) -> String {
-        var c = Calendar(identifier: .gregorian)
-        c.timeZone = TimeZone(identifier: "UTC")!
-        let year = c.component(.year, from: Date(timeIntervalSince1970: TimeInterval(now)))
-        return "\(year)-" + String([UInt8](random).prefix(6).map { alpha[Int($0) % 36] })
+    /// A new event's id: 6 random characters (ids made before 2026-11-18 start with their year).
+    public static func newD(now: Int = 0, random: Data = Crypto.random(6)) -> String {
+        String([UInt8](random).prefix(6).map { alpha[Int($0) % 36] })
     }
 
     /// Why a custom URL can't be used (fixed text), or nil.
