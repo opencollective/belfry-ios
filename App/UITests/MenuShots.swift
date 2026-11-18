@@ -60,8 +60,10 @@ final class MenuShots: XCTestCase {
         let msg = hittable(rows, timeout: 30)
         XCTAssertNotNil(msg, "the message row is not on screen")
         guard let msg else { return }
-        msg.press(forDuration: 1.2)
-        XCTAssertTrue(app.buttons["Reply"].waitForExistence(timeout: 4), "the message's menu did not open")
+        // hold the message's text, not the row's centre: the face and the name above it open the
+        // profile on a tap (run 44411728520: the hold ended on the profile, no menu)
+        msg.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.8)).press(forDuration: 1.5)
+        XCTAssertTrue(app.buttons["Reply"].waitForExistence(timeout: 6), "the message's menu did not open")
         sleep(1)
         shot("51-message-menu")
     }
