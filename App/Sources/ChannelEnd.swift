@@ -16,7 +16,7 @@ struct ChannelEndSheet: View {
     @State private var error: String?
 
     var body: some View {
-        let name = "#" + (model.group(id)?.name ?? id)
+        let name = "#" + (model.group(id)?.name ?? BelfryCore.Group.fallbackName(id))
         let delete = content == .empty
         NavigationStack {
             Form {

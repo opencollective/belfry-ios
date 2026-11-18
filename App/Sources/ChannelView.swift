@@ -71,7 +71,7 @@ struct ChannelView: View {
                         if (model.guestReading || locked) && topic == nil {
                             Text("No messages here yet.").foregroundStyle(.secondary).padding(32).frame(maxWidth: .infinity)
                         } else {
-                            EmptyChannel(name: g?.name ?? id, filtered: topic != nil) { invite = true }
+                            EmptyChannel(name: g?.name ?? BelfryCore.Group.fallbackName(id), filtered: topic != nil) { invite = true }
                         }
                     }
                     ForEach(rows) { row in
@@ -232,7 +232,7 @@ struct ChannelView: View {
                         if g != nil { ChannelSubtitle(id: id) }
                     }
                 }
-                .accessibilityLabel("\(g?.name ?? id). Show what's going on in this channel.")
+                .accessibilityLabel("\(g?.name ?? BelfryCore.Group.fallbackName(id)). Show what's going on in this channel.")
                 // a settings change refused for good (SPEC 19.37): tap for what failed
                 if !failedSettings.isEmpty {
                     Button { settingsIssue = true } label: {

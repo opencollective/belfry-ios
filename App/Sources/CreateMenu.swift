@@ -99,7 +99,7 @@ struct CreateMenuSheet: View {
                         HStack {
                             Text("Where").foregroundStyle(.secondary)
                             Spacer()
-                            Text("# " + (model.group(place)?.name ?? place)).foregroundStyle(Color.brand)
+                            Text("# " + (model.group(place)?.name ?? BelfryCore.Group.fallbackName(place))).foregroundStyle(Color.brand)
                             Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(Color.brand)
                         }
                     }
@@ -144,7 +144,7 @@ struct CreateMenuSheet: View {
 
     /// "the Townsquare" for the Townsquare, else "#name".
     private func placeName(_ id: String) -> String {
-        let n = model.group(id)?.name ?? id
+        let n = model.group(id)?.name ?? BelfryCore.Group.fallbackName(id)
         return id == generalId && n == PlaceNames.defaults[generalId] ? "the Townsquare" : "#" + n
     }
 

@@ -52,7 +52,7 @@ public enum ChannelRefs {
         let noKeys = replaceAll(npubLoose, in: text) { _ in npub }
         return replaceAll(naddrRx, in: noKeys) { m in
             guard let id = groupOf(m[1] ?? "") else { return m.whole }
-            return "#" + (nameOf(id) ?? id)
+            return "#" + (nameOf(id) ?? Group.fallbackName(id))
         }
     }
 }
@@ -93,7 +93,7 @@ extension Derive {
         var picked = [(label: String, ref: String)]()
         let out = ChannelRefs.replaceAll(ChannelRefs.naddrRx, in: text) { m in
             guard let id = ChannelRefs.groupOf(m[1] ?? "") else { return m.whole }
-            let label = "#" + (group(id)?.name ?? id)
+            let label = "#" + (group(id)?.name ?? Group.fallbackName(id))
             if !picked.contains(where: { $0.label == label }) { picked.append((label, m.whole)) }
             return label
         }
@@ -102,7 +102,7 @@ extension Derive {
 
     /// A bare naddr as previews name it: "#name", "#<id>" for an unknown channel, else as written.
     public func refLabel(_ naddr: String) -> String {
-        if let id = ChannelRefs.groupOf(naddr) { return "#" + (group(id)?.name ?? id) }
+        if let id = ChannelRefs.groupOf(naddr) { return "#" + (group(id)?.name ?? Group.fallbackName(id)) }
         return "nostr:" + naddr
     }
 }

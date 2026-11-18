@@ -1061,7 +1061,7 @@ struct SearchResults: View {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack {
                                 Text(model.name(m.ev.pubkey)).font(.subheadline.bold())
-                                Text("\(model.group(gid)?.icon ?? "#")\(model.group(gid)?.name ?? gid)").font(.caption).foregroundStyle(.secondary)
+                                Text("\(model.group(gid)?.icon ?? "#")\(model.group(gid)?.name ?? BelfryCore.Group.fallbackName(gid))").font(.caption).foregroundStyle(.secondary)
                             }
                             Text(model.derive.plainRefs(m.text)).font(.subheadline).lineLimit(3).foregroundStyle(.primary)
                         }
