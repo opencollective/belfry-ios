@@ -122,7 +122,7 @@ private struct AgreementRow: View {
                     Text(rule.title).font(.body.weight(.semibold))
                     if isNew && !model.derive.amGuest { Chip(text: rule.stale.contains(model.me) ? "CHANGED" : "NEW", tint: .orange) }
                 }
-                if !rule.about.isEmpty { Text(rule.about).font(.subheadline).foregroundStyle(.secondary) }
+                if !rule.about.isEmpty { AgreementAbout(title: rule.title, text: rule.about) }
                 if showCount { Button(action: steward ? who : {}) {
                     HStack(spacing: 4) {
                         Text(countLine(count))
@@ -305,5 +305,79 @@ private struct TodoLine: View {
     var body: some View {
         let name = model.group(ref.group).map { $0.type == .channel ? "#" + $0.name : $0.name } ?? "#" + BelfryCore.Group.fallbackName(ref.group)
         TodoRow(t: ref.task, group: ref.group, subtitle: name, open: open)
+    }
+}
+
+/// An agreement's explanation: up to two lines; when it is cut, "more" opens the whole text (Xavier,
+/// 2026-11-18: the charter, the first minutes, the apply sheet, the Home reminder). The full height is
+/// measured once on a hidden copy (a short static list, not a hot path).
+struct AgreementAbout: View {
+    let title: String
+    let text: String
+    var font: Font = .subheadline
+    @State private var shownHeight: CGFloat = 0
+    @State private var fullHeight: CGFloat = 0
+    @State private var reading = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(text).font(font).foregroundStyle(.secondary).lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { shownHeight = $0 }
+                .background(alignment: .topLeading) {
+                    Text(text).font(font).fixedSize(horizontal: false, vertical: true).hidden()
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
+                        .accessibilityHidden(true)
+                }
+            if fullHeight > shownHeight + 1 {
+                Button("more") { reading = true }
+                    .font(font.weight(.medium))
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Read all of \(title)")
+            }
+        }
+        .sheet(isPresented: $reading) {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(title).font(.title3.weight(.semibold))
+                        Text(text).font(.body).textSelection(.enabled)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                }
+                .navigationTitle("Agreement")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { reading = false } } }
+            }
+            .presentationDetents([.medium, .large])
+        }
+    }
+}
+
+/// A row of agreements to tick (the first minutes, the apply sheet): the tick, the title, two lines
+/// of the explanation with "more". The row toggles the tick; "more" is its own button.
+struct TickAgreementRow: View {
+    let rule: Agreement
+    let on: Bool
+    var titleWeight: Font.Weight = .semibold
+    var tickFont: Font = .title2
+    let toggle: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: on ? "checkmark.circle.fill" : "circle").font(tickFont).foregroundStyle(on ? Color.brand : Color.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rule.title).font(.body.weight(titleWeight)).foregroundStyle(.primary)
+                if !rule.about.isEmpty { AgreementAbout(title: rule.title, text: rule.about) }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: toggle)
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction(named: on ? "Untick" : "Tick", toggle)
     }
 }

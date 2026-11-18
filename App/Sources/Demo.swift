@@ -294,12 +294,13 @@ enum Demo {
         }
         for dr in Actions.createCharter() { evs.append(ev(you, dr.kind, now - 20 * day, dr.tags, dr.content)) }
         let rules: [(String, String)] = [
-            ("We look after each other", "Kind words, good faith; speak up when someone isn't."),
-            ("What's said here stays here", "Ask before sharing a message or photo outside."),
-            ("Shared things come back", "Return tools within a week, clean and working."),
-            ("Quiet hours after 22:00", "In the hall and the garden, every day."),
-            ("Big changes are proposed first", "Proposed and voted on, not just done."),
-            ("Leave it better than you found it", "Tidy the hall and the kitchen after use."),
+            // the board's texts (onboarding/welcome-charter): most run past two lines, so "more" shows
+            ("We look after each other", "Kind words and good faith, also when we disagree. Speak up when someone isn't treated well, and help them first."),
+            ("What's said here stays here", "Ask before sharing a message, a photo or a name outside the belfry. Public channels are the exception: they say so at the top."),
+            ("Shared things come back", "Return tools within a week, clean and working. Broken? Say so in #Tool library so someone can fix it."),
+            ("Quiet hours after 22:00", "In the hall and the garden, every day. Neighbours live above the hall."),
+            ("Big changes are proposed first", "Anything that changes the place for everyone is proposed and voted on, not just done."),
+            ("Leave it better than you found it", "Tidy the hall and the kitchen after use, take your rubbish home, and put the chairs back where they were."),
         ]
         for (i, r) in rules.enumerated() {
             let newest = i == rules.count - 1

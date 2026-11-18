@@ -55,7 +55,7 @@ private struct MemberHome: View {
                 Section {
                     NavigationLink(value: PlaceRoute.charter) {
                         HomeRow(icon: "checkmark.seal", title: toAgree.count == 1 ? "1 new agreement to read" : "\(toAgree.count) new agreements to read",
-                                detail: "Charter: " + toAgree[0].title, badge: toAgree.count)
+                                detail: Self.agreementLine(toAgree[0]), badge: toAgree.count, detailLines: 2)
                     }
                     .accessibilityIdentifier("home-charter")
                 }
@@ -81,6 +81,11 @@ private struct MemberHome: View {
         }
         .listStyle(.insetGrouped)
         .listSectionSpacing(14)
+    }
+
+    /// The Home reminder's line (board home/home): the first new agreement, its title and explanation.
+    static func agreementLine(_ r: Agreement) -> String {
+        r.about.isEmpty ? r.title : r.title + ": " + r.about
     }
 
     private func requestNames() -> String {
@@ -174,6 +179,7 @@ struct HomeRow: View {
     let title: String
     let detail: String
     var badge = 0
+    var detailLines = 1
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon).font(.body.weight(.medium)).foregroundStyle(Color.brand)
@@ -181,7 +187,7 @@ struct HomeRow: View {
                 .background(Color.brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.body.weight(.semibold)).foregroundStyle(.primary)
-                Text(detail).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                Text(detail).font(.subheadline).foregroundStyle(.secondary).lineLimit(detailLines)
             }
             Spacer(minLength: 4)
             if badge > 0 { CountBadge(n: badge) }
@@ -421,19 +427,7 @@ struct BecomeMemberSheet: View {
                     Section {
                         ForEach(rules) { r in
                             let on = ticked.contains(r.id)
-                            Button {
-                                if on { ticked.remove(r.id) } else { ticked.insert(r.id) }
-                            } label: {
-                                HStack(alignment: .top, spacing: 12) {
-                                    Image(systemName: on ? "checkmark.circle.fill" : "circle").font(.title3).foregroundStyle(on ? Color.brand : Color.secondary)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(r.title).font(.body.weight(.medium)).foregroundStyle(.primary)
-                                        if !r.about.isEmpty { Text(r.about).font(.subheadline).foregroundStyle(.secondary) }
-                                    }
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityAddTraits(on ? .isSelected : [])
+                            TickAgreementRow(rule: r, on: on, titleWeight: .medium, tickFont: .title3) { if on { ticked.remove(r.id) } else { ticked.insert(r.id) } }
                         }
                     } header: { Text("Our charter · \(ticked.count) of \(rules.count) agreed") } footer: { Text("Tick each one you agree to.") }
                 }

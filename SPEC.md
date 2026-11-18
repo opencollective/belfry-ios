@@ -1806,6 +1806,12 @@ A short list of agreements that every person ticks for themselves. It reuses the
 - Core-tested in `CharterTests` (the vector: admins only, `each` only, reorder without asking
   again, a text change making a tick stale, outsiders' edits and removals ignored, removal by
   another steward; the actions' tags; the names; the charter group out of the channel list).
+- (2026-11-18, Xavier) **Every agreement ever added and not deleted is listed**, in its order: a
+  client asks the charter's 2100 / 2101 (`#h` = `charter`) whole, without `since`, beside its other
+  subscriptions (a first subscription limited to the newest events of every group missed old
+  agreements on a busy belfry). **Each row shows the title and up to two lines of the
+  explanation**; when it is cut, "more" opens the whole text (the charter, the first minutes, a
+  guest's apply sheet, the Apply form, the Home reminder, which reads "<title>: <explanation>").
 
 ### 19.33 E-mail threads in a channel (iOS, 2026-11-16; web mailthreads.ts at mail-chat 338d296; collective-belfry docs/mail.md; `vectors/mailthreads.json`)
 

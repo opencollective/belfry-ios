@@ -80,18 +80,7 @@ struct WelcomeFlow: View {
             Section {
                 ForEach(rules) { r in
                     let on = ticked.contains(r.id)
-                    Button { if on { ticked.remove(r.id) } else { ticked.insert(r.id) } } label: {
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: on ? "checkmark.circle.fill" : "circle").font(.title2).foregroundStyle(on ? Color.brand : Color.secondary)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(r.title).font(.body.weight(.semibold)).foregroundStyle(.primary)
-                                if !r.about.isEmpty { Text(r.about).font(.subheadline).foregroundStyle(.secondary) }
-                            }
-                        }
-                        .padding(.vertical, 2)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(on ? .isSelected : [])
+                    TickAgreementRow(rule: r, on: on) { if on { ticked.remove(r.id) } else { ticked.insert(r.id) } }
                 }
             }
             if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }

@@ -411,6 +411,15 @@ public final class SyncEngine: @unchecked Sendable {
     /// older than the newest event stored here, and would otherwise show by its id.
     public static let metadataFilter: [String: Any] = ["kinds": [39000, 39001, 39002, 39003], "limit": 2000]
 
+    /// The charter, always asked whole (no `since`, SPEC 19.32): every agreement ever added and not
+    /// deleted is listed (Xavier, 2026-11-18). The first subscription asks the newest 2000 events of
+    /// every group: on a busy belfry an agreement written long ago was not among them, and later
+    /// subscriptions ask only from the newest stored event on. Its ticks come with it.
+    public static let charterFilters: [[String: Any]] = [
+        ["kinds": [2100], "#h": [Derive.charterId], "limit": 1000],
+        ["kinds": [2101], "#h": [Derive.charterId], "limit": 5000],
+    ]
+
     /// Ask everything again on the next subscription to T (no `since`), until its EOSE: after this
     /// key's access changed (a guest became a member, SPEC 19.43).
     public func catchUpFromStart() {
@@ -440,7 +449,7 @@ public final class SyncEngine: @unchecked Sendable {
     func filters(_ t: Target) -> [[String: Any]] {
         let kinds = t == .groups ? SyncEngine.kindsGroups : SyncEngine.kindsMain
         let since = sinceFor(t, kinds, back: 3600)
-        if t == .groups { return [["kinds": kinds, "since": since, "limit": 2000], SyncEngine.metadataFilter] }
+        if t == .groups { return [["kinds": kinds, "since": since, "limit": 2000], SyncEngine.metadataFilter] + SyncEngine.charterFilters }
         let wraps = max(0, latest([1059]) - 3 * 86400)
         let old = max(0, latest([4]) - 3600)
         let extras = since == 0 ? 0 : max(0, latestProfileExtras() - 3600)

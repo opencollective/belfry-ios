@@ -93,10 +93,15 @@ final class ChannelNamesTests: XCTestCase {
         let signed = try me.signNow(EventTemplate(kind: 9, content: "hi", tags: [["h", "general"]], createdAt: 1_800_000_000))
         _ = e.add([ev(RELAY, 39000, 100, [["d", "general"], ["name", "general"]]), signed], verify: false)
         let f = e.filters(.groups)
-        XCTAssertEqual(f.count, 2)
+        XCTAssertEqual(f.count, 4)
         XCTAssertEqual(f[0]["since"] as? Int, 1_800_000_000 - 3600)
         XCTAssertNil(f[1]["since"], "metadata: no since")
         XCTAssertEqual(f[1]["kinds"] as? [Int], [39000, 39001, 39002, 39003])
+        // the charter: every agreement ever added, whatever the newest stored event (Xavier 2026-11-18)
+        XCTAssertEqual(f[2]["kinds"] as? [Int], [2100])
+        XCTAssertEqual(f[2]["#h"] as? [String], [Derive.charterId])
+        XCTAssertNil(f[2]["since"]); XCTAssertNil(f[3]["since"])
+        XCTAssertEqual(f[3]["kinds"] as? [Int], [2101])
         // after a guest became a member (stored, so it survives a restart): everything from the start
         db.set("full-sync", ["groups", "main"])
         let e2 = SyncEngine(config: .defaults(domain: "example.org"), db: try Database(path: path), signer: me, localOnly: true,
