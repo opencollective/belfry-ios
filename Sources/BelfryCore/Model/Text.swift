@@ -91,6 +91,25 @@ public enum Mentions {
         pickerQuery.first(beforeCaret)?[2]
     }
 
+    /// Where the picked labels ("@OSV website agent", "#Garden") stand in TEXT, as UTF-16 ranges for
+    /// the composer to mark (Xavier 2026-11-18: a name with spaces could not be told from the
+    /// message). Longest labels first, never overlapping; exactly what `substitute` will replace.
+    public static func ranges(in text: String, labels: [String]) -> [NSRange] {
+        let ns = text as NSString
+        var out = [NSRange]()
+        var seen = Set<String>()
+        for label in labels.sorted(by: { $0.utf16.count > $1.utf16.count }) where !label.isEmpty && seen.insert(label).inserted {
+            var from = 0
+            while from < ns.length {
+                let r = ns.range(of: label, options: [], range: NSRange(location: from, length: ns.length - from))
+                if r.location == NSNotFound { break }
+                if !out.contains(where: { NSIntersectionRange($0, r).length > 0 }) { out.append(r) }
+                from = r.location + r.length
+            }
+        }
+        return out.sorted { $0.location < $1.location }
+    }
+
     /// The composer's text as sent: each picked "@Name" (longest names first) → nostr:npub….
     public static func substitute(_ text: String, picked: [(name: String, pubkey: String)]) -> String {
         var out = text

@@ -183,3 +183,17 @@ final class NoIdsAsTextTests: XCTestCase {
         XCTAssertFalse(d.group("pod-bees-1a2b")!.named)
     }
 }
+
+final class MentionRangesTests: XCTestCase {
+    /// The composer marks each picked name, spaces included, and nothing else.
+    func testRangesOfPickedLabels() {
+        let text = "@OSV website agent what's the minimum? cc @OSV and @OSV website agent, in #Garden"
+        let r = Mentions.ranges(in: text, labels: ["@OSV", "@OSV website agent", "#Garden", "@OSV"])
+        let ns = text as NSString
+        XCTAssertEqual(r.map { ns.substring(with: $0) }, ["@OSV website agent", "@OSV", "@OSV website agent", "#Garden"])
+        XCTAssertEqual(r.first, NSRange(location: 0, length: 18))
+        XCTAssertTrue(Mentions.ranges(in: "no mention here", labels: ["@Ana"]).isEmpty)
+        // an emoji before it: UTF-16 offsets
+        XCTAssertEqual(Mentions.ranges(in: "👋 @Ana Silva hi", labels: ["@Ana Silva"]), [NSRange(location: 3, length: 10)])
+    }
+}

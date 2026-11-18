@@ -203,6 +203,8 @@ shot 03-feed feed light
 shot 04-thread thread light
 shot 05-details details light
 shot 06-invite invite light
+shot 42b-composer-mention composermention light
+shot 42c-composer-mention-dark composermention dark
 shot 06b-invite-search invitesearch light
 shot 06c-invite-external inviteexternal light
 shot 07-messages messages light

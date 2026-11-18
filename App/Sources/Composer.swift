@@ -39,7 +39,8 @@ struct Composer: View {
     /// A drop box link for this channel (its Files screen lists the links; the ＋ menu makes one).
     @State private var dropLink = false
     @State private var notes = [String: String]()
-    @FocusState private var focused: Bool
+    /// The field has the keyboard (the field is a UITextView: `MessageField`).
+    @State private var focused = false
     /// The field's one-line height, and so the ＋ circle's: grows with Dynamic Type.
     @ScaledMetric(relativeTo: .body) private var h: CGFloat = 38
 
@@ -118,11 +119,16 @@ struct Composer: View {
                 if !compact && !threadMode { addMenu }
                 // iMessage's shape: a capsule that grows with the lines, Send inside its trailing edge
                 HStack(alignment: .bottom, spacing: 0) {
-                    TextField(announce ? "Announcement" : placeholder, text: $text, axis: .vertical)
-                        .font(.body)
-                        .lineLimit(1...6)
-                        .focused($focused)
-                        .accessibilityIdentifier("composer-field")
+                    // picked @names and #channels are marked in the text as it is typed
+                    MessageField(text: $text, focused: $focused,
+                                 marks: picked.map { "@" + $0.name } + refs.map(\.label),
+                                 tint: UIColor(tint ?? Color.brand), label: announce ? "Announcement" : placeholder)
+                        .overlay(alignment: .topLeading) {
+                            if text.isEmpty {
+                                Text(announce ? "Announcement" : placeholder).font(.body).foregroundStyle(.tertiary)
+                                    .lineLimit(1).allowsHitTesting(false).accessibilityHidden(true)
+                            }
+                        }
                         .padding(.leading, 14).padding(.trailing, 6)
                         .padding(.vertical, 8)
                         .frame(minHeight: h)
@@ -151,6 +157,12 @@ struct Composer: View {
         .onAppear {
             if let k = draftKey, text.isEmpty, let saved = Drafts.get(k) { text = saved }
             if autoFocus { focused = true }
+            if model.launch.screen == "composermention", !compact, !threadMode, text.isEmpty,
+               let p = model.derive.people.first(where: { $0.name.contains(" ") }) {
+                // screenshots: a picked name with spaces, marked in the field
+                picked = [(p.name, p.pubkey)]
+                text = "@" + p.name + " what's the minimum for the belfry?"
+            }
             if !compact && !threadMode && model.launchEventForm { model.launchEventForm = false; makeEvent = true }
         }
         .onChange(of: photos) { _, items in load(items) }
