@@ -417,9 +417,19 @@ public final class SyncEngine: @unchecked Sendable {
         if localOnly { return }
         lock.lock(); fullSync = [.groups, .main]; lock.unlock()
         db.set("full-sync", [Target.groups.rawValue, Target.main.rawValue])
+        db.set("member-view", true)
         dropSockets()
         wake()
     }
+    /// The same, before the engine starts (no reconnect): a store that never had a member's view
+    /// (SPEC 19.42; Android's `groups-full-1`). Once per store: `member-view` is kept after.
+    public func catchUpOnceAsMember() {
+        if localOnly || db.get("member-view", as: Bool.self) == true { return }
+        db.set("member-view", true)
+        lock.lock(); fullSync = [.groups, .main]; lock.unlock()
+        db.set("full-sync", [Target.groups.rawValue, Target.main.rawValue])
+    }
+
     private lazy var fullSync: Set<Target> = Set((db.get("full-sync", as: [String].self) ?? []).compactMap { Target(rawValue: $0) })
 
     func sinceFor(_ t: Target, _ kinds: [Int], back: Int) -> Int {

@@ -1369,8 +1369,11 @@ public final class Derive {
                 case "claim": t.assignee = e.pubkey; t.assignedBy = nil
                 case "unclaim": if t.assignee == e.pubkey { t.assignee = nil; t.assignedBy = nil }
                 case "assign":
-                    // SPEC 19.41: someone puts it on PUBKEY (`p`), or on nobody (no `p`)
-                    if let p = e.tag("p"), isHex64(p) { t.assignee = p; t.assignedBy = p == e.pubkey ? nil : e.pubkey } else { t.assignee = nil; t.assignedBy = nil }
+                    // SPEC 19.41 (= Android 19.40): someone gives it to `p`; a `p` that is not a key is ignored
+                    if let p = e.tag("p"), isHex64(p) { t.assignee = p; t.assignedBy = p == e.pubkey ? nil : e.pubkey }
+                case "unassign":
+                    // takes `p` off it, only while `p` is the one on it
+                    if let p = e.tag("p"), p == t.assignee { t.assignee = nil; t.assignedBy = nil }
                 case "done": t.done = true
                 case "undone": t.done = false
                 case "delete":

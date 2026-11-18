@@ -687,7 +687,7 @@ assigning adds `["l","assigned","belfry/inbox"],["e",card],["p",assignee]`.
   web's historical name.)
 - **Task list** (tasklist.sh): list id = `sha256hex("osv-village:"+group)[:16]`; kinds 2100
   (task, content = title ≤ 300), 2101 (`["e",task],["action","claim|unclaim|done|undone|delete"]`;
-  since 2026-11-18 also `assign` with an optional `["p",<hex>]`, 19.41),
+  since 2026-11-18 also `assign` / `unassign` with `["p",<hex>]`, 19.41),
   2103 (comment), each with `["t",list id],["h",group]`.
 - **Following a channel by e-mail** is not an event: `GET/POST <api>/me/follows` (NIP-98).
 - The web chat has **no unread count per channel** (only for direct messages and e-mail).
@@ -2135,14 +2135,18 @@ The owner, testing on phones: "a way to claim, assign and unassign a todo. Put a
 open a todo to discuss it". The web's tasklist reads `claim` (the author takes it) and `unclaim`
 (the assignee lets go, only theirs). Putting it on **someone else** is new:
 
-- **Assign** = kind 2101 `[["e",<task>],["action","assign"],["p",<hex>]]` + `t`, `h`: the to-do is on
-  that key, whoever sent it (anyone who can write in the channel). Without `p` (or with a `p` that
-  is not 64 hex) it is on nobody. In created_at order with claim / unclaim: the latest wins. An
-  `assign` to oneself counts as a claim. `assigned by` = the sender when it is not the assignee
-  (a claim clears it); the who-line reads "Ben is on it · assigned by Ana".
-- **What a client sends** for a choice by ME: me → `claim` (every client reads it); nobody while it
-  is on me → `unclaim`; anyone else, or nobody while it is on someone else → `assign` (with or
-  without `p`). So a web chat that does not read `assign` yet still sees every claim and let-go.
+Same wire format as Android SPEC 19.40 (written there the same day; this section follows it):
+
+- **Claim** (to me) = kind 2101 `["e", task] ["action", "claim"] ["t", list] ["h", group]`, as
+  today. **Assign to someone else** = the same with `["action", "assign"] ["p", <their key>]`:
+  the assignee becomes that key (a `p` that is not a 64-hex key is ignored). **Unassign** my own
+  = `unclaim`; someone else's = `["action", "unassign"] ["p", <the assignee>]`: nobody is on it
+  when that `p` is the assignee then, else nothing changes. Latest event in time order wins, as
+  for every 2101. Anyone who can write in the channel may assign or unassign (like the web's
+  "Take over"). The web's reader ignores the unknown actions rather than misreading them.
+- (iOS) `assigned by` = the sender of the `assign` when it is not the assignee (a claim clears it);
+  the who-line reads "Ben is on it · assigned by Ana". The channel Log: "gave a todo to
+  someone", "took someone off a todo".
 - **Rows** (a channel's To-dos, My to-dos, anywhere to-dos are listed): the tick box is its own
   44 pt button (done / not done); the rest of the row opens the to-do's screen, with a chevron at
   its end and a comment count. No per-row Comment / Delete buttons.
@@ -2155,8 +2159,8 @@ open a todo to discuss it". The web's tasklist reads `claim` (the author takes i
   to-do's title on the wire.
 - (iOS) `Derive.tasks` (`assignedBy`), `Actions.assignTask`, `TodoScreen.swift` (`TodoRow`,
   `TodoTick`, `TodoScreen`, `AssignPicker`), `TodoAssignTests`.
-- **Open question**: the web should read `assign` too (until it does, it keeps showing the last
-  claim's author for a to-do assigned on a phone).
+- **Open question**: the web should read `assign` / `unassign` too (until it does, it keeps showing
+  the last claim's author for a to-do assigned on a phone).
 
 ### 19.42 A channel's name, and what a member reads (iOS, 2026-11-18)
 
@@ -2168,7 +2172,10 @@ open a todo to discuss it". The web's tasklist reads `claim` (the author takes i
 - **The metadata is always asked whole**: the groups relay subscription has a second filter
   `{kinds:[39000,39001,39002,39003], limit: 2000}` without `since`. With only `since` = the newest
   stored event − 1 h, the metadata of a channel this key could not read before (a guest who became a
-  member, a channel made readable) is older than the window and never came.
+  member, a channel made readable) is older than the window and never came. A store that never had
+  a member's view (kept as `member-view`; a fresh sign-in, a store from before this rule, or a
+  guest who just became a member) asks the other filters from 0 once, until each relay's EOSE
+  (same rule as Android's `groups-full-1`).
 - **What a member reads** (web invite.ts `inChannel`): a member reads every live (not deleted, not
   archived) open channel without being in its 39002 list, and the closed ones they are in; a guest
   only their own (and, me, a guest in guest mode too). The drawer lists every listed channel; a
@@ -2203,6 +2210,11 @@ open a todo to discuss it". The web's tasklist reads `claim` (the author takes i
 - **The application form is for guests only.** It is unreachable for a member (never offered; an
   open form closes when the person becomes a member). A `not_guest` answer — to `/applications`
   (apply or status) or to `/guest/save/verify` — first asks `whois` for me: a member (or agent)
-  means "member already": switch as above and go on, no error shown.
+  means "member already": switch as above and go on, no error shown; whois holding no pass for me
+  → "You are no longer a guest here." (as Android 19.39). Also at start: whois saying `member` for
+  a device that still keeps a guest record (reading, guest channel, member link or a stored
+  request) runs the switch.
+- **A member link is never kept as a co-host token** (its join answer says `email_needed: true`
+  like a co-host link; it needs no second use).
 - (iOS) `MemberLinkInfo`, `GuestSaved`, `JoinedAccount.member`, `AppModel+MemberLink.swift`
   (`becameMember`, `memberAlready`), `MemberInviteScreen` (GuestUI.swift), screens `-join member`.

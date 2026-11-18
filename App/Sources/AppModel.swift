@@ -420,6 +420,9 @@ final class AppModel: ObservableObject {
                 await d.process()
             }
         }
+        // a store that never had a member's view (it was a guest's, or older than round 7): the
+        // rest of the history once, from the start (SPEC 19.42); a guest's store waits for becameMember
+        if !s.demo, s.reading != true, s.guestChannel == nil, kinds[e.me] != "guest" { e.catchUpOnceAsMember() }
         e.start()
         updateAddress()
         Task { await self.checkPush() }
@@ -456,6 +459,11 @@ final class AppModel: ObservableObject {
             kinds = k
             engine.db.set("kinds", k)
             version += 1
+            // still holding a guest record while the register says member: drop it (SPEC 19.43)
+            if let mine = got[me], mine == "member" || mine == "agent",
+               session?.reading == true || session?.guestChannel != nil || session?.memberLink != nil || applyState != nil {
+                becameMember()
+            }
         }
     }
 

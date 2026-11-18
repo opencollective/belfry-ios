@@ -1,22 +1,253 @@
 {
-  "about": "SPEC 19.41: who a to-do (tasklist.sh, kinds 2100-2103) is on. claim = the author takes it; unclaim = the assignee lets go (only theirs); assign = anyone in the channel puts it on [\"p\", <hex>], or on nobody (no p). Latest event wins, in created_at order. Each case: the 2101s after the 2100 (by A at 100), and the expected assignee / assigned_by (null = none). wire: what a client sends for a choice by ME.",
-  "generated_by": "belfry-ios (hand-written, 2026-11-18; the web's model.ts tasklist() reads claim / unclaim only, assign is new)",
-  "keys": "A, B, C each stand for 64 times that letter in lower case (a hex key); <task> is the 2100's id; every 2101 also carries [\"t\", <list id>] and [\"h\", <group>] after these tags",
-  "cases": [
-    {"name": "claim", "steps": [["B", "claim", null]], "assignee": "B", "assigned_by": null},
-    {"name": "unclaim by the assignee", "steps": [["B", "claim", null], ["B", "unclaim", null]], "assignee": null, "assigned_by": null},
-    {"name": "unclaim by someone else does nothing", "steps": [["B", "claim", null], ["C", "unclaim", null]], "assignee": "B", "assigned_by": null},
-    {"name": "assign to someone", "steps": [["A", "assign", "C"]], "assignee": "C", "assigned_by": "A"},
-    {"name": "assign to oneself = claim", "steps": [["C", "assign", "C"]], "assignee": "C", "assigned_by": null},
-    {"name": "take over after an assignment", "steps": [["A", "assign", "C"], ["B", "claim", null]], "assignee": "B", "assigned_by": null},
-    {"name": "assign to nobody", "steps": [["A", "assign", "C"], ["B", "assign", null]], "assignee": null, "assigned_by": null},
-    {"name": "the assignee lets go of an assignment", "steps": [["A", "assign", "C"], ["C", "unclaim", null]], "assignee": null, "assigned_by": null},
-    {"name": "a bad p is nobody", "steps": [["B", "claim", null], ["A", "assign", "zz"]], "assignee": null, "assigned_by": null}
-  ],
-  "wire": [
-    {"name": "me claims", "me": "B", "assignee": null, "to": "B", "tags": [["e", "<task>"], ["action", "claim"]]},
-    {"name": "I let go of mine", "me": "B", "assignee": "B", "to": null, "tags": [["e", "<task>"], ["action", "unclaim"]]},
-    {"name": "I assign someone", "me": "A", "assignee": null, "to": "C", "tags": [["e", "<task>"], ["action", "assign"], ["p", "C"]]},
-    {"name": "I unassign someone else", "me": "A", "assignee": "C", "to": null, "tags": [["e", "<task>"], ["action", "assign"]]}
-  ]
+ "about": "SPEC 19.41 (= Android SPEC 19.40): who a to-do (tasklist.sh, kinds 2100-2103) is on. claim = the author takes it; unclaim = the assignee lets go (only theirs); assign + [\"p\", key] = anyone in the channel gives it to that key (a p that is not a 64-hex key is ignored); unassign + [\"p\", key] = takes that key off it, only while it is the assignee. Latest event wins, in created_at order. Each case: the 2101s after the 2100 (by A at 100), and the expected assignee / assigned_by (null = none). wire: what a client sends for a choice by ME.",
+ "generated_by": "belfry-ios (hand-written, 2026-11-18; the web's model.ts tasklist() reads claim / unclaim only, assign is new)",
+ "keys": "A, B, C each stand for 64 times that letter in lower case (a hex key); <task> is the 2100's id; every 2101 also carries [\"t\", <list id>] and [\"h\", <group>] after these tags",
+ "cases": [
+  {
+   "name": "claim",
+   "steps": [
+    [
+     "B",
+     "claim",
+     null
+    ]
+   ],
+   "assignee": "B",
+   "assigned_by": null
+  },
+  {
+   "name": "unclaim by the assignee",
+   "steps": [
+    [
+     "B",
+     "claim",
+     null
+    ],
+    [
+     "B",
+     "unclaim",
+     null
+    ]
+   ],
+   "assignee": null,
+   "assigned_by": null
+  },
+  {
+   "name": "unclaim by someone else does nothing",
+   "steps": [
+    [
+     "B",
+     "claim",
+     null
+    ],
+    [
+     "C",
+     "unclaim",
+     null
+    ]
+   ],
+   "assignee": "B",
+   "assigned_by": null
+  },
+  {
+   "name": "assign to someone",
+   "steps": [
+    [
+     "A",
+     "assign",
+     "C"
+    ]
+   ],
+   "assignee": "C",
+   "assigned_by": "A"
+  },
+  {
+   "name": "assign to oneself = claim",
+   "steps": [
+    [
+     "C",
+     "assign",
+     "C"
+    ]
+   ],
+   "assignee": "C",
+   "assigned_by": null
+  },
+  {
+   "name": "take over after an assignment",
+   "steps": [
+    [
+     "A",
+     "assign",
+     "C"
+    ],
+    [
+     "B",
+     "claim",
+     null
+    ]
+   ],
+   "assignee": "B",
+   "assigned_by": null
+  },
+  {
+   "name": "unassign the assignee",
+   "steps": [
+    [
+     "A",
+     "assign",
+     "C"
+    ],
+    [
+     "B",
+     "unassign",
+     "C"
+    ]
+   ],
+   "assignee": null,
+   "assigned_by": null
+  },
+  {
+   "name": "unassign naming someone else changes nothing",
+   "steps": [
+    [
+     "A",
+     "assign",
+     "C"
+    ],
+    [
+     "B",
+     "unassign",
+     "B"
+    ]
+   ],
+   "assignee": "C",
+   "assigned_by": "A"
+  },
+  {
+   "name": "the assignee lets go of an assignment",
+   "steps": [
+    [
+     "A",
+     "assign",
+     "C"
+    ],
+    [
+     "C",
+     "unclaim",
+     null
+    ]
+   ],
+   "assignee": null,
+   "assigned_by": null
+  },
+  {
+   "name": "an assign without a key is ignored",
+   "steps": [
+    [
+     "B",
+     "claim",
+     null
+    ],
+    [
+     "A",
+     "assign",
+     "zz"
+    ]
+   ],
+   "assignee": "B",
+   "assigned_by": null
+  },
+  {
+   "name": "an assign without p is ignored",
+   "steps": [
+    [
+     "B",
+     "claim",
+     null
+    ],
+    [
+     "A",
+     "assign",
+     null
+    ]
+   ],
+   "assignee": "B",
+   "assigned_by": null
+  }
+ ],
+ "wire": [
+  {
+   "name": "me claims",
+   "me": "B",
+   "assignee": null,
+   "to": "B",
+   "tags": [
+    [
+     "e",
+     "<task>"
+    ],
+    [
+     "action",
+     "claim"
+    ]
+   ]
+  },
+  {
+   "name": "I let go of mine",
+   "me": "B",
+   "assignee": "B",
+   "to": null,
+   "tags": [
+    [
+     "e",
+     "<task>"
+    ],
+    [
+     "action",
+     "unclaim"
+    ]
+   ]
+  },
+  {
+   "name": "I assign someone",
+   "me": "A",
+   "assignee": null,
+   "to": "C",
+   "tags": [
+    [
+     "e",
+     "<task>"
+    ],
+    [
+     "action",
+     "assign"
+    ],
+    [
+     "p",
+     "C"
+    ]
+   ]
+  },
+  {
+   "name": "I unassign someone else",
+   "me": "A",
+   "assignee": "C",
+   "to": null,
+   "tags": [
+    [
+     "e",
+     "<task>"
+    ],
+    [
+     "action",
+     "unassign"
+    ],
+    [
+     "p",
+     "C"
+    ]
+   ]
+  }
+ ]
 }

@@ -50,7 +50,11 @@ extension AppModel {
         do { setApply(try await api.guestApply(answer: answer, agreed: agreed)); return nil }
         catch let e as ApiError {
             // "Only guests apply from here": I am a member already; refresh and go on, no error
-            if e.code == "not_guest", await memberAlready() { return nil }
+            if e.code == "not_guest" {
+                if await memberAlready() { return nil }
+                // whois holds no pass for me: no longer a guest here (Android 19.39)
+                return ApiError("gone", 409, BelfryAPI.applyErrors["gone"]!)
+            }
             return e
         }
         catch { return ApiError("network", 0, BelfryAPI.network) }

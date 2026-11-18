@@ -358,8 +358,8 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   `mailcomment`.
 
 - 2026-11-18 round 7 (branch ios-r7, the owner's remarks from phones): to-dos claim / assign /
-  unassign (SPEC 19.41, `vectors/todo-assign.json`: ours, copy to Android; new 2101 action
-  `assign` + `p`), every to-do row = its tick (own target) + the rest pushing `TodoScreen` (comments,
+  unassign (SPEC 19.41, `vectors/todo-assign.json`: ours, copy to Android; new 2101 actions
+  `assign` / `unassign` + `p`, Android's 19.40 format), every to-do row = its tick (own target) + the rest pushing `TodoScreen` (comments,
   delete in ⋯, Assign to… pushed); member links (SPEC 19.43: `MemberInviteScreen`, the link read
   before it is used, `becameMember()` drops every piece of guest state, `memberAlready()` on
   `not_guest`); a channel's name before its metadata = id without its random ending, metadata

@@ -27,7 +27,7 @@ public enum ChannelLog {
         "cancelled": "cancelled the event", "scheduled": "reopened the event", "assigned": "assigned a mail",
         "done": "closed a mail", "open": "reopened a mail",
     ]
-    static let taskWords = ["claim": "took a todo", "unclaim": "let go of a todo", "done": "marked a todo done", "undone": "reopened a todo", "delete": "deleted a todo"]
+    static let taskWords = ["claim": "took a todo", "unclaim": "let go of a todo", "done": "marked a todo done", "undone": "reopened a todo", "delete": "deleted a todo", "assign": "gave a todo to someone", "unassign": "took someone off a todo"]
 
     /// On one line, at most N UTF-16 units ("…" at the cut).
     public static func short(_ text: String, _ n: Int = 80) -> String {
