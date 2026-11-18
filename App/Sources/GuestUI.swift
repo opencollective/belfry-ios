@@ -304,7 +304,7 @@ struct MemberInviteScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 BelfryMark().frame(width: 56, height: 56).accessibilityHidden(true)
-                Text("You’re invited to join \(community) as \(link.asWho)").font(.title.bold())
+                Text("You’re invited to \(community)").font(.title.bold())
                     .accessibilityIdentifier("member-invite-title")
                 if let by = invite?.info.inviter, !by.isEmpty { Text("\(by) invited you.").foregroundStyle(.secondary) }
                 Text("Join as \(link.asWho)\(link.lengthLine). No password: a 6-digit code by e-mail.")

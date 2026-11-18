@@ -503,6 +503,7 @@ public struct BelfryAPI: Sendable {
         "name_needed": "Tell us your name.",
         "closed": "This invite can’t be used any more. Ask for a new one.",
         "for_agent": "This link is for an AI agent, not a person.",
+        "agent": "This link is for a person: an agent can’t join with it.",
         "unsupported": "This belfry does not take guests.",
         "relay": "The channel could not be reached just now. Try again.",
         "failed": "Joining did not work just now. Try again.",
