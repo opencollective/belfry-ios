@@ -69,11 +69,18 @@ struct ChannelPlaceView: View {
         .navigationTitle(place.title)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $todo) { k in TodoScreen(key: k, go: go) }
-        .onAppear {
-            // screenshots: a to-do's own screen (and its Assign to…)
-            if place == .todos, todo == nil, ["todo", "todoassign"].contains(model.launch.screen ?? ""),
-               let t = model.derive.tasks(id).first(where: { !$0.done }) {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { todo = TodoKey(group: id, task: t.id) }
+        .task {
+            // screenshots: a to-do's own screen (and its Assign to…). The demo's to-dos may not be
+            // derived yet when this appears (the dark pass of 44337540709 shot the list): wait for them.
+            guard place == .todos, ["todo", "todoassign"].contains(model.launch.screen ?? "") else { return }
+            for _ in 0..<40 {
+                if todo != nil { return }
+                if let t = model.derive.tasks(id).first(where: { !$0.done }) {
+                    try? await Task.sleep(for: .milliseconds(600))
+                    todo = TodoKey(group: id, task: t.id)
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(250))
             }
         }
     }
