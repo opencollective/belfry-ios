@@ -273,7 +273,7 @@ struct ChannelView: View {
         }
         // no keyboard over a sheet
         .onChange(of: place != nil || invite || search || podAsk || actionsFor != nil || editing != nil) { _, open in if open { hideKeyboard() } }
-        .sheet(isPresented: $invite) { InviteSheet(id: id) }
+        .sheet(isPresented: $invite) { InviteSheet(id: id, external: model.launch.screen == "inviteexternal") }
         .sheet(isPresented: $notify) { NotifySheet(id: id) }
         .sheet(isPresented: $search) {
             ChannelSearch(channel: id) { gid, mid in
@@ -399,7 +399,7 @@ struct ChannelView: View {
         case "pinned": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .pinned }
         case "notify": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { notify = true }
         case "pullempty": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }
-        case "invite": invite = true
+        case "invite", "invitesearch", "inviteexternal": invite = true
         case "pulldown", "proposal": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }
         case "pullfull": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { withAnimation(.snappy) { pull = .full } }
         case "menu":

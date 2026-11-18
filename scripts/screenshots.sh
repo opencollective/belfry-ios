@@ -161,6 +161,7 @@ shot 47b-pulldown-full-dark pullfull dark
 shot 47c-pulldown-empty pullempty light
 shot 47d-pulldown-empty-dark pullempty dark
 shot 48-invite-dark invite dark
+shot 48b-invite-external-dark inviteexternal dark
 shot 49-mentions mentions light
 shot 54-group group light
 shot 55-members-requests requests light
@@ -202,6 +203,8 @@ shot 03-feed feed light
 shot 04-thread thread light
 shot 05-details details light
 shot 06-invite invite light
+shot 06b-invite-search invitesearch light
+shot 06c-invite-external inviteexternal light
 shot 07-messages messages light
 shot 08-conversation conversation light
 shot 09-email mail light

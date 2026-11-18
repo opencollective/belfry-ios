@@ -497,7 +497,7 @@ struct RootView: View {
         case "meplace":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { path.append(PlaceRoute.me) }
-        case "feed", "thread", "details", "invite", "actions", "pulldown", "pullfull", "menu", "delete", "edit", "threadscreen", "chsearch", "add", "composer": selection = .channel(generalId)
+        case "feed", "thread", "details", "invite", "invitesearch", "inviteexternal", "actions", "pulldown", "pullfull", "menu", "delete", "edit", "threadscreen", "chsearch", "add", "composer": selection = .channel(generalId)
         case "drawer", "channels":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
