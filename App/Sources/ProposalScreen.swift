@@ -13,8 +13,10 @@ import SwiftUI
 // - full: the whole text, the website version's preview, Change the status / New version;
 // - up (typing, or pulled up): one bar with the title, the pill, the tally and Vote (a menu of the
 //   options) or my vote.
-// No Versions / Votes tabs: older versions aren't kept (30023 is replaceable) and the web shows no
-// list of who voted what (SPEC 19.39). The channel's own screens are in the ⋯ menu.
+// Under it Chat · Versions · Votes, only the tabs with something in them (web 763910e): Versions
+// once a version 2 exists, Votes once someone voted. The channel's own screens are in the ⋯ menu.
+
+enum ProposalTab: String, Hashable { case chat = "Chat", versions = "Versions", votes = "Votes" }
 
 struct ProposalScreen: View {
     @EnvironmentObject var model: AppModel
@@ -50,8 +52,11 @@ struct ProposalScreenBody: View {
     @State private var notify = false
     @State private var search = false
     @State private var launched = false
+    @State private var tab = ProposalTab.chat
+    @State private var profile: ProfileKey?
 
     static let handleH: CGFloat = 22
+    static let pickerH: CGFloat = 48
     static let foldedH: CGFloat = 60
 
     var body: some View {
@@ -59,6 +64,11 @@ struct ProposalScreenBody: View {
         let total = page.height
         let hs = heights(total)
         let h = height(hs)
+        let tabs = tabsShown
+        let shown = tabs.contains(tab) ? tab : .chat
+        let pick: CGFloat = tabs.count > 1 ? ProposalScreenBody.pickerH : 0
+        let paneH = max(0, total - h - ProposalScreenBody.handleH - pick)
+        let hidden = level == .full && drag == 0
         Color.clear
             .onGeometryChange(for: EventScreenBody.PageBox.self) { EventScreenBody.PageBox(top: $0.safeAreaInsets.top.rounded(), width: $0.size.width.rounded(), height: $0.size.height.rounded()) } action: { b in
                 if b != page { page = b }
@@ -70,10 +80,28 @@ struct ProposalScreenBody: View {
                 VStack(spacing: 0) {
                     header(h: h, hs: hs)
                     handle(hs)
-                    ChannelView(id: id, embedded: true)
-                        .frame(width: page.width, height: max(0, total - h - ProposalScreenBody.handleH))
-                        .opacity(level == .full && drag == 0 ? 0 : 1)
-                        .allowsHitTesting(!(level == .full && drag == 0))
+                    if tabs.count > 1 {
+                        Picker("Show", selection: $tab) {
+                            ForEach(tabs, id: \.self) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 16)
+                        .frame(width: page.width, height: pick)
+                        .opacity(hidden ? 0 : 1)
+                        .accessibilityIdentifier("proposal-tabs")
+                    }
+                    ZStack {
+                        // the chat stays in the tree (its place, its draft); the lists only while shown
+                        ChannelView(id: id, embedded: true)
+                            .opacity(shown == .chat ? 1 : 0)
+                            .allowsHitTesting(shown == .chat)
+                            .accessibilityHidden(shown != .chat)
+                        if shown == .versions { ProposalVersionsList(p: p) { withAnimation(.snappy(duration: 0.28)) { level = .full } } }
+                        if shown == .votes { ProposalVotesList(p: p) { pk in hideKeyboard(); profile = ProfileKey(pubkey: pk, group: id) } }
+                    }
+                    .frame(width: page.width, height: paneH)
+                    .opacity(hidden ? 0 : 1)
+                    .allowsHitTesting(!hidden)
                 }
                 .opacity(page.height > 0 ? 1 : 0)
             }
@@ -81,6 +109,7 @@ struct ProposalScreenBody: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar { toolbar }
+            .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group) }
             .navigationDestination(item: $place) { pl in
                 ChannelPlaceView(id: id, place: pl, go: { _ in place = nil }, filter: { _ in place = nil })
             }
@@ -230,16 +259,29 @@ struct ProposalScreenBody: View {
         }
     }
 
-    /// "You haven't voted yet · 15 of 31 members have" (only real numbers; no deadline).
+    /// While votes are open: "You haven't voted yet · 15 of 31 members have" (only real numbers;
+    /// no deadline). After: "Vote on version N: 12 yes · 2 no · 1 abstain".
     @ViewBuilder private func turnoutLine(_ d: Derive) -> some View {
-        if p.poll != nil {
-            let t = d.voteTurnout(p)
-            let mine = d.myVote(p).flatMap { v in p.options.first { $0.id == v }?.label }
-            let me = mine.map { "You voted \($0)" } ?? (p.votingNow ? "You haven't voted yet" : nil)
-            let count = t.of.map { "\(t.voted) of \($0) members have" } ?? (t.voted == 1 ? "1 member has voted" : "\(t.voted) members have voted")
-            Text([me, count].compactMap { $0 }.joined(separator: " · ")).font(.footnote).foregroundStyle(.secondary)
+        if let poll = p.poll {
+            Text(turnoutText(d, poll)).font(.footnote).foregroundStyle(.secondary)
                 .accessibilityIdentifier("proposal-turnout")
         }
+    }
+
+    private func turnoutText(_ d: Derive, _ poll: Poll) -> String {
+        guard p.votingNow else { return "Vote on version \(poll.version): " + tallyText }
+        let t = d.voteTurnout(p)
+        let mine = d.myVote(p).flatMap { v in p.options.first { $0.id == v }?.label }
+        let me = mine.map { "You voted " + $0.lowercased() } ?? "You haven't voted yet"
+        return me + " · \(t.voted) of \(t.of) " + (t.of == 1 ? "member has" : "members have")
+    }
+
+    private var tabsShown: [ProposalTab] {
+        let d = model.derive
+        var out: [ProposalTab] = [.chat]
+        if d.proposalVersions(p).count > 1 { out.append(.versions) }
+        if p.poll != nil && !(p.poll?.votes.isEmpty ?? true) { out.append(.votes) }
+        return out
     }
 
     private var fullPart: some View {
@@ -255,9 +297,6 @@ struct ProposalScreenBody: View {
                          : "A new version of \(model.config.domain): it goes live once a belfry admin marks this proposal Passed.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
-            }
-            if p.poll != nil && !p.votingNow {
-                Text(tallyText).font(.footnote).foregroundStyle(.secondary)
             }
             HStack(spacing: 18) {
                 if d.canDecide(p) {
@@ -295,19 +334,15 @@ struct ProposalScreenBody: View {
             .contentShape(Rectangle())
             .onTapGesture { withAnimation(.snappy(duration: 0.28)) { level = .half } }
             if p.votingNow {
-                Menu {
-                    ForEach(p.options, id: \.id) { o in
-                        Button { model.vote(p, o.id) } label: {
-                            if d.myVote(p) == o.id { Label(o.label, systemImage: "checkmark") } else { Text(o.label) }
-                        }
-                    }
-                } label: {
-                    Text(mine.map { "You: \($0)" } ?? "Vote")
+                // web: "Vote" (or "Voted yes") opens the proposal at half, where the buttons are
+                Button { withAnimation(.snappy(duration: 0.28)) { level = .half } } label: {
+                    Text(mine.map { "Voted " + $0.lowercased() } ?? "Vote")
                         .font(.subheadline.weight(.semibold))
                         .padding(.horizontal, 16).frame(height: 40)
                         .foregroundStyle(mine == nil ? Theme.onAccent : Color.primary)
                         .background(mine == nil ? Theme.accent : Color(uiColor: .tertiarySystemFill), in: Capsule())
                 }
+                .buttonStyle(.plain)
                 .accessibilityIdentifier("proposal-vote")
             }
         }
@@ -375,5 +410,60 @@ struct StatusPill: View {
         case .feedback, .rejected: return .white
         case .draft, .closed: return .primary
         }
+    }
+}
+
+/// A proposal's versions, newest first: when, the note, "Read it" (the current one: the header at
+/// full; an older one unfolds its text when this phone still holds it).
+struct ProposalVersionsList: View {
+    @EnvironmentObject var model: AppModel
+    let p: Proposal
+    let readCurrent: () -> Void
+    @State private var open: Int?
+    var body: some View {
+        List {
+            ForEach(model.derive.proposalVersions(p)) { v in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Version \(v.version)").font(.body.weight(.semibold))
+                        Spacer()
+                        Text((v.at > 0 ? Format.day(v.at) : "") + (v.version == p.version ? " · current" : "")).font(.footnote).foregroundStyle(.secondary)
+                    }
+                    if !v.note.isEmpty { Text(v.note).font(.subheadline) }
+                    if v.version == p.version {
+                        Button("Read it", action: readCurrent).font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
+                    } else if let text = v.text {
+                        if open == v.version { MarkdownText(text: text).font(.subheadline) }
+                        else { Button("Read it") { open = v.version }.font(.subheadline.weight(.semibold)).buttonStyle(.borderless) }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .listStyle(.plain)
+        .accessibilityIdentifier("proposal-versions")
+    }
+}
+
+/// Who voted what on the current version (the latest answer of each person counts).
+struct ProposalVotesList: View {
+    @EnvironmentObject var model: AppModel
+    let p: Proposal
+    let open: (String) -> Void
+    var body: some View {
+        let by = model.derive.votesByOption(p)
+        List {
+            Section { Text("Vote on version \(p.poll?.version ?? p.version). The latest answer of each person counts.").font(.footnote).foregroundStyle(.secondary) }
+            ForEach(p.options, id: \.id) { o in
+                let keys = (by[o.id] ?? []).sorted { model.name($0).lowercased() < model.name($1).lowercased() }
+                Section("\(o.label) · \(keys.count)") {
+                    ForEach(keys, id: \.self) { pk in
+                        PersonRow(pubkey: pk, title: pk == model.me ? "You" : model.name(pk), detail: nil) { open(pk) }
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .accessibilityIdentifier("proposal-votes")
     }
 }

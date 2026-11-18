@@ -296,16 +296,32 @@ struct SettingsTab: View {
     /// Who reads it (channels: members only / public / closed; SPEC 19.38)
     @State private var access = ChannelAccess.members
     @State private var askPublic = false
+    @State private var vouches = 0
 
     var body: some View {
         let g = model.group(id)
         Section("Name") { TextField("Name", text: $name).font(.body) }
         Section("Description") { TextField("What is it about? (Markdown)", text: $about, axis: .vertical).lineLimit(3...8).font(.body) }
-        if g?.type == .channel { whoReads(g) }
-        if g?.isPod == true {
+        if g?.type == .channel || g?.isPod == true { whoReads(g) }
+        if g?.isPod == true && access == .closed {
+            // a closed group's question and how requests are accepted (web ClosedFields)
+            Section("Question people answer when they ask") {
+                TextField(Actions.defaultPrompt, text: $prompt, axis: .vertical).lineLimit(1...4).font(.body)
+            }
             Section {
-                Picker("Who can join", selection: $closed) { Text("Anyone here").tag(false); Text("By application").tag(true) }
-                if closed { TextField(Actions.defaultPrompt, text: $prompt, axis: .vertical).lineLimit(1...4).font(.body) }
+                Picker("Requests are accepted", selection: Binding(get: { vouches > 0 }, set: { vouches = $0 ? max(vouches, 2) : 0 })) {
+                    Text("By its stewards").tag(false)
+                    Text("When members vouch").tag(true)
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+                if vouches > 0 {
+                    Stepper(vouches == 1 ? "One vouch" : "\(vouches) vouches", value: $vouches, in: 1...5)
+                }
+            } header: {
+                Text("Requests are accepted")
+            } footer: {
+                Text(vouches > 0 ? "Once enough of its members vouch (not guests, not agents), they're in. Stewards can still answer." : "A steward accepts or declines each request.")
             }
         }
         Section {
@@ -322,12 +338,14 @@ struct SettingsTab: View {
                 saved = true
                 hideKeyboard()
                 let n = name.jsTrim(), a = about.jsTrim()
-                if g?.isPod == true { model.editPod(id, name: n, about: a, closed: closed, prompt: prompt) }
-                else if let g, g.type == .channel, (access == .closed) != g.closed {
+                if g?.isPod == true {
+                    let c = access == .closed
+                    model.editGroupMeta(id, name: n, about: a, closed: c, prompt: prompt, vouches: c ? vouches : 0)
+                } else if let g, g.type == .channel, (access == .closed) != g.closed {
                     // closed or open again (one 9002 with the name and description)
                     model.editGroupMeta(id, name: n, about: a, closed: access == .closed, prompt: g.prompt ?? "")
                 } else { model.editChannel(id, name: n, about: a, inbox: nil) }
-                if g?.type == .channel { model.setVisibility(id, public: access == .public) }
+                if g?.type == .channel || g?.isPod == true { model.setVisibility(id, public: access == .public) }
                 if inbox != model.derive.isInbox(g) { model.editChannelInbox(id, inbox) }
                 dismiss()
             } label: {
@@ -354,6 +372,7 @@ struct SettingsTab: View {
             inbox = model.derive.isInbox(g)
             closed = g.closed
             prompt = g.prompt ?? ""
+            vouches = g.vouches
             access = model.derive.channelAccess(g)
             if model.launch.screen == "chpublic" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { askPublic = true } }
         }
@@ -367,7 +386,7 @@ struct SettingsTab: View {
 
     private func label(_ g: Channel?) -> String {
         guard let g else { return "#" + id }
-        return PlaceNames.defaults[g.id] == g.name ? g.name : "#" + g.name
+        return PlaceNames.defaults[g.id] == g.name || g.isPod ? g.name : "#" + g.name
     }
 
     /// "Who can read it": three choices (the owner's mock-ups Settings-A / B); Public asks first.
@@ -376,7 +395,7 @@ struct SettingsTab: View {
             accessRow(.members, icon: "lock", title: "Members only", line: "Everyone with a pass in this belfry")
             accessRow(.public, icon: "globe", title: "Public", line: "Anyone on the web can read it. Only members write.")
             if model.derive.mayClose(g) {
-                accessRow(.closed, icon: "person.badge.plus", title: "Closed", line: "People ask to join. A steward of this channel approves.")
+                accessRow(.closed, icon: "person.badge.plus", title: "Closed", line: "People ask to join. A steward of this \(g?.isPod == true ? "group" : "channel") approves.")
             }
         } header: {
             Text("Who can read it")

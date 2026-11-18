@@ -18,6 +18,16 @@ public enum ProposalStatus: String, Sendable, CaseIterable {
     public var isOpen: Bool { self == .draft || self == .feedback || self == .voting }
 }
 
+/// One version of a proposal (its Versions tab).
+public struct ProposalVersion: Hashable, Sendable, Identifiable {
+    public let version: Int
+    public let at: Int
+    public let by: String
+    public let note: String
+    public let text: String?
+    public var id: Int { version }
+}
+
 public struct Poll: Hashable, Sendable {
     public let ev: NostrEvent
     public let version: Int
@@ -137,15 +147,40 @@ extension Derive {
     public func myVote(_ p: Proposal) -> String? { p.poll?.votes[me] }
     public func needsMyVote(_ p: Proposal) -> Bool { p.votingNow && p.poll?.votes[me] == nil }
 
-    /// "X of Y members have" voted (SPEC 19.39): X = votes on the current poll, Y = the members
-    /// of the channel the proposal was made in (its parent; the proposal's own chat when it has
-    /// none), counting the voters too; nil Y when that list is unknown (empty).
-    public func voteTurnout(_ p: Proposal) -> (voted: Int, of: Int?) {
+    /// "X of Y members have" voted (SPEC 19.39; web voteCounts): X = votes on the current poll,
+    /// Y = the proposal chat's members and the voters themselves.
+    public func voteTurnout(_ p: Proposal) -> (voted: Int, of: Int) {
         let voters = Set((p.poll?.votes ?? [:]).keys)
-        let g = group(p.groupId)
-        let base = g?.parent.flatMap { group($0) } ?? g
-        let members = (base?.members ?? []).filter { !isGuest($0) && !isAgent($0) }
-        if members.isEmpty { return (voters.count, nil) }
+        let members = group(p.groupId)?.members ?? []
         return (voters.count, members.union(voters).count)
+    }
+
+    /// Who voted what on the current poll: option id → voters (names sorted by the caller).
+    public func votesByOption(_ p: Proposal) -> [String: [String]] {
+        var out = [String: [String]]()
+        for (pk, o) in p.poll?.votes ?? [:] { out[o, default: []].append(pk) }
+        return out.mapValues { $0.sorted() }
+    }
+
+    /// The versions it had, newest first (web proposalVersions): version 1 (when its card was
+    /// posted, by its author), then each "📝 Version N" note in its chat (kind 9 with `version` ≥ 2
+    /// and `a` = the proposal), with that version's text when this device still holds its 30023.
+    static let versionNote = Rx("^📝 Version \\d+:?\\s*")
+
+    public func proposalVersions(_ p: Proposal) -> [ProposalVersion] {
+        var texts = [Int: String]()
+        for e in ofKind(30023) where "30023:\(e.pubkey):\(e.tag("d") ?? "")" == p.coord {
+            let v = Int(e.tag("version") ?? "") ?? 0
+            texts[v == 0 ? 1 : v] = e.content
+        }
+        let card = events.first { $0.kind == 9 && $0.tags.contains { $0.count > 1 && $0[0] == "proposal" && $0[1] == p.groupId } }
+        var out = [ProposalVersion(version: 1, at: card?.createdAt ?? 0, by: p.author, note: "", text: texts[1])]
+        for m in messages(p.groupId) {
+            guard let v = Int(m.ev.tag("version") ?? ""), v >= 2, m.ev.tags.contains(where: { $0.count > 1 && $0[0] == "a" && $0[1] == p.coord }),
+                  !out.contains(where: { $0.version == v }) else { continue }
+            let note = Derive.versionNote.replace(m.text, with: "")
+            out.append(ProposalVersion(version: v, at: m.ev.createdAt, by: m.ev.pubkey, note: note, text: texts[v]))
+        }
+        return out.sorted { $0.version > $1.version }
     }
 }

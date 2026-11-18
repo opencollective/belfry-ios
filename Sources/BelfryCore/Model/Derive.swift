@@ -463,12 +463,15 @@ public final class Derive {
 
     private lazy var profileMap: [String: Profile] = {
         var out = [String: Profile]()
+        var profileIds = [String: String]()
         var guests = [(String, String)]()
         for e in events {
             if e.kind == 9000, let name = e.tag("name"), !name.isEmpty, let p = e.tag("p"), !p.isEmpty { guests.append((p, name.sliceUnits(100))) }
             guard e.kind == 0 else { continue }
-            if let prev = out[e.pubkey], prev.at >= e.createdAt { continue }
+            // the newest wins; a tie of the same second goes to the lower id, as relays keep it
+            if let prev = out[e.pubkey], prev.at > e.createdAt || (prev.at == e.createdAt && (profileIds[e.pubkey] ?? "") <= e.id) { continue }
             guard let obj = JSON.parse(e.content) as? [String: Any] else { continue }
+            profileIds[e.pubkey] = e.id
             func str(_ k: String) -> String? { obj[k] as? String }
             let dn = str("display_name").flatMap { $0.isEmpty ? nil : $0 }
             out[e.pubkey] = Profile(name: dn ?? str("name"), picture: str("picture"), nip05: str("nip05"), about: str("about") ?? "", at: e.createdAt)
@@ -519,7 +522,7 @@ public final class Derive {
 
     /// My latest kind 0 content (to keep its other fields when saving), or an empty object.
     public lazy var myProfileJSON: [String: Any] = {
-        let mine = ofKind(0).filter { $0.pubkey == me }.max { $0.createdAt < $1.createdAt }
+        let mine = ofKind(0).filter { $0.pubkey == me }.max { $0.createdAt != $1.createdAt ? $0.createdAt < $1.createdAt : $0.id > $1.id }
         return mine.flatMap { JSON.parse($0.content) as? [String: Any] } ?? [:]
     }()
 

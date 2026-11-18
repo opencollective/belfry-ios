@@ -182,9 +182,9 @@ extension AppModel {
     /// every other tag when the relay lets me (its 39001, the creator, a belfry admin); else the
     /// belfry's POST /group-meta (an admin by role). Both go through the outbox: shown at once,
     /// sent in order, a final refusal marks the channel's name (`failedSettings`).
-    func editGroupMeta(_ id: String, name: String? = nil, about: String? = nil, picture: String? = nil, closed: Bool? = nil, prompt: String? = nil) {
+    func editGroupMeta(_ id: String, name: String? = nil, about: String? = nil, picture: String? = nil, closed: Bool? = nil, prompt: String? = nil, vouches: Int? = nil) {
         guard let g = group(id) else { return }
-        let display = Actions.groupMeta(g, name: name, about: about, picture: picture, closed: closed, prompt: prompt)
+        let display = Actions.groupMeta(g, name: name, about: about, picture: picture, closed: closed, prompt: prompt, vouches: vouches)
         if derive.mayModerate(g) || engine?.localOnly == true {
             engine?.enqueue(display)
             return
@@ -195,6 +195,7 @@ extension AppModel {
         if let picture { body["picture"] = picture }
         if let closed { body["closed"] = closed }
         if let prompt { body["prompt"] = prompt }
+        if let vouches { body["vouches"] = max(0, min(5, vouches)) }
         engine?.enqueueCall(HttpCall(url: config.apiBase + "/group-meta", json: body), display: display)
     }
 

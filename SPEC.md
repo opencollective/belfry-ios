@@ -2041,11 +2041,13 @@ link). Links look like links everywhere: underlined, in the tint. A link to this
 
 ### 19.38 Who reads a channel, closed channels, a channel's notifications (iOS, 2026-11-18; web c0a1cc2 ChannelInfo.tsx / actions.ts setVisibility; `vectors/visibility.json`)
 
-- **Three choices** in a channel's Settings, section "Who can read it" (channels only; groups keep
-  their own Open / Closed): **Members only** ("Everyone with a pass in this belfry"), **Public**
+- **Three choices** in a channel's or a group's Settings, section "Who can read it" (one of
+  the three; for a group, Closed shows the question people answer and how requests are accepted:
+  by its stewards, or when 1–5 of its members vouch → the 9002's `prompt` / `vouches`): **Members only** ("Everyone with a pass in this belfry"), **Public**
   ("Anyone on the web can read it. Only members write."), **Closed** ("People ask to join. A steward
   of this channel approves."; never for #general). Footer: "A change counts from now on. Messages
-  keep the visibility they were posted with." Choosing Public asks first: "Make #<name> public?" /
+  keep the visibility they were posted with." Choosing Public asks first (going back to Members
+  only doesn't ask): "Make #<name> public?" /
   "From now on, anyone on the web can read what is posted here, with the names of the people who
   post. Earlier messages stay for members only." / **Make it public** / **Keep it for members**.
   Saved with the rest on Save, through the outbox (19.37); a final refusal shows the error mark with
@@ -2076,7 +2078,7 @@ link). Links look like links everywhere: underlined, in the tint. A link to this
   lets people in." (SERVER-NEEDS 15). The requests also count in Members' requests (19.31).
 - **A channel's notifications**: the pull-down's Notifications row opens a sheet (the one row that
   does; medium detent, grabber) "Notify me about #<name>": **Everything** ("Every new message",
-  level `all`), **When it's for me** ("Mentions, replies to me, to-dos given to me", level
+  level `all`), **When it's for me** ("Mentions, replies to me, announcements": what `default` sends, docs/push.md; level
   `default`; a stored `mentions` shows here too), **Nothing** ("I'll look when I open the channel",
   level `off`); applied at once with a light haptic (put back with the error's fixed message if the
   belfry refuses). A stored `default` (or none) shows "When it's for me" with " (the default here)"
@@ -2098,19 +2100,26 @@ link). Links look like links everywhere: underlined, in the tint. A link to this
   with its count; mine filled), and "You haven't voted yet · X of Y members have" (or "You voted
   <option> · …"); **full** = also the whole summary and text, the website version's preview, Change
   the status (its author and admins), New version (its author); **up** = one bar with the title,
-  the pill, the tally ("12 yes · 2 no · 1 abstain") and **Vote** (a menu of the options; "You:
-  <option>" once voted).
-- **Turnout**: X = the votes on the current poll; Y = the members of the channel the proposal was
-  made in (its parent, else its own chat), guests and agents left out, voters added; when that
-  list is unknown (empty): "X members have voted". No deadline (none exists in the data).
-- No Versions / Votes tabs: older versions aren't kept (30023 is replaceable; a new version is a
-  note in the chat) and no client lists who voted what. The channel's own screens (Members,
-  Notifications, Log, Settings) are in the ⋯ menu; search on its left.
-- (iOS) `Poll.options`, `Proposal.options`, `Derive.voteTurnout` (core), `ProposalScreen.swift`;
+  the pill, the tally ("12 yes · 2 no · 1 abstain") and **Vote** (opens it at half, where the
+  buttons are; "Voted <option>" once voted). After the vote the line reads "Vote on version N:
+  <tally>".
+- **Turnout** (web voteCounts): X = the votes on the current poll; Y = the proposal chat's members
+  plus anyone who voted. No deadline (none exists in the data).
+- **Tabs** under the header, only those with something in them: **Chat** always; **Versions** once
+  a version 2 exists (version 1 = when its card was posted, by its author; then each "📝 Version N"
+  note in its chat = kind 9 with `version` ≥ 2 and `a` = the proposal; newest first; the current
+  one's "Read it" opens the header at full, an older one shows its text when the device still
+  holds that 30023); **Votes** once someone voted (per option, who answered it; the latest answer
+  of each person counts). The channel's own screens (Members, Notifications, Log, Settings) are in
+  the ⋯ menu; search on its left.
+- (iOS) `Poll.options`, `Proposal.options`, `Derive.voteTurnout / votesByOption / proposalVersions` (core), `ProposalScreen.swift`;
   `ChannelScreen` sends prop- channels there.
 
 ### 19.40 A new profile picture shows everywhere at once (iOS, 2026-11-18)
 
+- Two kind 0 of the same second: the lower id wins (as relays keep a replaceable event), whatever
+  order they arrive in. My next event is always at least a second after my newest one, including
+  those that arrive from my other devices.
 - My new kind 0 counts the moment it is queued (the snapshot includes queued items, 19.37): every
   face, name and past message shows it before the relay echoes it. A client caching pictures keeps
   each picture with the address it was loaded for and never shows it for another address (the bug:

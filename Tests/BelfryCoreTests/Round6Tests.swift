@@ -118,8 +118,8 @@ final class NotifyChoiceTests: XCTestCase {
         XCTAssertEqual(NotifyChoice.of(level: "mentions"), .forMe)
         XCTAssertEqual(NotifyChoice.of(level: "off"), .nothing)
         XCTAssertEqual(NotifyChoice.allCases.map(\.level), ["all", "default", "off"])
-        XCTAssertEqual(NotifyChoice.forMe.line(stored: "default"), "Mentions, replies to me, to-dos given to me (the default here)")
-        XCTAssertEqual(NotifyChoice.forMe.line(stored: "mentions"), "Mentions, replies to me, to-dos given to me")
+        XCTAssertEqual(NotifyChoice.forMe.line(stored: "default"), "Mentions, replies to me, announcements (the default here)")
+        XCTAssertEqual(NotifyChoice.forMe.line(stored: "mentions"), "Mentions, replies to me, announcements")
         XCTAssertEqual(NotifyChoice.everything.line(stored: "default"), "Every new message")
         XCTAssertEqual(NotifyChoice.nothing.title, "Nothing")
     }
@@ -142,7 +142,19 @@ final class ProposalTopTests: XCTestCase {
         XCTAssertTrue(p.votingNow)
         let t = d.voteTurnout(p)
         XCTAssertEqual(t.voted, 1)
-        XCTAssertEqual(t.of, 4) // the parent's members
+        XCTAssertEqual(t.of, 2) // the proposal chat's members (Emma) and the voters (Ben)
+        XCTAssertEqual(d.votesByOption(p), ["later": [BEN]])
+        // versions: 1 (the card), then each "📝 Version N" note naming the proposal
+        var more = evs
+        more.append(ev(EMMA, 9, 125, [["h", prop], ["a", coord, "wss://x"], ["version", "2"]], "📝 Version 2: Sundays only in summer"))
+        more.append(ev(BEN, 9, 126, [["h", prop], ["version", "3"]], "📝 Version 3: not about this proposal"))
+        let dv = Derive(events: more, me: ME)
+        let vs = dv.proposalVersions(try XCTUnwrap(dv.proposalFor(prop)))
+        XCTAssertEqual(vs.map(\.version), [2, 1])
+        XCTAssertEqual(vs[0].note, "Sundays only in summer")
+        XCTAssertEqual(vs[0].text, "We open on Sundays.")
+        XCTAssertEqual(vs[1].at, 110)
+        XCTAssertNil(vs[1].text)
         XCTAssertTrue(d.needsMyVote(p))
         // a poll with no options: the three defaults
         let bare = Poll(ev: ev(EMMA, 1068, 1, [["h", prop]]), version: 1, votes: [:])
@@ -169,6 +181,17 @@ final class ProfileEverywhereTests: XCTestCase {
     }
 
     /// My own new profile is in the snapshot the moment it is queued, before any relay echo.
+    /// Two profiles of the same second: the lower id wins, as relays keep it (NIP-01), whatever
+    /// the order they arrive in.
+    func testProfileTie() {
+        let a = ev(ME, 0, 500, [], "{\"name\":\"A\"}", id: String(repeating: "1", count: 64))
+        let b = ev(ME, 0, 500, [], "{\"name\":\"B\"}", id: String(repeating: "2", count: 64))
+        XCTAssertEqual(Derive(events: [a, b], me: BEN).profiles()[ME]?.name, "A")
+        XCTAssertEqual(Derive(events: [b, a], me: BEN).profiles()[ME]?.name, "A")
+        // my next event always comes a second after my last one
+        XCTAssertEqual(Outbox.nextCreatedAt(last: 500, now: 500), 501)
+    }
+
     func testOwnProfileAtOnce() throws {
         let path = NSTemporaryDirectory() + "belfry-test-\(UUID().uuidString).sqlite"
         let me = try LocalSigner(secret: Keys.generateSecret())

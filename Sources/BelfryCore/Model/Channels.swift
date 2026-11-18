@@ -120,8 +120,8 @@ public extension Derive {
         return g.type == .channel && g.id != generalId && !canAdmin(g)
     }
 
-    /// May the channel be closed (SPEC 19.38)? Channels only, never #general.
-    func mayClose(_ g: Group?) -> Bool { g?.type == .channel && g?.id != generalId }
+    /// May it be closed (SPEC 19.38)? Channels and groups, never #general.
+    func mayClose(_ g: Group?) -> Bool { (g?.type == .channel || g?.isPod == true) && g?.id != generalId }
 
     /// "Public · <domain>/<slug>" or "Members only" (the line under a channel's name).
     func visibilityLine(_ g: Group?) -> String {

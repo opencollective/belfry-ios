@@ -277,7 +277,7 @@ public enum NotifyChoice: String, CaseIterable, Sendable {
         let base: String
         switch self {
         case .everything: base = "Every new message"
-        case .forMe: base = "Mentions, replies to me, to-dos given to me"
+        case .forMe: base = "Mentions, replies to me, announcements"
         case .nothing: base = "I'll look when I open the channel"
         }
         return stored == "default" && self == .forMe ? base + " (the default here)" : base

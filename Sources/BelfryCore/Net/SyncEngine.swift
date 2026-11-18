@@ -98,6 +98,10 @@ public final class SyncEngine: @unchecked Sendable {
         lock.lock()
         let unseen = ok.filter { events[$0.id] == nil }
         for e in unseen { events[e.id] = e }
+        // my own events from another device: what I write next comes after them (a profile of
+        // the same second would tie, and the lower id would win over mine)
+        let me = signer.pubkey
+        if let newest = unseen.filter({ $0.pubkey == me }).map(\.createdAt).max(), newest > lastCreatedAt { lastCreatedAt = newest }
         lock.unlock()
         guard !unseen.isEmpty else { return [] }
         db.add(unseen)
