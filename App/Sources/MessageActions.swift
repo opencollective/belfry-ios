@@ -26,7 +26,7 @@ struct MessageActions: View {
                 DeleteConfirm(m: m, group: group, cancel: { withAnimation { confirmDelete = false } }) { dismiss() }
             } else {
                 List {
-                    if !pending && !isReply {
+                    if !pending {
                         Section {
                             HStack(spacing: 0) {
                                 ForEach(EmojiUsage.top(6), id: \.self) { e in
@@ -259,7 +259,7 @@ struct MessageMenu: View {
         let d = model.derive
         let pending = model.pending(m.id) != nil
         let isReply = m.ev.kind == 1111
-        if !pending && !isReply {
+        if !pending {
             ControlGroup {
                 ForEach(EmojiUsage.top(4), id: \.self) { e in
                     Button { model.toggleReaction(e, on: m, in: group) } label: { Text(e) }
@@ -320,9 +320,17 @@ struct MessageMenu: View {
 
 extension View {
     /// Holding a message: the native menu (signed in), or the Join sheet (guest mode).
-    @ViewBuilder func messageMenu(_ m: Message, group: String, handlers: MessageMenuHandlers?, guest: Bool, hold: @escaping () -> Void) -> some View {
+    /// INSET: room around the row inside its lifted picture (a row that has no padding of its own).
+    @ViewBuilder func messageMenu(_ m: Message, group: String, handlers: MessageMenuHandlers?, guest: Bool, inset: CGFloat = 0, hold: @escaping () -> Void) -> some View {
         if let handlers, !guest {
-            self.contextMenu { MessageMenu(m: m, group: group, h: handlers) }
+            // The held row is lifted, and moved when the menu needs the room: without a ground of
+            // its own its text was drawn over the rows under it (Xavier's thread, 2026-11-18). The
+            // ground is the page's colour, so nothing shows until the row is lifted.
+            self.padding(.horizontal, inset).padding(.vertical, inset / 2)
+                .background(Color(.systemBackground))
+                .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .contextMenu { MessageMenu(m: m, group: group, h: handlers) }
+                .padding(.horizontal, -inset).padding(.vertical, -inset / 2)
                 .accessibilityAction(named: "Actions") { hold() }
         } else {
             self.onLongPressGesture(minimumDuration: 0.35) { hold() }

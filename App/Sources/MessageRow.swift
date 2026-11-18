@@ -376,12 +376,18 @@ struct ReplyRow: View {
                 if !r.text.isEmpty { MarkdownText(text: r.text).font(.subheadline) }
                 MessageButtonsView(m: r, group: group.isEmpty ? (r.ev.tag("h") ?? "") : group)
                 ForEach(r.media, id: \.url) { MediaView(media: $0, all: r.media) }
+                // reactions on a reply (Xavier 2026-11-18), as on a message
+                let g = group.isEmpty ? (r.ev.tag("h") ?? "") : group
+                let reactions = model.derive.reactions(g)[r.id] ?? []
+                if !reactions.isEmpty {
+                    ReactionBar(reactions: reactions) { emoji in model.toggleReaction(emoji, on: r, in: g) }.padding(.top, 2)
+                }
             }
             Spacer(minLength: 0)
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .messageMenu(r, group: group.isEmpty ? (r.ev.tag("h") ?? "") : group, handlers: menu, guest: model.guestReading || model.locked(r.ev.tag("h") ?? group), hold: onHold)
+        .messageMenu(r, group: group.isEmpty ? (r.ev.tag("h") ?? "") : group, handlers: menu, guest: model.guestReading || model.locked(r.ev.tag("h") ?? group), inset: 8, hold: onHold)
     }
 }
 

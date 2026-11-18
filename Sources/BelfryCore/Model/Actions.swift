@@ -66,8 +66,9 @@ public enum Actions {
         return Draft(kind: 1111, content: text, tags: tags)
     }
 
-    public static func react(_ group: String, messageId: String, author: String, emoji: String) -> Draft {
-        Draft(kind: 7, content: emoji, tags: [["h", group], ["e", messageId], ["p", author], ["k", "9"]])
+    /// KIND: the kind of the message reacted to (NIP-25 `k`): 9, or 1111 for a reply in a thread.
+    public static func react(_ group: String, messageId: String, author: String, emoji: String, kind: Int = 9) -> Draft {
+        Draft(kind: 7, content: emoji, tags: [["h", group], ["e", messageId], ["p", author], ["k", String(kind)]])
     }
 
     public static func unreact(_ group: String, reactionId: String) -> Draft {

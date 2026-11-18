@@ -197,3 +197,18 @@ final class MentionRangesTests: XCTestCase {
         XCTAssertEqual(Mentions.ranges(in: "👋 @Ana Silva hi", labels: ["@Ana Silva"]), [NSRange(location: 3, length: 10)])
     }
 }
+
+final class ReplyReactionsTests: XCTestCase {
+    /// A reaction on a reply in a thread (kind 1111): NIP-25 with `k` = 1111, read like any other.
+    func testReactToAReply() {
+        let root = ev(A, 9, 100, [["h", "g"]], "root")
+        let reply = ev(B, 1111, 110, [["h", "g"], ["E", root.id], ["e", root.id]], "a reply")
+        let dr = Actions.react("g", messageId: reply.id, author: B, emoji: "🙏", kind: 1111)
+        XCTAssertEqual(dr.kind, 7)
+        XCTAssertTrue(dr.tags.contains(["k", "1111"]))
+        XCTAssertTrue(Actions.react("g", messageId: root.id, author: A, emoji: "👍").tags.contains(["k", "9"]))
+        let d = Derive(events: [root, reply, ev(A, 7, 120, dr.tags, dr.content)], me: A)
+        XCTAssertEqual(d.reactions("g")[reply.id]?.first?.emoji, "🙏")
+        XCTAssertNotNil(d.reactions("g")[reply.id]?.first?.mine)
+    }
+}
