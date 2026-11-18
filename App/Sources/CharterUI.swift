@@ -148,7 +148,7 @@ private struct AgreementRow: View {
     }
 
     private func countLine(_ n: Int) -> String {
-        var s = "\(n) of \(max(members.count, n)) members"
+        var s = "\(n) of \(max(members.count, n)) agreed"
         if rule.textAt > rule.addedAt || Int.now - rule.addedAt < 14 * 86400 {
             s = (rule.textAt > rule.addedAt ? "Changed " : "Added ") + Date(timeIntervalSince1970: TimeInterval(rule.textAt)).formatted(.dateTime.day().month(.abbreviated)) + " · " + s
         }
