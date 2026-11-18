@@ -19,9 +19,9 @@ on:
         description: UI tests to run ("testAddMenu testTodoAssign", or "all"); empty = from the changed files
         default: ''
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+# Concurrency is per job (below), not for the whole run: a newer push stops the older run's tests,
+# but never a TestFlight upload that has started (run 44402826705's simulator jobs were cancelled by
+# the next push; an upload in progress would have been too).
 
 env:
   XCODE: /Applications/Xcode_16.4.app
@@ -38,6 +38,9 @@ env:
 jobs:
   plan:
     name: Plan (what the change touched)
+    concurrency:
+      group: ci-${{ github.ref }}-plan
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -60,6 +63,9 @@ jobs:
     name: Core tests (vectors)
     needs: plan
     if: needs.plan.outputs.core == 'true'
+    concurrency:
+      group: ci-${{ github.ref }}-core
+      cancel-in-progress: true
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -91,6 +97,9 @@ jobs:
       fail-fast: false
       matrix:
         part: ${{ fromJSON(needs.plan.outputs.parts) }}
+    concurrency:
+      group: ci-${{ github.ref }}-sim-${{ matrix.part.name }}
+      cancel-in-progress: true
     # Xcode 26 / the iOS 26 SDK: the screenshots show the glass the owner's iPhone draws
     runs-on: macos-26
     timeout-minutes: 60
@@ -170,6 +179,10 @@ jobs:
     # after the core tests (when the change needed them), not after the simulator jobs
     needs: [plan, core]
     if: always() && github.ref == 'refs/heads/main' && needs.plan.outputs.app == 'true' && (needs.core.result == 'success' || needs.core.result == 'skipped')
+    # one upload at a time, never cancelled: a newer push waits for it
+    concurrency:
+      group: testflight
+      cancel-in-progress: false
     # App Store Connect only takes builds made with the iOS 26 SDK (Xcode 26) or later
     runs-on: macos-26
     timeout-minutes: 60

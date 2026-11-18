@@ -3,7 +3,7 @@ import SwiftUI
 
 // Town's drawer (☰ or a swipe from the left, board iOS-Town 2; also Home's ☰ since 2026-11-17):
 // the belfry's cover (when branding has one), its mark, name and member count, a gear for Belfry
-// settings (stewards); search; Today (Home); The town (Townsquare, Members with their requests,
+// settings (stewards); Today (Home); The town (Townsquare, Members with their requests,
 // Charter); then the categories (SPEC 19.34: Community life, Building together and the stewards'
 // own), each header with ＋ for a new channel in it (Community life for anyone who may create a
 // channel, every category for stewards); a globe marks a public channel; Archived. Stewards
@@ -38,10 +38,9 @@ struct TownDrawer: View {
                     .accessibilityHidden(true)
             }
             header(guest: guest)
-            if guest { guestList } else {
-                search
-                memberList
-            }
+            // no search field here (Xavier 2026-11-18, boards channels/drawer, drawer-steward):
+            // search is each channel's magnifier
+            if guest { guestList } else { memberList }
             Divider()
             youRow(guest: guest)
         }
@@ -77,20 +76,6 @@ struct TownDrawer: View {
         return n == 1 ? "1 member" : "\(n) members"
     }
 
-    private var search: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Search the town", text: $model.drawerQuery).font(.body).submitLabel(.search)
-            if !model.drawerQuery.isEmpty {
-                Button { model.drawerQuery = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                    .buttonStyle(.plain).accessibilityLabel("Clear the search")
-            }
-        }
-        .padding(.horizontal, 10).frame(height: 38)
-        .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .padding(.horizontal, 16).padding(.bottom, 8)
-    }
-
     private var memberList: some View {
         let d = model.derive
         let admin = d.isCommunityAdmin
@@ -104,9 +89,7 @@ struct TownDrawer: View {
         let archived = d.myArchived()
         let requests = model.requestCount
         return List {
-            if !model.drawerQuery.isEmpty {
-                SearchResults(query: model.drawerQuery, open: open)
-            } else {
+            Group {
                 if model.access == .denied {
                     Section {
                         Label("This belfry doesn't let your key in yet. Ask a steward, or check your membership.", systemImage: "lock").font(.callout)

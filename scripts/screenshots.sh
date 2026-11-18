@@ -194,7 +194,6 @@ shot 06c-invite-external inviteexternal light
 shot 07-messages messages light
 shot 08-conversation conversation light
 shot 09-email mail light
-shot 10-search search light
 shot 13-pulldown pulldown light
 shot 14-message-menu menu light
 shot 15-delete-confirm delete light
