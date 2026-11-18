@@ -310,7 +310,7 @@ struct ChannelView: View {
     func composerPlaceholder(_ g: Channel?) -> String {
         guard let g else { return "Message " + id }
         if PlaceNames.defaults[g.id] == g.name { return "Message the " + g.name }
-        return "Message " + (g.isPod ? g.name : "#" + g.name)
+        return "Message " + (g.type == .channel ? "#" + g.name : g.name)
     }
 
     func titleText(_ g: Channel?) -> String {
