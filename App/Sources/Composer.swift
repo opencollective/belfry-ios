@@ -162,13 +162,20 @@ struct Composer: View {
                 text = saved
             }
             if autoFocus { focused = true }
-            if model.launch.screen == "composermention", !compact, !threadMode, text.isEmpty,
-               let p = model.derive.people.first(where: { $0.name.contains(" ") }) {
-                // screenshots: a picked name with spaces, marked in the field
-                picked = [(p.name, p.pubkey)]
-                text = "@" + p.name + " what's the minimum for the belfry?"
-            }
             if !compact && !threadMode && model.launchEventForm { model.launchEventForm = false; makeEvent = true }
+        }
+        .task {
+            // screenshots: a picked name with spaces, marked in the field (the demo's people may
+            // not be derived yet when the field appears: wait for them)
+            guard model.launch.screen == "composermention", !compact, !threadMode else { return }
+            for _ in 0..<40 {
+                if let p = model.derive.people.first(where: { $0.name.contains(" ") }) {
+                    picked = [(p.name, p.pubkey)]
+                    text = "@" + p.name + " what's the minimum for the belfry?"
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(250))
+            }
         }
         .onChange(of: photos) { _, items in load(items) }
         .onChange(of: focusTrigger) { _, _ in focused = true }

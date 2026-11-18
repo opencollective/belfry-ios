@@ -5,11 +5,10 @@ usage: shots.py <udid> <bundle id> <out dir> <list file>
 env:   SHOTS  "all" (default), "none", or a regex on the screen name or the shot name
        SHARD  "i/n": the i-th of n parallel jobs (screens are dealt out in turn)
 
-Faster than one launch and a fixed 6 s per picture (2026-11-18, the app job took an hour):
+Faster than one launch per picture (2026-11-18, the app job took an hour):
 - one launch per screen: its other appearance is captured by switching the simulator's
   appearance, without launching again;
-- the wait ends when two frames 0.8 s apart are the same (never before 3.6 s: the demo's scripted
-  steps run up to 3 s after launch; never after 6.5 s).
+- the first launch of a job is a warm-up (a cold launch is slow), then a fixed 6 s per launch.
 """
 import os, re, subprocess, sys, time
 
@@ -39,16 +38,12 @@ def frame(path):
 
 
 def settle(path):
-    """Waits until the screen stands still, leaves its picture at PATH; True when it stood still."""
-    t0 = time.time()
-    time.sleep(float(os.environ.get("SHOTS_FLOOR", "3.6")))
-    a = frame(path)
-    while time.time() - t0 < 6.5:
-        time.sleep(0.8)
-        b = frame(path)
-        if a and a == b: return True
-        a = b
-    return False
+    """The demo's scripted steps (a sheet opened, a screen pushed) run for several seconds after a
+    launch, and a cold launch is slower still: a fixed wait, as before. (Ending the wait when two
+    frames were the same was tried on run 44396079158: it took a blank launch screen and a screen
+    before its scripted push for finished ones.)"""
+    time.sleep(float(os.environ.get("WAIT", "6")))
+    frame(path)
 
 
 shots = []  # (name, screen, mode)
@@ -65,8 +60,11 @@ elif want != "all":
     named = {s for name, s, _ in shots if rx.fullmatch(name)}
     mine = [s for s in mine if rx.fullmatch(s) or s in named]
 print(f"shots: {len(mine)} of {len(order)} screens (SHOTS={want[:80]}, SHARD={i}/{n})", flush=True)
-still = moving = 0
 t_all = time.time()
+if mine:
+    # a cold first launch takes far longer than the rest: one launch that is not photographed
+    simctl("launch", udid, bundle, "-demo", "-screen", "home")
+    time.sleep(float(os.environ.get("WARMUP", "12")))
 for s in mine:
     todo = [(name, mode) for name, sc, mode in shots if sc == s]
     first = todo[0][1]
@@ -83,11 +81,10 @@ for s in mine:
             time.sleep(1.5)
             frame(path)
         elif not settled:
-            ok = settle(path)
+            settle(path)
             settled = True
-            still += ok; moving += not ok
         else:
             frame(path)
         print("captured " + name, flush=True)
 simctl("ui", udid, "appearance", "light")
-print(f"shots done in {time.time() - t_all:.0f} s: {still} screens stood still early, {moving} waited the full 6.5 s", flush=True)
+print(f"shots done in {time.time() - t_all:.0f} s", flush=True)
