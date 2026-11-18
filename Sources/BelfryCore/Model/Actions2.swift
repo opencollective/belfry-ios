@@ -18,8 +18,10 @@ public struct NewProposal: Hashable, Sendable {
     /// A new version of the website (an nsite ref): it goes live once a belfry admin marks the
     /// proposal Passed (web 6d267c1; Belfry's website.py watches the card in #website).
     public var website: String?
-    public init(title: String, summary: String = "", text: String = "", status: ProposalStatus = .draft, website: String? = nil) {
-        self.title = title; self.summary = summary; self.text = text; self.status = status; self.website = website
+    /// The parts of the site it is for (`path` tags, Belfry e598f3f, homepage.md); empty = the whole site.
+    public var paths: [String] = []
+    public init(title: String, summary: String = "", text: String = "", status: ProposalStatus = .draft, website: String? = nil, paths: [String] = []) {
+        self.title = title; self.summary = summary; self.text = text; self.status = status; self.website = website; self.paths = paths
     }
 }
 
@@ -207,11 +209,14 @@ public extension Actions {
 
     // ---- proposals ----
 
-    static func proposalTags(d: String, group: String, title: String, summary: String, version: Int, status: ProposalStatus, groupsRelay: String, now: Int, website: String? = nil) -> [Tag] {
+    static func proposalTags(d: String, group: String, title: String, summary: String, version: Int, status: ProposalStatus, groupsRelay: String, now: Int, website: String? = nil, paths: [String] = []) -> [Tag] {
         [["d", d], ["title", title], ["summary", summary], ["t", "proposal"], ["h", group, groupsRelay],
          ["version", String(version)], ["status", status.rawValue], ["published_at", String(now)]]
-            + (website.map { [["t", "website"], ["website", $0]] } ?? [])
+            + (website.map { [["t", "website"], ["website", $0]] + websitePathTags(paths) } ?? [])
     }
+
+    /// One `["path", p]` per part of the site a website version is for (kept on every version).
+    static func websitePathTags(_ paths: [String]) -> [Tag] { paths.map { ["path", $0] } }
 
     static func openVote(_ group: String, coord: String, title: String, version: Int) -> Draft {
         Draft(kind: 1068, content: "\(title) (version \(version)): do you approve?",
@@ -224,9 +229,9 @@ public extension Actions {
         let d = "proposal-" + x
         let coord = "30023:\(me):\(d)"
         var out = createChannel(id: group, name: n.title, about: n.summary.isEmpty ? "Proposal" : n.summary)
-        out.append(Draft(.main, kind: 30023, content: n.text, tags: proposalTags(d: d, group: group, title: n.title, summary: n.summary, version: 1, status: n.status, groupsRelay: groupsRelay, now: now, website: n.website)))
+        out.append(Draft(.main, kind: 30023, content: n.text, tags: proposalTags(d: d, group: group, title: n.title, summary: n.summary, version: 1, status: n.status, groupsRelay: groupsRelay, now: now, website: n.website, paths: n.paths)))
         out.append(Draft(kind: 9, content: "📝 Proposal: \(n.title)" + (n.summary.isEmpty ? "" : " · \(n.summary)"),
-                         tags: [["h", parent], ["proposal", group], ["a", coord, mainRelay]] + (n.website.map { [["website", $0]] } ?? [])))
+                         tags: [["h", parent], ["proposal", group], ["a", coord, mainRelay]] + (n.website.map { [["website", $0]] + websitePathTags(n.paths) } ?? [])))
         if n.status == .voting { out.append(openVote(group, coord: coord, title: n.title, version: 1)) }
         return (group, out)
     }
@@ -234,7 +239,7 @@ public extension Actions {
     /// A new version: the text replaced (same d, version + 1), a note in its chat, a new poll while under vote.
     static func reviseProposal(_ p: Proposal, title: String, summary: String, text: String, note: String, groupsRelay: String, mainRelay: String, now: Int) -> [Draft] {
         let version = p.version + 1
-        var out = [Draft(.main, kind: 30023, content: text, tags: proposalTags(d: p.d, group: p.groupId, title: title, summary: summary, version: version, status: p.status, groupsRelay: groupsRelay, now: now, website: p.website))]
+        var out = [Draft(.main, kind: 30023, content: text, tags: proposalTags(d: p.d, group: p.groupId, title: title, summary: summary, version: version, status: p.status, groupsRelay: groupsRelay, now: now, website: p.website, paths: p.paths))]
         let nt = note.jsTrim()
         out.append(Draft(kind: 9, content: "📝 Version \(version)" + (nt.isEmpty ? "" : ": \(nt)"), tags: [["h", p.groupId], ["a", p.coord, mainRelay], ["version", String(version)]]))
         if p.status == .voting { out.append(openVote(p.groupId, coord: p.coord, title: title, version: version)) }

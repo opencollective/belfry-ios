@@ -2218,3 +2218,19 @@ Same wire format as Android SPEC 19.40 (written there the same day; this section
   like a co-host link; it needs no second use).
 - (iOS) `MemberLinkInfo`, `GuestSaved`, `JoinedAccount.member`, `AppModel+MemberLink.swift`
   (`becameMember`, `memberAlready`), `MemberInviteScreen` (GuestUI.swift), screens `-join member`.
+
+### 19.44 A website version for only part of the site (iOS, 2026-11-18; Belfry e598f3f, homepage.md)
+
+A website version (a proposal with `website`, 19.8; or a #website message with the
+`belfry:website-publish` button, 19.36) may carry `["path", "<p>"]` tags, one per part of the
+site it is for: a folder (`/ios/screenshots/`) or one file (`/android/index.html`). Publishing it
+replaces only those paths; no `path` tag means the whole site. The belfry checks the paths and
+says what would change in the proposal's chat; a client never validates or invents them.
+- **Every new version keeps the `path` tags** of the one it revises (the 30023 of version n+1 and
+  the proposal's card carry the same tags). A version that lost them would replace the whole site.
+- The proposal says what goes live: "A new version of /ios/screenshots/ on <domain>, nothing
+  else: …"; the publish button asks "Publish this version of /ios/screenshots/ on https://<domain>?
+  Only that part of the website changes." (the app's own words; without paths, 19.36's question).
+- "Propose as the website" from the chat makes a whole-site version (no paths), as the web does.
+- (iOS) `Proposal.paths`, `NewProposal.paths`, `Actions.websitePathTags`, `Proposal.websiteLine`,
+  `Buttons.confirmText(_:domain:paths:)`; test `WebsiteProposalTests.testPathTagsKeptOnEveryVersion`.

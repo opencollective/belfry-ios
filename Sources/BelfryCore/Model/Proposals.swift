@@ -65,8 +65,21 @@ public struct Proposal: Hashable, Sendable, Identifiable {
     public let poll: Poll?
     /// A new version of the website (its nsite ref), live once a belfry admin marks it Passed.
     public var website: String? = nil
+    /// The parts of the site that version is for (its `path` tags); empty = the whole site.
+    public var paths: [String] = []
 
     public var id: String { coord }
+
+    /// The line under a website version's preview: what goes live, and where.
+    public func websiteLine(domain: String) -> String {
+        if paths.isEmpty {
+            return status == .passed ? "Passed: it is (or is about to be) live at \(domain)."
+                : "A new version of \(domain): it goes live once a belfry admin marks this proposal Passed."
+        }
+        let parts = paths.joined(separator: ", ")
+        return status == .passed ? "Passed: \(parts) on \(domain) is (or is about to be) this version. The rest of the site stays as it is."
+            : "A new version of \(parts) on \(domain), nothing else: it goes live once a belfry admin marks this proposal Passed."
+    }
     public static let voteOptions: [(id: String, label: String)] = [("yes", "Yes"), ("no", "No"), ("abstain", "Abstain")]
 
     /// option id → count
@@ -127,7 +140,8 @@ extension Derive {
             out.append(Proposal(coord: coord, d: e.tag("d") ?? "", ev: e, author: e.pubkey, groupId: groupId,
                                 title: title.isEmpty ? "Untitled proposal" : title, summary: e.tag("summary") ?? "", text: e.content,
                                 version: version == 0 ? 1 : version, status: status, poll: poll,
-                                website: e.tag("website").flatMap { $0.isEmpty ? nil : $0 }))
+                                website: e.tag("website").flatMap { $0.isEmpty ? nil : $0 },
+                                paths: e.tags.compactMap { $0.count >= 2 && $0[0] == "path" && !$0[1].isEmpty ? $0[1] : nil }))
         }
         return out
     }

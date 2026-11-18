@@ -138,6 +138,32 @@ final class WebsiteProposalTests: XCTestCase {
         XCTAssertEqual(websitePreviewLink(ref, domain: "x.org"), "https://preview.x.org/p/\(npub)@spring")
         XCTAssertNil(websitePreviewLink("https://evil", domain: "x.org"))
     }
+
+    /// A scoped version (Belfry e598f3f): its `path` tags are on the article and the card, and a
+    /// new version keeps them (else publishing it would replace the whole site).
+    func testPathTagsKeptOnEveryVersion() {
+        let me = String(repeating: "a", count: 64)
+        let ref = "nsite:\(Bech32.npub(String(repeating: "c", count: 64))!)/ios-shots"
+        let (group, drafts) = Actions.createProposal(NewProposal(title: "Website: /ios/screenshots/", status: .feedback, website: ref, paths: ["/ios/screenshots/"]),
+                                                     parent: "website", me: me, groupsRelay: "wss://g", mainRelay: "wss://m", now: 100, x: "abc123")
+        XCTAssertTrue(drafts.first { $0.kind == 30023 }!.tags.contains(["path", "/ios/screenshots/"]))
+        XCTAssertTrue(drafts.first { $0.kind == 9 }!.tags.contains(["path", "/ios/screenshots/"]))
+        let a = drafts.first { $0.kind == 30023 }!
+        let ev = NostrEvent(id: String(repeating: "1", count: 64), pubkey: me, createdAt: 100, kind: 30023, tags: a.tags, content: a.content)
+        let p = Derive(events: [ev], me: me).proposals.first!
+        XCTAssertEqual(p.groupId, group)
+        XCTAssertEqual(p.paths, ["/ios/screenshots/"])
+        let v2 = Actions.reviseProposal(p, title: p.title, summary: "", text: "New shots", note: "", groupsRelay: "wss://g", mainRelay: "wss://m", now: 200)
+        let article = v2.first { $0.kind == 30023 }!
+        XCTAssertTrue(article.tags.contains(["path", "/ios/screenshots/"]))
+        XCTAssertTrue(article.tags.contains(["version", "2"]))
+        XCTAssertTrue(p.websiteLine(domain: "x.org").contains("/ios/screenshots/ on x.org, nothing else"))
+        XCTAssertEqual(Buttons.confirmText(Buttons.websitePublish, domain: "x.org", paths: ["/ios/screenshots/"]),
+                       "Publish this version of /ios/screenshots/ on https://x.org? Only that part of the website changes.")
+        // a whole-site version has no path tags and keeps the old words
+        let whole = Actions.createProposal(NewProposal(title: "Site", website: ref), parent: "website", me: me, groupsRelay: "wss://g", mainRelay: "wss://m", now: 100, x: "abc124").1
+        XCTAssertFalse(whole.contains { $0.tags.contains { $0.first == "path" } })
+    }
 }
 
 final class ChannelLogTests: XCTestCase {

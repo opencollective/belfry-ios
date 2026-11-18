@@ -102,8 +102,10 @@ public enum Buttons {
     }
 
     /// The question asked before a `belfry:` action: the app's own text, never the button's label.
-    public static func confirmText(_ action: String, domain: String) -> String? {
+    public static func confirmText(_ action: String, domain: String, paths: [String] = []) -> String? {
         switch action {
+        case websitePublish where !paths.isEmpty:
+            return "Publish this version of \(paths.joined(separator: ", ")) on https://\(domain)? Only that part of the website changes."
         case websitePublish: return "Publish this version as the website? Everyone will see it at https://\(domain)."
         default: return nil
         }

@@ -482,8 +482,7 @@ struct ProposalSection: View {
                     if let link = websitePreviewLink(w, domain: model.config.domain), let u = URL(string: link) {
                         Link(destination: u) { Label("Preview this version", systemImage: "safari") }
                     }
-                    Text(p.status == .passed ? "Passed: it is (or is about to be) live at \(model.config.domain)."
-                         : "A new version of \(model.config.domain): it goes live once a belfry admin marks this proposal Passed.")
+                    Text(p.websiteLine(domain: model.config.domain))
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }

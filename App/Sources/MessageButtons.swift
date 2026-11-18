@@ -94,7 +94,8 @@ struct MessageButtonsView: View {
     }
 
     func question(_ b: MessageButton) -> String {
-        if b.isBelfry { return Buttons.confirmText(b.action, domain: model.config.domain) ?? b.label + "?" }
+        if b.isBelfry { return Buttons.confirmText(b.action, domain: model.config.domain,
+                                                          paths: m.ev.tags.compactMap { $0.count >= 2 && $0[0] == "path" ? $0[1] : nil }) ?? b.label + "?" }
         return b.label + "?"
     }
 

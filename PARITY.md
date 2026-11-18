@@ -129,7 +129,7 @@ and gestures are untested in the real world. XCTest covers the core (BelfryCore)
 | Roles (docs/roles.md) | done, never run live | List with the default and how many have each; new / rename / describe / default / delete (Member and Admin built in); fixed words per error code. Role labels on profiles and in Members; a member's role from their profile (a native menu; a saved guest given a role becomes a member). |
 | Membership (docs/membership.md) | done, never run live | Who invites members (admins / any member), how requests are accepted (admins / N vouches, 1–5). |
 | Branding (web Branding.tsx) | done, never run live | Logo and cover (uploaded to the belfry's Blossom, ≤ 512 / 1600 px), primary and secondary colours (system colour picker), the description; `POST /branding`; the app takes the primary colour as its tint at once. |
-| Website proposals (web 6d267c1) | done, never run live | "Propose as the website" on a message with an nsite link → a new proposal (in #website when there is one) with the version's `website` tag and a preview link; the proposal shows "Preview this version" and how it goes live (a belfry admin marks it Passed). Replaces "Make this the website". |
+| Website proposals (web 6d267c1) | done, never run live | "Propose as the website" on a message with an nsite link → a new proposal (in #website when there is one) with the version's `website` tag and a preview link; the proposal shows "Preview this version" and how it goes live (a belfry admin marks it Passed). Replaces "Make this the website". A version for part of the site (`path` tags, SPEC 19.44) keeps them on every new version and says which part goes live; the publish button asks about that part only. The web does not read `path` yet. |
 
 ## E-mail
 
