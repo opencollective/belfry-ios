@@ -155,7 +155,12 @@ struct Composer: View {
             if let v, !compact, !threadMode { text = text.isEmpty ? v + " " : text + " " + v; model.composerPrefill[group] = nil }
         }
         .onAppear {
-            if let k = draftKey, text.isEmpty, let saved = Drafts.get(k) { text = saved }
+            if let k = draftKey, text.isEmpty, let saved = Drafts.get(k) {
+                let picks = Drafts.getPicks(k)
+                picked = picks.people
+                refs = picks.refs
+                text = saved
+            }
             if autoFocus { focused = true }
             if model.launch.screen == "composermention", !compact, !threadMode, text.isEmpty,
                let p = model.derive.people.first(where: { $0.name.contains(" ") }) {
@@ -171,7 +176,9 @@ struct Composer: View {
         // Create → Message: this channel's composer takes the keyboard
         .onChange(of: model.focusComposer) { _, id in takeFocus(id) }
         .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { takeFocus(model.focusComposer) } }
-        .onChange(of: text) { _, t in if let k = draftKey { Drafts.set(k, t) } }
+        .onChange(of: text) { _, t in
+            if let k = draftKey { Drafts.set(k, t); Drafts.setPicks(k, text: t, people: picked, refs: refs) }
+        }
         .photosPicker(isPresented: $photoPicker, selection: $photos, maxSelectionCount: 6, matching: .images)
         .sheet(item: $create) { k in CreateSheet(kind: k, parent: group) }
         .sheet(isPresented: $makeEvent) { EventFormSheet(editing: nil, channel: group) }
@@ -277,14 +284,14 @@ struct Composer: View {
 
     func pick(_ pk: String, _ name: String) {
         guard let q = Mentions.query(beforeCaret: text) else { return }
+        picked.append((name, pk)) // before the text: the draft saved on its change has the pick
         text = String(text.dropLast(q.count + 1)) + "@" + name + " "
-        picked.append((name, pk))
     }
 
     func pickChannel(_ c: ChannelPick, query q: String) {
         let label = c.group.named ? "#" + c.group.name : "#" + BelfryCore.Group.kindWord(c.group.id)
-        text = String(text.dropLast(q.count + 1)) + label + " "
         if !refs.contains(where: { $0.label == label }) { refs.append((label, c.ref)) }
+        text = String(text.dropLast(q.count + 1)) + label + " "
     }
 
     func send() {
@@ -293,7 +300,7 @@ struct Composer: View {
         let t = ChannelRefs.substitute(Mentions.substitute(typed, picked: picked), picked: refs)
         onSend(t, attachments, canAnnounce && announce)
         text = ""
-        if let k = draftKey { Drafts.set(k, "") }
+        if let k = draftKey { Drafts.set(k, ""); Drafts.setPicks(k, text: "", people: [], refs: []) }
         picked = []
         refs = []
         attachments = []
@@ -359,6 +366,24 @@ enum Drafts {
     }
     static func set(_ k: String, _ v: String) {
         if v.isEmpty { UserDefaults.standard.removeObject(forKey: key(k)) } else { UserDefaults.standard.set(v, forKey: key(k)) }
+    }
+    /// The people and channels picked in a draft (Xavier 2026-11-18: a restored draft lost them, so
+    /// its @names were neither marked nor sent as mentions). Kept beside the text, only those whose
+    /// label is still in it.
+    static func getPicks(_ k: String) -> (people: [(name: String, pubkey: String)], refs: [(label: String, ref: String)]) {
+        let f = getForm("picks:" + k)
+        var people = [(name: String, pubkey: String)](), refs = [(label: String, ref: String)]()
+        for (key, v) in f.sorted(by: { $0.key < $1.key }) {
+            if key.hasPrefix("p:") { people.append((v, String(key.dropFirst(2)))) }
+            if key.hasPrefix("r:") { refs.append((v, String(key.dropFirst(2)))) }
+        }
+        return (people, refs)
+    }
+    static func setPicks(_ k: String, text: String, people: [(name: String, pubkey: String)], refs: [(label: String, ref: String)]) {
+        var f = [String: String]()
+        for p in people where text.contains("@" + p.name) { f["p:" + p.pubkey] = p.name }
+        for r in refs where text.contains(r.label) { f["r:" + r.ref] = r.label }
+        setForm("picks:" + k, f)
     }
     /// A form's fields (new event, proposal, to-do, channel, thread) as JSON.
     static func getForm(_ k: String) -> [String: String] {
