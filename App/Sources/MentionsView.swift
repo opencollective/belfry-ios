@@ -58,7 +58,7 @@ struct MentionsView: View {
 
     private func place(_ g: Channel?, _ h: String) -> String {
         guard let g else { return "#" + h }
-        return g.isPod ? g.name : "#" + g.name
+        return g.label
     }
 
     /// nostr:npub… as @Name, channel addresses as #name, no Markdown marks, one line.

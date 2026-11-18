@@ -10,7 +10,9 @@ final class ModelTests: XCTestCase {
             let want = c.dict("expect").list("groups")
             XCTAssertEqual(got.map(\.id), want.map { $0.str("id")! }, "order")
             for (g, w) in zip(got, want) {
-                XCTAssertEqual(g.name, w.str("name"), g.id)
+                // a group without its metadata has no name, never its id (Xavier 2026-11-18)
+                XCTAssertEqual(g.named ? g.name : nil, w.str("name"), g.id)
+                XCTAssertEqual(g.named, w["named"] as? Bool, g.id)
                 XCTAssertEqual(g.about, w.str("about"), g.id)
                 XCTAssertEqual(g.createdAt, w.int("created_at"), g.id)
                 XCTAssertEqual(g.lastActivity, w.int("last_activity"), g.id)

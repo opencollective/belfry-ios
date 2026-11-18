@@ -741,7 +741,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// "Kofi", or the start of their key (never "You").
+    /// "Kofi", or "Unknown" (never "You", never a key).
     func realNameOrKey(_ pk: String) -> String {
         let n = realName(pk)
         return n.isEmpty ? Derive.shortKey(pk) : n

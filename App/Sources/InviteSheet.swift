@@ -39,7 +39,7 @@ struct InviteSheet: View {
     var body: some View {
         let _ = model.version
         let g = model.group(id)
-        let label = g.map { $0.isPod || $0.isEvent || $0.isProposal ? $0.name : "#" + $0.name } ?? id
+        let label = g.map { $0.named ? ($0.isPod || $0.isEvent || $0.isProposal ? $0.name : "#" + $0.name) : BelfryCore.Group.neutral(id) } ?? BelfryCore.Group.neutral(id)
         NavigationStack {
             ScrollViewReader { proxy in
                 List {

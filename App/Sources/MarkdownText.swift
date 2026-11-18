@@ -96,12 +96,13 @@ struct MarkdownText: View {
             let naddr = m[1] ?? ""
             if let id = ChannelRefs.groupOf(naddr) {
                 if let g = model.group(id) {
-                    var a = AttributedString("#" + g.name)
+                    // a known channel whose name hasn't arrived: the kind's word, never the id (the lead, 2026-11-18)
+                    var a = AttributedString(g.named ? "#" + g.name : "#" + BelfryCore.Group.kindWord(id))
                     a.foregroundColor = .brand
                     a.link = URL(string: "belfry-channel://open/" + MailThreads.encodeURIComponent(id))
                     out += adding(.stronglyEmphasized, a)
                 } else {
-                    var a = AttributedString("#channel")
+                    var a = AttributedString("#" + BelfryCore.Group.kindWord(id))
                     a.foregroundColor = .secondary
                     out += a
                 }

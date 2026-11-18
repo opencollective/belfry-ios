@@ -2171,10 +2171,24 @@ Same wire format as Android SPEC 19.40 (written there the same day; this section
 ### 19.42 A channel's name, and what a member reads (iOS, 2026-11-18)
 
 - **The display is always the metadata's `name`** (39000, else the newest 9007 / 9002 with one).
-  Before any of these is on the device the name is the id without its random ending
-  (`issues-5fce` → `issues`; `pod-bees-1a2b` → `bees`; events and proposals keep their id: their
-  title comes from their own event). The suffix belongs to the id only. Every view is drawn from the
-  snapshot, so a row drawn before the metadata re-renders with the name when it arrives.
+  **Never any part of the id** (Xavier, the lead, 2026-11-18; replaces "the id without its random
+  ending"): before the name is on the device the group has none (`vectors/groups.json`: `"name":
+  null, "named": false`; with metadata `"named": true`), and
+  - in a list row or a header: no text, a grey placeholder bar where the name goes (about 40% of
+    the row, the text's height, read as "Loading"), the kind's icon as usual; still unknown after
+    about 5 s online, the kind's word: "Channel", "Group", "Event", "Proposal";
+  - inside a sentence or a title: "this channel", "this group", "this event", "this proposal"
+    ("This channel is new", "Invite to this event", "Message this channel");
+  - a reference to it in a message, a preview or the editor: "#channel" ("#group", "#event",
+    "#proposal" from the id's prefix), with the naddr kept behind it so editing and sending again
+    loses nothing (`vectors/channel-refs.json` "plain": "Unknown: #channel");
+  - a 9002 this app writes leaves the `name` tag out rather than write "" or the id.
+  Every view is drawn from the snapshot, so it re-renders with the name when it arrives.
+- **People**: someone with no name here is "Unknown" (never their npub or part of it); a list of
+  names counts them: "Ana and one other", "Ana and 2 others", "2 people". My own key is copied, not
+  shown. An event link always uses the event's custom slug when it has one (`/events/<slug>`), and
+  "Hosted by" is the API's `hosted_by` (the creator and co-hosts, no service keys; `hosts` only from
+  an older belfry).
 - **The metadata is always asked whole**: the groups relay subscription has a second filter
   `{kinds:[39000,39001,39002,39003], limit: 2000}` without `since`. With only `since` = the newest
   stored event − 1 h, the metadata of a channel this key could not read before (a guest who became a
@@ -2187,8 +2201,9 @@ Same wire format as Android SPEC 19.40 (written there the same day; this section
   only their own (and, me, a guest in guest mode too). The drawer lists every listed channel; a
   closed one I am not in shows its Ask to join bar (19.38). The relay subscription is not limited by
   group (no `#h`): the relay decides what a key may read.
-- (iOS) `Group.fallbackName`, `SyncEngine.metadataFilter`, `Derive.readableChannels`, `inChannel`,
-  `ChannelNamesTests`, `MemberLinkTests`.
+- (iOS) `Group.named`, `Group.label`, `Group.neutral`, `Group.kindTitle`, `Derive.label`, the view
+  `GroupTitle` (Kit.swift), `ChannelRefs.unknownLabel`, `Derive.namesLine`, `SyncEngine.metadataFilter`,
+  `Derive.readableChannels`, `inChannel`, `ChannelNamesTests`, `NoIdsAsTextTests`, `MemberLinkTests`.
 
 ### 19.43 Member links and a guest who becomes a member (iOS, 2026-11-18; collective-belfry docs/roles.md "Member links"; web 2e9a76b)
 

@@ -303,7 +303,7 @@ private struct TodoLine: View {
     let ref: TodoRef
     let open: () -> Void
     var body: some View {
-        let name = model.group(ref.group).map { $0.type == .channel ? "#" + $0.name : $0.name } ?? "#" + BelfryCore.Group.fallbackName(ref.group)
+        let name = model.derive.label(ref.group)
         TodoRow(t: ref.task, group: ref.group, subtitle: name, open: open)
     }
 }

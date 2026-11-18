@@ -76,9 +76,7 @@ struct NotifySheet: View {
     }
 
     private var channelLabel: String {
-        guard let g = model.group(id) else { return "#" + BelfryCore.Group.fallbackName(id) }
-        if PlaceNames.defaults[g.id] == g.name { return g.name }
-        return g.type == .channel ? "#" + g.name : g.name
+        model.derive.label(id)
     }
 
     /// Push isn't on on this phone: say so above the choices (they are kept for when it is).

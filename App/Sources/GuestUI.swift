@@ -65,7 +65,7 @@ struct GuestBar: View {
     var body: some View {
         let g = model.group(group)
         HStack(spacing: 12) {
-            (Text("Guest mode").bold() + Text(" · You’re reading \(g.map { $0.isPod ? $0.name : "#" + $0.name } ?? "#" + BelfryCore.Group.fallbackName(group)) as a guest."))
+            (Text("Guest mode").bold() + Text(" · You’re reading \(model.derive.label(group)) as a guest."))
                 .font(.subheadline)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button("Join") { model.joinAsked = true }
@@ -113,7 +113,8 @@ struct JoinSheet: View {
     var label: String {
         let id = model.guestChannel ?? ""
         let g = model.group(id)
-        return g.map { $0.isPod ? $0.name : "#" + $0.name } ?? (id.isEmpty ? "" : "#" + BelfryCore.Group.fallbackName(id))
+        _ = g
+        return id.isEmpty ? "" : model.derive.label(id)
     }
 
     var title: String {

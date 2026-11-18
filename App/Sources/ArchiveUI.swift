@@ -63,7 +63,7 @@ struct GroupCard: View {
         let d = model.derive
         let state = d.groupState(id)
         let g = d.group(id)
-        let name: String = g?.name ?? Derive.cardName(text) ?? "A group"
+        let name: String = (g?.named == true ? g?.name : nil) ?? Derive.cardName(text) ?? "A group"
         switch state {
         case .deleted:
             card(g: nil, name: name, line: "This group has been deleted", chevron: false)
@@ -170,7 +170,7 @@ struct ArchivedScreen: View {
                             HStack(spacing: 12) {
                                 ChannelGlyph(group: g, size: 22).frame(width: 28)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(g.isPod ? g.name : "#" + g.name).font(.body).lineLimit(1)
+                                    GroupTitle(group: g, id: g.id, prefix: g.isPod ? "" : "#").font(.body).lineLimit(1)
                                     Text(line(g)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                                 }
                             }
@@ -188,7 +188,7 @@ struct ArchivedScreen: View {
 
     private func line(_ g: Channel) -> String {
         var s = g.isPod ? "Group" : "Channel"
-        if let p = g.parent, g.isPod, let parent = model.group(p) { s += " in " + (parent.isPod ? parent.name : "#" + parent.name) }
+        if let p = g.parent, g.isPod, let parent = model.group(p) { s += " in " + parent.label }
         if g.lastActivity > 0 { s += " · last message " + Format.short(g.lastActivity) }
         return s
     }
@@ -206,7 +206,7 @@ struct ArchiveLink: View {
     var body: some View {
         let g = model.group(id)
         let word = g?.isPod == true ? "group" : "channel"
-        let name: String = g.map { $0.isPod ? $0.name : "#" + $0.name } ?? "it"
+        let name: String = g.map { $0.named ? $0.label : "it" } ?? "it"
         VStack(spacing: 4) {
             Button { asking = true } label: {
                 HStack(spacing: 6) {

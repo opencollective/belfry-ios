@@ -218,7 +218,7 @@ struct NotificationsView: View {
                     ForEach(model.groups.filter { $0.members.contains(model.me) || $0.admins.contains(model.me) || ($0.type == .channel && model.derive.inChannel($0, model.me)) }) { g in
                         Picker(selection: Binding(get: { s.level(g.id) }, set: { l in set(["channels": [g.id: l]]) })) {
                             ForEach(NotificationSettings.levels, id: \.id) { Text($0.label).tag($0.id) }
-                        } label: { HStack(spacing: 8) { ChannelGlyph(group: g, size: 18); Text(g.name) } }
+                        } label: { HStack(spacing: 8) { ChannelGlyph(group: g, size: 18); GroupTitle(group: g, id: g.id) } }
                     }
                 } header: { Text("Channels") } footer: { Text("Default: mentions, replies, announcements and pins. All: every message too.") }
             } else if error == nil {

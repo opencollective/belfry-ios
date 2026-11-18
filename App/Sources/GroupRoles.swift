@@ -63,7 +63,7 @@ struct GroupRoleSection: View {
         let d = model.derive
         if let g = model.group(groupId) {
             let e = g.isEvent ? d.eventOfGroup(groupId) : nil
-            let title = g.type == .channel ? "#" + g.name : g.name
+            let title = g.label
             let current = currentChoice(d, e)
             let isCreator = e?.creator == pubkey
             // the creator, the belfry's admins and the relay's keys administer it whatever the role

@@ -184,7 +184,7 @@ struct GroupsSection: View {
         HStack(spacing: 12) {
             PlaceGlyph(group: p)
             VStack(alignment: .leading, spacing: 1) {
-                Text(p.name).font(.body.weight(.medium))
+                GroupTitle(group: p, id: p.id).font(.body.weight(.medium))
                 Text(p.members.count == 1 ? "1 member" : "\(p.members.count) members").font(.subheadline).foregroundStyle(.secondary)
             }
         }

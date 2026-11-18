@@ -237,7 +237,7 @@ struct TownDrawer: View {
         return Button { select(.channel(g.id)) } label: {
             HStack(spacing: 12) {
                 Image(systemName: "number").font(.body.weight(.medium)).foregroundStyle(.secondary).frame(width: 24)
-                Text(g.name).font(.body.weight(n > 0 || on ? .semibold : .regular)).lineLimit(1)
+                GroupTitle(group: g, id: g.id).font(.body.weight(n > 0 || on ? .semibold : .regular)).lineLimit(1)
                 if model.derive.isPublic(g) {
                     Image(systemName: "globe").font(.caption).foregroundStyle(.secondary).accessibilityLabel("public")
                 }
@@ -248,7 +248,7 @@ struct TownDrawer: View {
         }
         .buttonStyle(.plain)
         .listRowBackground(on ? Color.primary.opacity(0.08) : Color.clear)
-        .accessibilityLabel(n > 0 ? "\(g.name), \(n) unread" : g.name)
+        .accessibilityLabel(n > 0 ? "\(g.named ? g.name : BelfryCore.Group.kindTitle(g.id)), \(n) unread" : (g.named ? g.name : BelfryCore.Group.kindTitle(g.id)))
     }
 
     private func placeRow(icon: String, title: String, note: String?, badge: Int, on: Bool, muted: Bool = false, action: @escaping () -> Void) -> some View {

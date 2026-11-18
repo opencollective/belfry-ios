@@ -376,8 +376,7 @@ struct MailThreadView: View {
     }
 
     private func channelLabel() -> String {
-        guard let g = model.group(group) else { return "#" + BelfryCore.Group.fallbackName(group) }
-        return PlaceNames.defaults[g.id] == g.name ? g.name : (g.isPod ? g.name : "#" + g.name)
+        model.derive.label(group)
     }
 
     @ViewBuilder private func sendLine(_ t: InboxThread, mail: Bool, from: String) -> some View {

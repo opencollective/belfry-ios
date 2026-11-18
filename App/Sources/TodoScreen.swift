@@ -237,8 +237,7 @@ struct TodoScreen: View {
     }
 
     private var channelName: String {
-        guard let g = model.group(key.group) else { return "#" + BelfryCore.Group.fallbackName(key.group) }
-        return g.type == .channel ? "#" + g.name : g.name
+        model.derive.label(key.group)
     }
 }
 
@@ -281,7 +280,7 @@ struct AssignPicker: View {
                         .accessibilityIdentifier("assign-nobody")
                     }
                 }
-                Section(g.map { "People in " + ($0.type == .channel ? "#" + $0.name : $0.name) } ?? "People") {
+                Section(g.map { "People in " + $0.label } ?? "People") {
                     if people.isEmpty { Text(q.isEmpty ? "Nobody else here yet." : "Nobody by that name here.").foregroundStyle(.secondary) }
                     ForEach(people, id: \.pubkey) { p in row(t, p.pubkey, title: p.name) }
                 }

@@ -249,7 +249,9 @@ public extension BelfryAPI {
                              prompt: (x["prompt"] as? String ?? "").sliceUnits(500), members: x["members"] as? Bool ?? false,
                              position: int(x["position"]) ?? 0, implicit: x["implicit"] as? Bool ?? false)
         }
-        let hosts: [[String]] = (o["hosts"] as? [[String: Any]] ?? []).compactMap { h in
+        // "Hosted by" (the lead, 2026-11-18): `hosted_by` = the creator and co-hosts, no service
+        // keys; `hosts` only from a belfry that does not send it yet
+        let hosts: [[String]] = (o["hosted_by"] as? [[String: Any]] ?? o["hosts"] as? [[String: Any]] ?? []).compactMap { h in
             guard let pk = h["pubkey"] as? String else { return nil }
             return [pk, (h["name"] as? String ?? "").sliceUnits(100)]
         }

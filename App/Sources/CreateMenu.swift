@@ -92,14 +92,14 @@ struct CreateMenuSheet: View {
                     Menu {
                         ForEach(channels()) { g in
                             Button { place = g.id } label: {
-                                if g.id == place { Label("#" + g.name, systemImage: "checkmark") } else { Text("#" + g.name) }
+                                if g.id == place { Label(g.label, systemImage: "checkmark") } else { Text(g.label) }
                             }
                         }
                     } label: {
                         HStack {
                             Text("Where").foregroundStyle(.secondary)
                             Spacer()
-                            Text("# " + (model.group(place)?.name ?? BelfryCore.Group.fallbackName(place))).foregroundStyle(Color.brand)
+                            Text(model.derive.label(place)).foregroundStyle(Color.brand)
                             Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(Color.brand)
                         }
                     }
@@ -144,8 +144,8 @@ struct CreateMenuSheet: View {
 
     /// "the Townsquare" for the Townsquare, else "#name".
     private func placeName(_ id: String) -> String {
-        let n = model.group(id)?.name ?? BelfryCore.Group.fallbackName(id)
-        return id == generalId && n == PlaceNames.defaults[generalId] ? "the Townsquare" : "#" + n
+        let n = model.group(id)?.name ?? ""
+        return id == generalId && n == PlaceNames.defaults[generalId] ? "the Townsquare" : model.derive.label(id)
     }
 
     private func channels() -> [Channel] {

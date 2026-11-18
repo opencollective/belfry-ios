@@ -131,7 +131,7 @@ struct ProfileView: View {
                 Section(me ? "Your channels" : "Channels in common") {
                     ForEach(shared) { g in
                         Button { if !pushed { dismiss() }; openChannel(g.id, nil) } label: {
-                            HStack(spacing: 10) { ChannelGlyph(group: g, size: 18); Text(g.name).foregroundStyle(.primary) }
+                            HStack(spacing: 10) { ChannelGlyph(group: g, size: 18); GroupTitle(group: g, id: g.id).foregroundStyle(.primary) }
                         }
                     }
                 }
@@ -562,7 +562,8 @@ struct AccountSheet: View {
                             UIPasteboard.general.string = n
                             copied = true
                         } label: {
-                            LabeledContent("Your key") { Text(copied ? "Copied" : String(n.prefix(16)) + "…").font(.caption.monospaced()) }
+                            // never a key as text (Xavier 2026-11-18): the row copies it
+                            LabeledContent("Your key") { Text(copied ? "Copied" : "Copy").foregroundStyle(Color.brand) }
                         }
                         .buttonStyle(.plain)
                     }

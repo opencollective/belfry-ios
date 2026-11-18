@@ -131,7 +131,9 @@ public extension Actions {
     /// replaces the whole metadata on each 9002: one with only a name dropped closed / prompt /
     /// vouches / picture).
     static func groupMeta(_ g: Group, name: String? = nil, about: String? = nil, picture: String? = nil, closed: Bool? = nil, prompt: String? = nil, archived: Bool? = nil, vouches: Int? = nil) -> Draft {
-        var tags: [Tag] = [["h", g.id], ["name", PlaceNames.wire(id: g.id, name: name ?? g.name)], ["about", about ?? g.about]]
+        // a name not known here is left out, never written as "" or the id (Xavier 2026-11-18)
+        let n = name ?? g.name
+        var tags: [Tag] = [["h", g.id]] + (n.isEmpty ? [] : [["name", PlaceNames.wire(id: g.id, name: n)]]) + [["about", about ?? g.about]]
         let pic = picture ?? g.picture ?? ""
         if !pic.isEmpty { tags.append(["picture", pic]) }
         let isClosed = closed ?? g.closed
@@ -406,7 +408,7 @@ public enum EventActions {
         var out = [ticketDraft(e.d, coord: e.coord, group: e.groupId, form, mainRelay: mainRelay)]
         let closing = form.closed || existing.contains { $0.closed && !$0.implicit && $0.id != form.id }
         if let g, g.closed != closing {
-            out.append(Draft(kind: 9002, tags: [["h", e.groupId], ["name", g.name], ["about", g.about], [closing ? "closed" : "open"]]))
+            out.append(Draft(kind: 9002, tags: [["h", e.groupId]] + (g.name.isEmpty ? [] : [["name", g.name]]) + [["about", g.about], [closing ? "closed" : "open"]]))
         }
         return out
     }

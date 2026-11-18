@@ -16,7 +16,7 @@ struct ChannelEndSheet: View {
     @State private var error: String?
 
     var body: some View {
-        let name = "#" + (model.group(id)?.name ?? BelfryCore.Group.fallbackName(id))
+        let name = model.derive.label(id)
         let delete = content == .empty
         NavigationStack {
             Form {
@@ -62,7 +62,7 @@ struct ChannelEndSheet: View {
                     }
                 }
             }
-            .navigationTitle(confirming ? (delete ? "Delete \(name)?" : "Archive \(name)?") : name)
+            .navigationTitle(confirming ? (delete ? "Delete \(name)?" : "Archive \(name)?") : (model.group(id)?.named == true ? name : BelfryCore.Group.kindTitle(id)))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }

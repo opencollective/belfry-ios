@@ -153,7 +153,7 @@ private struct CalendarRow: View {
     private var line: String {
         var parts = [String]()
         if let p = model.eventPlace(e) { parts.append(p) }
-        if let ch = e.channels.first, let g = model.group(ch), ch != generalId { parts.append(g.name) }
+        if let ch = e.channels.first, let g = model.group(ch), ch != generalId, g.named { parts.append(g.name) }
         parts.append(model.eventStatus(e))
         return parts.joined(separator: " · ")
     }

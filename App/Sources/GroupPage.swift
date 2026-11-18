@@ -35,7 +35,7 @@ struct GroupPage: View {
                             HStack(spacing: 10) {
                                 ChannelGlyph(group: g, size: 28)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(g.name).font(.title3.bold())
+                                    GroupTitle(group: g, id: g.id).font(.title3.bold())
                                     Text(subtitle(g, parent))
                                         .font(.footnote).foregroundStyle(.secondary)
                                 }
@@ -90,13 +90,13 @@ struct GroupPage: View {
         HStack {
             Label("Archived · read only", systemImage: "archivebox").foregroundStyle(.secondary)
             Spacer()
-            Button("Read \(g.name)") { model.openGroup = id }.buttonStyle(.bordered).controlSize(.small)
+            Button("Read \(g.named ? g.name : BelfryCore.Group.neutral(g.id))") { model.openGroup = id }.buttonStyle(.bordered).controlSize(.small)
         }
     }
 
     private func subtitle(_ g: Channel, _ parent: Channel?) -> String {
         var s = "Group"
-        if let p = parent { s += " in " + (p.isPod ? p.name : "#" + p.name) }
+        if let p = parent { s += " in " + p.label }
         // an archived group takes nobody: no "open to members" (its banner says it is archived)
         if !g.archived { s += " · " + (g.closed ? "by application" : "open to members") }
         return s
@@ -109,7 +109,7 @@ struct GroupPage: View {
             HStack {
                 Label("You’re in", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                 Spacer()
-                Button("Open \(g.name)") { openChannel(id, nil) }.buttonStyle(.brand).controlSize(.small)
+                Button("Open \(g.named ? g.name : BelfryCore.Group.neutral(g.id))") { openChannel(id, nil) }.buttonStyle(.brand).controlSize(.small)
             }
         } else if mine {
             VStack(alignment: .leading, spacing: 4) {

@@ -41,7 +41,7 @@ extension Derive {
         return nil
     }
 
-    /// "Kofi" or "a member" (never "You").
+    /// "Kofi" or "Unknown" (never "You", never a key).
     func realNameOr(_ pubkey: String) -> String {
         let n = realName(pubkey)
         return n.isEmpty ? Derive.shortKey(pubkey) : n

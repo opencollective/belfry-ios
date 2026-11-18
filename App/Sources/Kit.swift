@@ -165,3 +165,37 @@ extension EnvironmentValues {
         set { self[OpenChannelKey.self] = newValue }
     }
 }
+
+/// A group's name where a list row or a header shows it (SPEC 19.42, the lead 2026-11-18): the
+/// name; while it has not arrived, no text but the system's placeholder bar (about 40% of the row,
+/// the text's height, read as "Loading"); still unknown after ~5 s online, the kind's word
+/// ("Channel", "Group", "Event", "Proposal"). Never any part of the id. PREFIX ("#") only with a name.
+struct GroupTitle: View {
+    @EnvironmentObject var model: AppModel
+    let group: BelfryCore.Group?
+    let id: String
+    var prefix = ""
+    @State private var gaveUp = false
+
+    var body: some View {
+        if let g = group, g.named {
+            Text(prefix + g.name)
+        } else if gaveUp {
+            Text(BelfryCore.Group.kindTitle(id))
+        } else {
+            Text("Loading the name")
+                .redacted(reason: .placeholder)
+                .containerRelativeFrame(.horizontal, alignment: .leading) { w, _ in w * 0.4 }
+                .accessibilityLabel("Loading")
+                .task(id: id) {
+                    // ~5 s online without a name: the kind's word, so nothing shimmers forever
+                    var online = 0
+                    while !Task.isCancelled && online < 10 {
+                        try? await Task.sleep(for: .milliseconds(500))
+                        if model.online { online += 1 }
+                    }
+                    if !Task.isCancelled { gaveUp = true }
+                }
+        }
+    }
+}

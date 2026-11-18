@@ -229,7 +229,7 @@ struct PlaceLine: View {
         HStack(spacing: 12) {
             PlaceGlyph(group: group)
             VStack(alignment: .leading, spacing: 2) {
-                Text(group.name).font(.body.weight(n > 0 ? .semibold : .medium)).foregroundStyle(.primary).lineLimit(1)
+                GroupTitle(group: group, id: group.id).font(.body.weight(n > 0 ? .semibold : .medium)).foregroundStyle(.primary).lineLimit(1)
                 if let last {
                     Text(model.name(last.ev.pubkey).components(separatedBy: " ").first.map { $0 + ": " } ?? "")
                         .font(.subheadline).foregroundStyle(.secondary)

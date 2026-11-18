@@ -308,5 +308,11 @@ final class EventsApiTests: XCTestCase {
         XCTAssertTrue(e.remote)
         XCTAssertEqual(e.visibility, .link)
         XCTAssertNil(BelfryAPI.parseEvent(["d": "x"]))
+        XCTAssertEqual(e.link, "picnic", "links use the custom slug")
+        // "Hosted by" = hosted_by when the belfry sends it (no service keys), hosts otherwise
+        var o2 = o
+        o2["hosts"] = [["pubkey": String(repeating: "a", count: 64), "name": "Ana"], ["pubkey": String(repeating: "9", count: 64), "name": ""]]
+        o2["hosted_by"] = [["pubkey": String(repeating: "a", count: 64), "name": "Ana"]]
+        XCTAssertEqual(try XCTUnwrap(BelfryAPI.parseEvent(o2)).hosts.map(\.first), [String(repeating: "a", count: 64)])
     }
 }

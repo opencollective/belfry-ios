@@ -116,21 +116,34 @@ public struct Group: Identifiable, Hashable, Sendable {
     /// The name its metadata gives, before the on-brand names (SPEC 19.31); empty if none.
     public var rawName = ""
 
-    /// What a channel or group is called before its metadata (39000 / 9007 / 9002 `name`) is here
-    /// (SPEC 19.42): the id without its random ending (`issues-5fce` → `issues`; `pod-bees-1a2b` →
-    /// `bees`). Events and proposals keep their id (their title comes from their own event).
-    public static func fallbackName(_ id: String) -> String {
+    /// Whether its name has arrived (SPEC 19.42, Xavier 2026-11-18): until then `name` is "" and
+    /// nothing shows the id, not even part of it. Lists and headers draw a placeholder; sentences say
+    /// "this channel" (`Group.neutral`).
+    public var named: Bool { !name.isEmpty }
+
+    /// The kind's word: "channel", "group", "event", "proposal".
+    public static func kindWord(_ id: String) -> String {
         switch typeOf(id) {
-        case .event, .proposal: return id
-        case .pod:
-            let s = Group.randomEnd.replace(String(id.dropFirst(4)), with: "")
-            return s.isEmpty ? id : s
-        case .channel:
-            let s = Group.randomEnd.replace(id, with: "")
-            return s.isEmpty ? id : s
+        case .channel: return "channel"
+        case .pod: return "group"
+        case .event: return "event"
+        case .proposal: return "proposal"
         }
     }
-    static let randomEnd = Rx("-[0-9a-f]{4}$")
+    /// In a sentence, for a group whose name has not arrived: "this channel" ("This channel" at the start).
+    public static func neutral(_ id: String, capital: Bool = false) -> String {
+        (capital ? "This " : "this ") + kindWord(id)
+    }
+    /// Where a list row or header gave up waiting for the name (~5 s online): "Channel", "Group"…
+    public static func kindTitle(_ id: String) -> String { cap(kindWord(id)) }
+
+    /// How a sentence names it: "#Garden" (a channel), "Tools" (a group, an event, a proposal, or
+    /// a place with its default name such as Townsquare), "this channel" while the name is unknown.
+    public var label: String {
+        guard named else { return Group.neutral(id) }
+        if type != .channel || PlaceNames.defaults[id] == name { return name }
+        return "#" + name
+    }
 
     public static func typeOf(_ id: String) -> ChannelType {
         if id.hasPrefix("ws-") || id.hasPrefix("ev-") { return .event }
@@ -514,7 +527,24 @@ public final class Derive {
 
     public func realName(_ pubkey: String) -> String { Derive.realName(pubkey, profileMap) }
 
-    public static func shortKey(_ pubkey: String) -> String { String((Bech32.npub(pubkey) ?? pubkey).prefix(12)) + "…" }
+    /// Someone whose name is not known here: "Unknown", never their key or part of it (Xavier,
+    /// 2026-11-18). A list of names says "and one other" / "and N others" for them (`namesLine`).
+    public static func shortKey(_ pubkey: String) -> String { "Unknown" }
+
+    /// "Ana", "Ana and Ben", "Ana, Ben and Chloé"; people with no name here are counted, never
+    /// shown by their key: "Ana and one other", "Ana and 2 others", "one person" / "2 people".
+    public func namesLine(_ pubkeys: [String]) -> String {
+        let known = pubkeys.map { displayName($0) }.filter { $0 != "Unknown" }
+        let unknown = pubkeys.count - known.count
+        var parts = known
+        if unknown > 0 {
+            let others = unknown == 1 ? "one other" : "\(unknown) others"
+            if parts.isEmpty { return unknown == 1 ? "one person" : "\(unknown) people" }
+            parts.append(others)
+        }
+        if parts.count <= 1 { return parts.first ?? "" }
+        return parts.dropLast().joined(separator: ", ") + " and " + parts.last!
+    }
 
     public func displayName(_ pubkey: String, _ ps: [String: Profile]) -> String {
         if pubkey == me { return "You" }
@@ -589,7 +619,7 @@ public final class Derive {
             let gid = (39000...39003).contains(e.kind) ? e.tag("d") : e.tag("h")
             guard let id = gid, !id.isEmpty else { continue }
             if map[id] == nil {
-                map[id] = Group(id: id, name: Group.fallbackName(id), about: "", createdAt: e.createdAt, lastActivity: e.createdAt)
+                map[id] = Group(id: id, name: "", about: "", createdAt: e.createdAt, lastActivity: e.createdAt)
                 order.append(id)
             }
             var g = map[id]!
@@ -747,6 +777,9 @@ public final class Derive {
     public func pods(_ parent: String) -> [Group] { groupList.filter { $0.isPod && $0.parent == parent } }
 
     // ---- admin rights ---------------------------------------------------------------------------
+
+    /// How a sentence names group ID, known or not ("#Garden", "Tools", "this channel"); never the id.
+    public func label(_ id: String) -> String { group(id)?.label ?? Group.neutral(id) }
 
     public var isCommunityAdmin: Bool { communityAdmins.contains(me) }
     /// "Admin of the belfry" on someone's profile.

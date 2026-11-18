@@ -78,14 +78,14 @@ struct Composer: View {
                             Button { pickChannel(c, query: q) } label: {
                                 HStack(spacing: 10) {
                                     ChannelGlyph(group: c.group, size: 20)
-                                    Text(c.group.name).font(.subheadline)
+                                    GroupTitle(group: c.group, id: c.group.id).font(.subheadline)
                                     Spacer()
                                 }
                                 .padding(.vertical, 6).padding(.horizontal, 8)
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("Link the channel \(c.group.name)")
+                            .accessibilityLabel("Link \(c.group.label)")
                         }
                     }
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
@@ -270,7 +270,7 @@ struct Composer: View {
     }
 
     func pickChannel(_ c: ChannelPick, query q: String) {
-        let label = "#" + c.group.name
+        let label = c.group.named ? "#" + c.group.name : "#" + BelfryCore.Group.kindWord(c.group.id)
         text = String(text.dropLast(q.count + 1)) + label + " "
         if !refs.contains(where: { $0.label == label }) { refs.append((label, c.ref)) }
     }

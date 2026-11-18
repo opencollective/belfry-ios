@@ -22,10 +22,22 @@ public enum ChannelRefs {
     public static func query(beforeCaret: String) -> String? { picker.first(beforeCaret)?[2] }
 
     /// The text as sent: each picked "#Name" (longest first) → its `nostr:naddr…`.
+    /// Several picks may share a label (two references to channels whose names are unknown, both
+    /// "#channel"): their occurrences take the refs in order, the last ref for any extra one.
     public static func substitute(_ text: String, picked: [(label: String, ref: String)]) -> String {
         var out = text
-        for p in picked.sorted(by: { $0.label.utf16.count > $1.label.utf16.count }) {
-            out = out.components(separatedBy: p.label).joined(separator: p.ref)
+        var labels = [String](), refs = [String: [String]]()
+        for p in picked {
+            if refs[p.label] == nil { labels.append(p.label) }
+            if !(refs[p.label] ?? []).contains(p.ref) { refs[p.label, default: []].append(p.ref) }
+        }
+        for label in labels.sorted(by: { $0.utf16.count > $1.utf16.count }) {
+            let rs = refs[label]!
+            let parts = out.components(separatedBy: label)
+            if parts.count == 1 { continue }
+            var joined = parts[0]
+            for (k, part) in parts.dropFirst().enumerated() { joined += rs[min(k, rs.count - 1)] + part }
+            out = joined
         }
         return out
     }
@@ -46,13 +58,18 @@ public enum ChannelRefs {
         return out
     }
 
+    /// A channel whose name is not known in a reference: the kind's word, never the id ("#channel",
+    /// "#group", "#event", "#proposal"; the lead, 2026-11-18, vectors/channel-refs.json "plain").
+    /// The naddr stays behind it, so editing and sending again loses nothing.
+    static func unknownLabel(_ id: String) -> String { Group.kindWord(id) }
+
     /// One-line previews (plainRefs): mentions as NPUB, channel references as "#name" (NAMEOF gives
-    /// a known channel's name; its id otherwise), other naddrs as they are.
+    /// a known channel's name; the kind's word otherwise), other naddrs as they are.
     public static func plain(_ text: String, npub: String = "@…", nameOf: (String) -> String?) -> String {
         let noKeys = replaceAll(npubLoose, in: text) { _ in npub }
         return replaceAll(naddrRx, in: noKeys) { m in
             guard let id = groupOf(m[1] ?? "") else { return m.whole }
-            return "#" + (nameOf(id) ?? Group.fallbackName(id))
+            return "#" + (nameOf(id).flatMap { $0.isEmpty ? nil : $0 } ?? ChannelRefs.unknownLabel(id))
         }
     }
 }
@@ -93,16 +110,16 @@ extension Derive {
         var picked = [(label: String, ref: String)]()
         let out = ChannelRefs.replaceAll(ChannelRefs.naddrRx, in: text) { m in
             guard let id = ChannelRefs.groupOf(m[1] ?? "") else { return m.whole }
-            let label = "#" + (group(id)?.name ?? Group.fallbackName(id))
-            if !picked.contains(where: { $0.label == label }) { picked.append((label, m.whole)) }
+            let label = "#" + ((group(id)?.named == true ? group(id)!.name : nil) ?? ChannelRefs.unknownLabel(id))
+            if !picked.contains(where: { $0.label == label && $0.ref == m.whole }) { picked.append((label, m.whole)) }
             return label
         }
         return (out, picked)
     }
 
-    /// A bare naddr as previews name it: "#name", "#<id>" for an unknown channel, else as written.
+    /// A bare naddr as previews name it: "#name", "#channel" for a channel whose name is unknown, else as written.
     public func refLabel(_ naddr: String) -> String {
-        if let id = ChannelRefs.groupOf(naddr) { return "#" + (group(id)?.name ?? Group.fallbackName(id)) }
+        if let id = ChannelRefs.groupOf(naddr) { return "#" + ((group(id)?.named == true ? group(id)!.name : nil) ?? ChannelRefs.unknownLabel(id)) }
         return "nostr:" + naddr
     }
 }

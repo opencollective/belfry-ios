@@ -291,7 +291,7 @@ struct PullDownList: View {
                 }
                 Color.clear.frame(height: 8)
                 if let g, let p = g.parent, let parent = model.group(p) {
-                    PDRow(symbol: "arrow.up.left", title: (g.isProposal ? "Proposal in " : "Group in ") + (parent.isPod ? parent.name : "#" + parent.name)) { dismiss(); openChannel(p, nil) }
+                    PDRow(symbol: "arrow.up.left", title: (g.isProposal ? "Proposal in " : "Group in ") + parent.label) { dismiss(); openChannel(p, nil) }
                     PDDivider()
                 }
                 if let p = own { ProposalBlock(p: p); PDDivider() }

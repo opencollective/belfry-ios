@@ -111,7 +111,7 @@ private struct GroupRow: View {
 
     private func line(joined: Bool) -> String {
         var parts = [String]()
-        if let p = group.parent, let g = model.group(p) { parts.append(g.name) }
+        if let p = group.parent, let g = model.group(p), g.named { parts.append(g.name) }
         let n = group.members.count
         parts.append(n == 1 ? "1 member" : "\(n) members")
         if group.closed && !joined { parts.append("by application") }

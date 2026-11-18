@@ -71,7 +71,7 @@ struct ChannelView: View {
                         if (model.guestReading || locked) && topic == nil {
                             Text("No messages here yet.").foregroundStyle(.secondary).padding(32).frame(maxWidth: .infinity)
                         } else {
-                            EmptyChannel(name: g?.name ?? BelfryCore.Group.fallbackName(id), filtered: topic != nil) { invite = true }
+                            EmptyChannel(name: g?.named == true ? g!.name : BelfryCore.Group.neutral(id, capital: true), filtered: topic != nil) { invite = true }
                         }
                     }
                     ForEach(rows) { row in
@@ -225,14 +225,15 @@ struct ChannelView: View {
                     VStack(spacing: 0) {
                         HStack(spacing: 4) {
                             if let g, g.type != .channel { ChannelGlyph(group: g, size: 16) }
-                            Text(titleText(g)).font(.headline).foregroundStyle(.primary).lineLimit(1)
+                            if g?.named == true { Text(titleText(g)).font(.headline).foregroundStyle(.primary).lineLimit(1) }
+                            else { GroupTitle(group: g, id: id).font(.headline).foregroundStyle(.primary).lineLimit(1).fixedSize() }
                             Image(systemName: "chevron.down").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
                                 .rotationEffect(.degrees(pull == .closed ? 0 : 180))
                         }
                         if g != nil { ChannelSubtitle(id: id) }
                     }
                 }
-                .accessibilityLabel("\(g?.name ?? BelfryCore.Group.fallbackName(id)). Show what's going on in this channel.")
+                .accessibilityLabel("\(model.derive.label(id)). Show what's going on in this channel.")
                 // a settings change refused for good (SPEC 19.37): tap for what failed
                 if !failedSettings.isEmpty {
                     Button { settingsIssue = true } label: {
@@ -308,16 +309,15 @@ struct ChannelView: View {
     /// "Message the Townsquare" for #general under its default name (as Create's "Post in the
     /// Townsquare"), "Message #name" for a channel, "Message <name>" for a group.
     func composerPlaceholder(_ g: Channel?) -> String {
-        guard let g else { return "Message " + id }
+        guard let g, g.named else { return "Message " + BelfryCore.Group.neutral(id) }
         if PlaceNames.defaults[g.id] == g.name { return "Message the " + g.name }
-        return "Message " + (g.type == .channel ? "#" + g.name : g.name)
+        return "Message " + g.label
     }
 
     func titleText(_ g: Channel?) -> String {
-        guard let g else { return id }
+        guard let g, g.named else { return BelfryCore.Group.kindTitle(id) }
         // the town's default places read as places (board iOS-Town: "Townsquare", not "#Townsquare")
-        if PlaceNames.defaults[g.id] == g.name { return g.name }
-        return g.type == .channel ? "#" + g.name : g.name
+        return g.label
     }
 
     /// From a pushed screen of the channel (Pinned, Log) back to the channel at a message or a thread.
@@ -657,7 +657,7 @@ struct PodApplySheet: View {
                     TextField("Your answer", text: $answer, axis: .vertical).lineLimit(3...8).font(.body)
                 } footer: { Text(group.vouches > 0 ? "Its members see your answer and vouch for you, or a steward lets you in." : "The \(group.isPod ? "group" : "channel")'s stewards see your answer and let you in, or not.") }
             }
-            .navigationTitle("Ask to join " + (group.type == .channel ? "#" + group.name : group.name))
+            .navigationTitle("Ask to join " + group.label)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

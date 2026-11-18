@@ -66,18 +66,24 @@ final class TodoAssignTests: XCTestCase {
 
 final class ChannelNamesTests: XCTestCase {
     func testFallbackName() {
-        XCTAssertEqual(Group.fallbackName("issues-5fce"), "issues")
-        XCTAssertEqual(Group.fallbackName("general"), "general")
-        XCTAssertEqual(Group.fallbackName("pod-bees-1a2b"), "bees")
-        XCTAssertEqual(Group.fallbackName("ev-ab12cd"), "ev-ab12cd")
-        XCTAssertEqual(Group.fallbackName("prop-plan-1a2b"), "prop-plan-1a2b")
-        XCTAssertEqual(Group.fallbackName("tools-2b8e"), "tools")
+        // no name before the metadata, never the id (Xavier 2026-11-18): sentences say the kind
+        XCTAssertEqual(Group.neutral("issues-5fce"), "this channel")
+        XCTAssertEqual(Group.neutral("pod-bees-1a2b", capital: true), "This group")
+        XCTAssertEqual(Group.neutral("ev-1a2b3c"), "this event")
+        XCTAssertEqual(Group.kindTitle("prop-rules-cd"), "Proposal")
+        // a reference to a channel whose name is unknown: the kind's word, the naddr kept behind it
+        XCTAssertEqual(ChannelRefs.unknownLabel("tools-2b8e"), "channel")
+        XCTAssertEqual(ChannelRefs.unknownLabel("pod-bees-1a2b"), "group")
+        let two = ChannelRefs.substitute("see #channel and #channel", picked: [("#channel", "nostr:naddr1a"), ("#channel", "nostr:naddr1b")])
+        XCTAssertEqual(two, "see nostr:naddr1a and nostr:naddr1b")
     }
 
     func testNameBeforeAndAfterMetadata() throws {
         let msg = ev(B, 9, 500, [["h", "issues-5fce"]], "the gate is stuck")
         let before = Derive(events: [msg], me: A)
-        XCTAssertEqual(before.group("issues-5fce")?.name, "issues")
+        XCTAssertEqual(before.group("issues-5fce")?.named, false)
+        XCTAssertEqual(before.group("issues-5fce")?.name, "")
+        XCTAssertEqual(before.label("issues-5fce"), "this channel")
         // the metadata arrives later (even with an older created_at): its name is shown
         let after = Derive(events: [msg, ev(RELAY, 39000, 100, [["d", "issues-5fce"], ["name", "Issues"]])], me: A)
         XCTAssertEqual(after.group("issues-5fce")?.name, "Issues")
@@ -154,5 +160,26 @@ final class MemberLinkTests: XCTestCase {
         let other = Derive(events: evs, me: C)
         XCTAssertEqual(Set(other.readableChannels().map(\.id)), ["general", "issues-5fce"])
         XCTAssertEqual(other.group("issues-5fce")?.name, "issues")
+    }
+}
+
+final class NoIdsAsTextTests: XCTestCase {
+    /// Xavier 2026-11-18: never a key, a group id or an event's d as text.
+    func testUnknownPeopleAndLists() {
+        let ana = ev(A, 0, 1, [], #"{"name":"Ana"}"#)
+        let d = Derive(events: [ana], me: String(repeating: "f", count: 64))
+        XCTAssertEqual(d.displayName(B), "Unknown")
+        XCTAssertEqual(d.namesLine([A]), "Ana")
+        XCTAssertEqual(d.namesLine([A, B]), "Ana and one other")
+        XCTAssertEqual(d.namesLine([B, RELAY]), "2 people")
+        XCTAssertEqual(d.namesLine([B]), "one person")
+    }
+
+    func testGroupLabels() {
+        let d = Derive(events: [ev(RELAY, 39000, 100, [["d", "garden-1a2b"], ["name", "Garden"]]), ev(B, 9, 101, [["h", "pod-bees-1a2b"]], "hi")], me: A)
+        XCTAssertEqual(d.label("garden-1a2b"), "#Garden")
+        XCTAssertEqual(d.label("pod-bees-1a2b"), "this group")
+        XCTAssertEqual(d.label("ev-zz9a1b"), "this event")
+        XCTAssertFalse(d.group("pod-bees-1a2b")!.named)
     }
 }

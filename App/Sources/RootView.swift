@@ -1001,7 +1001,7 @@ struct ChannelRow: View {
             .frame(width: 32, height: 32)
             .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(group.name).font(.body.weight(unreadN > 0 ? .bold : .medium)).lineLimit(1)
+                GroupTitle(group: group, id: group.id).font(.body.weight(unreadN > 0 ? .bold : .medium)).lineLimit(1)
                 if let last {
                     Text("\(model.name(last.ev.pubkey)): \(preview(last.text))")
                         .font(.subheadline)
@@ -1015,7 +1015,7 @@ struct ChannelRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(unreadN > 0 ? "\(group.name) channel, \(unreadN) unread" : "\(group.name) channel")
+        .accessibilityLabel(unreadN > 0 ? "\(group.named ? group.name : "Unnamed") channel, \(unreadN) unread" : "\(group.named ? group.name : "Unnamed") channel")
     }
 
     func preview(_ t: String) -> String {
@@ -1061,7 +1061,7 @@ struct SearchResults: View {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack {
                                 Text(model.name(m.ev.pubkey)).font(.subheadline.bold())
-                                Text("\(model.group(gid)?.icon ?? "#")\(model.group(gid)?.name ?? BelfryCore.Group.fallbackName(gid))").font(.caption).foregroundStyle(.secondary)
+                                Text(model.group(gid).map { $0.named ? $0.icon + $0.name : model.derive.label(gid) } ?? model.derive.label(gid)).font(.caption).foregroundStyle(.secondary)
                             }
                             Text(model.derive.plainRefs(m.text)).font(.subheadline).lineLimit(3).foregroundStyle(.primary)
                         }

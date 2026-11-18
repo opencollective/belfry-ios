@@ -90,7 +90,7 @@ struct RequestSections: View {
                     }
                 } header: {
                     Button { model.openGroup = x.group.id } label: {
-                        HStack(spacing: 6) { ChannelGlyph(group: x.group, size: 14); Text(x.group.name); Image(systemName: "chevron.right").font(.caption2) }
+                        HStack(spacing: 6) { ChannelGlyph(group: x.group, size: 14); GroupTitle(group: x.group, id: x.group.id); Image(systemName: "chevron.right").font(.caption2) }
                     }
                     .buttonStyle(.plain)
                 }

@@ -339,8 +339,8 @@ struct SettingsTab: View {
     }
 
     private func label(_ g: Channel?) -> String {
-        guard let g else { return "#" + id }
-        return PlaceNames.defaults[g.id] == g.name || g.isPod ? g.name : "#" + g.name
+        guard let g else { return model.derive.label(id) }
+        return g.label
     }
 
     /// "Who can read it": three choices (the owner's mock-ups Settings-A / B); Public asks first.
