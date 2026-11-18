@@ -207,9 +207,10 @@ final class MenuShots: XCTestCase {
         kitchen.tap()
         let end = app.buttons["channel-end"].firstMatch
         XCTAssertTrue(end.waitForExistence(timeout: 5), "no end row for the kitchen")
-        let archive = NSPredicate(format: "label CONTAINS 'Archive the channel'")
-        expectation(for: archive, evaluatedWith: end)
-        waitForExpectations(timeout: 10)
+        // the row says "Delete or archive…" until the check answers; a slow simulator (dark run of
+        // 44317206359) showed "Archive the channel" on screen while a 10 s predicate on the resolved
+        // element never saw it: ask the tree afresh for the row with those words, for up to 30 s
+        XCTAssertTrue(endRow(app, "Archive the channel").waitForExistence(timeout: 30), "the kitchen's row does not offer Archive")
         shot("57-channel-archive-row")
         app.buttons["Cancel"].firstMatch.tap()
         sleep(1)
@@ -218,16 +219,20 @@ final class MenuShots: XCTestCase {
         for _ in 0..<4 where !tools.isHittable { app.swipeUp(); sleep(1) }
         XCTAssertTrue(tools.waitForExistence(timeout: 5), "no Tool library row")
         tools.tap()
-        XCTAssertTrue(end.waitForExistence(timeout: 5))
-        expectation(for: NSPredicate(format: "label CONTAINS 'Delete the channel'"), evaluatedWith: end)
-        waitForExpectations(timeout: 10)
+        XCTAssertTrue(end.waitForExistence(timeout: 10))
+        XCTAssertTrue(endRow(app, "Delete the channel").waitForExistence(timeout: 30), "the Tool library's row does not offer Delete")
         end.tap()
         let confirm = app.buttons["channel-end-confirm"].firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), "no confirmation")
         shot("57-channel-delete-confirm")
         confirm.tap()
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: tools)
-        waitForExpectations(timeout: 10)
+        waitForExpectations(timeout: 30)
+    }
+
+    /// The channel-end row of Settings → Channels whose label holds TEXT (a fresh query each time).
+    private func endRow(_ app: XCUIApplication, _ text: String) -> XCUIElement {
+        app.buttons.matching(identifier: "channel-end").matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
     /// Round 7: a to-do row opens its own screen (not the tick); Assign to… puts it on someone,
     /// Unassign takes it off again.
