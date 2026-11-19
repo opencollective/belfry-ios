@@ -51,6 +51,8 @@ extension AppModel {
     /// Take an open ticket: a member's implicit ticket is an RSVP; others go through the belfry.
     func takeTicket(_ e: CalEvent, _ t: Ticket) async -> String? {
         let d = derive
+        // never self-served (the belfry answers 409 `payment` anyway)
+        if t.price(now: .now).priced { return "This ticket has a price: ask the hosts for it." }
         if t.implicit && !d.amGuest && !e.remote { rsvp(e, .accepted); return nil }
         if engine?.localOnly != false {
             // demo: the groups key issues it, as POST /events/<d>/join does

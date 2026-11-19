@@ -364,3 +364,37 @@ final class DmReactionsTests: XCTestCase {
         XCTAssertEqual(DmReactions.removeTags(reaction: rem.str("reaction") ?? "", participants: all, me: me), tags(rem.dict("rumor")["tags"]))
     }
 }
+
+/// Ticket prices (vectors/ticket-prices.json: the server's price_of on these cases).
+final class TicketPriceTests: XCTestCase {
+    func testVectors() throws {
+        let v = try vector("ticket-prices")
+        let cases = v.list("cases")
+        XCTAssertEqual(cases.count, 34)
+        for c in cases {
+            let name = c.str("name") ?? ""
+            let p = TicketPrice.of(tags: tags(c["tags"]), now: c.int("now") ?? 0)
+            let o = c.dict("out")
+            XCTAssertEqual(p.priced, o["priced"] as? Bool, name)
+            XCTAssertEqual(p.amount, o.str("amount"), name)
+            XCTAssertEqual(p.currency, o.str("currency"), name)
+            XCTAssertEqual(p.vat, o.str("vat"), name)
+            XCTAssertEqual(p.vatIncluded, o["vat_included"] as? Bool, name)
+            XCTAssertEqual(p.until, o.int("until"), name)
+            XCTAssertEqual(p.onSale, o["on_sale"] as? Bool, name)
+            XCTAssertEqual(p.line, c.str("line"), name)
+        }
+    }
+
+    func testFromTheApi() {
+        let p = TicketPrice.from(api: ["price": ["amount": "50", "currency": "EUR", "vat": "21", "vat_included": false, "until": 1798761600] as [String: Any],
+                                       "on_sale": true, "needs_payment": true])
+        XCTAssertEqual(p.line, "€50 + 21% VAT")
+        XCTAssertEqual(p.until, 1798761600)
+        XCTAssertEqual(TicketPrice.from(api: ["price": NSNull(), "needs_payment": true, "on_sale": true]).line, "Paid")
+        XCTAssertEqual(TicketPrice.from(api: ["price": NSNull(), "needs_payment": true, "on_sale": false]).line, "Not on sale now")
+        XCTAssertEqual(TicketPrice.from(api: ["title": "Seat"]).line, "Free")
+        // a price that isn't in the fixed shape is never shown as written
+        XCTAssertEqual(TicketPrice.from(api: ["price": ["amount": "<b>", "currency": "EUR"], "needs_payment": true]).line, "Paid")
+    }
+}

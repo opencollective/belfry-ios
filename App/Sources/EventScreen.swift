@@ -548,7 +548,10 @@ struct EventStatusControl: View {
             switch state {
             case .applied, .waitlist:
                 HStack {
-                    Text(state.line ?? "").font(.subheadline)
+                    // asked for a priced ticket: the hosts confirm the payment
+                    let asked = people.applications.first { $0.pubkey == model.me }?.ticket
+                    let paying = state == .applied && real.first { $0.d == asked }?.price(now: .now).priced == true
+                    Text(paying ? "Waiting for the host to confirm your payment" : (state.line ?? "")).font(.subheadline)
                     Spacer()
                     BusyButton("Withdraw", role: .destructive) { model.withdraw(e) }.buttonStyle(.bordered).controlSize(.small)
                 }

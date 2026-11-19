@@ -65,18 +65,29 @@ struct TicketRow: View {
     var body: some View {
         let left = people.placesLeft(t)
         let guestBlocked = t.members && model.derive.amGuest
+        // a priced ticket is asked for, never taken (board events/get-tickets)
+        let price = t.price(now: .now)
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(t.title).font(.subheadline.weight(.semibold))
-                    let bits = [t.summary.isEmpty ? nil : t.summary, left.map { $0 == 0 ? "Full" : "\($0) left" }, t.members ? "Members only" : nil, t.closed ? "By application" : nil].compactMap { $0 }
+                    let bits = [t.summary.isEmpty ? nil : t.summary, price.priced ? price.line : (t.closed || t.implicit ? nil : "Free"),
+                                left.map { $0 == 0 ? "Full" : "\($0) left" }, t.members ? "Members only" : nil,
+                                t.closed && !price.priced ? "By application" : nil].compactMap { $0 }
                     if !bits.isEmpty { Text(bits.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary) }
+                    if price.priced, price.onSale, let until = price.until {
+                        Text("This price until " + Date(timeIntervalSince1970: TimeInterval(until)).formatted(.dateTime.day().month(.abbreviated)))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
                 if held {
                     Chip(text: "Yours", tint: .green)
                 } else if guestBlocked {
                     Text("Members only").font(.caption).foregroundStyle(.secondary)
+                } else if price.priced && (left ?? 1) > 0 {
+                    Button("Ask", action: apply).buttonStyle(.bordered).controlSize(.small).disabled(!price.onSale)
+                        .accessibilityLabel(price.onSale ? "Ask for \(t.title)" : "\(t.title) is not on sale now")
                 } else if t.closed || (left ?? 1) <= 0 {
                     Button((left ?? 1) <= 0 ? "Waitlist" : "Apply", action: apply).buttonStyle(.bordered).controlSize(.small)
                 } else {
@@ -97,16 +108,24 @@ struct ApplySheet: View {
     let full: Bool
     @State private var answer = ""
     @State private var error: String?
+    /// A priced ticket: asked for, paid to the hosts, theirs once the hosts confirm.
+    private var price: TicketPrice { t.price(now: .now) }
+    private var paying: Bool { price.priced && !full }
     var body: some View {
         NavigationStack {
             Form {
+                if paying { Section { LabeledContent(t.title, value: price.line) } }
                 Section {
-                    Text(t.prompt.isEmpty ? "Why would you like to come?" : t.prompt).font(.headline)
+                    Text(t.prompt.isEmpty ? (paying ? "A word for the hosts (optional)" : "Why would you like to come?") : t.prompt).font(.headline)
                     TextField("Your answer", text: $answer, axis: .vertical).lineLimit(3...8).font(.body)
-                } footer: { Text(full ? "This ticket is full: you join the waitlist and the hosts tell you." : "The hosts read your answer and give you a place.") }
+                } footer: {
+                    Text(full ? "This ticket is full: you join the waitlist and the hosts tell you."
+                         : paying ? "You ask, you pay the hosts, and once they confirm your payment the place is yours."
+                         : "The hosts read your answer and give you a place.")
+                }
                 if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
             }
-            .navigationTitle(full ? "Join the waitlist" : "Apply for \(t.title)")
+            .navigationTitle(full ? "Join the waitlist" : paying ? "Ask for \(t.title)" : "Apply for \(t.title)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -114,7 +133,8 @@ struct ApplySheet: View {
                     BusyButton("Send") {
                         if let x = await model.applyTicket(e, t, answer: answer.jsTrim(), waitlist: full) { error = x } else { dismiss() }
                     }
-                    .disabled(answer.jsTrim().isEmpty)
+                    // a priced ticket without a question: nothing has to be written
+                    .disabled(answer.jsTrim().isEmpty && !(paying && !t.closed && t.prompt.isEmpty))
                 }
             }
         }

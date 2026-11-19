@@ -13,9 +13,11 @@ public struct ApiTicket: Hashable, Sendable {
     public let members: Bool
     public let position: Int
     public let implicit: Bool
+    /// `price`, `on_sale`, `needs_payment` (docs/checkin.md "Ticket prices").
+    public var price = TicketPrice()
     public var ticket: Ticket {
         Ticket(d: d, id: id, title: title, summary: summary, quantity: quantity, closed: closed, prompt: prompt, members: members,
-               position: position, implicit: implicit, ev: nil, apiLeft: left)
+               position: position, implicit: implicit, ev: nil, apiLeft: left, apiPrice: price)
     }
 }
 
@@ -247,7 +249,7 @@ public extension BelfryAPI {
             return ApiTicket(d: td, id: id, title: (x["title"] as? String ?? "Ticket").sliceUnits(120), summary: (x["summary"] as? String ?? "").sliceUnits(300),
                              quantity: int(x["quantity"]), left: int(x["left"]), closed: x["closed"] as? Bool ?? false,
                              prompt: (x["prompt"] as? String ?? "").sliceUnits(500), members: x["members"] as? Bool ?? false,
-                             position: int(x["position"]) ?? 0, implicit: x["implicit"] as? Bool ?? false)
+                             position: int(x["position"]) ?? 0, implicit: x["implicit"] as? Bool ?? false, price: TicketPrice.from(api: x))
         }
         // "Hosted by" (the lead, 2026-11-18): `hosted_by` = the creator and co-hosts, no service
         // keys; `hosts` only from a belfry that does not send it yet

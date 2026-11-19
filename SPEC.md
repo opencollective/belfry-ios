@@ -2367,3 +2367,27 @@ holding a bubble opens the menu with the reactions row and Copy text. The header
 conversation shows the person's face and name; a tap opens their profile.
 (iOS: `DmReactions.apply / chips / addTags / removeTags`, `DirectMessages.react / chips`;
 tests `DmReactionsTests`.)
+
+### 19.51 Ticket prices (iOS, 2026-11-19; board events/get-tickets; collective-belfry docs/checkin.md "Ticket prices"; `vectors/ticket-prices.json`, written by `tools/vectors/ticket-prices.py` running the server's `price_of`, collective-belfry 09086a9)
+A ticket type (kind 30402) may carry `["price", "<amount>", "<currency>"]` (NIP-99), any number
+of `["price_at", "<amount>", "<currency>", "<from>", "<until>"]` (a price for a while; unix
+seconds, either may be empty) and `["vat", "<rate>"]` / `["vat", "<rate>", "included"]`.
+- The amount is 1–7 digits with at most two decimals ("007.10" reads "7.10", "12.5" reads
+  "12.50"); the currency is 3 letters (an ISO code, read in capitals), `HOUR` / `HOURS` (any
+  case), or the host's own label of 1–12 letters, digits and spaces, kept as written.
+- The first `price_at` (in tag order) whose time it is gives the price, else the plain `price`.
+  `until` = when that price ends, or, for the plain price, when the next dated one starts.
+- No price tag, or a current amount of zero: free. A tag that can't be read (amount, currency or
+  a date): priced with no amount ("Paid"), never free. Dated prices only and none of them now:
+  not on sale ("Not on sale now").
+- VAT only on a 3-letter currency: "€50 + 21% VAT", or "€60.50 incl. 21% VAT" with `included`.
+  Other lines: "€15.50", "20 USD", "2 hours" / "1 hour", "3 Time credits".
+- **A priced ticket is never self-served**: its button is "Ask" (the application path, 19.29;
+  off while not on sale); the sheet says "You ask, you pay the hosts, and once they confirm your
+  payment the place is yours."; after asking: "Waiting for the host to confirm your payment".
+  The host admitting them is the host saying it is settled (their 9000 carries `["paid","paid"]`).
+- From `GET /events/<link>`: each ticket's `price` (`{amount, currency, vat, vat_included,
+  until}` or null), `on_sale`, `needs_payment`; read in the same fixed shapes, never shown as written.
+- Where the board and the server differ, the server wins: the board draws "€50 + VAT"; the rate
+  is always shown ("€50 + 21% VAT"). The day a price ends is its own line, "This price until 1 Jan".
+(iOS: `TicketPrice.of / from(api:) / line`, `Ticket.price(now:)`; tests `TicketPriceTests`.)

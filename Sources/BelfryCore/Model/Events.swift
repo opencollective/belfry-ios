@@ -97,6 +97,11 @@ public struct Ticket: Hashable, Sendable, Identifiable {
     public var ev: NostrEvent?
     /// Places left as the belfry counted them (remote events).
     public var apiLeft: Int?
+    /// The price as the belfry gave it (remote events); else it is read from the ticket's tags.
+    public var apiPrice: TicketPrice?
+
+    /// What it costs at NOW (SPEC 19.51). Priced: asked for, never taken.
+    public func price(now: Int) -> TicketPrice { apiPrice ?? ev.map { TicketPrice.of(tags: $0.tags, now: now) } ?? TicketPrice() }
 }
 
 public struct EventApplication: Hashable, Sendable {
