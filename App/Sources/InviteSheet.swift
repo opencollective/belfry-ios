@@ -348,7 +348,7 @@ struct InviteSomeoneHere: View {
         Section {
             HStack {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Type a name", text: $query).font(.body).textInputAutocapitalization(.words).autocorrectionDisabled()
+                TextField("Invite a community member", text: $query).font(.body).textInputAutocapitalization(.words).autocorrectionDisabled()
                     .accessibilityIdentifier("invite-search")
             }
             ForEach(found, id: \.self) { pk in
@@ -369,7 +369,7 @@ struct InviteSomeoneHere: View {
             if !query.jsTrim().isEmpty && found.isEmpty {
                 Text("Nobody here by that name. For someone new, invite an external person below.").font(.footnote).foregroundStyle(.secondary)
             }
-        } header: { Text("Invite someone already in the community") } footer: {
+        } header: { Text("Invite a community member:") } footer: {
             Text("They get the link to \(label) as a direct message. A guest of another channel is added here as a guest.")
         }
         .onAppear { if model.launch.screen == "invitesearch", query.isEmpty { query = "L" } } // screenshots
