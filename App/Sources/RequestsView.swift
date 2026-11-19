@@ -66,7 +66,7 @@ struct RequestSections: View {
     private func belfryRow(_ p: BelfryRequest, admin: Bool, vouching: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                if let pk = p.pubkey { Avatar(pubkey: pk, size: 32) }
+                if let pk = p.pubkey { Avatar(pubkey: pk, size: 32) } else { LetterFace(name: p.name, size: 32) }
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
                         Text(verbatim: p.name.isEmpty ? "Someone" : p.name).font(.body.weight(.semibold))
@@ -148,6 +148,17 @@ struct BotMark: View {
     var size: CGFloat = 32
     var body: some View {
         Image(systemName: "cpu").font(.system(size: size * 0.5, weight: .medium)).foregroundStyle(.white)
+            .frame(width: size, height: size).background(Color.gray, in: Circle())
+            .accessibilityHidden(true)
+    }
+}
+
+/// The face of someone who has no key here yet (a request by e-mail): their initial on grey.
+struct LetterFace: View {
+    let name: String
+    var size: CGFloat = 32
+    var body: some View {
+        Text(verbatim: String(name.jsTrim().prefix(1)).uppercased()).font(.system(size: size * 0.42, weight: .semibold)).foregroundStyle(.white)
             .frame(width: size, height: size).background(Color.gray, in: Circle())
             .accessibilityHidden(true)
     }
