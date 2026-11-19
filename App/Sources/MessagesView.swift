@@ -16,10 +16,19 @@ struct MessagesView: View {
         let threads = model.dms?.threads() ?? []
         List {
             if threads.isEmpty {
-                ContentUnavailableView("No messages yet", systemImage: "envelope", description: Text("Write to a member, or to any e-mail address."))
+                ContentUnavailableView("No messages", systemImage: "envelope", description: Text("Write to anyone in the town with the pen."))
+            }
+            // "Your address: sam@demo.belfry.sh" (board home/messages)
+            if let a = model.dms?.myAddress, !a.isEmpty {
+                Text("Your address: \(a)").font(.footnote).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .listRowSeparator(.hidden)
+                    .accessibilityIdentifier("messages-address")
             }
             ForEach(threads) { t in
-                NavigationLink(value: ConvRoute(conv: t.conv)) { ThreadRow(thread: t) }
+                // a row opens its conversation; no chevron (the board has none)
+                Button { navigate(t.conv) } label: { ThreadRow(thread: t).contentShape(Rectangle()) }
+                    .buttonStyle(.plain)
             }
         }
         .listStyle(.plain)
@@ -80,7 +89,7 @@ struct ThreadRow: View {
                 HStack {
                     Text(title).font(.body.weight(thread.unread > 0 ? .semibold : .regular)).lineLimit(1)
                     Spacer()
-                    Text(Format.ago(thread.last.at)).font(.caption).foregroundStyle(.secondary)
+                    Text(Format.brief(thread.last.at)).font(.caption).foregroundStyle(.secondary)
                 }
                 if mail { Text(model.dms?.threadName(thread.conv) ?? "").font(.subheadline.weight(.medium)).lineLimit(1) }
                 Text(thread.last.mine ? "You: \(thread.last.text)" : thread.last.text).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)

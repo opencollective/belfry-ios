@@ -13,19 +13,27 @@ struct MentionsView: View {
     var body: some View {
         let _ = model.version
         let list = model.mentions
+        // new ones first, under "New"; the rest under "Earlier" (board home/mentions)
+        let fresh = list.filter { $0.createdAt > seenBefore }, earlier = list.filter { $0.createdAt <= seenBefore }
         List {
             if list.isEmpty {
-                ContentUnavailableView("No mentions yet", systemImage: "at",
-                                       description: Text("When someone writes @you in a channel, it shows here."))
+                ContentUnavailableView("Nothing new", systemImage: "at",
+                                       description: Text("When someone names you in a channel, it shows here."))
                     .listRowBackground(Color.clear)
             }
-            ForEach(list, id: \.id) { e in
-                Button { open(e) } label: { row(e, fresh: e.createdAt > seenBefore) }
-                    .buttonStyle(.plain)
+            if !fresh.isEmpty {
+                Section("New") {
+                    ForEach(fresh, id: \.id) { e in Button { open(e) } label: { row(e, fresh: true) }.buttonStyle(.plain) }
+                }
+            }
+            if !earlier.isEmpty {
+                Section(fresh.isEmpty ? "" : "Earlier") {
+                    ForEach(earlier, id: \.id) { e in Button { open(e) } label: { row(e, fresh: false) }.buttonStyle(.plain) }
+                }
             }
         }
         .listStyle(.plain)
-        .navigationTitle("@Mentions")
+        .navigationTitle("Mentions")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
         .refreshable { await model.refresh() }
@@ -57,18 +65,25 @@ struct MentionsView: View {
     }
 
     private func place(_ g: Channel?, _ h: String) -> String {
-        guard let g else { return "#" + h }
-        return g.label
+        // a channel reads "#Townsquare"; a group, an event or a proposal by its name; never an id
+        guard let g, g.named else { return BelfryCore.Group.neutral(h) }
+        return g.isPod || g.isEvent || g.isProposal ? g.name : "#" + g.name
     }
 
     /// nostr:npub… as @Name, channel addresses as #name, no Markdown marks, one line.
     private func preview(_ text: String) -> String {
         var t = text
         for m in Rx("nostr:(npub1[02-9ac-hj-np-z]+)").matches(text) {
-            if let npub = m[1], let hex = Bech32.pubkey(npub: npub) { t = t.replacingOccurrences(of: m.whole, with: "@" + model.name(hex)) }
+            if let npub = m[1], let hex = Bech32.pubkey(npub: npub) { t = t.replacingOccurrences(of: m.whole, with: "@" + mentionName(hex)) }
         }
         let plain = Rx("\\*\\*|__|~~|`").replace(model.derive.plainRefs(t), with: "")
         return plain.split(whereSeparator: \.isNewline).joined(separator: " ")
+    }
+
+    /// A mention reads as the person's name, mine too ("@Sam", never "@You").
+    private func mentionName(_ hex: String) -> String {
+        let n = model.realName(hex)
+        return n.isEmpty ? model.name(hex) : n
     }
 
     private func open(_ e: NostrEvent) {

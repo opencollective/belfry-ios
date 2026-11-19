@@ -22,19 +22,6 @@ struct MembersDirectory: View {
         let letters = sections.keys.sorted { a, b in a == "#" ? false : b == "#" ? true : a < b }
         List {
             if query.isEmpty {
-                // My card, as in Contacts
-                Button { model.openProfile = model.me } label: {
-                    HStack(spacing: 12) {
-                        Avatar(pubkey: model.me, size: 56)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(model.realName(model.me).isEmpty ? "You" : model.realName(model.me)).font(.title3.weight(.semibold)).foregroundStyle(.primary)
-                            Text("My card").font(.subheadline).foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
                 // what waits for me, only when something does (web 98c33fc)
                 RequestSections(error: $error)
             }

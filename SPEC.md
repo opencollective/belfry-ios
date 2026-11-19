@@ -2549,3 +2549,16 @@ who has no main channel, keeps the channel they were in.
   state we do not know reads as none.
 (iOS: `WayIn.answer / applyBody`, `UsernameCheck`, `AppModel.wayIn / wayInSignedIn`, views
 `WayInFlow`, `UsernameField`, `WelcomeNameScreen`; test `WayInTests`.)
+
+### 19.60 Four screens brought to the boards (iOS, 2026-11-19; boards home/belfry-settings, home/mentions, home/messages, home/members, home/link-device, home/members-request-name)
+- **Belfry settings**: titled so, the belfry's name over its rows; Branding, Roles (its roles'
+  names), Membership ("Stewards invite · stewards accept" as it is set), Channels each with a
+  second line; "In the console": Mail, Website, Plugins and sales, Add people, opened in the
+  browser at `belfry.<domain>` (`/plugins/email`, `/website`, `/plugins`, `/members/add`).
+- **Mentions**: titled "Mentions"; "New" then "Earlier"; a channel reads "#Townsquare"; a mention
+  reads as the person's name, the viewer's own too (never "@You"); none: "Nothing new".
+- **Messages**: "Your address: <address>" on top; times "now", "12 min", "2 h", "Mon", "Nov 6";
+  rows without a chevron; none: "No messages. Write to anyone in the town with the pen."
+- **Members**: no "My card" row (the profile is under Me). A request to join the belfry reads
+  "@username · e-mail" under the name (the e-mail for stewards only).
+- **Accounts**: "Link a phone or tablet" pushes the QR code of the open account's login link (19.56).

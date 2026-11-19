@@ -489,6 +489,17 @@ enum Format {
         Date(timeIntervalSince1970: TimeInterval(at)).formatted(.relative(presentation: .named))
     }
 
+    /// "now", "12 min", "2 h", "Mon", "Nov 6": a list row's time (board home/messages).
+    static func brief(_ at: Int, now: Int = Int(Date().timeIntervalSince1970)) -> String {
+        let d = max(0, now - at)
+        if d < 60 { return "now" }
+        if d < 3600 { return "\(d / 60) min" }
+        if d < 86400 { return "\(d / 3600) h" }
+        let date = Date(timeIntervalSince1970: TimeInterval(at))
+        if d < 6 * 86400 { return date.formatted(.dateTime.weekday(.abbreviated)) }
+        return date.formatted(.dateTime.month(.abbreviated).day())
+    }
+
     static func short(_ at: Int) -> String {
         let d = Date(timeIntervalSince1970: TimeInterval(at))
         if Calendar.current.isDateInToday(d) { return time(at) }

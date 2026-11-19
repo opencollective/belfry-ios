@@ -18,19 +18,54 @@ struct BelfrySettings: View {
     private var content: some View {
             List {
                 Section {
-                    NavigationLink { BrandingSettings() } label: { Label("Branding", systemImage: "paintpalette") }
-                    NavigationLink { RolesSettings() } label: { Label("Roles", systemImage: "person.badge.key") }
-                    NavigationLink { MembershipSettingsView() } label: { Label("Membership", systemImage: "person.2.badge.gearshape") }
-                    NavigationLink { ChannelsSettings() } label: { Label("Channels", systemImage: "list.bullet.indent") }
+                    NavigationLink { BrandingSettings() } label: { row("paintpalette", "Branding", "Logo, cover, colours, description") }
+                    NavigationLink { RolesSettings() } label: { row("person.badge.key", "Roles", model.roles.roles.map(\.label).joined(separator: " · ")) }
+                    NavigationLink { MembershipSettingsView() } label: {
+                        row("person.2.badge.gearshape", "Membership",
+                            (model.membership.invite == "members" ? "Members invite" : "Stewards invite") + " · " + (model.membership.accept == "vouches" ? "members vouch" : "stewards accept"))
+                    }
+                    NavigationLink { ChannelsSettings() } label: { row("list.bullet.indent", "Channels", "Categories, order, archive or delete") }
                         .accessibilityIdentifier("settings-channels")
-                } footer: { Text("Mail, the website and add-ons are in the console: belfry.\(model.config.domain).") }
+                } header: { Text(model.config.name) }
+                // the rest is the belfry's console, in the browser (board home/belfry-settings)
+                Section {
+                    ForEach(BelfrySettings.console, id: \.path) { c in
+                        Button { if let u = URL(string: "https://belfry.\(model.config.domain)" + c.path) { UIApplication.shared.open(u) } } label: {
+                            HStack {
+                                Label(c.title, systemImage: c.icon).foregroundStyle(.primary)
+                                Spacer(minLength: 4)
+                                Image(systemName: "arrow.up.right.square").font(.footnote).foregroundStyle(.tertiary).accessibilityLabel("Opens in the browser")
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } header: { Text("In the console") } footer: { Text("These open belfry.\(model.config.domain) in the browser.") }
             }
-            .navigationTitle(model.config.name)
+            .task { await model.loadRoles(); await model.loadMembership() }
+            .navigationTitle("Belfry settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if screen { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
                 else { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             }
+    }
+}
+
+extension BelfrySettings {
+    /// The console's pages a steward is sent to (the same four as Android).
+    static let console: [(title: String, path: String, icon: String)] = [
+        ("Mail", "/plugins/email", "envelope"), ("Website", "/website", "globe"),
+        ("Plugins and sales", "/plugins", "puzzlepiece.extension"), ("Add people", "/members/add", "person.badge.plus"),
+    ]
+
+    func row(_ icon: String, _ title: String, _ detail: String) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if !detail.isEmpty { Text(detail).font(.footnote).foregroundStyle(.secondary).lineLimit(1) }
+            }
+        } icon: { Image(systemName: icon) }
     }
 }
 
