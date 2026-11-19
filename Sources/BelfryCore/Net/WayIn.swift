@@ -47,6 +47,9 @@ public struct WayInAnswer: Equatable, Sendable {
     public var suggestions: [String] = []
     /// The digits typed are of no use any more.
     public var clearsCode = false
+    /// `/apply/status` gave a state we don't know: the start screen, but the request is not
+    /// forgotten (asked again on the next open; dropped only on none, declined or approved).
+    public var asksAgain = false
 
     public struct Pending: Equatable, Sendable, Codable {
         public var name = "", username = "", email = "", motivation = ""
@@ -147,7 +150,10 @@ public enum WayIn {
             default:
                 // the status is asked on its own (when the app opens, every 5 s): a state we don't
                 // know reads as none, never as an error on a screen that asked nothing
-                return call == .applyStatus ? WayInAnswer(.start) : WayInAnswer(.stay, message: words["other"])
+                guard call == .applyStatus else { return WayInAnswer(.stay, message: words["other"]) }
+                var a = WayInAnswer(.start)
+                a.asksAgain = true
+                return a
             }
         }
         // nothing for this person to pick (set already, their own key, not a member): the chat

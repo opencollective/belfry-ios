@@ -2546,7 +2546,9 @@ who has no main channel, keeps the channel they were in.
   bunker address or whose `pubkey` is not 64 hex is never stored (`vectors/way-in.json`: 41
   answers → the screen shown, 6 username lines). `/welcome` answering `already_set`, `own_key`,
   `not_member` or `unverified` means nothing to pick: the chat, no message. An `/apply/status`
-  state we do not know reads as none.
+  state we do not know reads as none on screen (the start screen), but the app keeps the applicant
+  key and its mark of a pending request and asks again on the next open; the mark goes only on
+  none, declined or approved.
 (iOS: `WayIn.answer / applyBody`, `UsernameCheck`, `AppModel.wayIn / wayInSignedIn`, views
 `WayInFlow`, `UsernameField`, `WelcomeNameScreen`; test `WayInTests`.)
 

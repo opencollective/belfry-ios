@@ -543,6 +543,9 @@ final class WayInTests: XCTestCase {
         let domain = try XCTUnwrap(v.str("domain"))
         let cases = v.list("cases")
         XCTAssertEqual(cases.count, 41)
+        // an unknown status is not a "none": the request is asked about again on the next open
+        XCTAssertTrue(WayIn.answer(.applyStatus, status: 200, body: ["state": "archived"], domain: "riverside.example").asksAgain)
+        XCTAssertFalse(WayIn.answer(.applyStatus, status: 200, body: ["state": "none"], domain: "riverside.example").asksAgain)
         for c in cases {
             let name = (c.str("call") ?? "") + ": " + (c.str("name") ?? "")
             let call = try XCTUnwrap(WayIn.Call(rawValue: c.str("call") ?? ""), name)

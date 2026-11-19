@@ -360,8 +360,11 @@ struct WayInFlow: View {
             model.wayInPending(community)
             step = .pending
         case .unknown: proof = a.proof; step = .unknown
-        case .declined: step = .declined
-        case .start: model.wayInPending(nil); leave()
+        case .declined: model.wayInPending(nil); step = .declined
+        case .start:
+            // a state we don't know keeps the request's mark: asked again on the next open
+            if !a.asksAgain { model.wayInPending(nil) }
+            leave()
         case .logIn:
             // approved, the session went to another device: log in with the address, filled in
             model.wayInPending(nil)
