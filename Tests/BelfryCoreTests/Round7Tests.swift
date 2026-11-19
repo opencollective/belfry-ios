@@ -225,3 +225,53 @@ final class TodoLimitTests: XCTestCase {
         XCTAssertEqual(Actions.addTask("g", title: String(repeating: "a", count: 300)).content.utf16.count, 300)
     }
 }
+
+/// Applying with no link (onboarding/apply-form; Belfry 8b0331d POST /apply): Android's ApplyFormTest.
+final class ApplyFormTests: XCTestCase {
+    func testTheBody() {
+        let b = ApplyForm.body(email: " lina@example.org ", motivation: " I live on Mill Street ", agreed: ["a1", "b2"])
+        XCTAssertEqual(b["email"] as? String, "lina@example.org")
+        XCTAssertEqual(b["motivation"] as? String, "I live on Mill Street")
+        XCTAssertEqual(b["agreed"] as? [String], ["a1", "b2"])
+        XCTAssertEqual(b["website"] as? String, "")
+        XCTAssertEqual((ApplyForm.body(email: String(repeating: "x", count: 500), motivation: "y", agreed: [])["email"] as? String)?.count, 200)
+    }
+
+    func testTheWords() {
+        func err(_ code: String, _ message: String? = nil) -> [String: Any] { message.map { ["error": code, "message": $0] } ?? ["error": code] }
+        XCTAssertEqual(ApplyForm.error(status: 400, body: err("unticked", "server words")), ApplyForm.unticked)
+        XCTAssertEqual(ApplyForm.error(status: 400, body: err("missing")), ApplyForm.missing)
+        XCTAssertEqual(ApplyForm.error(status: 400, body: err("bad_request")), ApplyForm.missing)
+        XCTAssertEqual(ApplyForm.error(status: 400, body: err("refused", " This address can't receive mail. ")), "This address can't receive mail.")
+        XCTAssertEqual(ApplyForm.error(status: 400, body: err("refused", String(repeating: "z", count: 900))).count, 300)
+        XCTAssertEqual(ApplyForm.error(status: 400, body: err("refused")), ApplyForm.other)
+        XCTAssertEqual(ApplyForm.error(status: 429, body: nil), ApplyForm.busy)
+        XCTAssertEqual(ApplyForm.error(status: 500, body: nil), ApplyForm.other)
+    }
+
+    func testTheButton() {
+        XCTAssertEqual(ApplyForm.button(ticked: 2, of: 3), "Tick each agreement (2 of 3)")
+        XCTAssertEqual(ApplyForm.button(ticked: 3, of: 3), "Send my request")
+        XCTAssertEqual(ApplyForm.button(ticked: 0, of: 0), "Send my request")
+    }
+}
+
+final class NoLinkTests: XCTestCase {
+    /// What people type for a belfry: its address, its chat's address, a pasted link.
+    func testDomain() {
+        XCTAssertEqual(NoLink.domain(" Belfry.sh "), "belfry.sh")
+        XCTAssertEqual(NoLink.domain("https://chat.belfry.sh/c/general?x=1"), "belfry.sh")
+        XCTAssertEqual(NoLink.domain("belfry.belfry.sh"), "belfry.sh")
+        XCTAssertEqual(NoLink.domain("chat.example"), "chat.example")
+        XCTAssertEqual(NoLink.domain("riverside.example/"), "riverside.example")
+    }
+
+    /// An invitation: its link as it is, or its bare code at this belfry; nothing else.
+    func testInvite() {
+        let token = "demoinvite0123456789abcd"
+        XCTAssertEqual(NoLink.invite(" https://chat.belfry.sh/join/\(token) ", domain: "other.example")?.absoluteString, "https://chat.belfry.sh/join/\(token)")
+        XCTAssertEqual(NoLink.invite(token, domain: "riverside.example")?.absoluteString, "https://chat.riverside.example/join/\(token)")
+        XCTAssertNil(NoLink.invite("https://evil.example/join/\(token)", domain: "riverside.example"))
+        XCTAssertNil(NoLink.invite("hello there", domain: "riverside.example"))
+    }
+}

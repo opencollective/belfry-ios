@@ -1162,8 +1162,9 @@ For the iPhone app to port; the web's code is the reference for each.
   or cancelled, empty the box *while the edit is still open*, then end the edit: the draft's
   keeper is paused during an edit, so it never takes the emptied box for an emptied draft, and
   the channel's own draft comes back into the box.
-- **"Todo"**, not "To-do", in everything a person reads ("New todo", "Turn into a todo", "Add a
-  todo…", "made a todo", the Todos tab). The to-do mark on a message is gone (the ⏳ / ☑️
+- **"To-do"** in everything a person reads since 2026-11-19 (the canvas: "To-do", "New to-do",
+  "Turn into a to-do", "Add a to-do"; before: "Todo"). The channel log's lines keep their shared
+  words ("made a todo"). The to-do mark on a message is gone (the ⏳ / ☑️
   reactions say it); the web's own code has no clock reaction besides ⏰ in the emoji picker.
 - **Photo viewer.** Pinch zooms (1× to 5×), one finger moves a zoomed photo, a double tap zooms
   to 2.5× on the spot tapped and back, a pull down of more than 120 pt closes (the black fades
@@ -2267,3 +2268,26 @@ says what would change in the proposal's chat; a client never validates or inven
 - "Propose as the website" from the chat makes a whole-site version (no paths), as the web does.
 - (iOS) `Proposal.paths`, `NewProposal.paths`, `Actions.websitePathTags`, `Proposal.websiteLine`,
   `Buttons.confirmText(_:domain:paths:)`; test `WebsiteProposalTests.testPathTagsKeptOnEveryVersion`.
+
+### 19.45 Signed out with no link: find a belfry, its Welcome, apply (iOS, 2026-11-19; boards onboarding/no-link-belfry, no-link, apply-form, apply-sent; Belfry 8b0331d; Android `NoLink.kt`)
+- **Find your community** is the app's first screen: one field, "Belfry address". A member's
+  address (`name@domain`) goes straight to the code (19.20). Anything else is read as a belfry
+  (`NoLink.domain`: scheme, path and a leading `chat.` / `belfry.` dropped), its `belfry.json`
+  is fetched, and its **Welcome** is pushed: name, "Log in", "Apply to join", "I have an invite
+  code". No answer: "No belfry answered at this address. Check the address and your connection."
+- **Log in** = 19.20's address screen with the belfry's name; a bare `name` gets `@domain`.
+- **I have an invite code**: a link (`InviteLink.parse`) or a bare token at this belfry
+  (`NoLink.invite`), or its QR code; then the invitation opens as any other.
+- **Apply to join**: `GET <api>/charter` (no auth), then `POST <api>/apply`, no auth, body
+  `{"email" ≤200, "motivation" ≤4000, "agreed": [every agreement's id], "website": ""}` (the last
+  is the form's honeypot, always empty). The button reads "Tick each agreement (n of N)" until
+  every agreement is ticked, then "Send my request". 200 `{"ok":true}` → "Thank you … the answer
+  by e-mail too." Refusals have fixed words per `error` (`missing` / `bad_request`, `unticked`,
+  429, anything else); only `refused` shows the server's `message`, as plain text, 300 characters
+  at most (`ApplyForm`, tests `ApplyFormTests`, `NoLinkTests`: Android's cases).
+- Not built: logged in with an address that isn't a member's → the same form with the e-mail filled in.
+
+### 19.46 A to-do's text is never cut (2026-11-19, the lead: the rule for every platform)
+A to-do's title holds 300 UTF-16 units (19.8). The forms count ("n of 300" from 250 on), say
+"N characters too long. A to-do holds 300; put the rest in a comment on it." and keep Add off
+until it fits; nothing is cut on send (`Actions.taskOver`, `Actions.taskLimitLine`).

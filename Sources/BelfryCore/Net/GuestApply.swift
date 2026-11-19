@@ -121,3 +121,80 @@ public extension BelfryAPI {
         return b["events"] as? [[String: Any]] ?? []
     }
 }
+
+// ---- applying with no link (boards onboarding/apply-form, apply-sent; Belfry 8b0331d) --------------
+
+/// `POST /apply`, no account: the body and the words for each refusal (the same on Android).
+public enum ApplyForm {
+    public static let missing = "Please give your e-mail and a few words on why you would like to join."
+    public static let unticked = "Please tick each agreement of the charter: joining means agreeing to them."
+    public static let network = "No connection to the belfry. Try again."
+    public static let busy = "Too many requests just now. Try again in a minute."
+    public static let other = "Your request didn't go through. Try again."
+
+    public static func body(email: String, motivation: String, agreed: [String]) -> [String: Any] {
+        ["email": String(email.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200)),
+         "motivation": String(motivation.trimmingCharacters(in: .whitespacesAndNewlines).prefix(4000)),
+         "agreed": agreed,
+         "website": ""] // the form's honeypot, always empty
+    }
+
+    /// The line to show for a refused request. `refused` carries the register's own words to the
+    /// applicant: shown as they come, as plain text, cut to 300 characters. Every other code has
+    /// fixed words.
+    public static func error(status: Int, body b: [String: Any]?) -> String {
+        if status == 429 { return busy }
+        switch b?["error"] as? String {
+        case "refused":
+            let m = String((b?["message"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).prefix(300))
+            return m.isEmpty ? other : m
+        case "unticked": return unticked
+        case "missing", "bad_request": return missing
+        default: return other
+        }
+    }
+
+    /// The button under the form: counts the ticks until every agreement is ticked.
+    public static func button(ticked: Int, of n: Int) -> String {
+        ticked < n ? "Tick each agreement (\(ticked) of \(n))" : "Send my request"
+    }
+}
+
+public extension BelfryAPI {
+    /// Sends the application (no auth; the answer comes by e-mail). Throws `ApiError` with `ApplyForm`'s words.
+    func applyToJoin(email: String, motivation: String, agreed: [String]) async throws {
+        let a: Answer
+        do {
+            let data = try JSONSerialization.data(withJSONObject: ApplyForm.body(email: email, motivation: motivation, agreed: agreed))
+            a = try await send(base + "/apply", method: "POST", body: data, authorization: nil)
+        } catch let e as ApiError {
+            throw ApiError(e.code, e.status, e.code == "network" ? ApplyForm.network : ApplyForm.other)
+        } catch { throw ApiError("http", 0, ApplyForm.other) }
+        guard a.ok, a.body?["ok"] as? Bool == true else {
+            throw ApiError(a.error.isEmpty ? "http" : a.error, a.status, ApplyForm.error(status: a.status, body: a.body))
+        }
+    }
+}
+
+/// What people type on the signed-out screens (boards onboarding/no-link-belfry, no-link).
+public enum NoLink {
+    public static let notFound = "No belfry answered at this address. Check the address and your connection."
+    public static let notAnInvite = "That isn’t an invitation. Check the link or the code."
+
+    /// What people type or paste for a belfry: `belfry.sh`, `https://chat.belfry.sh/…`, `chat.belfry.sh`.
+    public static func domain(_ typed: String) -> String {
+        var s = typed.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        for p in ["https://", "http://"] where s.hasPrefix(p) { s = String(s.dropFirst(p.count)) }
+        if let i = s.firstIndex(where: { $0 == "/" || $0 == "?" || $0 == "#" }) { s = String(s[..<i]) }
+        for p in ["chat.", "belfry."] where s.hasPrefix(p) && Discovery.isDomain(String(s.dropFirst(p.count))) { s = String(s.dropFirst(p.count)) }
+        return s
+    }
+
+    /// An invitation typed or pasted: its link, or its bare code at this belfry.
+    public static func invite(_ typed: String, domain: String) -> URL? {
+        let t = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let u = URL(string: t), InviteLink.parse(u) != nil { return u }
+        if InviteLink.isToken(t) { return URL(string: "https://chat.\(domain)/join/\(t)") }
+        return nil
+    }
+}

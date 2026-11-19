@@ -224,6 +224,13 @@ shot 41-guest-mode-dark guest-feed dark
 shot 35-sign-in-code signin-code light
 shot 36-sign-in-older-belfry signin-older light
 shot 37-sign-in-code-dark signin-code dark
+shot 150-welcome-belfry signin-welcome light
+shot 150b-welcome-belfry-dark signin-welcome dark
+shot 151-apply-form signin-apply light
+shot 151b-apply-form-dark signin-apply dark
+shot 152-apply-sent signin-sent light
+shot 153-invite-code signin-invitecode light
+shot 154-log-in signin-login light
 python3 "$(dirname "$0")/shots.py" "$UDID" "$BUNDLE" "$OUT" "$LIST"
 
 # native menus only a touch opens: UI tests (App/UITests) write their own PNGs.

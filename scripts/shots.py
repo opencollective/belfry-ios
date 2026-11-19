@@ -23,7 +23,7 @@ def simctl(*a, quiet=True):
 
 def args(screen):
     if screen == "signin": return []
-    if screen in ("signin-code", "signin-older"): return ["-signin", screen[7:]]
+    if screen.startswith("signin-"): return ["-signin", screen[7:]]
     if screen.startswith("guest-"): return ["-guest", screen[6:]]
     if screen.startswith("member-"): return ["-demo", "-member", "-screen", screen[7:]]
     if screen == "join": return ["-join"]

@@ -12,22 +12,42 @@ struct SignInView: View {
     var domainHint: String?
     /// "Add an account" (SPEC 19.24): over the app, with Cancel; the open account stays meanwhile.
     var onCancel: (() -> Void)? = nil
+    /// The screens pushed from "Find your community" (kept while a code is typed).
+    @State private var path: [NoLinkStep] = []
+
+    /// No link and no account being added: the app asks which belfry first (onboarding/no-link-belfry).
+    private var finds: Bool {
+        onCancel == nil && domainHint == nil && model.launch.signin != "older"
+    }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                SwiftUI.Group {
+        NavigationStack(path: $path) {
+            page {
+                if let pending = model.pendingCode {
+                    CodeScreen(pending: pending)
+                } else if finds {
+                    FindScreen(path: $path)
+                } else {
+                    AddressScreen(domainHint: domainHint, adding: onCancel != nil)
+                }
+            }
+            .navigationDestination(for: NoLinkStep.self) { step in
+                page {
+                    // a code on its way shows over whatever was pushed
                     if let pending = model.pendingCode {
                         CodeScreen(pending: pending)
                     } else {
-                        AddressScreen(domainHint: domainHint, adding: onCancel != nil)
+                        switch step {
+                        case .welcome(let c): CommunityWelcome(community: c, path: $path)
+                        case .login(let c): AddressScreen(domainHint: c?.domain, adding: true, community: c)
+                        case .apply(let c): ApplyFormScreen(community: c, path: $path)
+                        case .sent(let c): ApplySentScreen(community: c, path: $path)
+                        case .inviteCode(let c): InviteCodeScreen(community: c)
+                        }
                     }
                 }
-                .padding(24)
-                .frame(maxWidth: 520)
-                .frame(maxWidth: .infinity)
             }
-            .navigationBarTitleDisplayMode(.inline)
+            .onAppear { if path.isEmpty, let p = NoLinkStep.shot(model.launch.signin) { path = p } }
             .toolbar {
                 if let onCancel {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onCancel) }
@@ -35,13 +55,42 @@ struct SignInView: View {
             }
         }
     }
+
+    private func page<V: View>(@ViewBuilder _ content: () -> V) -> some View {
+        ScrollView {
+            content()
+                .padding(24)
+                .frame(maxWidth: 520)
+                .frame(maxWidth: .infinity)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .navigationBarTitleDisplayMode(.inline)
+        // a code on its way: the code screen has its own way back
+        .navigationBarBackButtonHidden(model.pendingCode != nil)
+    }
+}
+
+extension NoLinkStep {
+    /// `-signin welcome|apply|sent|invitecode|login`: the pushed screens with a made-up belfry, for screenshots.
+    static func shot(_ name: String?) -> [NoLinkStep]? {
+        switch name {
+        case "welcome": return [.welcome(.shot)]
+        case "apply": return [.welcome(.shot), .apply(.shot)]
+        case "sent": return [.welcome(.shot), .sent(.shot)]
+        case "invitecode": return [.welcome(.shot), .inviteCode(.shot)]
+        case "login": return [.welcome(.shot), .login(.shot)]
+        default: return nil
+        }
+    }
 }
 
 /// Screen 1: one field, the address.
-private struct AddressScreen: View {
+struct AddressScreen: View {
     @EnvironmentObject var model: AppModel
     var domainHint: String?
     var adding = false
+    /// "Log in" from a belfry's Welcome: its name on top; a bare name gets its address.
+    var community: BelfryConfig? = nil
     @AppStorage("last-address") private var address = ""
     @State private var auth = WebAuth()
     @State private var error: String?
@@ -56,7 +105,7 @@ private struct AddressScreen: View {
                 .frame(width: 64, height: 64)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 8) {
-                Text("Your community's chat")
+                Text(community.map { "Log in to \($0.name)" } ?? "Your community's chat")
                     .font(.largeTitle.bold())
                 Text("Type your address in your community. A 6-digit code goes to your e-mail; no password.")
                     .foregroundStyle(.secondary)
@@ -149,7 +198,7 @@ private struct AddressScreen: View {
         Task { @MainActor in
             if offerBrowser {
                 await browser()
-            } else if let e = await model.requestCode(address) {
+            } else if let e = await model.requestCode(fullAddress) {
                 if e.failure == .unsupported { offerBrowser = true }
                 error = e.display
             }
@@ -157,11 +206,18 @@ private struct AddressScreen: View {
         }
     }
 
+    /// What was typed; on a belfry's own Log in a bare name is completed with its address.
+    private var fullAddress: String {
+        let t = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let c = community, !t.isEmpty, !t.contains("@"), !t.contains(".") { return t + "@" + c.domain }
+        return t
+    }
+
     /// The belfry's own page (SPEC 2), at the domain of the address typed (or a bare domain).
     private func browser() async {
         error = nil
         model.signInError = nil
-        let typed = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let typed = fullAddress.lowercased()
         guard let domain = MemberAddress.parse(typed)?.domain ?? (Discovery.isDomain(typed) ? typed : nil) else {
             error = "Type your address first, like name@belfry.sh."
             return
