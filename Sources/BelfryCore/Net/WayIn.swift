@@ -144,9 +144,14 @@ public enum WayIn {
                 var a = WayInAnswer(.logIn)
                 a.nip05 = GuestJoinForm.signInAddress(nip05: b?["nip05"] as? String, typed: "", domain: domain)
                 return a
-            default: return WayInAnswer(.stay, message: words["other"])
+            default:
+                // the status is asked on its own (when the app opens, every 5 s): a state we don't
+                // know reads as none, never as an error on a screen that asked nothing
+                return call == .applyStatus ? WayInAnswer(.start) : WayInAnswer(.stay, message: words["other"])
             }
         }
+        // nothing for this person to pick (set already, their own key, not a member): the chat
+        if call == .welcome, ["already_set", "own_key", "not_member", "unverified"].contains(error) { return WayInAnswer(.signedIn) }
         // a belfry without these calls (or without its own register): the older way
         if error == "unsupported" || ((status == 404 || status == 405) && error.isEmpty) { return WayInAnswer(.older) }
         switch error {

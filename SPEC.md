@@ -2543,7 +2543,9 @@ who has no main channel, keeps the channel they were in.
   and the unproven form (19.45). The native sign-in also stays for the login link (19.56) and for
   an account that holds its own key (`409 taken`).
 - Every refusal is shown in the app's fixed words; a `signed_in` whose `bunker_url` is not a
-  bunker address or whose `pubkey` is not 64 hex is never stored (`vectors/way-in.json`: 40
-  answers → the screen shown, 6 username lines).
+  bunker address or whose `pubkey` is not 64 hex is never stored (`vectors/way-in.json`: 41
+  answers → the screen shown, 6 username lines). `/welcome` answering `already_set`, `own_key`,
+  `not_member` or `unverified` means nothing to pick: the chat, no message. An `/apply/status`
+  state we do not know reads as none.
 (iOS: `WayIn.answer / applyBody`, `UsernameCheck`, `AppModel.wayIn / wayInSignedIn`, views
 `WayInFlow`, `UsernameField`, `WelcomeNameScreen`; test `WayInTests`.)

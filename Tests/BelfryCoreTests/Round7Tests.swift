@@ -542,7 +542,7 @@ final class WayInTests: XCTestCase {
         let v = try vector("way-in")
         let domain = try XCTUnwrap(v.str("domain"))
         let cases = v.list("cases")
-        XCTAssertEqual(cases.count, 40)
+        XCTAssertEqual(cases.count, 41)
         for c in cases {
             let name = (c.str("call") ?? "") + ": " + (c.str("name") ?? "")
             let call = try XCTUnwrap(WayIn.Call(rawValue: c.str("call") ?? ""), name)
