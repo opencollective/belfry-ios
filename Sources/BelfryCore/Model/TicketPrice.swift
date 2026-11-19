@@ -18,6 +18,9 @@ public struct TicketPrice: Hashable, Sendable, Codable {
     public var until: Int?
     /// False: it has dated prices and none of them is now.
     public var onSale = true
+    /// `can_pay` + `checkout_url` of `GET /events/<link>` (docs/sales.md §10): the page where this
+    /// viewer can buy it now, an https address; nil = it is asked for from the hosts.
+    public var checkout: String?
 
     public init() {}
 
@@ -121,6 +124,11 @@ public struct TicketPrice: Hashable, Sendable, Codable {
                 if vatRx.test(v), Rx("^[A-Z]{3}$").test(got.1) { out.vat = v; out.vatIncluded = p["vat_included"] as? Bool ?? false }
                 out.until = (p["until"] as? NSNumber)?.intValue
             }
+        }
+        // bought through the checkout only when the belfry says this viewer can, and gives a page
+        if out.priced, out.onSale, x["can_pay"] as? Bool == true, let u = x["checkout_url"] as? String,
+           u.count <= 2000, let url = URL(string: u), url.scheme == "https", url.host?.isEmpty == false {
+            out.checkout = u
         }
         return out
     }

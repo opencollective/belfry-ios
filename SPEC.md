@@ -2389,6 +2389,10 @@ seconds, either may be empty) and `["vat", "<rate>"]` / `["vat", "<rate>", "incl
   The host admitting them is the host saying it is settled (their 9000 carries `["paid","paid"]`).
 - From `GET /events/<link>`: each ticket's `price` (`{amount, currency, vat, vat_included,
   until}` or null), `on_sale`, `needs_payment`; read in the same fixed shapes, never shown as written.
+- **Bought through the checkout** (docs/sales.md §10, 2026-11-19): when a ticket of
+  `GET /events/<link>` has `can_pay` true and a `checkout_url` (https), its button is "Buy" and
+  opens that page in the system browser, never a web view in the app; otherwise "Ask". Events
+  read from the relay alone (no API answer) always show "Ask".
 - Where the board and the server differ, the server wins: the board draws "€50 + VAT"; the rate
   is always shown ("€50 + 21% VAT"). The day a price ends is its own line, "This price until 1 Jan".
 (iOS: `TicketPrice.of / from(api:) / line`, `Ticket.price(now:)`; tests `TicketPriceTests`.)

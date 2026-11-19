@@ -394,6 +394,14 @@ final class TicketPriceTests: XCTestCase {
         XCTAssertEqual(TicketPrice.from(api: ["price": NSNull(), "needs_payment": true, "on_sale": true]).line, "Paid")
         XCTAssertEqual(TicketPrice.from(api: ["price": NSNull(), "needs_payment": true, "on_sale": false]).line, "Not on sale now")
         XCTAssertEqual(TicketPrice.from(api: ["title": "Seat"]).line, "Free")
+        // the checkout (docs/sales.md §10): only with can_pay and an https page
+        let buy: [String: Any] = ["price": ["amount": "50", "currency": "EUR"], "needs_payment": true, "on_sale": true, "can_pay": true,
+                                  "checkout_url": "https://riverside.example/tickets/repair-cafe"]
+        XCTAssertEqual(TicketPrice.from(api: buy).checkout, "https://riverside.example/tickets/repair-cafe")
+        XCTAssertNil(TicketPrice.from(api: buy.merging(["can_pay": false]) { $1 }).checkout)
+        XCTAssertNil(TicketPrice.from(api: buy.merging(["checkout_url": "javascript:alert(1)"]) { $1 }).checkout)
+        XCTAssertNil(TicketPrice.from(api: buy.merging(["checkout_url": "http://riverside.example/x"]) { $1 }).checkout)
+        XCTAssertNil(TicketPrice.from(api: buy.merging(["on_sale": false]) { $1 }).checkout)
         // a price that isn't in the fixed shape is never shown as written
         XCTAssertEqual(TicketPrice.from(api: ["price": ["amount": "<b>", "currency": "EUR"], "needs_payment": true]).line, "Paid")
     }

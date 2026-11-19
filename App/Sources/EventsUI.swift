@@ -85,6 +85,10 @@ struct TicketRow: View {
                     Chip(text: "Yours", tint: .green)
                 } else if guestBlocked {
                     Text("Members only").font(.caption).foregroundStyle(.secondary)
+                } else if price.priced && (left ?? 1) > 0, let buy = price.checkout.flatMap({ URL(string: $0) }) {
+                    // sold through the belfry's checkout: its page in the system browser, never a web view here
+                    Button("Buy") { UIApplication.shared.open(buy) }.buttonStyle(.brand).controlSize(.small)
+                        .accessibilityLabel("Buy \(t.title) in the browser")
                 } else if price.priced && (left ?? 1) > 0 {
                     Button("Ask", action: apply).buttonStyle(.bordered).controlSize(.small).disabled(!price.onSale)
                         .accessibilityLabel(price.onSale ? "Ask for \(t.title)" : "\(t.title) is not on sale now")
