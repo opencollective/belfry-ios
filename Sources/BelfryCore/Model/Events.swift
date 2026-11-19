@@ -490,6 +490,15 @@ extension Derive {
         for l in EventLinks.linksIn(text, domain: ctx.domain) {
             if let c = eventByLink(l)?.coord, !out.contains(where: { $0[1] == c }) { out.append(["a", c, mainRelay]) }
         }
+        // an event or a proposal named by its address (nostr:naddr…): its coord too (SPEC 19.49;
+        // readers never depend on it, they read the text)
+        for p in References.parts(text, domain: ctx.domain) {
+            let t: RefTarget
+            switch p { case .ref(let x), .box(let x): t = x; case .text: continue }
+            let coord: String?
+            switch t { case .event(_, let c): coord = c; case .proposal(let c): coord = c; case .group: coord = nil }
+            if let coord, !out.contains(where: { $0[1] == coord }) { out.append(["a", coord, mainRelay]) }
+        }
         return out
     }
 

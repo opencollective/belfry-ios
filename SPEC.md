@@ -2345,11 +2345,12 @@ event pages `https://chat.<domain>/events/<link>` and `https://<domain>/events/<
 - **Inside the text**: its name, tappable: "#name" for a channel or group, the title for an event
   or a proposal; an event's chat reads as its event, a proposal's chat as its proposal. Never the
   id or the slug.
-- **Not here yet**: the kind's word, grey: "#channel" / "#group", "Event", "Proposal". (Android
-  shows a grey bar for 5 s first; iOS shows the word at once.)
+- **Not here yet**: the box shows a grey bar, then after 5 s the kind's word, grey: "#channel" /
+  "#group", "Event", "Proposal". Inside the text the word shows at once.
 - **Can't open it**: no name; "a members-only channel" / "a closed group", in the box with "Only
   members of <belfry> can open it". **Deleted**: "a deleted channel" (group, event, proposal).
-- Not built on iOS: the `a` tag added on send for an event or proposal coord in the text.
+- **On send**: an `a` tag for each event or proposal coord named by an naddr in the text (and,
+  as before, for each event link); readers never depend on it (`Derive.eventTagsFor`).
 (iOS: `References.target / parts / split`, `Derive.refShown`, views `MessageText`, `RefBox`,
 `MarkdownText.refName`; tests `ReferencesTests`.)
 

@@ -398,3 +398,18 @@ final class TicketPriceTests: XCTestCase {
         XCTAssertEqual(TicketPrice.from(api: ["price": ["amount": "<b>", "currency": "EUR"], "needs_payment": true]).line, "Paid")
     }
 }
+
+final class ReferenceTagsTests: XCTestCase {
+    /// On send: an `a` tag for an event or a proposal named by its address in the text.
+    func testATagsForNamedCoords() throws {
+        let v = try vector("references")
+        let c = try XCTUnwrap(v.list("cases").first { $0.str("name") == "inside the text: names" })
+        let d = Derive(events: [], context: WorldContext(me: A, domain: v.str("domain") ?? ""))
+        let tags = d.eventTagsFor(c.str("text") ?? "", mainRelay: "wss://relay.riverside.example")
+        XCTAssertEqual(tags.map { $0[0] }, ["a", "a"])
+        XCTAssertTrue(tags[0][1].hasPrefix("31923:"))
+        XCTAssertTrue(tags[1][1].hasPrefix("30023:"))
+        XCTAssertEqual(tags[0][2], "wss://relay.riverside.example")
+        XCTAssertTrue(d.eventTagsFor("Just words and https://example.org", mainRelay: "wss://x").isEmpty)
+    }
+}

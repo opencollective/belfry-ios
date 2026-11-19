@@ -26,6 +26,8 @@ struct RefBox: View {
     @Environment(\.openChannel) private var openChannel
     let target: RefTarget
     var shownEvents: [EventRef] = []
+    /// Not here yet: a grey bar first, the kind's word after 5 s.
+    @State private var waited = false
 
     var body: some View {
         let d = model.derive
@@ -44,7 +46,12 @@ struct RefBox: View {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: icon(s.kind)).font(.body).foregroundStyle(.secondary).frame(width: 24)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(s.title).font(.subheadline.weight(.semibold)).foregroundStyle(s.open == nil ? Color.secondary : Color.primary).lineLimit(2)
+                            if s.kind == .unknown && !waited {
+                                RoundedRectangle(cornerRadius: 4).fill(Color.secondary.opacity(0.25)).frame(width: 120, height: 14)
+                                    .accessibilityLabel("Loading")
+                            } else {
+                                Text(s.title).font(.subheadline.weight(.semibold)).foregroundStyle(s.open == nil ? Color.secondary : Color.primary).lineLimit(2)
+                            }
                             if !s.line.isEmpty { Text(s.line).font(.caption).foregroundStyle(.secondary) }
                             if !s.about.isEmpty { Text(s.about).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
                         }
@@ -56,6 +63,7 @@ struct RefBox: View {
             .buttonStyle(.plain)
             .disabled(s.open == nil)
             .accessibilityIdentifier("ref-box")
+            .task { if !waited { try? await Task.sleep(nanoseconds: 5_000_000_000); waited = true } }
         }
     }
 
