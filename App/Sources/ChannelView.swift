@@ -148,6 +148,7 @@ struct ChannelView: View {
                 if pendingThreadLaunch { openBusiestThread(proxy) }
             }
             .onChange(of: scrollTarget) { _, t in if let t { jump(to: t, proxy); scrollTarget = nil } }
+            .onChange(of: model.feedToEnd) { _, _ in if model.visibleChannel == id, !embedded { feedPos.toEnd(animated: true) } }
             .onChange(of: model.openThread) { _, _ in takeThread() }
             .onDisappear { if model.visibleChannel == id { model.visibleChannel = nil }; if model.missingMessage == id { model.missingMessage = nil } }
             .onUserScroll { if model.missingMessage == id { withAnimation { model.missingMessage = nil } } }

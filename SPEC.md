@@ -2503,3 +2503,10 @@ what the server would refuse, and no link is made before that answer.
   as before (19.43). A Steward also sees the belfry's own roles (e.g. Host) as extra rows with
   their one line, after Steward.
 (iOS: `InviteRole`, `InviteChoices.roles / line`, `InviteSheet.external / options`; test `InviteChoicesTests`.)
+
+### 19.58 The Town tab always opens the main channel (iOS, 2026-11-19, the owner: "tapping on 'Town' brings you always back to the Townhall channel")
+A tap on **Town** in the bottom bar opens the belfry's main channel (group `general`, shown as
+Townsquare), whatever channel was open in Town before; anything pushed over it is popped. A
+second tap while it is on screen glides to the newest message. Other ways into a channel (the
+drawer, a link, a notification, Create) still open that channel under the Town tab. A guest,
+who has no main channel, keeps the channel they were in.

@@ -183,6 +183,15 @@ struct RootView: View {
             push(r)
         }
         .onChange(of: model.tabReselected) { _, _ in current.wrappedValue = NavigationPath(); closeDrawer() }
+        .onChange(of: model.townTapped) { _, _ in
+            closeDrawer()
+            if model.townTapOnTown, selection == .channel(generalId), path.isEmpty {
+                model.feedToEnd += 1
+            } else {
+                if selection != .channel(generalId) { selection = .channel(generalId) }
+                path = NavigationPath()
+            }
+        }
         .onChange(of: model.tab) { _, t in
             closeDrawer()
             if !model.isDemo { UserDefaults.standard.set(t.rawValue, forKey: AppModel.perAccount("belfry-last-tab")) }

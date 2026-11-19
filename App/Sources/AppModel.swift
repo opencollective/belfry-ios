@@ -91,6 +91,11 @@ final class AppModel: ObservableObject {
     @Published var showCreate = false
     /// The selected place's bar item tapped again: back to its root.
     @Published var tabReselected = 0
+    /// The Town tab was tapped (Xavier 2026-11-19: it always brings you back to the belfry's main
+    /// channel); `townTapOnTown`: it was the open tab already. `feedToEnd`: glide to the newest message.
+    @Published var townTapped = 0
+    var townTapOnTown = false
+    @Published var feedToEnd = 0
     /// The accounts / belfries switcher (the belfry's name at the top of a place, ⇅ in the drawer).
     @Published var showAccounts = false
     /// A login link ("Link your phone") whose code is on its way.

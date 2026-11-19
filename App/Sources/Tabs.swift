@@ -72,7 +72,13 @@ struct TabBar: View {
     private func item(_ t: AppTab) -> some View {
         let on = model.tab == t
         return Button {
-            if model.tab == t { model.tabReselected += 1 } else { model.tab = t }
+            if t == .town, !(model.derive.amGuest || model.guestReading) {
+                // Town always opens the belfry's main channel, never the last open one; a second
+                // tap there goes to the newest message
+                model.townTapOnTown = model.tab == .town
+                if model.tab != .town { model.tab = .town }
+                model.townTapped += 1
+            } else if model.tab == t { model.tabReselected += 1 } else { model.tab = t }
         } label: {
             VStack(spacing: 2) {
                 Image(systemName: on ? t.selectedIcon : t.icon).font(.system(size: 18, weight: .medium))
