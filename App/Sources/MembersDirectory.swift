@@ -79,7 +79,7 @@ struct MembersDirectory: View {
                 Button { model.openProfile = m.pubkey } label: { row(m.pubkey, m.name, size: 40, detail: nil, role: model.roles.label(of: m.pubkey) ?? roleLabel(m.role)) }
                     .buttonStyle(.plain)
                 ForEach(m.agents, id: \.pubkey) { a in
-                    Button { model.openProfile = a.pubkey } label: { row(a.pubkey, a.name, size: 40, detail: "agent of \(name(m.pubkey, m.name))", role: nil) }
+                    Button { model.openProfile = a.pubkey } label: { row(a.pubkey, a.name, size: 40, detail: m.pubkey == model.me ? "your agent" : "agent of \(name(m.pubkey, m.name))", role: nil) }
                         .buttonStyle(.plain)
                         .padding(.leading, 24)
                 }

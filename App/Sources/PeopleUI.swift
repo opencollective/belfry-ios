@@ -216,7 +216,7 @@ struct RoleSection: View {
     @ViewBuilder private func roleRows(_ d: Derive) -> some View {
         SwiftUI.Group {
             if let owner = d.agentOwner(pubkey) {
-                LabeledContent("Agent", value: "of " + model.realNameOrKey(owner))
+                LabeledContent("Agent", value: owner == model.me ? "Your agent" : "of " + model.realNameOrKey(owner))
             } else if d.isGuest(pubkey) && !d.isBelfryAdmin(pubkey) {
                 if d.isCommunityAdmin && d.noAdminReason(pubkey) == nil {
                     Button { picking = true } label: { LabeledContent("Guest", value: "Make a member…") }
