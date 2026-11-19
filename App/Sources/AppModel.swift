@@ -699,6 +699,28 @@ final class AppModel: ObservableObject {
     func admit(_ id: String, _ pk: String) { engine?.enqueue(Actions.admit(id, pubkey: pk)) }
     func declineApplicant(_ id: String, _ pk: String) { engine?.enqueue(Actions.decline(id, pubkey: pk)) }
 
+    /// Accept or decline a request to a closed channel or group through the belfry, so an admin
+    /// by role has the same buttons (docs/membership.md). An older belfry: the relay's own way,
+    /// for those it takes it from. Nil = done.
+    func decideGroupRequest(_ g: Channel, _ pk: String, approve: Bool) async -> String? {
+        let own = { [self] in if approve { admit(g.id, pk) } else { declineApplicant(g.id, pk) } }
+        if engine?.localOnly != false { own(); return nil }
+        do {
+            _ = try await api.decideGroupRequest(channel: g.id, pubkey: pk, approve: approve)
+            await refresh()
+            return nil
+        } catch let e as ApiError {
+            if e.code == "unsupported" {
+                guard derive.mayModerate(g) else { return "Its creator or a belfry admin lets people in." }
+                own()
+                return nil
+            }
+            // answered meanwhile: nothing to say, the list catches up
+            if e.code == "no_request" { await refresh(); return nil }
+            return e.message
+        } catch { return BelfryAPI.network }
+    }
+
     func pinTopic(_ topic: String, in group: String, _ on: Bool) {
         engine?.enqueue(Actions.pinTopic(group, pinned: derive.pinnedTopics(group), topic: topic, pin: on))
     }

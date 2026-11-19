@@ -276,7 +276,8 @@ still open: the app still starts on sign-in or a guest link.
 
 ## 15. Round 6 (2026-11-18): closed channels, web settings by stewards — not built
 
-- **A steward by role can't let people in.** A closed channel's (or group's) requests are 9021s;
+- **ANSWERED 2026-11-19** (`POST /api/v1/group-requests/decide`, docs/membership.md; iOS uses it
+  for every admin, SPEC 19.52). ~~A steward by role can't let people in.~~ A closed channel's (or group's) requests are 9021s;
   Accept / Decline is a 9000 / 9001 the relay takes only from the group's 39001 (its creator, the
   belfry's admins). `POST /api/v1/group-roles` refuses someone not in the group yet
   (`409 not_in_group`), so an admin by role (SPEC 19.29) has no way to answer. The app shows them

@@ -305,6 +305,30 @@ public extension BelfryAPI {
     /// Agents asking to join (belfry admins).
     func agentRequests() async throws -> [AgentRequest] { BelfryAPI.parseAgentRequests(try await requestsCall("/agent-requests", ["list": true])["requests"]) }
     func decideAgentRequest(_ id: Int, approve: Bool) async throws { _ = try await requestsCall("/agent-requests", ["decide": id, "approve": approve]) }
+    static let groupRequestErrors = [
+        "not_allowed": "Only this channel’s admins can answer its requests.",
+        "no_request": "This request is no longer open.",
+        "archived": "This channel is archived.",
+        "event": "An event’s requests are answered on the event.",
+        "invalid": "That did not work. Try again.",
+        "relay": "The belfry could not reach its relay. Try again.",
+    ]
+
+    /// What the belfry did with a request to a closed channel or group.
+    enum GroupDecision: Equatable, Sendable { case approved, declined, already }
+
+    /// Answer someone's request to join a closed channel or group through the belfry
+    /// (docs/membership.md: `POST /group-requests/decide`), as any admin of it: on the relay's
+    /// list, its creator, by role, or a belfry admin. `unsupported`: an older belfry.
+    func decideGroupRequest(channel: String, pubkey: String, approve: Bool) async throws -> GroupDecision {
+        let a = try await signed(base + "/group-requests/decide", method: "POST",
+                                 json: ["channel": channel, "pubkey": pubkey, "action": approve ? "approve" : "decline"])
+        if a.status == 404 || a.status == 405, a.error.isEmpty { throw ApiError("unsupported", a.status, BelfryAPI.generic) }
+        guard a.ok, let b = a.body else { throw BelfryAPI.fail(a, BelfryAPI.groupRequestErrors, "That did not work. Try again.") }
+        if b["already"] as? Bool == true { return .already }
+        return b["declined"] as? Bool == true ? .declined : .approved
+    }
+
     /// Ask Belfry to count a group's vouches at once (it also does every few minutes).
     func checkGroupRequests(_ channel: String) async { _ = try? await signed(base + "/group-requests/check", method: "POST", json: ["channel": channel]) }
 }

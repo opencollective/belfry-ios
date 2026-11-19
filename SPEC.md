@@ -2400,3 +2400,15 @@ seconds, either may be empty) and `["vat", "<rate>"]` / `["vat", "<rate>", "incl
 - Where the board and the server differ, the server wins: the board draws "€50 + VAT"; the rate
   is always shown ("€50 + 21% VAT"). The day a price ends is its own line, "This price until 1 Jan".
 (iOS: `TicketPrice.of / from(api:) / line`, `Ticket.price(now:)`; tests `TicketPriceTests`.)
+
+### 19.52 Requests to a closed channel or group, answered through the belfry (iOS, 2026-11-19; board channels/closed-requests; collective-belfry docs/membership.md)
+Accept / Decline on a request (a 9021) is `POST <api>/group-requests/decide` (NIP-98) with
+`{"channel", "pubkey", "action": "approve" | "decline"}`, for every admin of the channel: on the
+relay's list, its creator, an admin by role, or a belfry admin; so they all see the same buttons.
+The belfry publishes the 9000 / 9001 as the groups key. Answers `{"approved": true}`,
+`{"declined": true}` or `{"already": true}`. Fixed words per error: `not_allowed`, `archived`,
+`event`, `invalid`, `relay`; `no_request` (answered meanwhile) says nothing, the list catches up.
+An older belfry (404 / 405 without an error key): the relay's own 9000 / 9001 from those it takes
+it from, else "Its creator or a belfry admin lets people in." An event's requests stay on
+`/events/<d>/decide`. (iOS: `BelfryAPI.decideGroupRequest`, `AppModel.decideGroupRequest`,
+`GroupRequestRow`.)

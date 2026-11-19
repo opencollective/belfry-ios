@@ -137,6 +137,7 @@ struct GroupRequestRow: View {
     let group: Channel
     let pubkey: String
     let answer: String
+    @State private var error: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
@@ -145,17 +146,15 @@ struct GroupRequestRow: View {
                 if let k = model.derive.kindLabel(pubkey) { Text(k).font(.caption).foregroundStyle(.secondary) }
             }
             if !answer.isEmpty { Text(verbatim: answer).font(.subheadline).foregroundStyle(.secondary) }
-            // the relay takes Accept / Decline only from its own admins (an admin by role vouches)
-            if model.derive.mayModerate(group) {
+            // every admin of it (the relay's list, its creator, by role, a belfry admin) answers
+            // through the belfry (board channels/closed-requests; docs/membership.md)
+            if model.derive.canAdmin(group) {
                 HStack {
-                    BusyButton("Accept") { model.admit(group.id, pubkey) }.buttonStyle(.brand)
-                    BusyButton("Decline", role: .destructive) { model.declineApplicant(group.id, pubkey) }.buttonStyle(.bordered)
+                    BusyButton("Accept") { error = await model.decideGroupRequest(group, pubkey, approve: true) }.buttonStyle(.brand)
+                    BusyButton("Decline", role: .destructive) { error = await model.decideGroupRequest(group, pubkey, approve: false) }.buttonStyle(.bordered)
                 }
                 .controlSize(.small)
-            } else if model.derive.canAdmin(group) {
-                // a steward by role: the relay takes Accept / Decline from its creator and the
-                // belfry's admins only, and the belfry has no call for it yet (SERVER-NEEDS 15)
-                Text("Its creator or a belfry admin lets people in.").font(.footnote).foregroundStyle(.secondary)
+                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
             }
         }
         .padding(.vertical, 2)
