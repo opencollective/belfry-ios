@@ -172,7 +172,7 @@ struct SpecialBody: View {
         case .inboxCard, .sentAsChannel:
             InboxCardView(m: m, group: group)
         case .none:
-            if !m.text.isEmpty { MarkdownText(text: m.text) }
+            if !m.text.isEmpty { MessageText(text: m.text, shownEvents: m.eventRefs) }
         }
     }
 }
@@ -375,7 +375,7 @@ struct ReplyRow: View {
                     if r.edited != nil { Text("edited").font(.caption2).foregroundStyle(.secondary) }
                     if let p = model.pending(r.id) { Text(p.stateText).font(.caption2).foregroundStyle(p.status == .failed ? .red : .secondary) }
                 }
-                if !r.text.isEmpty { MarkdownText(text: r.text).font(.subheadline) }
+                if !r.text.isEmpty { MessageText(text: r.text, shownEvents: r.eventRefs).font(.subheadline) }
                 MessageButtonsView(m: r, group: group.isEmpty ? (r.ev.tag("h") ?? "") : group)
                 ForEach(r.media, id: \.url) { MediaView(media: $0, all: r.media) }
                 // reactions on a reply (Xavier 2026-11-18), as on a message

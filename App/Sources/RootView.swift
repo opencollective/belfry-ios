@@ -167,6 +167,7 @@ struct RootView: View {
         // open here, the rest in the browser
         .environment(\.openURL, OpenURLAction { url in
             if url.scheme == "belfry-channel", let gid = url.pathComponents.last?.removingPercentEncoding { openChat(gid, nil); return .handled }
+            if url.scheme == "belfry-event", let c = url.pathComponents.last?.removingPercentEncoding { model.openEvent = c; return .handled }
             if url.scheme == "belfry-user", let pk = url.pathComponents.last, isHex64(pk) { model.openProfile = pk; return .handled }
             switch Links.target(url, domain: model.config.domain) {
             case .channel(let gid): openChat(gid, nil); return .handled

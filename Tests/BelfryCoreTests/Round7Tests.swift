@@ -293,3 +293,41 @@ final class MessageLinkTests: XCTestCase {
         XCTAssertEqual(Derive(events: [meta, root], context: WorldContext(me: A, domain: "belfry.sh")).messageURL("g", root.id), "https://chat.belfry.sh/#/c/g/m/" + root.id)
     }
 }
+
+/// References in a message (vectors/references.json, copied byte for byte from belfry-android d5e831d).
+final class ReferencesTests: XCTestCase {
+    func testVectors() throws {
+        let v = try vector("references")
+        let domain = try XCTUnwrap(v.str("domain"))
+        func target(_ o: [String: Any]) -> RefTarget? {
+            switch o["type"] as? String {
+            case "group": return .group(o["id"] as? String ?? "")
+            case "event": return .event(link: o["link"] as? String, coord: o["coord"] as? String)
+            case "proposal": return .proposal(o["coord"] as? String ?? "")
+            default: return nil
+            }
+        }
+        let cases = v.list("cases")
+        XCTAssertEqual(cases.count, 20)
+        for c in cases {
+            let want: [RefPart] = try (c["parts"] as? [[String: Any]] ?? []).map { p in
+                if let t = p["text"] as? String { return .text(t) }
+                if let r = p["ref"] as? [String: Any] { return .ref(try XCTUnwrap(target(r))) }
+                return .box(try XCTUnwrap(target(p["box"] as? [String: Any] ?? [:])))
+            }
+            XCTAssertEqual(References.parts(c.str("text") ?? "", domain: domain), want, c.str("name") ?? "")
+        }
+    }
+
+    /// The text drawn: the box taken out, the rest as written.
+    func testSplit() {
+        let d = "riverside.example"
+        let a = References.split("Seed talk carries on here https://chat.riverside.example/#/c/garden \n", domain: d)
+        XCTAssertEqual(a.text, "Seed talk carries on here")
+        XCTAssertEqual(a.box, .group("garden"))
+        let b = References.split("Is it https://chat.riverside.example/#/c/garden?", domain: d)
+        XCTAssertEqual(b.text, "Is it https://chat.riverside.example/#/c/garden?")
+        XCTAssertNil(b.box)
+        XCTAssertEqual(References.split("https://riverside.example/events/repair-cafe", domain: d).text, "")
+    }
+}

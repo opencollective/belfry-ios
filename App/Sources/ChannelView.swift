@@ -302,6 +302,7 @@ struct ChannelView: View {
                 openChannel(gid, nil)
                 return .handled
             }
+            if url.scheme == "belfry-event", let c = url.pathComponents.last?.removingPercentEncoding { model.openEvent = c; return .handled }
             if url.scheme == "belfry-user", let pk = url.pathComponents.last, isHex64(pk) {
                 model.openProfile = pk
                 return .handled

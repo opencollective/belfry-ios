@@ -22,7 +22,7 @@ MAP = [
     (r"App/Sources/(CharterUI|AppModel\+Charter)", "charter|whoagreed|agreement|welcomecharter|guest-apply|home", ""),
     (r"App/Sources/WelcomeUI", "welcome.*", ""),
     (r"App/Sources/(Composer|MessageField)", "composer.*|feed|thread|mailreply", "testKeyboardComposer testAddMenu testEventChatTyping"),
-    (r"App/Sources/(ChannelView|MessageRow|MarkdownText|MessageButtons)", "feed|thread|threadscreen|website|composer|mailfeed|town", "testMessageMenu testKeyboardComposer"),
+    (r"App/Sources/(ChannelView|MessageRow|MarkdownText|MessageButtons|RefBox)", "feed|thread|threadscreen|website|composer|mailfeed|town", "testMessageMenu testKeyboardComposer"),
     (r"App/Sources/MessageActions", "menu|delete|edit|feed|thread|threadscreen", "testMessageMenu"),
     (r"App/Sources/ThreadView", "thread|threadscreen|mentions", ""),
     (r"App/Sources/(PullDown|ChannelPlaces|ChannelDetails|NotifySheet)", "pull.*|member-pulldown|pinned|chsettings|chvisibility|chpublic|notify|members|membersinvitech|todos|files|log|closedrequests", ""),

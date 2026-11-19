@@ -2328,3 +2328,27 @@ a notification): a message of the feed → the channel scrolled to it, flashed y
 channel this key can't read → the channel with the fixed line "This message isn't available"
 until the feed is scrolled. Never the id as text. (iOS: `Links.Target.message`,
 `Derive.messageURL`, `Derive.messagePlace`; tests `MessageLinkTests`, `LinksTests.testTargets`.)
+
+### 19.49 References in a message: a name inside the text, a box at the end (iOS, 2026-11-19; = Android SPEC 19.44; boards channels/link-preview-end, link-preview-inline; #issues c92a9f45; `vectors/references.json` copied byte for byte from belfry-android d5e831d)
+A **reference** is this belfry's chat link `https://chat.<domain>/#/c/<id>` (also
+`https://<domain>/chat/#/c/<id>`; never with `/m/<event>`, which is a message link, 19.48), its
+event pages `https://chat.<domain>/events/<link>` and `https://<domain>/events/<slug-or-d>` (not
+`/t/<code>`), or `nostr:naddr1…` of kind 39000 (a group id), 31922 / 31923 (an event coord) or
+30023 (a proposal coord). Anything else stays as written. `References.parts` is the rule
+(Android's `tools/vectors/references.mjs` is its reference implementation).
+- **At the end**: the last reference, when the text trimmed of trailing white space ends with it,
+  comes out of the text (with the white space before it) and shows as a box under it; a message
+  that is only a reference shows the box alone. A channel or group: name, "Channel · N members" /
+  "Group · N members", its about. An event: the app's event card (not twice when the message's
+  event link already shows it). A proposal: title, "Proposal in #parent". A tap opens it. Same
+  in direct messages (not in e-mails).
+- **Inside the text**: its name, tappable: "#name" for a channel or group, the title for an event
+  or a proposal; an event's chat reads as its event, a proposal's chat as its proposal. Never the
+  id or the slug.
+- **Not here yet**: the kind's word, grey: "#channel" / "#group", "Event", "Proposal". (Android
+  shows a grey bar for 5 s first; iOS shows the word at once.)
+- **Can't open it**: no name; "a members-only channel" / "a closed group", in the box with "Only
+  members of <belfry> can open it". **Deleted**: "a deleted channel" (group, event, proposal).
+- Not built on iOS: the `a` tag added on send for an event or proposal coord in the text.
+(iOS: `References.target / parts / split`, `Derive.refShown`, views `MessageText`, `RefBox`,
+`MarkdownText.refName`; tests `ReferencesTests`.)

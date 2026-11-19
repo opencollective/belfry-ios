@@ -65,7 +65,12 @@ struct MarkdownText: View {
             case .strike(let c): out += adding(.strikethrough, attr(c))
             case .code(let s): out += adding(.code, AttributedString(s))
             case .link(let href, let c):
-                out += MarkdownText.linked(attr(c), href)
+                // this belfry's own link to a channel or an event, written bare: its name (SPEC 19.49)
+                if c == [.text(href)], let t = References.target(href, domain: model.config.domain) {
+                    out += refName(t)
+                } else {
+                    out += MarkdownText.linked(attr(c), href)
+                }
             case .mention(let npub):
                 let pk = Bech32.pubkey(npub: npub) ?? ""
                 let name = pk.isEmpty ? "nostr:" + npub : "@" + (model.realName(pk).isEmpty ? model.name(pk) : model.realName(pk))
@@ -94,18 +99,8 @@ struct MarkdownText: View {
         for m in ms {
             out += AttributedString(ns.substring(with: NSRange(location: at, length: m.range.location - at)))
             let naddr = m[1] ?? ""
-            if let id = ChannelRefs.groupOf(naddr) {
-                if let g = model.group(id) {
-                    // a known channel whose name hasn't arrived: the kind's word, never the id (the lead, 2026-11-18)
-                    var a = AttributedString(g.named ? "#" + g.name : "#" + BelfryCore.Group.kindWord(id))
-                    a.foregroundColor = .brand
-                    a.link = URL(string: "belfry-channel://open/" + MailThreads.encodeURIComponent(id))
-                    out += adding(.stronglyEmphasized, a)
-                } else {
-                    var a = AttributedString("#" + BelfryCore.Group.kindWord(id))
-                    a.foregroundColor = .secondary
-                    out += a
-                }
+            if let t = References.target("nostr:" + naddr, domain: model.config.domain) {
+                out += refName(t)
             } else {
                 var a = AttributedString("Nostr address")
                 a.foregroundColor = .secondary
@@ -115,6 +110,26 @@ struct MarkdownText: View {
         }
         out += AttributedString(ns.substring(from: at))
         return out
+    }
+
+    /// A reference inside the text: its name, tappable when it can be opened; grey words when it
+    /// isn't here yet, can't be opened or is deleted. Never an id or a slug.
+    func refName(_ t: RefTarget) -> AttributedString {
+        let s = model.derive.refShown(t)
+        var a = AttributedString(s.name)
+        switch s.open {
+        case .channel(let id)?:
+            a.foregroundColor = .brand
+            a.link = URL(string: "belfry-channel://open/" + MailThreads.encodeURIComponent(id))
+            return adding(.stronglyEmphasized, a)
+        case .event(let coord)?:
+            a.foregroundColor = .brand
+            a.link = URL(string: "belfry-event://open/" + MailThreads.encodeURIComponent(coord))
+            return adding(.stronglyEmphasized, a)
+        case nil:
+            a.foregroundColor = .secondary
+            return a
+        }
     }
 
     /// Plain text (a to-do's title, a comment) with its addresses as links, nothing else.

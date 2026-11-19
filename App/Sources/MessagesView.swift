@@ -227,7 +227,10 @@ struct Bubble: View {
                 }
             }
             if dm.kind == 1301, let s = dm.subject { Text(s).font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
-            MarkdownText(text: dm.text.isEmpty ? " " : dm.text)
+            // a direct message ends with a reference: its box under the bubble's text (not in e-mails)
+            VStack(alignment: .leading, spacing: 6) {
+                if dm.kind == 1301 { MarkdownText(text: dm.text.isEmpty ? " " : dm.text) } else { MessageText(text: dm.text.isEmpty ? " " : dm.text) }
+            }
                 .padding(10)
                 .background(dm.mine ? Color.brand.opacity(0.14) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             HStack(spacing: 6) {

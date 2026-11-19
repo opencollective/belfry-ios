@@ -267,6 +267,8 @@ enum Demo {
         evs.append(ev(you, 9, now - 6900, [["h", "general"], ["a", mcoord, "wss://relay.demo.belfry.sh"]], "Meeting: https://demo.belfry.sh/events/\(md)"))
         let gardenRef = Nip19.naddr(Nip19.Addr(kind: 39000, pubkey: relay.pubkey, identifier: "garden-3f2a", relays: ["wss://groups-relay.demo.belfry.sh"])) ?? ""
         msg(ps["ben"]!, "general", now - 4000, "Seed talk carries on in nostr:\(gardenRef) 🌱")
+        // a reference at the very end: its preview box (board channels/link-preview-end)
+        msg(ps["ana"]!, "general", now - 3950, "The watering rota lives here nostr:\(gardenRef)")
         let ann = Actions.postMessage("general", text: "The hall is closed on Sunday for cleaning.", announce: true)
         evs.append(ev(ps["ana"]!, 9, now - 5000, ann.tags, ann.content))
         evs.append(ev(groupsKey, 1985, now - 1900, [["h", "general"], ["L", "belfry/guest"], ["l", "saved", "belfry/guest"], ["p", signer("guest").pubkey]]))
