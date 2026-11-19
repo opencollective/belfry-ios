@@ -141,13 +141,17 @@ struct TodosTab: View {
         if !locked {
         Section {
             HStack {
-                TextField("Add a to-do", text: $newTodo).font(.body)
+                TextField("Add a to-do", text: $newTodo, axis: .vertical).lineLimit(1...6).font(.body)
                     .submitLabel(.done)
                     .accessibilityIdentifier("todo-new")
                 BusyButton { model.addTodo(newTodo, in: id); newTodo = "" } label: { Image(systemName: "plus.circle.fill").font(.title2) }
                     .buttonStyle(.borderless)
-                    .disabled(newTodo.jsTrim().isEmpty)
+                    .disabled(newTodo.jsTrim().isEmpty || Actions.taskOver(newTodo) > 0)
                     .accessibilityLabel("Add the to-do")
+            }
+        } footer: {
+            if let line = Actions.taskLimitLine(newTodo) {
+                Text(line).foregroundStyle(Actions.taskOver(newTodo) > 0 ? Color.red : Color.secondary)
             }
         }
         }

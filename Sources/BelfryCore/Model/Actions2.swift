@@ -183,9 +183,20 @@ public extension Actions {
 
     static func taskTags(_ group: String) -> [Tag] { [["t", Derive.listIdFor(group)], ["h", group]] }
 
+    /// A to-do's text holds this many UTF-16 units (SPEC 19.8); the forms refuse more, they never cut.
+    static let taskLimit = 300
+    /// How many units TITLE (trimmed) is over the limit; 0 when it fits.
+    static func taskOver(_ title: String) -> Int { max(0, title.jsTrim().utf16.count - taskLimit) }
+    /// What a to-do form says under its field: nil while far from the limit.
+    static func taskLimitLine(_ title: String) -> String? {
+        let n = title.jsTrim().utf16.count
+        if n > taskLimit { let o = n - taskLimit; return "\(o) character\(o == 1 ? "" : "s") too long. A to-do holds \(taskLimit); put the rest in a comment on it." }
+        return n >= taskLimit - 50 ? "\(n) of \(taskLimit)" : nil
+    }
+
     /// A to-do; FROM = the message it was made from (a `q` tag).
     static func addTask(_ group: String, title: String, from: String? = nil) -> Draft {
-        Draft(kind: 2100, content: title.sliceUnits(300), tags: taskTags(group) + (from.map { [["q", $0]] } ?? []))
+        Draft(kind: 2100, content: title.sliceUnits(taskLimit), tags: taskTags(group) + (from.map { [["q", $0]] } ?? []))
     }
 
     /// ACTION: claim | unclaim | done | undone | delete

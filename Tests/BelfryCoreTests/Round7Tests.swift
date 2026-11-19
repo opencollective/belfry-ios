@@ -212,3 +212,16 @@ final class ReplyReactionsTests: XCTestCase {
         XCTAssertNotNil(d.reactions("g")[reply.id]?.first?.mine)
     }
 }
+
+final class TodoLimitTests: XCTestCase {
+    /// A to-do's text is never cut silently: the form says how far over it is and refuses it.
+    func testLimitLine() {
+        XCTAssertNil(Actions.taskLimitLine("Order compost"))
+        XCTAssertEqual(Actions.taskOver("  " + String(repeating: "a", count: 300) + " \n"), 0)
+        XCTAssertEqual(Actions.taskLimitLine(String(repeating: "a", count: 250)), "250 of 300")
+        XCTAssertEqual(Actions.taskOver(String(repeating: "a", count: 301)), 1)
+        XCTAssertEqual(Actions.taskLimitLine(String(repeating: "a", count: 301)), "1 character too long. A to-do holds 300; put the rest in a comment on it.")
+        XCTAssertEqual(Actions.taskOver(String(repeating: "👋", count: 151)), 2)
+        XCTAssertEqual(Actions.addTask("g", title: String(repeating: "a", count: 300)).content.utf16.count, 300)
+    }
+}

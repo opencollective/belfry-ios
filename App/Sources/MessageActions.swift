@@ -83,7 +83,7 @@ struct MessageActions: View {
                                 }
                             }
                             if !isReply && d.canMakeTodo(group, m) {
-                                ActionButtonRow(icon: "checklist", title: "Turn into a todo", detail: d.todoTitle(m)) {
+                                ActionButtonRow(icon: "checklist", title: "Turn into a to-do", detail: d.todoTitle(m)) {
                                     model.makeTodo(m, in: group)
                                     dismiss()
                                 }
@@ -303,7 +303,7 @@ struct MessageMenu: View {
                     Button { model.pin(m, in: group, !on) } label: { Label(on ? "Unpin from the channel" : "Pin to the channel", systemImage: on ? "pin.slash" : "pin") }
                 }
                 if !isReply && d.canMakeTodo(group, m) {
-                    Button { model.makeTodo(m, in: group) } label: { Label("Turn into a todo", systemImage: "checklist") }
+                    Button { model.makeTodo(m, in: group) } label: { Label("Turn into a to-do", systemImage: "checklist") }
                 }
                 if MessageActions.nsiteRef(m.text) != nil, !d.amGuest, let propose = h.proposeSite {
                     Button { propose(m) } label: { Label("Propose as the website", systemImage: "globe") }

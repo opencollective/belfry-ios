@@ -628,7 +628,7 @@ final class AppModel: ObservableObject {
         engine?.enqueue(Actions.pinMessage(group, messageId: m.id, pin: on))
     }
 
-    /// "Turn into a todo" (SPEC 19.11).
+    /// "Turn into a to-do" (SPEC 19.11).
     func makeTodo(_ m: Message, in group: String) {
         guard derive.canMakeTodo(group, m) else { return }
         engine?.enqueue(Actions.addTask(group, title: derive.todoTitle(m), from: m.id))
@@ -636,7 +636,7 @@ final class AppModel: ObservableObject {
 
     func addTodo(_ title: String, in group: String) {
         let t = title.jsTrim()
-        guard !t.isEmpty else { return }
+        guard !t.isEmpty, Actions.taskOver(t) == 0 else { return }
         engine?.enqueue(Actions.addTask(group, title: t))
     }
 

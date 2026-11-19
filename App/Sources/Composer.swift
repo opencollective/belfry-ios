@@ -223,7 +223,7 @@ struct Composer: View {
         return Menu {
             Section {
                 Button { choose(.photo) } label: { Label("Photo", systemImage: "photo.on.rectangle") }
-                Button { choose(.create(.todo)) } label: { Label("Todo", systemImage: "checklist") }
+                Button { choose(.create(.todo)) } label: { Label("To-do", systemImage: "checklist") }
             }
             if !guest {
                 Section {
@@ -253,7 +253,7 @@ struct Composer: View {
                 .padding(3).contentShape(Circle()).padding(-3) // 44 pt target
         }
         .menuOrder(.fixed)
-        .accessibilityLabel("Add a photo, a todo, an event, a proposal…")
+        .accessibilityLabel("Add a photo, a to-do, an event, a proposal…")
         .accessibilityIdentifier("composer-add")
     }
 
@@ -459,7 +459,13 @@ struct CreateSheet: View {
             Form {
                 switch kind {
                 case .todo:
-                    Section { TextField("What needs doing?", text: $title, axis: .vertical).lineLimit(1...4).font(.body) }
+                    Section { TextField("What needs doing?", text: $title, axis: .vertical).lineLimit(1...8).font(.body) }
+                    footer: {
+                        if let line = Actions.taskLimitLine(title) {
+                            Text(line).foregroundStyle(Actions.taskOver(title) > 0 ? Color.red : Color.secondary)
+                                .accessibilityIdentifier("todo-limit")
+                        }
+                    }
                 case .pod:
                     Section {
                         TextField("Name", text: $title).font(.body)
@@ -498,12 +504,13 @@ struct CreateSheet: View {
                 if title.isEmpty { title = f["title"] ?? ""; about = f["about"] ?? ""; text = f["text"] ?? ""; prompt = f["prompt"] ?? "" }
             }
             .onChange(of: [title, about, text, prompt]) { _, v in if website == nil { Drafts.setForm(formKey, ["title": v[0], "about": v[1], "text": v[2], "prompt": v[3]]) } }
-            .navigationTitle(kind == .todo ? "New todo" : kind == .pod ? "New group" : "New proposal")
+            .navigationTitle(kind == .todo ? "New to-do" : kind == .pod ? "New group" : "New proposal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    BusyButton(kind == .todo ? "Add" : "Create") { make() }.disabled(title.jsTrim().isEmpty)
+                    BusyButton(kind == .todo ? "Add" : "Create") { make() }
+                        .disabled(title.jsTrim().isEmpty || (kind == .todo && Actions.taskOver(title) > 0))
                 }
             }
         }
