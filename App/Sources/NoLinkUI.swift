@@ -302,9 +302,11 @@ struct ApplyFormScreen: View {
             .buttonStyle(.brand)
             .disabled(!allTicked || !filled)
             .accessibilityIdentifier("apply-send")
-            if offersLogin { Button("I’m a member: log in", action: onLogIn) }
-            .font(.body.weight(.medium))
-            .frame(maxWidth: .infinity)
+            if offersLogin {
+                Button("I’m a member: log in", action: onLogIn)
+                    .font(.body.weight(.medium))
+                    .frame(maxWidth: .infinity)
+            }
         }
         .task { if rules == nil { await load() } }
         .onChange(of: knownEmail, initial: true) { _, e in if let e, !e.isEmpty { email = e } }
