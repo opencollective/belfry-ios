@@ -496,3 +496,15 @@ final class GuestSignInTests: XCTestCase {
         }
     }
 }
+
+/// "Link your phone": which addresses are login links (vectors/login-links.json).
+final class LoginLinkTests: XCTestCase {
+    func testVectors() throws {
+        let cases = try vector("login-links").list("cases")
+        XCTAssertEqual(cases.count, 24)
+        for c in cases {
+            let url = c.str("url") ?? ""
+            XCTAssertEqual(LoginLink.parse(url)?.description, c["valid"] as? Bool == true ? c.str("address") : nil, url)
+        }
+    }
+}

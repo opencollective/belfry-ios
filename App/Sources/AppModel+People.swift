@@ -17,6 +17,7 @@ extension AppModel {
     /// A guest link opened (https://chat.<domain>/join/<token>): only its domain and token are kept.
     func handle(url: URL) {
         if handleTicketURL(url) { return }
+        if let a = LoginLink.parse(url) { Task { await logIn(with: a) }; return }
         guard let (domain, token) = InviteLink.parse(url) else { return }
         pendingInvite = PendingInvite(domain: domain, token: token)
         // signed out: straight to the channel in guest mode (one loading screen, no name asked)

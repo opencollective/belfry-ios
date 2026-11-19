@@ -29,7 +29,7 @@ struct InviteScanner: View {
                                            description: Text("Open the invitation's link instead: the camera app reads it too."))
                 }
                 if notInvite {
-                    Text("This isn’t a Belfry invitation.")
+                    Text("This isn’t a Belfry invitation or login code.")
                         .font(.subheadline.weight(.semibold))
                         .padding(.horizontal, 16).padding(.vertical, 10)
                         .glass(in: Capsule())
@@ -45,7 +45,9 @@ struct InviteScanner: View {
     }
 
     private func check(_ text: String) {
-        if (text as NSString).length <= 512, let u = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)), InviteLink.parse(u) != nil {
+        // an invitation, or a "Link your phone" code of the web chat (SPEC 19.56)
+        if (text as NSString).length <= 512, let u = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+           InviteLink.parse(u) != nil || LoginLink.parse(u) != nil {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             found(u)
             return

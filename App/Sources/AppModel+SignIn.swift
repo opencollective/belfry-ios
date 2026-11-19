@@ -39,6 +39,7 @@ extension AppModel {
             let s = StoredSession(domain: opened.config.domain, bunkerURL: opened.bunkerURL, clientSecret: opened.clientSecretHex, pubkey: opened.pubkey)
             store(s)
             pendingCode = nil
+            loginLink = nil
             signInError = nil
             signInNote = nil
             open(s, config: opened.config)
@@ -53,6 +54,7 @@ extension AppModel {
 
     /// "Use another address": forget the request; the address stays in the field.
     func cancelCode() {
+        loginLink = nil
         nativeFlow.cancel()
         signInError = nil
         pendingCode = nil
@@ -63,5 +65,39 @@ extension AppModel {
         nativeFlow.cancel()
         signInError = e.display
         pendingCode = nil
+        loginLink = nil
     }
+
+    /// "Link your phone" (SPEC 19.56): a login link was scanned or opened. An account of that
+    /// address already on this phone is switched to, no code; else the ordinary e-mail-code
+    /// sign-in starts at once for it (a belfry this phone doesn't have yet is added that way),
+    /// and the code screen says whose code to confirm.
+    func logIn(with a: MemberAddress) async {
+        let address = a.description
+        if let have = accounts.accounts.first(where: { !$0.guest && $0.domain == a.domain && $0.address.lowercased() == address }) {
+            if phase == .ready, !isDemo, have.slot == Keychain.slot { showToast("You’re logged in as \(address)"); return }
+            switchAccount(have.slot)
+            return
+        }
+        guard !busy, pendingCode == nil else { return }
+        if phase == .ready { startAddingAccount() }
+        pendingInvite = nil
+        signInError = nil
+        signInNote = nil
+        UserDefaults.standard.set(address, forKey: "last-address")
+        busy = true
+        defer { busy = false }
+        // the community's name for the screen, from its own belfry.json (as for a typed domain)
+        loginLink = LoginLinkState(address: address, community: (try? await Discovery.fetch(domain: a.domain))?.name ?? a.domain)
+        if let e = await requestCode(address) {
+            loginLink = nil
+            signInError = e.display
+        }
+    }
+}
+
+/// A login link being used: whose code the code screen asks to confirm.
+struct LoginLinkState: Equatable {
+    let address: String
+    let community: String
 }

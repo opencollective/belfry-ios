@@ -410,3 +410,41 @@ public final class NativeSignInFlow: @unchecked Sendable {
         return NativeSession(config: s.config, bunkerURL: url, clientSecretHex: s.secret, pubkey: me)
     }
 }
+
+// ---- "Link your phone" (SPEC 19.56; vectors/login-links.json) -----------------------------------
+
+/// A login link, https://chat.<domain>/login/<username>: the web chat's Accounts screen shows it
+/// as a QR code; scanning it starts the e-mail-code sign-in for <username>@<domain> on this
+/// phone. Nothing secret is in it: the mailed code is the proof.
+public enum LoginLink {
+    /// The server's rule for a username: lower-case letters and digits, . _ - inside, at most 30.
+    public static func isUsername(_ s: String) -> Bool {
+        let u = Array(s.unicodeScalars)
+        guard (1...30).contains(u.count) else { return false }
+        func alnum(_ c: Unicode.Scalar) -> Bool { (c >= "a" && c <= "z") || (c >= "0" && c <= "9") }
+        guard alnum(u[0]), alnum(u[u.count - 1]) else { return false }
+        return u.allSatisfy { alnum($0) || $0 == "." || $0 == "_" || $0 == "-" }
+    }
+
+    /// The address a link logs in as; nil for anything that is not exactly a login link.
+    public static func parse(_ url: URL) -> MemberAddress? {
+        guard let c = URLComponents(url: url, resolvingAgainstBaseURL: false), c.scheme == "https",
+              c.user == nil, c.password == nil, c.port == nil, c.query == nil, c.fragment == nil,
+              let host = c.host?.lowercased(), host.hasPrefix("chat.") else { return nil }
+        let domain = String(host.dropFirst(5))
+        guard Discovery.isDomain(domain) else { return nil }
+        // the path as written (no percent-decoding: a username has nothing to decode)
+        var path = c.percentEncodedPath
+        if path.hasSuffix("/") { path.removeLast() }
+        guard path.hasPrefix("/login/") else { return nil }
+        let name = String(path.dropFirst(7))
+        guard isUsername(name) else { return nil }
+        return MemberAddress(name: name, domain: domain)
+    }
+
+    public static func parse(_ text: String) -> MemberAddress? {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (t as NSString).length <= 512, let u = URL(string: t) else { return nil }
+        return parse(u)
+    }
+}

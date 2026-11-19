@@ -249,11 +249,23 @@ private struct CodeScreen: View {
             BelfryMark()
                 .frame(width: 56, height: 56)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Enter the code").font(.largeTitle.bold())
-                // the address is what the person typed (checked); `to` passed the mask check
-                Text("We sent a 6-digit code to \(pending.to ?? "your e-mail address") to sign in as \(pending.address). It works for 10 minutes.")
-                    .foregroundStyle(.secondary)
+            if let l = model.loginLink, l.address == pending.address {
+                // a "Link your phone" code was scanned (SPEC 19.56): the community, who logs in, and
+                // what to do; the address came from the link, its username checked character by character
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(l.community).font(.headline).foregroundStyle(.secondary)
+                    Text("Log in as \(l.address)").font(.largeTitle.bold())
+                    Text("Please confirm the 6-digit code sent to your e-mail\(pending.to.map { " (\($0))" } ?? ""). It works for 10 minutes.")
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("login-link-message")
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Enter the code").font(.largeTitle.bold())
+                    // the address is what the person typed (checked); `to` passed the mask check
+                    Text("We sent a 6-digit code to \(pending.to ?? "your e-mail address") to sign in as \(pending.address). It works for 10 minutes.")
+                        .foregroundStyle(.secondary)
+                }
             }
             CodeBoxes(digits: $digits, enabled: !verifying, focused: $focused, bad: wrong) { Task { await submit() } }
             if verifying {

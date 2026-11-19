@@ -2458,3 +2458,23 @@ session key stays bound to the guest account) and sends its public key with the 
   the code is cleared, "Send a new code".
 (iOS: `GuestSignIn.body / signedIn / next`, `BelfryAPI.guestVerify(…sessionKey:)`,
 `AppModel.signedInAs`; test `GuestSignInTests`.)
+
+### 19.56 "Link your phone": a login link (iOS, 2026-11-19, the owner; `vectors/login-links.json`, written here)
+The web chat's Accounts screen shows a QR code of `https://chat.<domain>/login/<username>`. The
+phone app scans it ("Scan an invite" on Accounts, the scanner of the start screen) or the phone's
+own camera opens it as a universal link (`/login/*` next to `/join/*` and `/events/*` in the
+belfry's apple-app-site-association), to open another session under the same identity.
+- **A login link is exactly**: `https`, host `chat.<domain>` (a hostname; read in lower case), the
+  path `/login/<username>` with nothing after it (one trailing slash is fine), no query, no
+  fragment, no user or port; `<username>` by the server's rule: lower-case letters and digits,
+  `. _ -` inside (not first, not last), 1 to 30 characters. Anything else is not a link we know:
+  the scanner says "This isn't a Belfry invitation or login code." and no server is asked.
+- **Nothing secret is in it**: the mailed code is the proof. The app starts the ordinary native
+  sign-in (19.20) at once for `<username>@<domain>` (`POST …/session {nip05, app, client}`
+  signed by a new session key, then `/verify`), and the code screen reads: the community's name
+  (from that belfry's `belfry.json`), "Log in as <username>@<domain>", "Please confirm the
+  6-digit code sent to your e-mail (<masked address>). It works for 10 minutes."; errors as the
+  code step's. A belfry the phone doesn't have yet is added this way (also someone's first).
+- **An account of that address already on the phone**: it is switched to, no code; when it is the
+  open one, "You're logged in as <address>".
+(iOS: `LoginLink.parse / isUsername`, `AppModel.logIn(with:)`, `InviteScanner`; test `LoginLinkTests`.)

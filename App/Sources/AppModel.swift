@@ -93,6 +93,8 @@ final class AppModel: ObservableObject {
     @Published var tabReselected = 0
     /// The accounts / belfries switcher (the belfry's name at the top of a place, ⇅ in the drawer).
     @Published var showAccounts = false
+    /// A login link ("Link your phone") whose code is on its way.
+    @Published var loginLink: LoginLinkState?
     /// A line over the app for 3 s ("Signed in as …").
     @Published var toast: String?
     func showToast(_ text: String) {
