@@ -13,6 +13,8 @@ enum NoLinkStep: Hashable {
     case apply(BelfryConfig)
     case sent(BelfryConfig)
     case inviteCode(BelfryConfig)
+    /// Log in, Apply to join or the pending screen, the web's way (SPEC 19.59).
+    case wayIn(BelfryConfig, WayInStart)
 }
 
 extension BelfryConfig {
@@ -40,13 +42,13 @@ struct FindScreen: View {
         VStack(alignment: .leading, spacing: 24) {
             BelfryMark().frame(width: 64, height: 64).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 8) {
-                Text("Find your community").font(.largeTitle.bold())
-                Text("A belfry is your community’s own place. Type its address, or scan the QR code someone shows you.")
+                Text("Connect to your community").font(.largeTitle.bold())
+                Text("Enter your community e-mail or your community’s address to get started.")
                     .foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 8) {
-                Text("Belfry address").font(.subheadline.weight(.semibold))
-                TextField("belfry.sh", text: $address)
+                Text("E-mail or domain").font(.subheadline.weight(.semibold))
+                TextField("name@belfry.sh or belfry.sh", text: $address)
                     .font(.body)
                     .textContentType(.URL)
                     .keyboardType(.emailAddress)
@@ -58,7 +60,7 @@ struct FindScreen: View {
                     .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
                     .onSubmit { Task { await go() } }
                     .disabled(model.busy)
-                    .accessibilityLabel("Belfry address")
+                    .accessibilityLabel("E-mail or domain")
                     .accessibilityIdentifier("find-address")
             }
             if let note = model.signInNote { Text(note).font(.callout).foregroundStyle(.secondary) }
@@ -79,7 +81,7 @@ struct FindScreen: View {
             Divider()
             VStack(alignment: .leading, spacing: 18) {
                 Button { hideKeyboard(); scanning = true } label: {
-                    ActionRow(icon: "qrcode.viewfinder", title: "Scan an invitation", detail: "The QR code someone shows you")
+                    ActionRow(icon: "qrcode.viewfinder", title: "Scan a QR code", detail: "An invitation, or the code your community’s chat shows to link a phone")
                 }
                 .buttonStyle(.plain)
                 .disabled(model.busy)
@@ -107,13 +109,16 @@ struct FindScreen: View {
         if model.launch.signin != nil { return }
         model.busy = true
         defer { model.busy = false }
-        // a member's address goes straight to the code; a belfry's address to its Welcome
-        if MemberAddress.parse(typed) != nil {
+        // an e-mail: its belfry's Log in, the code asked at once (an older belfry falls back to the
+        // native sign-in from there); a belfry's address: its start screen
+        if let a = MemberAddress.parse(typed) {
             memberAddress = typed
-            if let e = await model.requestCode(typed) {
-                // an older belfry: its own screen offers the browser sign-in
-                if e.failure == .unsupported { path.append(.login(nil)) } else { error = e.display }
+            guard let c = try? await Discovery.fetch(domain: a.domain) else {
+                error = "No belfry answered at \(a.domain). Type your community’s address (like belfry.sh), or your address there."
+                return
             }
+            model.wayInPrefill = typed
+            path = [.welcome(c), .wayIn(c, .login)]
             return
         }
         let domain = NoLink.domain(typed)
@@ -136,24 +141,17 @@ struct CommunityWelcome: View {
             Text(community.name).font(.title.bold()).multilineTextAlignment(.center)
                 .padding(.top, 20)
                 .accessibilityIdentifier("welcome-name")
-            Text("Channels, events and files for its members. No password: a 6-digit code by e-mail.")
+            // the belfry's own words about itself, else what a belfry is (board onboarding/start)
+            Text((community.branding?.description).flatMap { $0.isEmpty ? nil : $0 } ?? "Channels, events and files for its members. No password: a 6-digit code by e-mail.")
                 .foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .padding(.top, 10).padding(.bottom, 28)
-            Button { path.append(.login(community)) } label: { Text("Log in").frame(maxWidth: .infinity).padding(.vertical, 6) }
+            Button { path.append(.wayIn(community, .login)) } label: { Text("Log in").frame(maxWidth: .infinity).padding(.vertical, 6) }
                 .buttonStyle(.brand)
                 .accessibilityIdentifier("welcome-login")
-            Button { path.append(.apply(community)) } label: {
-                Text("Apply to join").font(.body.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 16)
-                    .overlay(Capsule().strokeBorder(Color.primary, lineWidth: 1.5))
-                    .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 12)
-            .accessibilityIdentifier("welcome-apply")
-            Button("I have an invite code") { path.append(.inviteCode(community)) }
+            Button("Apply to join") { path.append(.wayIn(community, .apply)) }
                 .font(.body.weight(.medium))
-                .padding(.top, 22)
-                .accessibilityIdentifier("welcome-code")
+                .padding(.top, 20)
+                .accessibilityIdentifier("welcome-apply")
         }
         .padding(.top, 60)
     }

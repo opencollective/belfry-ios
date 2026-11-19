@@ -206,6 +206,10 @@ public struct UsernameCheck: Equatable, Sendable {
     public var reason: String?
     public var suggestions: [String]
 
+    public init(username: String, state: State, reason: String? = nil, suggestions: [String] = []) {
+        self.username = username; self.state = state; self.reason = reason; self.suggestions = suggestions
+    }
+
     /// From `{"username", "state", "reason"?, "suggestions"}`; nil for anything else.
     public static func parse(_ b: [String: Any]?) -> UsernameCheck? {
         guard let b, let u = b["username"] as? String, let st = (b["state"] as? String).flatMap(State.init(rawValue:)) else { return nil }

@@ -98,6 +98,10 @@ final class AppModel: ObservableObject {
     @Published var feedToEnd = 0
     /// The accounts / belfries switcher (the belfry's name at the top of a place, ⇅ in the drawer).
     @Published var showAccounts = false
+    /// An e-mail typed on the first screen: the belfry's Log in takes it and asks the code at once.
+    var wayInPrefill: String?
+    /// A member invitation was just confirmed: the name and username are asked, once.
+    @Published var nameAsked: NameAsked?
     /// A login link ("Link your phone") whose code is on its way.
     @Published var loginLink: LoginLinkState?
     /// A line over the app for 3 s ("Signed in as …").

@@ -187,8 +187,9 @@ extension AppModel {
                     return nil
                 }
                 let saved = got.saved
-                // a member link made me a member (SPEC 19.43): no guest state, no application form
-                if saved.member { becameMember(); return nil }
+                // a member link made me a member (SPEC 19.43): no guest state, no application form;
+                // then their name and username, once (SPEC 19.59)
+                if saved.member { becameMember(); nameAsked = NameAsked(email: email.jsTrim().lowercased()); return nil }
             } catch let f as GuestJoinFailure {
                 // "not a guest": a member already (this link, or before)? then that is what happened
                 if f.error == .notGuest, await memberAlready() { return nil }

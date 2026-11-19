@@ -44,11 +44,21 @@ struct SignInView: View {
                         case .apply(let c): ApplyFormScreen(community: c, onSent: { path = [.welcome(c), .sent(c)] }, onLogIn: { path = [.welcome(c), .login(c)] })
                         case .sent(let c): ApplySentScreen { path = [.welcome(c)] }
                         case .inviteCode(let c): InviteCodeScreen(community: c)
+                        case .wayIn(let c, let s):
+                            WayInFlow(community: c, start: s, leave: { path = [.welcome(c)] },
+                                      older: { o in path = [.welcome(c), o == .apply ? .apply(c) : .login(c)] })
                         }
                     }
                 }
             }
             .onAppear { if path.isEmpty, let p = NoLinkStep.shot(model.launch.signin) { path = p } }
+            // a request of this phone waits at a belfry: its pending screen, straight away
+            .task {
+                guard path.isEmpty, finds, model.launch.signin == nil, model.pendingCode == nil,
+                      let d = UserDefaults.standard.string(forKey: AppModel.wayInPendingKey), Discovery.isDomain(d),
+                      let c = try? await Discovery.fetch(domain: d), path.isEmpty else { return }
+                path = [.welcome(c), .wayIn(c, .pending)]
+            }
             .toolbar {
                 if let onCancel {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onCancel) }
@@ -80,6 +90,9 @@ extension NoLinkStep {
         case "sent": return [.welcome(.shot), .sent(.shot)]
         case "invitecode": return [.welcome(.shot), .inviteCode(.shot)]
         case "login": return [.welcome(.shot), .login(.shot)]
+        case "wayin-login", "wayin-code", "wayin-unknown": return [.welcome(.shot), .wayIn(.shot, .login)]
+        case "wayin-apply": return [.welcome(.shot), .wayIn(.shot, .apply)]
+        case "wayin-pending", "wayin-declined": return [.welcome(.shot), .wayIn(.shot, .pending)]
         default: return nil
         }
     }

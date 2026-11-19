@@ -34,7 +34,7 @@ MAP = [
     (r"App/Sources/(EventScreen|EventsUI|Tickets|AppModel\+Events|AppModel\+Checkin|GroupRoles)", "event.*|events|ticket|checkin.*|calendar", "testEventHeaderDrag testEventChatTyping"),
     (r"App/Sources/(MeetingUI|AppModel\+Meetings)", "meeting.*", ""),
     (r"App/Sources/(GuestUI|JoinUI|AppModel\+Guest|AppModel\+MemberLink|AppModel\+Apply)", "guest-.*|join-member", "testMemberLinkSignUp"),
-    (r"App/Sources/(SignInView|AppModel\+SignIn|NoLinkUI)", "signin.*", ""),
+    (r"App/Sources/(SignInView|AppModel\+SignIn|NoLinkUI|WayInUI|AppModel\+WayIn)", "signin.*", ""),
     (r"App/Sources/(PeopleUI|MembersDirectory|RequestsView|AppModel\+People)", "profile|editprofile|me|meplace|mycard|myprofile|members|directory|requests|rolepicker|eventrole", ""),
     (r"App/Sources/(BelfrySettings|RolesSettings|ChannelEnd)", "settings.*|channelend.*|channelarchive|rolepicker", "testDeleteEmptyChannel"),
     (r"App/Sources/MailUI", "mail.*|fullmail", ""),

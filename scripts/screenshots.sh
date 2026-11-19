@@ -232,6 +232,14 @@ shot 151b-apply-form-dark signin-apply dark
 shot 152-apply-sent signin-sent light
 shot 153-invite-code signin-invitecode light
 shot 154-log-in signin-login light
+shot 170-wayin-login signin-wayin-login light
+shot 171-wayin-code signin-wayin-code light
+shot 172-wayin-unknown signin-wayin-unknown light
+shot 173-wayin-apply signin-wayin-apply light
+shot 173b-wayin-apply-dark signin-wayin-apply dark
+shot 174-wayin-pending signin-wayin-pending light
+shot 174b-wayin-pending-dark signin-wayin-pending dark
+shot 175-wayin-declined signin-wayin-declined light
 python3 "$(dirname "$0")/shots.py" "$UDID" "$BUNDLE" "$OUT" "$LIST"
 
 # native menus only a touch opens: UI tests (App/UITests) write their own PNGs.

@@ -130,6 +130,8 @@ struct RootView: View {
             .sheet(isPresented: $model.showAddAgent) { AddAgentSheet() }
             .sheet(item: $model.fullMail) { FullMailSheet(ref: $0) }
             .fullScreenCover(isPresented: $model.welcomeShown) { WelcomeFlow() }
+            .fullScreenCover(item: $model.nameAsked) { a in WelcomeNameScreen(email: a.email) }
+            .onChange(of: model.nameAsked) { _, a in if a == nil { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { checkWelcome() } } }
             // a new member's first minutes (web welcomeDue): checked on start and when a guest becomes a member
             .onChange(of: model.derive.amGuest) { _, _ in checkWelcome() }
             .onChange(of: model.charterRules.count) { _, _ in checkWelcome() }
@@ -371,7 +373,8 @@ struct RootView: View {
     }
 
     private func checkWelcome() {
-        if !model.welcomeShown && model.welcomeDue() { hideKeyboard(); model.welcomeShown = true }
+        // the name step of a member invitation comes first; the charter after it
+        if model.nameAsked == nil && !model.welcomeShown && model.welcomeDue() { hideKeyboard(); model.welcomeShown = true }
     }
 
     /// Accounts: a screen pushed on the place on screen (iPhone; rows open screens, never sheets),

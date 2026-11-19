@@ -2510,3 +2510,38 @@ Townsquare), whatever channel was open in Town before; anything pushed over it i
 second tap while it is on screen glides to the newest message. Other ways into a channel (the
 drawer, a link, a notification, Create) still open that channel under the Town tab. A guest,
 who has no main channel, keeps the channel they were in.
+
+### 19.59 The way in, as the web's: log in by code, apply with a name and a username, pending (iOS, 2026-11-19, the owner: "match what's new on webapp"; boards onboarding/connect, start, login, login-unknown, apply-name, username-states, apply-email, apply-code, apply-pending-name, apply-declined, member-link-name; collective-belfry docs/membership.md "Applying from the chat (verified)", "A name and a username"; `vectors/way-in.json`, written here)
+- **The first screen** ("Connect to your community"): an e-mail or a community's address,
+  Continue, or Scan a QR code. An e-mail → its domain's belfry → Log in with the code asked at
+  once; an address → the belfry's **start screen**: its name, its own description, **Log in** and
+  a smaller **Apply to join**.
+- **The applicant key**: the phone makes a key per belfry, keeps it in the Keychain, and signs
+  every call below with it (NIP-98). A session is only ever bound to that key: once signed in it
+  is that session's own key. `409 key_taken` → a new key for the next try.
+- **Log in**: `POST <api>/login/start {email}` (an e-mail, or `username@<domain>`) → the six
+  boxes → `/login/verify {email, code}` → `signed_in` (the chat, "Signed in as <address>"),
+  `pending` (the pending screen), or `unknown` + `proof`: "No account here yet … isn't a member
+  of <belfry>" → Apply to join with the address already proven.
+- **Apply**: a name, "Pick a username:" (filled from the first name by `POST /username/check
+  {name}` until it is typed by hand; checked as it changes: "<u>@<domain> is available" /
+  "Checking…" / "Taken. Try <suggestion>" / "Use lowercase letters, digits and dashes, 3 to 30
+  characters." / "That name is kept for the belfry."), why, the charter's ticks → the e-mail →
+  the code: `/apply/start {email, motivation, name, username, agreed}` (+ `proof` → no code) and
+  `/apply/verify`. The request is stored only after the right code.
+- **Pending** ("Your request is pending": the name, @username, the e-mail, the message, and that
+  this phone is logged in once approved while another device just asks a new code):
+  `/apply/status` every 5 s while the screen is open and when the app comes to the front;
+  `approved` carries the session (else Log in, the address filled in); `declined` → "Not this
+  time"; `none` → the start screen. A request that waits is shown again when the app is opened.
+- **A member invitation**: after its code (19.43 / 19.55), "Welcome to <belfry> … how people will
+  know you here": a name and a username, `POST /welcome {name, username}` by the new member's own
+  key, then the chat (then the charter, 19.54).
+- **Older belfries** (`409 unsupported`, or 404 / 405 on these calls): the native sign-in (19.20)
+  and the unproven form (19.45). The native sign-in also stays for the login link (19.56) and for
+  an account that holds its own key (`409 taken`).
+- Every refusal is shown in the app's fixed words; a `signed_in` whose `bunker_url` is not a
+  bunker address or whose `pubkey` is not 64 hex is never stored (`vectors/way-in.json`: 40
+  answers → the screen shown, 6 username lines).
+(iOS: `WayIn.answer / applyBody`, `UsernameCheck`, `AppModel.wayIn / wayInSignedIn`, views
+`WayInFlow`, `UsernameField`, `WelcomeNameScreen`; test `WayInTests`.)
