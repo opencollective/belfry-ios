@@ -89,7 +89,7 @@ struct RequestSections: View {
                     BusyButton(p.vouched ? "Take back my vouch" : "Vouch") { error = await model.vouchApplication(p.id, on: !p.vouched) }.buttonStyle(.bordered)
                 }
                 // "1 vouch" beside the buttons: the count, no names
-                if p.vouches > 0 { Text(p.vouches == 1 ? "1 vouch" : "\(p.vouches) vouches").font(.footnote).foregroundStyle(.secondary) }
+                if !vouching, p.vouches > 0 { Text(p.vouches == 1 ? "1 vouch" : "\(p.vouches) vouches").font(.footnote).foregroundStyle(.secondary) }
             }
             .controlSize(.small)
         }
