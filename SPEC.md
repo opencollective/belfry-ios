@@ -2569,5 +2569,6 @@ who has no main channel, keeps the channel they were in.
   bot mark, an "agent" chip, "Asks to be your agent"), people asking to join the belfry (a "guest"
   chip for a guest; "Asks to join <belfry>", + " · 1 of 2 vouches" while it accepts by vouches),
   requests to my groups ("Asks to join <group>"); then "N people", each with "You · Steward" /
-  the role under the name; last "N guests are reading: they opened an invite link and have not
-  joined yet." when some only read.
+  the role under the name. The number leaves out a request I vouched for (a steward counts
+  them all); "1 vouch" / "2 vouches" stands beside the buttons, no names. Guests as rows and the
+  guests-reading line wait for the server (canvas v64).

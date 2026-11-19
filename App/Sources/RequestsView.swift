@@ -21,8 +21,10 @@ struct RequestSections: View {
         SwiftUI.Group {
             if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
             let agents = admin ? model.agentRequests : []
-            let count = agents.count + model.belfryRequests.count + groups.reduce(0) { $0 + $1.list.count }
-            if count > 0 {
+            let shown = agents.count + model.belfryRequests.count + groups.reduce(0) { $0 + $1.list.count }
+            // the number: a request I vouched for no longer waits for me; a steward counts them all
+            let count = agents.count + model.belfryRequests.filter { admin || !$0.vouched }.count + d.groupRequestCount()
+            if shown > 0 {
                 // one section for everything that waits for me (board home/members)
                 Section {
                     ForEach(agents) { a in agentRow(a) }
@@ -31,7 +33,7 @@ struct RequestSections: View {
                         ForEach(x.list, id: \.id) { a in groupRow(x.group, a, d) }
                     }
                 } header: {
-                    Text("Waiting for you · \(count)")
+                    Text(count > 0 ? "Waiting for you · \(count)" : "Waiting for you")
                 } footer: {
                     Text("Stewards see every request to join the belfry. Everyone sees requests for groups they are in, and vouches when the group asks for vouches.")
                 }
@@ -86,6 +88,8 @@ struct RequestSections: View {
                 if vouching || !admin {
                     BusyButton(p.vouched ? "Take back my vouch" : "Vouch") { error = await model.vouchApplication(p.id, on: !p.vouched) }.buttonStyle(.bordered)
                 }
+                // "1 vouch" beside the buttons: the count, no names
+                if p.vouches > 0 { Text(p.vouches == 1 ? "1 vouch" : "\(p.vouches) vouches").font(.footnote).foregroundStyle(.secondary) }
             }
             .controlSize(.small)
         }

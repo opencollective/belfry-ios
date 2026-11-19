@@ -44,12 +44,6 @@ struct MembersDirectory: View {
             ForEach(letters, id: \.self) { l in
                 letterSection(l, sections[l] ?? [])
             }
-            // guests who only read (they opened an invite link and have not joined)
-            let reading = model.derive.onlyReading.count
-            if list != nil, query.isEmpty, reading > 0 {
-                Text("\(reading == 1 ? "1 guest is reading" : "\(reading) guests are reading"): they opened an invite link and have not joined yet.")
-                    .font(.footnote).foregroundStyle(.secondary).listRowSeparator(.hidden)
-            }
         }
         .listStyle(.plain)
         .sectionIndex()
