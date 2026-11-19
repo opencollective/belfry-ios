@@ -137,13 +137,20 @@ struct GroupRequestRow: View {
     let group: Channel
     let pubkey: String
     let answer: String
+    /// "Asks to join Garden crew": on Members, where requests of several groups share a section.
+    var asks: String?
     @State private var error: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Avatar(pubkey: pubkey, size: 28)
-                Text(model.name(pubkey)).font(.subheadline.weight(.semibold))
-                if let k = model.derive.kindLabel(pubkey) { Text(k).font(.caption).foregroundStyle(.secondary) }
+                Avatar(pubkey: pubkey, size: asks == nil ? 28 : 32)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(model.name(pubkey)).font(asks == nil ? .subheadline.weight(.semibold) : .body.weight(.semibold))
+                        if let k = model.derive.kindLabel(pubkey) { Text(k).font(.caption).foregroundStyle(.secondary) }
+                    }
+                    if let asks { Text(asks).font(.footnote).foregroundStyle(.secondary) }
+                }
             }
             if !answer.isEmpty { Text(verbatim: answer).font(.subheadline).foregroundStyle(.secondary) }
             // every admin of it (the relay's list, its creator, by role, a belfry admin) answers

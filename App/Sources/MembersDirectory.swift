@@ -22,18 +22,33 @@ struct MembersDirectory: View {
         let letters = sections.keys.sorted { a, b in a == "#" ? false : b == "#" ? true : a < b }
         List {
             if query.isEmpty {
+                // "Invite someone": the first row, only for who may invite members (no disabled row)
+                if model.mayInviteMembers, inviteChannel != nil {
+                    Button { hideKeyboard(); inviting = true } label: {
+                        Label("Invite someone", systemImage: "person.badge.plus").foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("members-invite")
+                }
                 // what waits for me, only when something does (web 98c33fc)
                 RequestSections(error: $error)
             }
             if list == nil {
                 HStack { if failed { Text("The list could not be loaded.") } else { ProgressView(); Text("Loading…") } }.foregroundStyle(.secondary)
             }
+            if list != nil, !shown.isEmpty {
+                Text(shown.count == 1 ? "1 person" : "\(shown.count) people").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
+            }
             ForEach(letters, id: \.self) { l in
                 letterSection(l, sections[l] ?? [])
             }
-            if list != nil {
-                Text("\(shown.count) \(shown.count == 1 ? "member" : "members")").font(.footnote).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity).listRowSeparator(.hidden)
+            // guests who only read (they opened an invite link and have not joined)
+            let reading = model.derive.onlyReading.count
+            if list != nil, query.isEmpty, reading > 0 {
+                Text("\(reading == 1 ? "1 guest is reading" : "\(reading) guests are reading"): they opened an invite link and have not joined yet.")
+                    .font(.footnote).foregroundStyle(.secondary).listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
@@ -43,14 +58,6 @@ struct MembersDirectory: View {
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { DrawerButton() }
-            // Xavier 2026-11-15: invite from here; only for who may invite members (no disabled button)
-            if model.mayInviteMembers, inviteChannel != nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { hideKeyboard(); inviting = true } label: { Image(systemName: "person.badge.plus") }
-                        .accessibilityLabel("Invite someone")
-                        .accessibilityIdentifier("members-invite")
-                }
-            }
         }
         .sheet(isPresented: $inviting) {
             if let c = inviteChannel { InviteSheet(id: c, startAs: .member(role: model.roles.defaultRole, membership: "permanent")) }
@@ -63,7 +70,7 @@ struct MembersDirectory: View {
     @ViewBuilder private func letterSection(_ l: String, _ people: [DirMember]) -> some View {
         Section {
             ForEach(people) { m in
-                Button { model.openProfile = m.pubkey } label: { row(m.pubkey, m.name, size: 40, detail: nil, role: model.roles.label(of: m.pubkey) ?? roleLabel(m.role)) }
+                Button { model.openProfile = m.pubkey } label: { row(m.pubkey, m.name, size: 40, detail: roleLine(m), role: nil) }
                     .buttonStyle(.plain)
                 ForEach(m.agents, id: \.pubkey) { a in
                     Button { model.openProfile = a.pubkey } label: { row(a.pubkey, a.name, size: 40, detail: m.pubkey == model.me ? "your agent" : "agent of \(name(m.pubkey, m.name))", role: nil) }
@@ -94,6 +101,13 @@ struct MembersDirectory: View {
         model.membership.accept == "vouches"
             ? (model.membership.vouches == 1 ? "One vouch" : "\(model.membership.vouches) vouches") + " from members let someone in."
             : "Vouch for the people you know: the admins decide, and they see who vouched."
+    }
+
+    /// "You · Steward", "Steward", "Gardener"; nothing for a plain member.
+    private func roleLine(_ m: DirMember) -> String? {
+        let role = model.roles.label(of: m.pubkey) ?? roleLabel(m.role)
+        let parts = [m.pubkey == model.me ? "You" : nil, role].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private func roleLabel(_ id: String?) -> String? {

@@ -2564,3 +2564,10 @@ who has no main channel, keeps the channel they were in.
 - **Members**: no "My card" row (the profile is under Me). A request to join the belfry reads
   "@username · e-mail" under the name (the e-mail for stewards only).
 - **Accounts**: "Link a phone or tablet" pushes the QR code of the open account's login link (19.56).
+- **Members, the rest of the board** (2026-11-19): "Invite someone" is the first row (who may
+  invite members only); everything that waits is ONE section "Waiting for you · N": agents (the
+  bot mark, an "agent" chip, "Asks to be your agent"), people asking to join the belfry (a "guest"
+  chip for a guest; "Asks to join <belfry>", + " · 1 of 2 vouches" while it accepts by vouches),
+  requests to my groups ("Asks to join <group>"); then "N people", each with "You · Steward" /
+  the role under the name; last "N guests are reading: they opened an invite link and have not
+  joined yet." when some only read.

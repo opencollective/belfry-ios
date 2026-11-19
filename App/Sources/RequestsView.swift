@@ -20,83 +20,103 @@ struct RequestSections: View {
         let groups = d.groupRequests()
         SwiftUI.Group {
             if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
-            if admin && !model.agentRequests.isEmpty {
-                Section("Agents asking to join · \(model.agentRequests.count)") {
-                    ForEach(model.agentRequests) { a in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 8) {
-                                Avatar(pubkey: a.pubkey, size: 32)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(verbatim: a.name.isEmpty ? "An agent" : a.name).font(.body.weight(.semibold))
-                                    Text(a.forMe ? "Asks to be your agent" : "Asks to join").font(.footnote).foregroundStyle(.secondary)
-                                }
-                            }
-                            if !a.about.isEmpty { Text(verbatim: a.about).font(.subheadline).foregroundStyle(.secondary) }
-                            HStack {
-                                BusyButton("Let it in as my agent") { error = await model.decideAgentRequest(a.id, approve: true) }.buttonStyle(.brand)
-                                BusyButton("Decline", role: .destructive) { error = await model.decideAgentRequest(a.id, approve: false) }.buttonStyle(.bordered)
-                            }
-                            .controlSize(.small)
-                        }
-                        .padding(.vertical, 2)
-                    }
-                }
-            }
-            if !model.belfryRequests.isEmpty {
+            let agents = admin ? model.agentRequests : []
+            let count = agents.count + model.belfryRequests.count + groups.reduce(0) { $0 + $1.list.count }
+            if count > 0 {
+                // one section for everything that waits for me (board home/members)
                 Section {
-                    ForEach(model.belfryRequests) { p in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 8) {
-                                if let pk = p.pubkey { Avatar(pubkey: pk, size: 28) }
-                                Text(verbatim: p.name.isEmpty ? "Someone" : p.name).font(.body.weight(.semibold))
-                            }
-                            if p.isGuest { Text(guestLine(p)).font(.footnote).foregroundStyle(.secondary) }
-                            // "@lina · lina.moreau@example.org" (the e-mail for stewards only)
-                            let who = p.whoLine(showEmail: admin)
-                            if !who.isEmpty { Text(verbatim: who).font(.footnote).foregroundStyle(.secondary) }
-                            if !p.motivation.isEmpty { Text(verbatim: p.motivation).font(.subheadline).foregroundStyle(.secondary) }
-                            if vouching {
-                                Text("\(p.vouches) of \(model.membership.vouches) \(model.membership.vouches == 1 ? "vouch" : "vouches")").font(.footnote).foregroundStyle(.secondary)
-                            }
-                            HStack {
-                                if admin {
-                                    BusyButton("Accept") { error = await model.decideApplication(p.id, approve: true) }.buttonStyle(.brand)
-                                    BusyButton("Decline", role: .destructive) { error = await model.decideApplication(p.id, approve: false) }.buttonStyle(.bordered)
-                                }
-                                if vouching || !admin {
-                                    BusyButton(p.vouched ? "Take back my vouch" : "Vouch") { error = await model.vouchApplication(p.id, on: !p.vouched) }.buttonStyle(.bordered)
-                                }
-                            }
-                            .controlSize(.small)
-                        }
-                        .padding(.vertical, 2)
-                    }
-                } header: { Text("Asking to join \(model.config.name) · \(model.belfryRequests.count)") }
-            }
-            ForEach(groups) { x in
-                Section {
-                    ForEach(x.list, id: \.id) { a in
-                        let mineToRun = x.group.admins.contains(model.me)
-                        if mineToRun {
-                            GroupRequestRow(group: x.group, pubkey: a.pubkey, answer: a.answer)
-                        } else {
-                            let who = d.vouchesFor(x.group, a)
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(spacing: 8) { Avatar(pubkey: a.pubkey, size: 28); Text(model.name(a.pubkey)).font(.subheadline.weight(.semibold)) }
-                                if !a.answer.isEmpty { Text(verbatim: a.answer).font(.subheadline).foregroundStyle(.secondary) }
-                                Text(vouchLine(who, x.group.vouches)).font(.footnote).foregroundStyle(.secondary)
-                                BusyButton(who.contains(model.me) ? "Take back my vouch" : "Vouch") { model.vouch(x.group, a, on: !who.contains(model.me)) }
-                                    .buttonStyle(.bordered).controlSize(.small)
-                            }
-                        }
+                    ForEach(agents) { a in agentRow(a) }
+                    ForEach(model.belfryRequests) { p in belfryRow(p, admin: admin, vouching: vouching) }
+                    ForEach(groups) { x in
+                        ForEach(x.list, id: \.id) { a in groupRow(x.group, a, d) }
                     }
                 } header: {
-                    Button { model.openGroup = x.group.id } label: {
-                        HStack(spacing: 6) { ChannelGlyph(group: x.group, size: 14); GroupTitle(group: x.group, id: x.group.id); Image(systemName: "chevron.right").font(.caption2) }
-                    }
-                    .buttonStyle(.plain)
+                    Text("Waiting for you · \(count)")
+                } footer: {
+                    Text("Stewards see every request to join the belfry. Everyone sees requests for groups they are in, and vouches when the group asks for vouches.")
                 }
             }
+        }
+    }
+
+    private func agentRow(_ a: AgentRequest) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                BotMark(size: 32)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(verbatim: a.name.isEmpty ? "An agent" : a.name).font(.body.weight(.semibold))
+                        Chip(text: "agent")
+                    }
+                    Text(a.forMe ? "Asks to be your agent" : "Asks to join \(model.config.name)").font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            if !a.about.isEmpty { Text(verbatim: a.about).font(.subheadline).foregroundStyle(.secondary) }
+            HStack {
+                BusyButton("Let it in as my agent") { error = await model.decideAgentRequest(a.id, approve: true) }.buttonStyle(.brand)
+                BusyButton("Decline", role: .destructive) { error = await model.decideAgentRequest(a.id, approve: false) }.buttonStyle(.bordered)
+            }
+            .controlSize(.small)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func belfryRow(_ p: BelfryRequest, admin: Bool, vouching: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                if let pk = p.pubkey { Avatar(pubkey: pk, size: 32) }
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(verbatim: p.name.isEmpty ? "Someone" : p.name).font(.body.weight(.semibold))
+                        if p.isGuest { Chip(text: "guest") }
+                    }
+                    Text(asksLine(p, vouching: vouching)).font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            if p.isGuest { Text(guestLine(p)).font(.footnote).foregroundStyle(.secondary) }
+            // "@lina · lina.moreau@example.org" (the e-mail for stewards only)
+            let who = p.whoLine(showEmail: admin)
+            if !who.isEmpty { Text(verbatim: who).font(.footnote).foregroundStyle(.secondary) }
+            if !p.motivation.isEmpty { Text(verbatim: p.motivation).font(.subheadline).foregroundStyle(.secondary) }
+            HStack {
+                if admin {
+                    BusyButton("Accept") { error = await model.decideApplication(p.id, approve: true) }.buttonStyle(.brand)
+                    BusyButton("Decline", role: .destructive) { error = await model.decideApplication(p.id, approve: false) }.buttonStyle(.bordered)
+                }
+                if vouching || !admin {
+                    BusyButton(p.vouched ? "Take back my vouch" : "Vouch") { error = await model.vouchApplication(p.id, on: !p.vouched) }.buttonStyle(.bordered)
+                }
+            }
+            .controlSize(.small)
+        }
+        .padding(.vertical, 2)
+    }
+
+    /// "Asks to join Riverside Commons" (+ " · 1 of 2 vouches" while the belfry accepts by vouches).
+    private func asksLine(_ p: BelfryRequest, vouching: Bool) -> String {
+        let s = "Asks to join \(model.config.name)"
+        guard vouching else { return s }
+        return s + " · \(p.vouches) of \(model.membership.vouches) \(model.membership.vouches == 1 ? "vouch" : "vouches")"
+    }
+
+    @ViewBuilder private func groupRow(_ g: Channel, _ a: BelfryCore.Application, _ d: Derive) -> some View {
+        if g.admins.contains(model.me) {
+            GroupRequestRow(group: g, pubkey: a.pubkey, answer: a.answer, asks: "Asks to join \(g.name)")
+        } else {
+            let who = d.vouchesFor(g, a)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Avatar(pubkey: a.pubkey, size: 32)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(model.name(a.pubkey)).font(.body.weight(.semibold))
+                        Text("Asks to join \(g.name) · " + vouchLine(who, g.vouches)).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                if !a.answer.isEmpty { Text(verbatim: a.answer).font(.subheadline).foregroundStyle(.secondary) }
+                BusyButton(who.contains(model.me) ? "Take back my vouch" : "Vouch") { model.vouch(g, a, on: !who.contains(model.me)) }
+                    .buttonStyle(.bordered).controlSize(.small)
+            }
+            .padding(.vertical, 2)
         }
     }
 
@@ -117,4 +137,14 @@ func guestLine(_ p: BelfryRequest) -> String {
     if p.since.count >= 10 { s += " since " + String(p.since.prefix(10)) }
     if !p.inviter.isEmpty { s += ", invited by " + p.inviter }
     return s
+}
+
+/// An agent's face where it has none of its own yet: the bot mark on grey (board home/members).
+struct BotMark: View {
+    var size: CGFloat = 32
+    var body: some View {
+        Image(systemName: "cpu").font(.system(size: size * 0.5, weight: .medium)).foregroundStyle(.white)
+            .frame(width: size, height: size).background(Color.gray, in: Circle())
+            .accessibilityHidden(true)
+    }
 }
