@@ -51,7 +51,9 @@ struct RequestSections: View {
                                 Text(verbatim: p.name.isEmpty ? "Someone" : p.name).font(.body.weight(.semibold))
                             }
                             if p.isGuest { Text(guestLine(p)).font(.footnote).foregroundStyle(.secondary) }
-                            if admin, let e = p.email { Text(verbatim: e).font(.footnote).foregroundStyle(.secondary) }
+                            // "@lina · lina.moreau@example.org" (the e-mail for stewards only)
+                            let who = p.whoLine(showEmail: admin)
+                            if !who.isEmpty { Text(verbatim: who).font(.footnote).foregroundStyle(.secondary) }
                             if !p.motivation.isEmpty { Text(verbatim: p.motivation).font(.subheadline).foregroundStyle(.secondary) }
                             if vouching {
                                 Text("\(p.vouches) of \(model.membership.vouches) \(model.membership.vouches == 1 ? "vouch" : "vouches")").font(.footnote).foregroundStyle(.secondary)

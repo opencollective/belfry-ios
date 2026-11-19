@@ -62,6 +62,15 @@ struct AccountsSheet: View {
                     .buttonStyle(.plain)
                 Button { hideKeyboard(); scanning = true } label: { twoLines("qrcode.viewfinder", "Scan an invite", nil) }
                     .buttonStyle(.plain)
+                // the open account on another device (board home/link-device): a member with an address here
+                if let a = model.linkAddress {
+                    if pushed {
+                        NavigationLink { LinkDeviceScreen(address: a) } label: { twoLines("iphone.and.arrow.forward", "Link a phone or tablet", "Log in there as \(a.description)") }
+                            .accessibilityIdentifier("link-device-row")
+                    } else {
+                        NavigationLink { LinkDeviceScreen(address: a) } label: { twoLines("iphone.and.arrow.forward", "Link a phone or tablet", "Log in there as \(a.description)") }
+                    }
+                }
             }
             Section {
                 if pushed {
@@ -150,5 +159,48 @@ extension AppModel {
         pendingCode = nil
         signInError = nil
         addingAccount = false
+    }
+}
+
+extension AppModel {
+    /// The open account's address here, when it has one a login link can carry (a member's
+    /// `username@domain`; never a guest, never the demo).
+    var linkAddress: MemberAddress? {
+        guard !isDemo, !derive.amGuest, !guestReading, let a = accounts.open?.address, let m = MemberAddress.parse(a),
+              m.domain == config.domain.lowercased(), LoginLink.isUsername(m.name) else { return nil }
+        return m
+    }
+}
+
+/// "Link a phone or tablet" (board home/link-device; SPEC 19.56): the QR code of
+/// https://chat.<domain>/login/<username> for the open account. Nothing secret is in it: the
+/// other device asks for the 6-digit code mailed to this account.
+struct LinkDeviceScreen: View {
+    let address: MemberAddress
+
+    private var link: String { "https://chat.\(address.domain)/login/\(address.name)" }
+
+    var body: some View {
+        List {
+            Section {
+                VStack(spacing: 12) {
+                    if let img = QR.image(link) {
+                        Image(uiImage: img).interpolation(.none).resizable().scaledToFit()
+                            .frame(width: 220, height: 220)
+                            .padding(12)
+                            .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .accessibilityLabel("QR code to log in as \(address.description)")
+                    }
+                    Text(link).font(.footnote.monospaced()).foregroundStyle(.secondary).multilineTextAlignment(.center).textSelection(.enabled)
+                }
+                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
+            } footer: {
+                Text("Scan this with the Belfry app on your other phone or tablet (Accounts › Scan an invite, or its camera) to log in there as \(address.description). For security it asks for the 6-digit code we send to your e-mail: nothing secret is in this code.")
+            }
+            Section { CopyRow(text: link, title: "Copy link") }
+        }
+        .navigationTitle("Link a phone or tablet")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

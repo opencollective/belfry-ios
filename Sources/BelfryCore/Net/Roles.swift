@@ -238,6 +238,15 @@ public struct BelfryRequest: Hashable, Sendable, Identifiable {
     public var inviter = ""
     public var pubkey: String?
     public var since = ""
+    /// The username they asked for (after the acceptance, the one they got); "" when none.
+    public var username = ""
+    /// The address was proven by a code (the web's way in).
+    public var verified = false
+
+    /// "@lina · lina.moreau@example.org": how a steward reads who asks (board home/members-request-name).
+    public func whoLine(showEmail: Bool) -> String {
+        [username.isEmpty ? nil : "@" + username, showEmail ? email.flatMap { $0.isEmpty ? nil : $0 } : nil].compactMap { $0 }.joined(separator: " · ")
+    }
     public init(id: Int, name: String, motivation: String, created: String, vouches: Int, vouched: Bool, email: String?) {
         self.id = id; self.name = name; self.motivation = motivation; self.created = created; self.vouches = vouches; self.vouched = vouched; self.email = email
     }
@@ -279,6 +288,8 @@ public extension BelfryAPI {
             b.inviter = (r["inviter"] as? String ?? "").sliceUnits(100)
             b.pubkey = (r["pubkey"] as? String).flatMap { isHex64($0) ? $0 : nil }
             b.since = r["since"] as? String ?? ""
+            b.username = (r["username"] as? String).flatMap { LoginLink.isUsername($0) ? $0 : nil } ?? ""
+            b.verified = r["verified"] as? Bool ?? false
             return b
         }
     }
