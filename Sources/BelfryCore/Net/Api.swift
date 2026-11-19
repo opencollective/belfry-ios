@@ -364,7 +364,7 @@ public struct BelfryAPI: Sendable {
 
     /// The code, with a NEW session key's public key (SPEC 19.55): when the address is another
     /// account's the belfry opens that account's session for the key (`signedIn`); else as `guestVerify`.
-    func guestVerify(email: String, code: String, name: String?, sessionKey: String) async throws -> (saved: GuestSaved, signedIn: GuestSignedIn?) {
+    public func guestVerify(email: String, code: String, name: String?, sessionKey: String) async throws -> (saved: GuestSaved, signedIn: GuestSignedIn?) {
         let b: [String: Any]
         do { b = try await guestCall("/guest/save/verify", GuestSignIn.body(email: email, code: code, name: name, sessionKey: sessionKey)) }
         catch let f as GuestJoinFailure where f.error == .invalid {
