@@ -57,10 +57,12 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
         guard let u = URL(string: url) else { throw BelfryError.relay("bad relay url") }
         set(.connecting)
         let cfg = URLSessionConfiguration.default
-        cfg.timeoutIntervalForRequest = 30
+        // a web socket task fails with "timed out" when nothing arrives for this long: a quiet
+        // channel must not drop the connection. Dead sockets are found by `ping`.
+        cfg.timeoutIntervalForRequest = 86400
         let s = URLSession(configuration: cfg, delegate: self, delegateQueue: nil)
         let t = s.webSocketTask(with: u)
-        lock.lock(); session = s; task = t; opened = false; authEventId = nil; challengedFlag = false; lock.unlock()
+        lock.lock(); session = s; task = t; opened = false; authEventId = nil; challengedFlag = false; lastHeard = Date(); lock.unlock()
         t.resume()
         receive(t)
         let key = UUID().uuidString
@@ -167,6 +169,33 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
     /// Tests: a frame as if it came from the relay.
     func receiveForTest(_ text: String) { handle(text) }
 
+    // ---- is it alive ---------------------------------------------------------------------------
+
+    private var lastHeard = Date()
+    /// Seconds since the relay last sent anything (a message or a pong).
+    public var quietFor: TimeInterval { lock.lock(); defer { lock.unlock() }; return Date().timeIntervalSince(lastHeard) }
+    private func heard() { lock.lock(); lastHeard = Date(); lock.unlock() }
+
+    /// Asks for a pong. No pong within TIMEOUT (or an error): the socket is dead; it is dropped,
+    /// and `onDisconnect` lets the owner connect again.
+    public func ping(timeout: TimeInterval = 8) {
+        lock.lock(); let t = task; lock.unlock()
+        guard let t else { return }
+        let pong = PongBox()
+        let fail: () -> Void = { [weak self] in
+            guard let self else { return }
+            self.lock.lock(); let same = self.task === t; self.lock.unlock()
+            guard same else { return }
+            t.cancel(with: .goingAway, reason: nil)
+            self.dropped()
+        }
+        t.sendPing { [weak self] error in
+            pong.set()
+            if error != nil { fail() } else { self?.heard() }
+        }
+        expire(after: timeout) { if !pong.isSet { fail() } }
+    }
+
     /// Publishes EVENT and waits for OK (15 s). Throws the relay's reason ("restricted: …").
     public func publish(_ event: NostrEvent, timeout: TimeInterval = 15) async throws {
         do {
@@ -221,6 +250,7 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
             case .failure:
                 self.dropped()
             case .success(let msg):
+                self.heard()
                 switch msg {
                 case .string(let s): self.handle(s)
                 case .data(let d): self.handle(String(decoding: d, as: UTF8.self))
@@ -319,6 +349,13 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
             self.expire(after: timeout) { box.finish() }
         }
     }
+}
+
+final class PongBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var answered = false
+    func set() { lock.lock(); answered = true; lock.unlock() }
+    var isSet: Bool { lock.lock(); defer { lock.unlock() }; return answered }
 }
 
 final class QueryBox: @unchecked Sendable {

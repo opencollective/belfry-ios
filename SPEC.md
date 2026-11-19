@@ -2208,6 +2208,14 @@ Same wire format as Android SPEC 19.40 (written there the same day; this section
   within 5 s of it, in case it is), neither ends a pending catch-up nor starts the deleted-by-absence
   check. Metadata (39000–39003) and the charter (2100 / 2101) are asked without `since` anyway.
   (iOS: `Relay.refilter`, `Relay.challenged / authed`, `SyncEngine.eose(_:_:relay:)`, `LateAuthTests`.)
+  From 0 only until one answer after AUTH came in this run of the app: a later reconnect asks from
+  `since` again (2026-11-19: replaying 2000 events at every reconnect made live events late).
+- **A live connection is kept and checked** (iOS, 2026-11-19; #issues 587ba310 "live thread
+  replies not appearing"): the web socket has no idle timeout of its own (URLSession's request
+  timeout dropped a quiet connection every 30 s); a relay that sent nothing for 25 s is pinged
+  (every 15 s tick, and at once when the app comes back to the front); no pong within 8 s = a dead
+  socket: dropped and connected again, catching up from `since`. Events already held are skipped
+  before their signature is checked. (`Relay.ping`, `Relay.quietFor`, `SyncEngine.checkSockets`.)
 - **What a member reads** (web invite.ts `inChannel`): a member reads every live (not deleted, not
   archived) open channel without being in its 39002 list, and the closed ones they are in; a guest
   only their own (and, me, a guest in guest mode too). The drawer lists every listed channel; a

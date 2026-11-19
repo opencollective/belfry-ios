@@ -111,5 +111,27 @@ final class LateAuthTests: XCTestCase {
         XCTAssertEqual((again[2] as? [String: Any])?["since"] as? Int, 0)
         r.receiveForTest(#"["EOSE","live-groups"]"#)
         XCTAssertEqual(answers, 1, "the answer after AUTH is the relay's")
+        // a reconnect later in the same run: that answer made `since` safe, nothing is replayed from 0
+        let r2 = Relay(url: "wss://groups-relay.example.org")
+        e.wireAnswers(r2, .groups)
+        XCTAssertEqual(r2.refilter?("live-groups")?[0]["since"] as? Int, 1_800_000_000 - 3600)
+    }
+
+    /// A subscription replayed after a reconnect: events already held cost nothing and are not new.
+    func testKnownEventsAreNotAddedTwice() throws {
+        let me = try LocalSigner(secret: Keys.generateSecret())
+        let e = SyncEngine(config: .defaults(domain: "example.org"), db: try Database(path: NSTemporaryDirectory() + "belfry-test-\(UUID().uuidString).sqlite"),
+                           signer: me, localOnly: true, attachmentsDir: URL(fileURLWithPath: NSTemporaryDirectory()))
+        let root = try me.signNow(EventTemplate(kind: 9, content: "root", tags: [["h", "general"]], createdAt: 1_800_000_000))
+        let reply = try me.signNow(EventTemplate(kind: 1111, content: "a reply", tags: [["h", "general"], ["E", root.id], ["e", root.id]], createdAt: 1_800_000_010))
+        XCTAssertEqual(e.add([root]).count, 1)
+        var changes = 0
+        e.onChange = { changes += 1 }
+        XCTAssertEqual(e.add([root]).count, 0)
+        XCTAssertEqual(changes, 0)
+        // a live reply in a thread is new, and the snapshot holds it at once
+        XCTAssertEqual(e.add([root, reply]).map(\.id), [reply.id])
+        XCTAssertEqual(changes, 1)
+        XCTAssertTrue(e.snapshot().contains { $0.id == reply.id })
     }
 }
