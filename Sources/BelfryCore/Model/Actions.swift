@@ -22,7 +22,7 @@ public struct Draft: Hashable, Sendable {
 }
 
 public enum Actions {
-    public static let defaultEmojis = ["👍", "❤️", "😂", "🎉", "🙏", "👀"]
+    public static let defaultEmojis = ["👍", "❤️", "🔥", "😂", "🎉", "🙏", "👀"]
 
     public static func slug(_ name: String, random: () -> String = { Crypto.random(3).hex }) -> String {
         let folded = name.lowercased().decomposedStringWithCompatibilityMapping
