@@ -73,18 +73,29 @@ for s in mine:
     simctl("launch", udid, bundle, *args(s))
     current = first
     settled = False
+    before = b""  # the last frame taken in the other appearance
     for name, mode in sorted(todo, key=lambda x: x[1] != first):
         path = os.path.join(out, name + ".png")
         if mode != current:
             simctl("ui", udid, "appearance", mode)
             current = mode
             time.sleep(1.5)
-            frame(path)
+            got = frame(path)
+            # the switch had not been drawn yet (main run 44510312803: 100b-home-dark was the
+            # light frame, byte for byte): wait and take it again, a few times
+            tries = 0
+            while before and got == before and tries < 4:
+                tries += 1
+                time.sleep(2)
+                got = frame(path)
+            if before and got == before: print(f"WARNING {name}: the same frame as the other appearance", flush=True)
+            before = got
         elif not settled:
             settle(path)
             settled = True
+            before = open(path, "rb").read() if os.path.exists(path) else b""
         else:
-            frame(path)
+            before = frame(path)
         print("captured " + name, flush=True)
 simctl("ui", udid, "appearance", "light")
 print(f"shots done in {time.time() - t_all:.0f} s", flush=True)
