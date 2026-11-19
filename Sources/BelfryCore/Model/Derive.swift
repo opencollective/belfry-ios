@@ -370,6 +370,12 @@ public struct TodoTask: Hashable, Sendable, Identifiable {
     /// Who put it on the assignee, when it was someone else (a 2101 `assign`, SPEC 19.41).
     public var assignedBy: String?
     public var done = false
+    /// When it was last marked done (the `done` 2101's time); nil while open.
+    public var doneAt: Int?
+    /// The assignee took it themselves (`claim`), as opposed to being given it (`assign`).
+    public var claimed = false
+    /// The assignee put it down (`idle`) since they last claimed or worked on it.
+    public var idle = false
     public let pending: Bool
     public var comments: [TaskComment] = []
     /// The message it was made from ("Turn into a to-do"): its `q` tag.
@@ -1400,23 +1406,25 @@ public final class Derive {
                 guard let tid = e.tag("e"), var t = tasks[tid] else { continue }
                 if e.kind == 2103 { t.comments.append(TaskComment(author: e.pubkey, text: e.content.sliceUnits(2000), at: e.createdAt)) }
                 switch e.tag("action") ?? "" {
-                case "claim": t.assignee = e.pubkey; t.assignedBy = nil
-                case "unclaim": if t.assignee == e.pubkey { t.assignee = nil; t.assignedBy = nil }
+                case "claim": t.assignee = e.pubkey; t.assignedBy = nil; t.claimed = true; t.idle = false
+                case "unclaim": if t.assignee == e.pubkey { t.assignee = nil; t.assignedBy = nil; t.claimed = false; t.idle = false }
                 case "assign":
                     // SPEC 19.41 (= Android 19.40): someone gives it to `p`; a `p` that is not a key is ignored
-                    if let p = e.tag("p"), isHex64(p) { t.assignee = p; t.assignedBy = p == e.pubkey ? nil : e.pubkey }
+                    if let p = e.tag("p"), isHex64(p) { t.assignee = p; t.assignedBy = p == e.pubkey ? nil : e.pubkey; t.claimed = p == e.pubkey; t.idle = false }
                 case "unassign":
                     // takes `p` off it, only while `p` is the one on it
-                    if let p = e.tag("p"), p == t.assignee { t.assignee = nil; t.assignedBy = nil }
-                case "done": t.done = true
-                case "undone": t.done = false
+                    if let p = e.tag("p"), p == t.assignee { t.assignee = nil; t.assignedBy = nil; t.claimed = false; t.idle = false }
+                case "done": t.done = true; t.doneAt = e.createdAt
+                case "undone": t.done = false; t.doneAt = nil
                 case "delete":
                     if e.pubkey == t.author { tasks[tid] = nil; order.removeAll { $0 == tid }; continue }
                 case "working":
+                    if t.assignee == e.pubkey { t.idle = false }
                     beats[e.pubkey] = (tid, e.createdAt)
                     let k = tid + e.pubkey
                     if let s = stretch[k], e.createdAt - s.last < TodoTask.beatFresh { stretch[k] = (s.start, e.createdAt) } else { stretch[k] = (e.createdAt, e.createdAt) }
                 case "idle":
+                    if t.assignee == e.pubkey { t.idle = true }
                     if beats[e.pubkey]?.task == tid { beats[e.pubkey] = nil }
                     stretch[tid + e.pubkey] = nil
                 default: break

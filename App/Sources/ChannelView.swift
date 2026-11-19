@@ -184,6 +184,11 @@ struct ChannelView: View {
                         ChannelLineBar(id: id, line: line, open: { togglePull() }, showAll: { withAnimation { topic = nil } },
                                        review: { model.openGroup = id }, todos: { closePull(); place = .todos },
                                        pulled: pull != .closed, pull: { openPull() })
+                        // a vote waiting comes first, the to-dos' line under it
+                        if line.icon == .proposal, let todos = d.todoLine(id, now: .now) {
+                            ChannelLineBar(id: id, line: todos, open: { togglePull() }, showAll: {}, review: {},
+                                           todos: { closePull(); place = .todos }, pulled: pull != .closed, pull: { openPull() })
+                        }
                     }
                     if model.offerPush && pull == .closed && !locked { PushOffer() }
                     if let g, g.isEvent, let e = d.eventOfGroup(id) {

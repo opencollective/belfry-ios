@@ -103,13 +103,39 @@ final class CategoriesTests: XCTestCase {
         XCTAssertNil(calm.attentionLine("garden", now: 1000), "normal times: no line")
         XCTAssertEqual(calm.attentionLine("garden", now: 1000, topic: "seeds")?.icon, .topic)
         let task = ev(other, 2100, 300, Actions.addTask("garden", title: "Water the beds").tags, "Water the beds")
+        // board channels/header-todos: the total, and the parts under it
         let free = Derive(events: base + [task], me: me)
         XCTAssertEqual(free.attentionLine("garden", now: 1000)?.icon, .todo)
         XCTAssertEqual(free.attentionLine("garden", now: 1000)?.action, .todos)
-        let claimed = Derive(events: base + [task, ev(other, 2101, 400, Actions.taskAction("garden", taskId: task.id, action: "claim").tags)], me: me)
-        XCTAssertNil(claimed.attentionLine("garden", now: 1000), "someone else's to-do asks nothing of me")
-        let mine = Derive(events: base + [task, ev(me, 2101, 400, Actions.taskAction("garden", taskId: task.id, action: "claim").tags)], me: me)
-        XCTAssertEqual(mine.attentionLine("garden", now: 1000)?.bold, "On you")
+        XCTAssertEqual(free.attentionLine("garden", now: 1000)?.bold, "1 to-do")
+        XCTAssertEqual(free.attentionLine("garden", now: 1000)?.detail, "1 unclaimed")
+        func act(_ pk: String, _ at: Int, _ t: NostrEvent, _ action: String) -> NostrEvent { ev(pk, 2101, at, Actions.taskAction("garden", taskId: t.id, action: action).tags) }
+        let t2 = ev(other, 2100, 301, Actions.addTask("garden", title: "Fix the door").tags, "Fix the door")
+        let t3 = ev(other, 2100, 302, Actions.addTask("garden", title: "Order compost").tags, "Order compost")
+        let t4 = ev(other, 2100, 303, Actions.addTask("garden", title: "Sweep the hall").tags, "Sweep the hall")
+        let t5 = ev(other, 2100, 304, Actions.addTask("garden", title: "Old one").tags, "Old one")
+        let given = ev(other, 2101, 420, [["e", t4.id], ["action", "assign"], ["p", me]] + Actions.taskTags("garden"))
+        let many = base + [task, t2, t3, t4, t5,
+                           act(other, 400, t2, "claim"),                         // in progress
+                           act(me, 410, t3, "claim"), act(me, 430, t3, "idle"),   // put down
+                           given,                                                // given to me, not started
+                           act(other, 450, t5, "done"),                          // closed before today
+                           act(other, 950, task, "done")]                        // closed today
+        let d = Derive(events: many, me: me)
+        Derive.todoUpNext = false
+        XCTAssertEqual(d.todoCounts("garden", dayStart: 900), TodoCounts(unclaimed: 2, upNext: 0, inProgress: 1, closedToday: 1))
+        XCTAssertEqual(d.todoLine("garden", now: 1000, dayStart: 900)?.bold, "4 to-dos")
+        XCTAssertEqual(d.todoLine("garden", now: 1000, dayStart: 900)?.detail, "2 unclaimed, 1 in progress, 1 closed today")
+        Derive.todoUpNext = true
+        XCTAssertEqual(d.todoCounts("garden", dayStart: 900).parts, "2 up next, 1 in progress, 1 closed today")
+        Derive.todoUpNext = false
+        // working again after putting it down: in progress
+        let again = Derive(events: many + [act(me, 960, t3, "working")], me: me)
+        XCTAssertEqual(again.todoCounts("garden", dayStart: 900).inProgress, 2)
+        // every part at 0: no line
+        let old = Derive(events: base + [task, act(other, 450, task, "done")], me: me)
+        XCTAssertNil(old.todoLine("garden", now: 1000, dayStart: 900))
+        XCTAssertEqual(TodoCounts(unclaimed: 0, upNext: 0, inProgress: 0, closedToday: 1).parts, "1 closed today")
     }
 }
 

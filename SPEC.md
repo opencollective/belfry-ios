@@ -2304,3 +2304,18 @@ says what would change in the proposal's chat; a client never validates or inven
 A to-do's title holds 300 UTF-16 units (19.8). The forms count ("n of 300" from 250 on), say
 "N characters too long. A to-do holds 300; put the rest in a comment on it." and keep Add off
 until it fits; nothing is cut on send (`Actions.taskOver`, `Actions.taskLimitLine`).
+
+### 19.47 To-dos in parts under the header (iOS, 2026-11-19; board channels/header-todos, #issues 8ec8c3b5)
+The header's attention line for to-dos has two lines: "6 to-dos", then the parts, "2 unclaimed,
+2 in progress, 1 closed today" (they may wrap; a part at 0 is left out; every part at 0 = no
+line; the total is the sum of the parts). Tap: the channel's to-dos. The pull-down's To-dos row
+shows the same parts as its second line. A vote waiting comes first, this line under it.
+- **unclaimed**: open, nobody's (no assignee).
+- **in progress**: the assignee took it (`claim`, or an `assign` to themselves) and has not put it
+  down: no `idle` of theirs since their last `claim` / `working`.
+- **closed today**: its latest `done` is at or after the viewer's midnight.
+- **up next** (given to someone by `assign`, or claimed and put down with `idle`): a draft until
+  the owner confirms assign = up next / claim = working now. Until then (`Derive.todoUpNext`
+  false) these count as unclaimed.
+(iOS: `Derive.todoCounts`, `Derive.todoLine`, `TodoCounts.parts`, `TodoTask.claimed / idle / doneAt`;
+test `CategoriesTests`.) "On you" / "nobody took" lines are gone.

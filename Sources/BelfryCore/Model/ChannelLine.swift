@@ -54,6 +54,8 @@ public struct ChannelLine: Hashable, Sendable {
     public var pill: String?
     public var ask = false
     public var action: LineAction?
+    /// A second line under the first (the to-dos' parts); it may wrap.
+    public var detail: String?
     /// Nothing asks for attention: shown muted.
     public var quiet = false
     public var counts: [LineCount] = []
@@ -170,7 +172,7 @@ extension Derive {
     /// the owner: "keep that line whenever we need to drive the attention… in normal times we can
     /// remove it"): a topic filter, my vote in this proposal, people asking to join a group I run,
     /// a vote I haven't cast, an event I haven't answered within 7 days, a pinned message I haven't
-    /// hidden, then open to-dos on me, then open to-dos nobody took. Anything else: nil (no line;
+    /// hidden, then the to-dos in parts (`todoLine`). Anything else: nil (no line;
     /// the counts are in the header's subtitle). No counts on it.
     public func attentionLine(_ groupId: String, now: Int, topic: String? = nil, hiddenPins: Set<String> = []) -> ChannelLine? {
         let f = channelFacts(groupId, now: now)
@@ -194,14 +196,56 @@ extension Derive {
         if let pin = f.pins.first(where: { !hiddenPins.contains($0.id) }) {
             return ChannelLine(.pin, "", pinLine(pin))
         }
-        let mine = f.todos.filter { $0.assignee == me }
-        if let t = mine.first {
-            return ChannelLine(.todo, mine.count == 1 ? "On you" : "\(mine.count) on you", " · " + t.title, action: .todos)
+        return todoLine(groupId, now: now)
+    }
+
+    /// "Up next" (assigned, not started) as its own part: a draft on the canvas until the owner
+    /// confirms assign = up next / claim = working now. Off: those to-dos count as unclaimed.
+    public static var todoUpNext = false
+
+    /// The channel's to-dos in parts (board channels/header-todos; #issues 8ec8c3b5): unclaimed
+    /// (open, nobody's), up next (given to someone, or put down, not being worked on), in progress
+    /// (claimed and not idle), closed today (done since DAYSTART, the viewer's midnight).
+    public func todoCounts(_ groupId: String, dayStart: Int) -> TodoCounts {
+        var c = TodoCounts()
+        for t in tasks(groupId) {
+            if t.done { if let at = t.doneAt, at >= dayStart { c.closedToday += 1 } }
+            else if t.assignee == nil { c.unclaimed += 1 }
+            else if t.claimed && !t.idle { c.inProgress += 1 }
+            else if Derive.todoUpNext { c.upNext += 1 }
+            else { c.unclaimed += 1 }
         }
-        let free = f.todos.filter { $0.assignee == nil }
-        if let t = free.first {
-            return ChannelLine(.todo, free.count == 1 ? "1 to-do" : "\(free.count) to-dos", " nobody took · " + t.title, action: .todos)
-        }
-        return nil
+        return c
+    }
+
+    /// The to-dos' line: "6 to-dos" and, under it, the parts. Nil when every part is 0.
+    public func todoLine(_ groupId: String, now: Int, dayStart: Int? = nil) -> ChannelLine? {
+        let c = todoCounts(groupId, dayStart: dayStart ?? Derive.midnight(before: now))
+        guard c.total > 0 else { return nil }
+        var line = ChannelLine(.todo, c.total == 1 ? "1 to-do" : "\(c.total) to-dos", "", action: .todos)
+        line.detail = c.parts
+        return line
+    }
+
+    /// The viewer's midnight before NOW.
+    public static func midnight(before now: Int, calendar: Calendar = .current) -> Int {
+        Int(calendar.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(now))).timeIntervalSince1970)
+    }
+}
+
+/// A channel's to-dos in parts; the total is their sum.
+public struct TodoCounts: Hashable, Sendable {
+    public var unclaimed = 0
+    public var upNext = 0
+    public var inProgress = 0
+    public var closedToday = 0
+    public init(unclaimed: Int = 0, upNext: Int = 0, inProgress: Int = 0, closedToday: Int = 0) {
+        self.unclaimed = unclaimed; self.upNext = upNext; self.inProgress = inProgress; self.closedToday = closedToday
+    }
+    public var total: Int { unclaimed + upNext + inProgress + closedToday }
+    /// "2 unclaimed, 1 up next, 2 in progress, 1 closed today"; a part at 0 is left out.
+    public var parts: String {
+        [(unclaimed, "unclaimed"), (upNext, "up next"), (inProgress, "in progress"), (closedToday, "closed today")]
+            .filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }.joined(separator: ", ")
     }
 }

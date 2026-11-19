@@ -27,11 +27,18 @@ struct ChannelLineBar: View {
             Button { line.action == .todos ? todos() : open() } label: {
                 HStack(spacing: 6) {
                     LineIconView(line: line)
-                    (Text(line.bold).fontWeight(.semibold) + Text(line.text))
-                        .font(.footnote)
-                        .foregroundStyle(line.quiet ? Color.secondary : Color.primary)
-                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 1) {
+                        (Text(line.bold).fontWeight(.semibold) + Text(line.text))
+                            .font(.footnote)
+                            .foregroundStyle(line.quiet ? Color.secondary : Color.primary)
+                            .lineLimit(1)
+                        // the to-dos' parts: they may wrap
+                        if let detail = line.detail {
+                            Text(detail).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                     Spacer(minLength: 4)
+                    if line.detail != nil { Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary) }
                     ForEach(line.counts, id: \.kind) { c in
                         HStack(spacing: 2) {
                             Image(systemName: countIcon(c.kind)).font(.caption2)
@@ -208,7 +215,7 @@ struct PDRow<Icon: View>: View {
                 icon().font(.body).foregroundStyle(.secondary).frame(width: 28)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).font(.body).foregroundStyle(.primary).lineLimit(2)
-                    if let subtitle { Text(subtitle).font(.footnote).foregroundStyle(.secondary).lineLimit(1) }
+                    if let subtitle { Text(subtitle).font(.footnote).foregroundStyle(.secondary).lineLimit(2) }
                 }
                 Spacer(minLength: 8)
                 if let value { Text(value).font(.body).foregroundStyle(.secondary).monospacedDigit() }
@@ -323,7 +330,7 @@ struct PullDownList: View {
                     PDDivider()
                 }
                 ForEach(places(c, g), id: \.place) { item in
-                    PDRow(symbol: item.place.symbol, title: item.place.title, value: item.value) { openPlace(item.place) }
+                    PDRow(symbol: item.place.symbol, title: item.place.title, subtitle: item.subtitle, value: item.value) { openPlace(item.place) }
                         .accessibilityIdentifier("pd-" + item.place.rawValue)
                     PDDivider()
                 }
@@ -341,7 +348,11 @@ struct PullDownList: View {
         if c.pins > 0 { out.append(PDPlace(place: .pinned, value: "\(c.pins)")) }
         if c.events > 0 { out.append(PDPlace(place: .events, value: "\(c.events)")) }
         if c.proposals > 0 { out.append(PDPlace(place: .proposals, value: "\(c.proposals)")) }
-        if c.todos > 0 { out.append(PDPlace(place: .todos, value: "\(c.todos - c.todosDone)")) }
+        if c.todos > 0 {
+            // the same parts as the header's line (board channels/header-todos)
+            let parts = model.derive.todoCounts(id, dayStart: Derive.midnight(before: .now)).parts
+            out.append(PDPlace(place: .todos, value: "\(c.todos - c.todosDone)", subtitle: parts.isEmpty ? nil : parts))
+        }
         if c.photos > 0 { out.append(PDPlace(place: .photos, value: "\(c.photos)")) }
         if c.files > 0 { out.append(PDPlace(place: .files, value: "\(c.files)")) }
         if c.groups > 0 { out.append(PDPlace(place: .groups, value: "\(c.groups)")) }
@@ -357,6 +368,7 @@ struct PullDownList: View {
 struct PDPlace: Hashable {
     let place: ChannelPlace
     let value: String?
+    var subtitle: String? = nil
 }
 
 /// A proposal's own state in its pull-down: title, status, the vote while it is open.
