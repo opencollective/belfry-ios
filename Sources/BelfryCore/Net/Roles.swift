@@ -394,3 +394,56 @@ public extension BelfryAPI {
         return BelfryAPI.parseDirectory(b)
     }
 }
+
+// ---- a channel's "Forward e-mails" (collective-belfry docs/mail.md "Forwarding") ----------------
+
+/// A channel's forward: the belfry's own setting, never an event (every member would read the address).
+public struct MailForward: Hashable, Sendable {
+    public let address: String
+    /// False: waiting for the outside address to confirm; nothing is forwarded yet.
+    public let on: Bool
+    public let sameDomainSkipped: Bool
+
+    /// From the answer `{"forward": {…} | null}`.
+    public static func parse(_ b: [String: Any]?) -> MailForward? {
+        guard let f = b?["forward"] as? [String: Any], let a = f["address"] as? String, a.contains("@"), a.count <= 200,
+              !a.contains(where: { $0.isWhitespace || $0 == "<" || $0 == ">" }) else { return nil }
+        return MailForward(address: a, on: f["state"] as? String == "on", sameDomainSkipped: f["same_domain_skipped"] as? Bool ?? false)
+    }
+
+    /// The row's second line: "Off", "Waiting for x to confirm", or the address.
+    public static func line(_ f: MailForward?) -> String {
+        guard let f else { return "Off" }
+        return f.on ? f.address : "Waiting for \(f.address) to confirm"
+    }
+}
+
+public extension BelfryAPI {
+    static let mailForwardErrors = [
+        "not_allowed": "Only the channel’s admins can change this.",
+        "unknown_channel": "This channel doesn’t exist on the belfry.",
+        "invalid": "That is not an e-mail address.",
+        "own_domain": "Forward to an address outside this belfry.",
+        "archived": "This channel is archived. Unarchive it first.",
+        "not_pending": "Nothing is waiting for a confirmation.",
+        "too_many": "Three confirmation e-mails were sent this hour. Try again later.",
+        "no_mail": "This belfry can’t send e-mail yet: set up its mail provider first.",
+        "unsupported": "This belfry can’t forward e-mails yet.",
+    ]
+
+    private func mailForwardCall(_ body: [String: Any]) async throws -> MailForward? {
+        let a = try await signed(base + "/mail-forward", method: "POST", json: body)
+        if a.status == 404 || a.status == 405, a.error.isEmpty { throw ApiError("unsupported", a.status, BelfryAPI.mailForwardErrors["unsupported"]!) }
+        guard a.ok else { throw BelfryAPI.fail(a, BelfryAPI.mailForwardErrors, "That did not work. Try again.") }
+        return MailForward.parse(a.body)
+    }
+
+    /// The channel's forward as it is now (nil: off).
+    func mailForward(channel: String) async throws -> MailForward? { try await mailForwardCall(["channel": channel]) }
+    /// Set it (state pending: a confirmation e-mail goes out) or, with nil, turn it off.
+    func setMailForward(channel: String, address: String?) async throws -> MailForward? {
+        try await mailForwardCall(["channel": channel, "address": address.map { $0 as Any } ?? NSNull()])
+    }
+    /// Send the confirmation e-mail again.
+    func resendMailForward(channel: String) async throws -> MailForward? { try await mailForwardCall(["channel": channel, "resend": true]) }
+}

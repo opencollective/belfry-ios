@@ -2412,3 +2412,21 @@ An older belfry (404 / 405 without an error key): the relay's own 9000 / 9001 fr
 it from, else "Its creator or a belfry admin lets people in." An event's requests stay on
 `/events/<d>/decide`. (iOS: `BelfryAPI.decideGroupRequest`, `AppModel.decideGroupRequest`,
 `GroupRequestRow`.)
+
+### 19.53 Channel settings: Posts, Forward e-mails; the sign-in code's red boxes (iOS, 2026-11-19; boards channels/settings, onboarding/sign-in-code)
+- **Posts** (channels): Anything / Threads / Events / Proposals = the web settings' `posts`
+  (absent, `thread`, `event`, `proposal`; 19.38's 30078 `belfry:web:<id>`), written with every
+  other key kept; a channel without web settings yet gets `on: false`, `visibility: "members"`
+  and its slug. A value of `request` set elsewhere stays and shows as "Requests".
+  (`Actions.setPosts`, test `ChannelPostsTests`.)
+- **Forward e-mails** (channels; collective-belfry docs/mail.md "Forwarding"): a row under
+  "E-mails from anyone" with "Off", "Waiting for <address> to confirm" or the address; it opens
+  its own screen. `POST <api>/mail-forward` (NIP-98): `{"channel"}` reads, `{"channel",
+  "address": "x@y"}` sets (pending: a confirmation e-mail goes out), `{"channel", "address":
+  null}` turns it off, `{"channel", "resend": true}`. The answer's address is shown only when it
+  looks like one. Fixed words per error (`not_allowed`, `unknown_channel`, `invalid`,
+  `own_domain`, `archived`, `not_pending`, `too_many`, `no_mail`, `unsupported`). The belfry's
+  own setting, saved at once, apart from the settings' Save; never an event.
+  (`MailForward`, `BelfryAPI.mailForward / setMailForward / resendMailForward`, test `MailForwardTests`.)
+- **Sign-in code**: after a wrong code the empty boxes are outlined in red until the next digit;
+  the line under them already said "That code is not right. N tries left." (19.20).

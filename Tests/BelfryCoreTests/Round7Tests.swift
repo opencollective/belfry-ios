@@ -449,3 +449,20 @@ final class ChannelPostsTests: XCTestCase {
         XCTAssertNil(Actions.setPosts(g0, posts: "nonsense", derive: d0), "an unknown kind is anything")
     }
 }
+
+final class MailForwardTests: XCTestCase {
+    /// docs/mail.md "Forwarding": the answer's shape and the row's line.
+    func testParseAndLine() {
+        XCTAssertNil(MailForward.parse(["forward": NSNull()]))
+        XCTAssertEqual(MailForward.line(nil), "Off")
+        let pending = MailForward.parse(["forward": ["address": "old@example.org", "state": "pending", "set_by": "x", "since": 1, "same_domain_skipped": false] as [String: Any]])
+        XCTAssertEqual(pending?.on, false)
+        XCTAssertEqual(MailForward.line(pending), "Waiting for old@example.org to confirm")
+        let on = MailForward.parse(["forward": ["address": "old@example.org", "state": "on", "same_domain_skipped": true] as [String: Any]])
+        XCTAssertEqual(MailForward.line(on), "old@example.org")
+        XCTAssertEqual(on?.sameDomainSkipped, true)
+        // never shown as written when it isn't an address
+        XCTAssertNil(MailForward.parse(["forward": ["address": "<b>hello</b>", "state": "on"]]))
+        XCTAssertNil(MailForward.parse(["forward": ["address": "a b@example.org", "state": "on"]]))
+    }
+}

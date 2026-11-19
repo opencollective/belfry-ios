@@ -301,6 +301,8 @@ struct SettingsTab: View {
         }
         Section {
             Toggle("E-mails from anyone", isOn: $inbox).tint(Theme.toggle)
+            // a copy of every e-mail to an outside address (channels only; saved at once, apart from Save)
+            if g?.type == .channel, !model.isDemo { MailForwardRow(channel: id) }
         } footer: {
             Text(inbox ? "Anyone can e-mail \(id)@\(model.config.domain). Mails land here as cards and the channel's admins answer as the channel."
                  : "Only members can e-mail \(id)@\(model.config.domain); their mail shows as their message.")
