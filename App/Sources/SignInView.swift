@@ -255,8 +255,15 @@ private struct CodeScreen: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(l.community).font(.headline).foregroundStyle(.secondary)
                     Text("Log in as \(l.address)").font(.largeTitle.bold())
-                    Text("Please confirm the 6-digit code sent to your e-mail\(pending.to.map { " (\($0))" } ?? ""). It works for 10 minutes.")
-                        .foregroundStyle(.secondary)
+                    // the security message, highlighted (board onboarding/scan-login)
+                    Label {
+                        Text("Please confirm the 6-digit code sent to your e-mail\(pending.to.map { " (\($0))" } ?? ""). It works for 10 minutes.")
+                            .font(.subheadline.weight(.medium))
+                    } icon: { Image(systemName: "envelope.badge.shield.half.filled") }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(Color.brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .padding(.top, 4)
                         .accessibilityIdentifier("login-link-message")
                 }
             } else {

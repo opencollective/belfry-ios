@@ -2473,7 +2473,8 @@ belfry's apple-app-site-association), to open another session under the same ide
   sign-in (19.20) at once for `<username>@<domain>` (`POST …/session {nip05, app, client}`
   signed by a new session key, then `/verify`), and the code screen reads: the community's name
   (from that belfry's `belfry.json`), "Log in as <username>@<domain>", "Please confirm the
-  6-digit code sent to your e-mail (<masked address>). It works for 10 minutes."; errors as the
+  6-digit code sent to your e-mail (<masked address>). It works for 10 minutes." in a tinted
+  box (it is the security message); errors as the
   code step's. A belfry the phone doesn't have yet is added this way (also someone's first).
 - **An account of that address already on the phone**: it is switched to, no code; when it is the
   open one, "You're logged in as <address>".
@@ -2499,6 +2500,6 @@ what the server would refuse, and no link is made before that answer.
   and follow it."); that link works once.
 - **Copy link** and **Share…** are two secondary buttons side by side.
 - Server: `POST /channel-invites {channel, "as": "member", role, membership, people, link_days}`
-  as before (19.43). Not offered any more from this sheet: a custom role (Roles settings give it
-  afterwards).
+  as before (19.43). A Steward also sees the belfry's own roles (e.g. Host) as extra rows with
+  their one line, after Steward.
 (iOS: `InviteRole`, `InviteChoices.roles / line`, `InviteSheet.external / options`; test `InviteChoicesTests`.)

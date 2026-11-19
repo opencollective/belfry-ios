@@ -33,6 +33,8 @@ struct InviteSheet: View {
     @State private var role = InviteRole.member
     @State private var editing = false
     @State private var guestInstead = 0
+    /// A custom role (e.g. Host) a Steward gives instead of the default one: its id.
+    @State private var customRole: String?
     /// The membership answer is in: only then is a link made (never one the server would refuse).
     @State private var ready = false
 
@@ -86,6 +88,7 @@ struct InviteSheet: View {
             .onChange(of: role) { _, _ in sync() }
             .onChange(of: membership) { _, _ in sync() }
             .onChange(of: guestInstead) { _, _ in sync() }
+            .onChange(of: customRole) { _, _ in sync() }
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
@@ -111,7 +114,7 @@ struct InviteSheet: View {
             if people != 1 { people = 1 }
             who = .member(role: Role.admin, membership: membership)
         case .member:
-            who = guestInstead > 0 && !toBelfry ? .guest(days: guestInstead) : .member(role: model.roles.defaultRole, membership: membership)
+            who = guestInstead > 0 && !toBelfry ? .guest(days: guestInstead) : .member(role: customRole ?? model.roles.defaultRole, membership: membership)
         }
     }
 
@@ -149,24 +152,25 @@ struct InviteSheet: View {
     /// describes the link with Edit, the options Edit unfolds, and the two buttons.
     @ViewBuilder private func external(_ label: String) -> some View {
         let roles = self.roles
+        // a Steward also gives the belfry's own roles (e.g. Host): extra rows with their one line
+        let custom = roles.contains(.steward) ? model.roles.roles.filter { $0.id != Role.member && $0.id != Role.admin && $0.id != model.roles.defaultRole } : []
         if roles.count > 1 {
             Section("Invite as") {
                 ForEach(roles) { r in
-                    Button { role = r } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: role == r ? "largecircle.fill.circle" : "circle")
-                                .font(.title3).foregroundStyle(role == r ? Color.brand : Color.secondary)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(r.title).foregroundStyle(.primary)
-                                Text(r.line).font(.footnote).foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 0)
+                    if r == .agent {
+                        ForEach(custom) { c in
+                            roleRow(c.label, c.description, on: role == .member && customRole == c.id, id: "role-" + c.id) { customRole = c.id; role = .member }
                         }
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(role == r ? .isSelected : [])
-                    .accessibilityIdentifier("invite-as-" + r.rawValue)
+                    roleRow(r.title, r.line, on: role == r && (r != .member || customRole == nil), id: r.rawValue) {
+                        if r == .member { customRole = nil }
+                        role = r
+                    }
+                }
+                if !roles.contains(.agent) {
+                    ForEach(custom) { c in
+                        roleRow(c.label, c.description, on: role == .member && customRole == c.id, id: "role-" + c.id) { customRole = c.id; role = .member }
+                    }
                 }
             }
         }
@@ -214,6 +218,24 @@ struct InviteSheet: View {
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
         }
+    }
+
+    private func roleRow(_ title: String, _ line: String, on: Bool, id: String, pick: @escaping () -> Void) -> some View {
+        Button(action: pick) {
+            HStack(spacing: 12) {
+                Image(systemName: on ? "largecircle.fill.circle" : "circle")
+                    .font(.title3).foregroundStyle(on ? Color.brand : Color.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).foregroundStyle(.primary)
+                    if !line.isEmpty { Text(line).font(.footnote).foregroundStyle(.secondary) }
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityIdentifier("invite-as-" + id)
     }
 
     /// What "Edit" unfolds: each row opens its list. A change makes a new code and link.
