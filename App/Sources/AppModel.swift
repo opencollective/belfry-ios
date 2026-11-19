@@ -93,6 +93,12 @@ final class AppModel: ObservableObject {
     @Published var tabReselected = 0
     /// The accounts / belfries switcher (the belfry's name at the top of a place, ⇅ in the drawer).
     @Published var showAccounts = false
+    /// A line over the app for 3 s ("Signed in as …").
+    @Published var toast: String?
+    func showToast(_ text: String) {
+        toast = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in if self?.toast == text { self?.toast = nil } }
+    }
     /// The drawer's "Apply to join" while the relay doesn't let this key in.
     @Published var showAlmostIn = false
     /// A channel whose composer takes the keyboard when it appears (Create → Message).

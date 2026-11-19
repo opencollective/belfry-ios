@@ -466,3 +466,33 @@ final class MailForwardTests: XCTestCase {
         XCTAssertNil(MailForward.parse(["forward": ["address": "a b@example.org", "state": "on"]]))
     }
 }
+
+/// A guest whose address has an account is signed in by the right code (vectors/guest-signin.json).
+final class GuestSignInTests: XCTestCase {
+    func testVectors() throws {
+        let v = try vector("guest-signin")
+        let domain = try XCTUnwrap(v.str("domain"))
+        let req = v.dict("request"), typed = req.dict("typed")
+        func same(_ a: [String: Any], _ b: [String: Any]) -> Bool { NSDictionary(dictionary: a).isEqual(to: b) }
+        XCTAssertTrue(same(GuestSignIn.body(email: typed.str("email") ?? "", code: typed.str("code") ?? "", name: typed.str("name"),
+                                            sessionKey: typed.str("session_key") ?? "", client: typed.str("client") ?? ""), req.dict("body")))
+        XCTAssertTrue(same(GuestSignIn.body(email: typed.str("email") ?? "", code: typed.str("code") ?? "", name: nil,
+                                            sessionKey: typed.str("session_key") ?? ""), req.dict("body_without_name")))
+        let answers = v.list("answers")
+        XCTAssertEqual(answers.count, 13)
+        for a in answers {
+            let name = a.str("name") ?? ""
+            let body = a["body"] as? [String: Any]
+            XCTAssertEqual(GuestSignIn.next(status: a.int("status") ?? 0, body: body, domain: domain).rawValue, a.str("next"), name)
+            if a.str("next") == "signed_in" {
+                let s = try XCTUnwrap(GuestSignIn.signedIn(body, domain: domain), name)
+                XCTAssertEqual(s.address(typed: typed.str("email") ?? ""), a.str("address"), name)
+                XCTAssertEqual(s.channel, a.str("open"), name)
+                XCTAssertEqual(s.moved, a["moved"] as? Bool, name)
+                XCTAssertNotNil(BunkerURL(s.bunkerURL), name)
+            } else {
+                XCTAssertNil(GuestSignIn.signedIn(body, domain: domain), name)
+            }
+        }
+    }
+}

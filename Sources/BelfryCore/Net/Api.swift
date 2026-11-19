@@ -362,6 +362,23 @@ public struct BelfryAPI: Sendable {
                           role: (b["role"] as? String).map { $0.sliceUnits(40) })
     }
 
+    /// The code, with a NEW session key's public key (SPEC 19.55): when the address is another
+    /// account's the belfry opens that account's session for the key (`signedIn`); else as `guestVerify`.
+    func guestVerify(email: String, code: String, name: String?, sessionKey: String) async throws -> (saved: GuestSaved, signedIn: GuestSignedIn?) {
+        let b: [String: Any]
+        do { b = try await guestCall("/guest/save/verify", GuestSignIn.body(email: email, code: code, name: name, sessionKey: sessionKey)) }
+        catch let f as GuestJoinFailure where f.error == .invalid {
+            // the session key was refused; the code is not spent: "Try again" sends it with another key
+            throw GuestJoinFailure(.failed)
+        }
+        if b["signed_in"] as? Bool == true {
+            guard let s = GuestSignIn.signedIn(b, domain: config.domain) else { throw GuestJoinFailure(.failed) }
+            return (GuestSaved(joined: false, member: false, role: nil), s)
+        }
+        return (GuestSaved(joined: b["joined"] as? Bool ?? false, member: b["member"] as? Bool == true,
+                           role: (b["role"] as? String).map { $0.sliceUnits(40) }), nil)
+    }
+
     func guestCall(_ path: String, _ body: [String: Any]) async throws -> [String: Any] {
         let a: Answer
         do { a = try await signed(base + path, method: "POST", json: body) } catch let e as ApiError {

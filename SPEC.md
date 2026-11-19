@@ -2437,3 +2437,24 @@ charter's ticks the app lands in the belfry's first channel (Townsquare) with th
 The name is the one given when joining (else the address's name part), the photo the initial; no
 banner or nag asks for more; Edit profile stays behind the person's own face. The Welcome says
 "Then: N short agreements · the chat".
+
+### 19.55 A guest whose address has an account is signed in by the right code (iOS, 2026-11-19; board onboarding/guest-code; collective-belfry docs/guests.md, last section; `vectors/guest-signin.json`, written here)
+The owner's rule for every flow: on one device, never ask for the same address twice or for a
+second code. In the Join sheet the phone makes a **new session key** for each try (the guest
+session key stays bound to the guest account) and sends its public key with the code: `POST
+<api>/guest/save/verify`, NIP-98 by the guest as before, body `{"email", "code", "name"?,
+"session_key": "<64 hex>", "client": "belfry-ios"}`.
+- `200 {"signed_in": true, "bunker_url", "pubkey", "npub", "nip05", "moved", "channel"}`: the
+  address is another account's and the belfry opened that account's session for the new key.
+  The app ends the guest session when it was not moved, drops the guest account and its key,
+  stores the new session (the bunker address + the new key's secret) like any sign-in, opens
+  `channel` (else the channel the guest was in, else home) and shows "Signed in as <address>"
+  for 3 s (the `nip05` when it is name@<this domain>, else the e-mail typed). A `bunker_url` that
+  is not a bunker address, or a `pubkey` that is not 64 hex, is never stored.
+- `200` without `signed_in`: the guest is saved, as before (19.26).
+- `409 taken` (the account holds its own key, or an older server): the old path, "You have an
+  account here" → Sign in instead. `422 invalid` (the session key; the code is not spent): "That
+  did not work. Try again." sends the same code with another key. `409 key_taken`, `503 signer`:
+  the code is cleared, "Send a new code".
+(iOS: `GuestSignIn.body / signedIn / next`, `BelfryAPI.guestVerify(…sessionKey:)`,
+`AppModel.signedInAs`; test `GuestSignInTests`.)

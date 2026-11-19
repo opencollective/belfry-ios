@@ -36,6 +36,19 @@ struct BelfryApp: App {
                     }
                 }
             }
+            .overlay(alignment: .top) {
+                if let t = model.toast {
+                    Text(t).font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(.regularMaterial, in: Capsule())
+                        .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .accessibilityIdentifier("toast")
+                        .accessibilityAddTraits(.isStaticText)
+                }
+            }
+            .animation(.snappy, value: model.toast)
             .environmentObject(model)
             .tint(Theme.accent)
             .onOpenURL { model.handle(url: $0) }

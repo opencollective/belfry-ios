@@ -177,7 +177,16 @@ extension AppModel {
             if sessionMemberLink != nil { becameMember(); return nil }
         } else {
             do {
-                let saved = try await api.guestVerify(email: email, code: code, name: name)
+                // a NEW session key goes with the code: when the address is another account's, the
+                // belfry opens that account's session for it and nobody types a second code (SPEC 19.55)
+                let secret = Keys.generateSecret()
+                guard let key = try? Keys.publicKeyHex(secret: secret) else { return GuestJoinFailure(.failed) }
+                let got = try await api.guestVerify(email: email, code: code, name: name, sessionKey: key)
+                if let s = got.signedIn {
+                    await signedInAs(s, secretHex: secret.hex, typed: email)
+                    return nil
+                }
+                let saved = got.saved
                 // a member link made me a member (SPEC 19.43): no guest state, no application form
                 if saved.member { becameMember(); return nil }
             } catch let f as GuestJoinFailure {
@@ -196,6 +205,25 @@ extension AppModel {
         }
         await refresh()
         return nil
+    }
+
+    /// The right code for an address that has an account: this phone is now that member's (board
+    /// onboarding/guest-code). The guest session and its key go, the new session is stored like
+    /// any sign-in, the guest's channel opens, and a line says who is signed in.
+    private func signedInAs(_ s: GuestSignedIn, secretHex: String, typed: String) async {
+        let cfg = config
+        let channel = s.channel ?? guestChannel
+        // not moved: the anonymous guest is still open on the belfry; end its session
+        if !s.moved, let pk = mySessionKey { _ = await endSession(pk) }
+        signOut()
+        pendingInvite = nil
+        inviteSignInFirst = false
+        joinAsked = false
+        let st = StoredSession(domain: cfg.domain, bunkerURL: s.bunkerURL, clientSecret: secretHex, pubkey: s.pubkey)
+        store(st)
+        if let channel, !channel.isEmpty { UserDefaults.standard.set(channel, forKey: AppModel.openAfterSignInKey) }
+        open(st, config: cfg)
+        showToast("Signed in as \(s.address(typed: typed))")
     }
 
     /// Did the belfry save this guest since SINCE (its label, or its join with a name, on the relay)?

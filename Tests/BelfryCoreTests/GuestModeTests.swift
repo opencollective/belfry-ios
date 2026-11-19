@@ -219,6 +219,10 @@ final class GuestModeTests: XCTestCase {
         // only a refused code clears the boxes; a lost connection keeps them (#issues 2026-11-13)
         XCTAssertTrue(GuestJoinError.wrongCode.clearsCode)
         XCTAssertTrue(GuestJoinError.expired.clearsCode)
+        // signing in with the code (SPEC 19.55): both need a new code
+        XCTAssertTrue(GuestJoinError.keyTaken.clearsCode)
+        XCTAssertTrue(GuestJoinError.signer.clearsCode)
+        XCTAssertEqual(GuestJoinError(code: "key_taken"), .keyTaken)
         for e in [GuestJoinError.offline, .failed, .tooMany, .notGuest, .taken] { XCTAssertFalse(e.clearsCode, e.rawValue) }
         XCTAssertTrue(GuestJoinError.offline.mayHaveReached)
         XCTAssertTrue(GuestJoinError.failed.mayHaveReached)

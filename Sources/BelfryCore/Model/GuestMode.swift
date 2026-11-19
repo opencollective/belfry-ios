@@ -65,6 +65,9 @@ public final class GuestModeGate: @unchecked Sendable {
 public enum GuestJoinError: String, Error, CaseIterable, Sendable {
     case invalid, nameNeeded = "name_needed", tooMany = "too_many", wrongCode = "wrong_code", expired, taken
     case notGuest = "not_guest", offline, failed
+    /// Signing in with the code (SPEC 19.55): the new session key is linked to another account /
+    /// the belfry's signer did not answer. Both need a new code.
+    case keyTaken = "key_taken", signer
 
     public var message: String {
         switch self {
@@ -74,6 +77,8 @@ public enum GuestJoinError: String, Error, CaseIterable, Sendable {
         case .wrongCode: return "That code is not right. Check the e-mail and try again."
         case .expired: return "That code has expired. Send a new one."
         case .taken: return "This address already has an account here."
+        case .keyTaken: return "That did not work. Send a new code and try again."
+        case .signer: return "The belfry’s signer is not answering. Send a new code and try again."
         case .notGuest: return "This guest access has ended. Ask for a new invite."
         case .offline: return "No connection. Try again."
         case .failed: return "That did not work. Try again."
@@ -141,7 +146,7 @@ public enum GuestJoinForm {
 extension GuestJoinError {
     /// The code itself was refused: the boxes are cleared. Anything else (no connection, a timeout,
     /// a 5xx or 429, …) keeps the digits and offers "Try again".
-    public var clearsCode: Bool { self == .wrongCode || self == .expired }
+    public var clearsCode: Bool { self == .wrongCode || self == .expired || self == .keyTaken || self == .signer }
 
     /// An attempt that failed like this may have reached the belfry (and used the code there):
     /// its answer was lost, or the belfry broke after saving.
@@ -172,6 +177,68 @@ public enum GuestJoinSaved {
                 return e.tags.contains(where: { $0.first == "name" }) && !e.tags.contains(where: { $0.first == "reading" })
             }
             return false
+        }
+    }
+}
+
+// ---- an address that has an account: the right code signs you in (SPEC 19.55; collective-belfry
+// docs/guests.md; vectors/guest-signin.json) -----------------------------------------------------
+
+/// The member's session the belfry opened for the new session key.
+public struct GuestSignedIn: Hashable, Sendable {
+    public let bunkerURL: String
+    public let pubkey: String
+    /// That account's address here, only when it is name@<this belfry's domain>.
+    public let nip05: String?
+    /// The account got the guest's channel and the anonymous guest pass is closed.
+    public let moved: Bool
+    /// The channel to open next (nil: home).
+    public let channel: String?
+
+    /// "Signed in as <address>": the account's address here, else the e-mail typed.
+    public func address(typed: String) -> String { nip05 ?? typed.jsTrim() }
+}
+
+public enum GuestSignIn {
+    /// What the app does after an answer of `/guest/save/verify` sent with a session key.
+    public enum Next: String, Sendable {
+        case signedIn = "signed_in", saved, signInInstead = "sign_in_instead", sameCode = "same_code"
+        case newKeyNewCode = "new_key_new_code", newCode = "new_code"
+        case wrongCode = "wrong_code", expired, tooMany = "too_many", notGuest = "not_guest", failed
+    }
+
+    /// The body of the verify call: e-mail and code trimmed, the name only when asked for, the
+    /// NEW session key's public key and this app's id.
+    public static func body(email: String, code: String, name: String?, sessionKey: String, client: String = "belfry-ios") -> [String: Any] {
+        var b: [String: Any] = ["email": email.jsTrim(), "code": code.jsTrim(), "session_key": sessionKey.lowercased(), "client": client]
+        if let name { b["name"] = GuestJoinForm.cleanName(name) }
+        return b
+    }
+
+    /// The session of a `200 {"signed_in": true, …}`; nil when it is not one that can be stored.
+    public static func signedIn(_ b: [String: Any]?, domain: String) -> GuestSignedIn? {
+        guard let b, b["signed_in"] as? Bool == true, let bunker = b["bunker_url"] as? String, bunker.count <= 2000, BunkerURL(bunker) != nil,
+              let pk = (b["pubkey"] as? String)?.lowercased(), isHex64(pk) else { return nil }
+        let nip05 = GuestJoinForm.signInAddress(nip05: b["nip05"] as? String, typed: "", domain: domain)
+        let ch = (b["channel"] as? String).flatMap { $0.isEmpty || $0.count > 120 ? nil : $0 }
+        return GuestSignedIn(bunkerURL: bunker, pubkey: pk, nip05: nip05, moved: b["moved"] as? Bool == true, channel: ch)
+    }
+
+    public static func next(status: Int, body: [String: Any]?, domain: String) -> Next {
+        if (200...299).contains(status) {
+            if body?["signed_in"] as? Bool == true { return signedIn(body, domain: domain) == nil ? .failed : .signedIn }
+            return .saved
+        }
+        switch body?["error"] as? String {
+        case "taken": return .signInInstead
+        case "invalid": return .sameCode
+        case "key_taken": return .newKeyNewCode
+        case "signer": return .newCode
+        case "wrong_code": return .wrongCode
+        case "expired": return .expired
+        case "too_many": return .tooMany
+        case "not_guest": return .notGuest
+        default: return .failed
         }
     }
 }
