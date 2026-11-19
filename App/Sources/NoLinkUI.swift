@@ -48,7 +48,7 @@ struct FindScreen: View {
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text("E-mail or domain").font(.subheadline.weight(.semibold))
-                TextField("name@belfry.sh or belfry.sh", text: $address)
+                TextField(text: $address, prompt: Text(verbatim: "name@belfry.sh or belfry.sh")) { Text("E-mail or domain") }
                     .font(.body)
                     .textContentType(.URL)
                     .keyboardType(.emailAddress)

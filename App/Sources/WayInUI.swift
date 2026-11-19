@@ -94,7 +94,7 @@ struct WayInFlow: View {
                     .foregroundStyle(.secondary)
             }
             field("Your e-mail") {
-                TextField(applying ? "you@example.org" : "you@example.org or name@\(community.domain)", text: $email)
+                TextField(text: $email, prompt: Text(verbatim: applying ? "you@example.org" : "you@example.org or name@\(community.domain)")) { Text("Your e-mail") }
                     .font(.body)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
