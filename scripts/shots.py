@@ -79,7 +79,9 @@ for s in mine:
         if mode != current:
             simctl("ui", udid, "appearance", mode)
             current = mode
-            time.sleep(1.5)
+            # a sheet takes longer than a screen to redraw in the other appearance (run 44568521053:
+            # 06c-invite-external was still dark after 1.5 s)
+            time.sleep(float(os.environ.get("SWITCH", "3")))
             got = frame(path)
             # the switch had not been drawn yet (main run 44510312803: 100b-home-dark was the
             # light frame, byte for byte): wait and take it again, a few times
