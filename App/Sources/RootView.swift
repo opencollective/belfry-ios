@@ -115,7 +115,7 @@ struct RootView: View {
             .sheet(isPresented: $switcher) {
                 AccountsSheet { switcher = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { openMe() } }
             }
-            .onChange(of: model.showAccounts) { _, on in if on { model.showAccounts = false; switcher = true } }
+            .onChange(of: model.showAccounts) { _, on in if on { model.showAccounts = false; openAccounts() } }
             .sheet(isPresented: $model.showCreate) {
                 CreateMenuSheet(start: model.tab == .town ? model.townChannel : generalId, first: model.createFirst) { id in
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { openFromCreate(id) }
@@ -364,6 +364,13 @@ struct RootView: View {
         if !model.welcomeShown && model.welcomeDue() { hideKeyboard(); model.welcomeShown = true }
     }
 
+    /// Accounts: a screen pushed on the place on screen (iPhone; rows open screens, never sheets),
+    /// the sheet on iPad.
+    private func openAccounts() {
+        closeDrawer()
+        if phone { push(PlaceRoute.accounts) } else { switcher = true }
+    }
+
     /// Me: pushed on the place on screen (phone), the sheet on iPad.
     private func openMe() {
         closeDrawer()
@@ -425,7 +432,7 @@ struct RootView: View {
                       },
                       newChannel: { hideKeyboard(); newChannelCategory = nil; newChannel = true },
                       newChannelIn: { c in hideKeyboard(); newChannelCategory = c; newChannel = true },
-                      account: { hideKeyboard(); switcher = true },
+                      account: { hideKeyboard(); openAccounts() },
                       openMe: { hideKeyboard(); openMe() },
                       apply: { hideKeyboard(); applying = true },
                       open: { target in
@@ -545,7 +552,7 @@ struct RootView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { notifications = true }
         case "accounts", "about":
             selection = .channel(generalId)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { switcher = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { openAccounts(); if model.launch.screen == "about" && phone { push(PlaceRoute.about) } }
         case "editprofile", "me":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { account = true }

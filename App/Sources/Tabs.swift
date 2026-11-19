@@ -194,7 +194,7 @@ struct PlaceDestinations: ViewModifier {
 
 /// Screens a place pushes by name (the Home tiles, the drawer's town rows, the person row).
 enum PlaceRoute: Hashable {
-    case messages, mentions, todos, members, charter, me, settings, archived, events, channels
+    case messages, mentions, todos, members, charter, me, settings, archived, events, channels, accounts, about
 
     @MainActor @ViewBuilder var view: some View {
         switch self {
@@ -204,6 +204,8 @@ enum PlaceRoute: Hashable {
         case .members: MembersDirectory()
         case .charter: CharterView()
         case .me: AccountSheet(pushed: true)
+        case .accounts: AccountsSheet(pushed: true, openMe: {})
+        case .about: AboutScreen(close: {})
         case .settings: BelfrySettings(screen: true)
         case .archived: ArchivedScreen()
         case .events: EventsScreen()
