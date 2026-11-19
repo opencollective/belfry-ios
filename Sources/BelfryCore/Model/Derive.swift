@@ -1455,8 +1455,12 @@ public final class Derive {
     }
 
     /// The title a message gives its to-do: its text without mentions, channels as "#name", one line, 300 units.
-    public func todoTitle(_ m: Message) -> String {
-        Rx("\\s+").replace(plainRefs(m.text, npub: ""), with: " ").jsTrim().sliceUnits(300)
+    public func todoTitle(_ m: Message) -> String { todoText(m).sliceUnits(300) }
+
+    /// The same, whole: when it is over the limit the form shows it and the person shortens it
+    /// (SPEC 19.46: a to-do's text is never cut silently).
+    public func todoText(_ m: Message) -> String {
+        Rx("\\s+").replace(plainRefs(m.text, npub: ""), with: " ").jsTrim()
     }
 
     /// "Turn into a to-do" is offered: sent, with a title, and no to-do made from it yet.

@@ -48,6 +48,8 @@ final class AppModel: ObservableObject {
     var messagesOpen = false
     /// A thread to open in its channel (a tapped thread-reply notification).
     @Published var openThread: ThreadRoute?
+    /// "Turn into a to-do" on a message whose text is over the limit: the New to-do form with it.
+    @Published var todoDraft: TodoDraft?
     /// The channel a message link led to without finding its message ("This message isn't available").
     @Published var missingMessage: String?
     /// Events read through the belfry's API, by link (a minute).
@@ -633,13 +635,19 @@ final class AppModel: ObservableObject {
     /// "Turn into a to-do" (SPEC 19.11).
     func makeTodo(_ m: Message, in group: String) {
         guard derive.canMakeTodo(group, m) else { return }
-        engine?.enqueue(Actions.addTask(group, title: derive.todoTitle(m), from: m.id))
+        let text = derive.todoText(m)
+        // too long for a to-do: the form opens with the whole text and says how far over it is
+        if Actions.taskOver(text) > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.todoDraft = TodoDraft(group: group, text: text, from: m.id) }
+            return
+        }
+        engine?.enqueue(Actions.addTask(group, title: text, from: m.id))
     }
 
-    func addTodo(_ title: String, in group: String) {
+    func addTodo(_ title: String, in group: String, from: String? = nil) {
         let t = title.jsTrim()
         guard !t.isEmpty, Actions.taskOver(t) == 0 else { return }
-        engine?.enqueue(Actions.addTask(group, title: t))
+        engine?.enqueue(Actions.addTask(group, title: t, from: from))
     }
 
     /// ACTION: claim | unclaim | done | undone | delete
@@ -989,4 +997,12 @@ struct LaunchOptions {
         if let i = args.firstIndex(of: "-signin"), i + 1 < args.count { signin = args[i + 1] } else { signin = nil }
         if let i = args.firstIndex(of: "-guest"), i + 1 < args.count { guest = args[i + 1] } else { guest = nil }
     }
+}
+
+/// A to-do to finish in the form: the message's whole text, and the message it comes from.
+struct TodoDraft: Identifiable, Hashable {
+    let group: String
+    let text: String
+    let from: String
+    var id: String { from }
 }

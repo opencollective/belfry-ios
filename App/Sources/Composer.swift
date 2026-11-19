@@ -447,6 +447,8 @@ struct CreateSheet: View {
     let parent: String
     /// "Propose as the website": the version's nsite ref and who made it (web 6d267c1).
     var website: (ref: String, by: String)? = nil
+    /// "Turn into a to-do" on a long message: its whole text to shorten, and the message's id.
+    var todoFrom: TodoDraft? = nil
     @State private var title = ""
     @State private var about = ""
     @State private var text = ""
@@ -493,6 +495,7 @@ struct CreateSheet: View {
                 }
             }
             .onAppear {
+                if let t = todoFrom, title.isEmpty { title = t.text; return }
                 if let w = website, title.isEmpty {
                     title = "A new version of the website"
                     about = "By \(w.by)"
@@ -503,7 +506,7 @@ struct CreateSheet: View {
                 let f = Drafts.getForm(formKey)
                 if title.isEmpty { title = f["title"] ?? ""; about = f["about"] ?? ""; text = f["text"] ?? ""; prompt = f["prompt"] ?? "" }
             }
-            .onChange(of: [title, about, text, prompt]) { _, v in if website == nil { Drafts.setForm(formKey, ["title": v[0], "about": v[1], "text": v[2], "prompt": v[3]]) } }
+            .onChange(of: [title, about, text, prompt]) { _, v in if website == nil && todoFrom == nil { Drafts.setForm(formKey, ["title": v[0], "about": v[1], "text": v[2], "prompt": v[3]]) } }
             .navigationTitle(kind == .todo ? "New to-do" : kind == .pod ? "New group" : "New proposal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -522,10 +525,10 @@ struct CreateSheet: View {
 
     func make() {
         let t = title.jsTrim()
-        Drafts.setForm(formKey, [:])
+        if todoFrom == nil { Drafts.setForm(formKey, [:]) }
         switch kind {
         case .todo:
-            model.addTodo(t, in: parent)
+            model.addTodo(t, in: parent, from: todoFrom?.from)
             dismiss()
         case .pod:
             let id = model.createPod(name: t, about: about.jsTrim(), parent: parent, closed: closed, prompt: prompt)

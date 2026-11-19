@@ -111,6 +111,7 @@ struct RootView: View {
                 }
             }
             .sheet(isPresented: $account) { AccountSheet() }
+            .sheet(item: $model.todoDraft) { t in CreateSheet(kind: .todo, parent: t.group, todoFrom: t) }
             .sheet(isPresented: $switcher) {
                 AccountsSheet { switcher = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { openMe() } }
             }
