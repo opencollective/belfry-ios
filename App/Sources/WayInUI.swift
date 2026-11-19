@@ -470,11 +470,20 @@ struct UsernameField: View {
                     HStack(spacing: 6) {
                         Text(check.line(domain: community.domain)).font(.footnote)
                             .foregroundStyle(check.state == .available ? Color.green : Color.red)
-                        if check.state != .available, let s = check.suggestions.first {
-                            Button("Use it") { username = s; touched = true }.font(.footnote.weight(.semibold))
-                        }
+
                     }
                     .accessibilityIdentifier("wayin-username-line")
+                    // up to three suggestions, in the belfry's order, each one tap
+                    if check.state != .available, !check.suggestions.isEmpty {
+                        HStack(spacing: 8) {
+                            ForEach(check.suggestions, id: \.self) { s in
+                                Button(s) { username = s; touched = true }
+                                    .font(.footnote.weight(.semibold))
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                            }
+                        }
+                    }
                 }
                 Text("This is your address here: \(typed)@\(community.domain). You log in with it, people mention you as @\(typed), and it receives your direct messages and e-mails.")
                     .font(.footnote).foregroundStyle(.secondary)

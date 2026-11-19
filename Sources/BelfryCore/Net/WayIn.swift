@@ -227,13 +227,18 @@ public struct UsernameCheck: Equatable, Sendable {
         return s
     }
 
-    /// "lina@riverside.example is available" · "Taken. Try lina-moreau" · the rule.
+    /// "a", "a or b", "a, b or c".
+    static func either(_ list: [String]) -> String {
+        list.count <= 1 ? (list.first ?? "") : list.dropLast().joined(separator: ", ") + " or " + list.last!
+    }
+
+    /// "lina@riverside.example is available" · "Taken. Try lina-moreau or lina-2" · the rule.
     public func line(domain: String) -> String {
         switch state {
         case .available: return "\(username)@\(domain) is available"
-        case .taken: return suggestions.first.map { "Taken. Try \($0)" } ?? "Taken. Try another one."
+        case .taken: return suggestions.isEmpty ? "Taken. Try another one." : "Taken. Try " + UsernameCheck.either(suggestions)
         case .invalid:
-            if reason == "reserved" { return WayIn.words["username_reserved"]! + (suggestions.first.map { " Try \($0)" } ?? "") }
+            if reason == "reserved" { return WayIn.words["username_reserved"]! + (suggestions.isEmpty ? "" : " Try " + UsernameCheck.either(suggestions)) }
             return WayIn.words["username_invalid"]!
         }
     }

@@ -561,6 +561,7 @@ final class WayInTests: XCTestCase {
         }
         for c in v.list("username_check") {
             XCTAssertEqual(UsernameCheck.parse(c["body"] as? [String: Any])?.line(domain: domain), c.str("line"), c.str("name") ?? "")
+            if c["offers"] != nil { XCTAssertEqual(UsernameCheck.parse(c["body"] as? [String: Any])?.suggestions, c.strs("offers"), c.str("name") ?? "") }
         }
     }
 
