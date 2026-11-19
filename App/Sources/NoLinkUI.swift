@@ -210,7 +210,10 @@ struct InviteCodeScreen: View {
 struct ApplyFormScreen: View {
     @EnvironmentObject var model: AppModel
     let community: BelfryConfig
-    @Binding var path: [NoLinkStep]
+    /// The request went through.
+    let onSent: () -> Void
+    /// "I'm a member: log in".
+    let onLogIn: () -> Void
     @State private var email = ""
     @State private var why = ""
     @State private var rules: [Agreement]?
@@ -219,6 +222,8 @@ struct ApplyFormScreen: View {
     @State private var loadFailed = false
 
     private var api: BelfryAPI { BelfryAPI(config: community, signer: nil) }
+    /// A screenshot run: made-up agreements, nothing sent.
+    private var shot: Bool { model.launch.signin != nil || model.launch.screen != nil }
     private var allTicked: Bool { rules.map { r in r.allSatisfy { ticked.contains($0.id) } } ?? false }
     private var filled: Bool {
         !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !why.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -286,10 +291,7 @@ struct ApplyFormScreen: View {
             .buttonStyle(.brand)
             .disabled(!allTicked || !filled)
             .accessibilityIdentifier("apply-send")
-            Button("I’m a member: log in") {
-                // back to the Welcome, then on to Log in: back never pushes a second copy
-                path = [.welcome(community), .login(community)]
-            }
+            Button("I’m a member: log in", action: onLogIn)
             .font(.body.weight(.medium))
             .frame(maxWidth: .infinity)
         }
@@ -306,7 +308,7 @@ struct ApplyFormScreen: View {
     }
 
     @MainActor private func load() async {
-        if model.launch.signin != nil {
+        if shot {
             // a screenshot: the board's three agreements, two ticked
             let demo = [("We look after each other", "Kind words and good faith, also when we disagree. Speak up when someone isn't treated well, and help them first."),
                         ("What's said here stays here", "Ask before sharing a message, a photo or a name outside the belfry. Public channels are the exception: they say so at the top."),
@@ -332,22 +334,20 @@ struct ApplyFormScreen: View {
     }
 
     @MainActor private func send() async {
-        guard let rules, model.launch.signin == nil else { return }
+        guard let rules, !shot else { return }
         hideKeyboard()
         error = nil
         guard filled else { error = ApplyForm.missing; return }
         do {
             try await api.applyToJoin(email: email, motivation: why, agreed: rules.map(\.id))
-            // the form is done: back from "Thank you" goes to the Welcome
-            path = [.welcome(community), .sent(community)]
+            onSent()
         } catch { self.error = (error as? ApiError)?.message ?? ApplyForm.other }
     }
 }
 
 /// onboarding/apply-sent.
 struct ApplySentScreen: View {
-    let community: BelfryConfig
-    @Binding var path: [NoLinkStep]
+    let onDone: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -360,7 +360,7 @@ struct ApplySentScreen: View {
             Text("Your request is in. You get a confirmation by e-mail now, and the answer by e-mail too.")
                 .foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .padding(.top, 10).padding(.bottom, 28)
-            Button { path = [.welcome(community)] } label: { Text("Done").frame(maxWidth: .infinity).padding(.vertical, 6) }
+            Button(action: onDone) { Text("Done").frame(maxWidth: .infinity).padding(.vertical, 6) }
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.capsule)
         }

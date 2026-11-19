@@ -3,12 +3,15 @@ import SwiftUI
 
 // The accounts on this phone (SPEC 19.24), behind "you" at the drawer's bottom: each account
 // (face, name, name@domain or "Guest · community"; a check on the open one), Add an account
-// (the sign-in over the app, the open account untouched until the new one is in), and Me.
+// (the sign-in over the app, the open account untouched until the new one is in), Me, and
+// "About Belfry" as the last row (board home/accounts).
 
 struct AccountsSheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let openMe: () -> Void
+    /// `-screen about`: About Belfry pushed at once, for its screenshot.
+    @State private var about = false
 
     var body: some View {
         let _ = model.version
@@ -40,7 +43,20 @@ struct AccountsSheet: View {
                     } label: { Label("Add an account", systemImage: "person.crop.circle.badge.plus") }
                     Button(action: openMe) { Label("Me: profile, devices, sign out", systemImage: "person.crop.circle") }
                 }
+                Section {
+                    NavigationLink { AboutScreen(close: { dismiss() }) } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("About Belfry")
+                                Text("Version \(AboutScreen.version)").font(.footnote).foregroundStyle(.secondary)
+                            }
+                        } icon: { Image(systemName: "info.circle") }
+                    }
+                    .accessibilityIdentifier("about-row")
+                }
             }
+            .navigationDestination(isPresented: $about) { AboutScreen(close: { dismiss() }) }
+            .onAppear { if model.launch.screen == "about" { about = true } }
             .navigationTitle("Accounts")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }

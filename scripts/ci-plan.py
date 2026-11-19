@@ -40,7 +40,7 @@ MAP = [
     (r"App/Sources/MailUI", "mail.*|fullmail", ""),
     (r"App/Sources/ProposalScreen", "proposal.*", ""),
     (r"App/Sources/(MessagesView|MentionsView)", "messages|conversation|mentions|mail", ""),
-    (r"App/Sources/(AccountsSheet|AppModel\+Accounts)", "accounts", ""),
+    (r"App/Sources/(AccountsSheet|AppModel\+Accounts|AboutScreen)", "accounts|about", ""),
     (r"App/Sources/CreateMenu", "create|add", "testAddMenu"),
     (r"App/Sources/AppModel\+Push", "notifications", ""),
 ]

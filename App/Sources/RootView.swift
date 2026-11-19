@@ -526,7 +526,7 @@ struct RootView: View {
         case "notifications":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { notifications = true }
-        case "accounts":
+        case "accounts", "about":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { switcher = true }
         case "editprofile", "me":

@@ -40,8 +40,9 @@ struct SignInView: View {
                         switch step {
                         case .welcome(let c): CommunityWelcome(community: c, path: $path)
                         case .login(let c): AddressScreen(domainHint: c?.domain, adding: true, community: c)
-                        case .apply(let c): ApplyFormScreen(community: c, path: $path)
-                        case .sent(let c): ApplySentScreen(community: c, path: $path)
+                        // replacing the path: back from "Thank you" or from Log in goes to the Welcome, never to a second copy
+                        case .apply(let c): ApplyFormScreen(community: c, onSent: { path = [.welcome(c), .sent(c)] }, onLogIn: { path = [.welcome(c), .login(c)] })
+                        case .sent(let c): ApplySentScreen { path = [.welcome(c)] }
                         case .inviteCode(let c): InviteCodeScreen(community: c)
                         }
                     }
