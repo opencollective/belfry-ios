@@ -185,7 +185,7 @@ final class GuestsTests: XCTestCase {
         XCTAssertTrue(d.inChannel(d.group("open"), C))
         XCTAssertFalse(d.inChannel(d.group("open"), B))
         XCTAssertFalse(d.inChannel(d.group("pod-x-1"), C))
-        XCTAssertEqual(d.inviteState(d.group("open"), C), "Can already open it")
+        XCTAssertEqual(d.inviteState(d.group("open"), C), "Already a member")
         XCTAssertTrue(d.inviteText("open", asked: false).hasSuffix("https://chat./#/c/open"))
     }
 }

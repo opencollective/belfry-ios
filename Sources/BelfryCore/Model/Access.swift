@@ -55,11 +55,12 @@ extension Derive {
         return Array(people.filter { p in p.name.lowercased().split(whereSeparator: { $0.isWhitespace }).contains { $0.hasPrefix(q) } }.prefix(limit).map(\.pubkey))
     }
 
-    /// Where an invited person stands with a channel: "Already in", "Can already open it", "Not in this channel".
+    /// Where an invited person stands with a channel: "Already a member" (on its list, or
+    /// a member who reads it as an open channel; canvas inviting/sheet-from-channel v48), "Not in this channel".
     public func inviteState(_ g: Group?, _ pubkey: String) -> String {
         guard let g else { return "Not in this channel" }
-        if g.members.contains(pubkey) || g.admins.contains(pubkey) { return "Already in" }
-        return inChannel(g, pubkey) ? "Can already open it" : "Not in this channel"
+        if g.members.contains(pubkey) || g.admins.contains(pubkey) { return "Already a member" }
+        return inChannel(g, pubkey) ? "Already a member" : "Not in this channel"
     }
 
     /// The web chat's link to a channel, as a member invite carries it: https://chat.<domain>/#/c/<id>.
