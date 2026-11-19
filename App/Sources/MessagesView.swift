@@ -131,6 +131,25 @@ struct ConversationView: View {
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle(mail && !MailThreads.isNewMail(conv) ? (model.dms?.threadName(conv) ?? "") : convName(model, conv))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // a person: their face and name, a tap pushes their profile (board home/conversation)
+            if !mail, isHex64(conv) {
+                ToolbarItem(placement: .principal) {
+                    Button { model.openProfile = conv } label: {
+                        VStack(spacing: 1) {
+                            Avatar(pubkey: conv, size: 26)
+                            HStack(spacing: 3) {
+                                Text(convName(model, conv)).font(.caption.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+                                Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open \(convName(model, conv))’s profile")
+                    .accessibilityIdentifier("dm-header")
+                }
+            }
+        }
         .onAppear { model.markConversationRead(conv); model.visibleConversation = conv }
         .onDisappear { if model.visibleConversation == conv { model.visibleConversation = nil } }
         .onChange(of: list.count) { _, _ in model.markConversationRead(conv) }
