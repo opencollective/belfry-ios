@@ -104,7 +104,6 @@ shot 122d-mail-comment-dark mailcomment dark
 shot 123-full-mail fullmail light
 shot 124-welcome welcome light
 shot 124b-welcome-charter welcomecharter light
-shot 124c-welcome-profile welcomeprofile light
 shot 124d-welcome-charter-dark welcomecharter dark
 shot 125-guest-applied guest-applied light
 shot 125b-guest-applied-dark guest-applied dark

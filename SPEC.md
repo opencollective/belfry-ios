@@ -2430,3 +2430,10 @@ it from, else "Its creator or a belfry admin lets people in." An event's request
   (`MailForward`, `BelfryAPI.mailForward / setMailForward / resendMailForward`, test `MailForwardTests`.)
 - **Sign-in code**: after a wrong code the empty boxes are outlined in red until the next digit;
   the line under them already said "That code is not right. N tries left." (19.20).
+
+### 19.54 First run ends in the chat (iOS, 2026-11-19; board onboarding/welcome-profile, the owner: "don't get in the way… the sooner they get to the chat the better")
+The "Your profile" name-and-photo step is gone from a new member's first minutes: after the
+charter's ticks the app lands in the belfry's first channel (Townsquare) with the composer ready.
+The name is the one given when joining (else the address's name part), the photo the initial; no
+banner or nag asks for more; Edit profile stays behind the person's own face. The Welcome says
+"Then: N short agreements · the chat".

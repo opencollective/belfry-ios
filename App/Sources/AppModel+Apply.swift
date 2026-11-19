@@ -108,7 +108,7 @@ extension AppModel {
         let d = derive
         let ud = UserDefaults.standard
         let k = AppModel.perAccount("belfry-welcome"), wk = AppModel.perAccount("belfry-was-guest")
-        if ["welcome", "welcomecharter", "welcomeprofile"].contains(launch.screen ?? "") { return ud.string(forKey: k) != "done:" + me }
+        if ["welcome", "welcomecharter"].contains(launch.screen ?? "") { return ud.string(forKey: k) != "done:" + me }
         guard !me.isEmpty, !isDemo else { return false }
         if d.amGuest || guestReading { ud.set(me, forKey: wk); return false }
         var v = ud.string(forKey: k) ?? ""
