@@ -331,3 +331,36 @@ final class ReferencesTests: XCTestCase {
         XCTAssertEqual(References.split("https://riverside.example/events/repair-cafe", domain: d).text, "")
     }
 }
+
+/// Reactions to direct messages (vectors/dm-reactions.json, copied byte for byte from belfry-android).
+final class DmReactionsTests: XCTestCase {
+    func testReading() throws {
+        let v = try vector("dm-reactions")
+        let target = try XCTUnwrap(v.dict("message").str("id"))
+        let cases = v.list("read")
+        XCTAssertEqual(cases.count, 8)
+        for c in cases {
+            var r = DmReactions()
+            for o in c.list("rumors") {
+                let ev = NostrEvent(id: o.str("id") ?? "", pubkey: o.str("pubkey") ?? "", createdAt: o.int("created_at") ?? 0, kind: o.int("kind") ?? 0,
+                                    tags: tags(o["tags"]), content: o.str("content") ?? "")
+                XCTAssertTrue(r.apply(ev))
+            }
+            let got = r.chips(target, viewer: c.str("viewer") ?? "")
+            let want = c.list("chips").map { DmChip(emoji: $0.str("emoji") ?? "", who: $0.strs("who"), mine: $0["mine"] as? Bool ?? false) }
+            XCTAssertEqual(got, want, c.str("name") ?? "")
+        }
+    }
+
+    func testSendShape() throws {
+        let v = try vector("dm-reactions")
+        let people = v.dict("people")
+        let me = try XCTUnwrap(people.str("me"))
+        let all = [people.str("ana") ?? "", people.str("ben") ?? "", me]
+        let m = v.dict("message")
+        let add = v.dict("send").dict("add").dict("rumor")
+        XCTAssertEqual(DmReactions.addTags(message: m.str("id") ?? "", author: m.str("pubkey") ?? "", participants: all, me: me), tags(add["tags"]))
+        let rem = v.dict("send").dict("remove")
+        XCTAssertEqual(DmReactions.removeTags(reaction: rem.str("reaction") ?? "", participants: all, me: me), tags(rem.dict("rumor")["tags"]))
+    }
+}

@@ -133,11 +133,11 @@ struct ConversationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             // a person: their face and name, a tap pushes their profile (board home/conversation)
-            if !mail, isHex64(conv) {
+            if !mail, MailThreads.peers(conv).count == 1, let peer = MailThreads.peers(conv).first, isHex64(peer) {
                 ToolbarItem(placement: .principal) {
-                    Button { model.openProfile = conv } label: {
+                    Button { model.openProfile = peer } label: {
                         VStack(spacing: 1) {
-                            Avatar(pubkey: conv, size: 26)
+                            Avatar(pubkey: peer, size: 26)
                             HStack(spacing: 3) {
                                 Text(convName(model, conv)).font(.caption.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
                                 Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary)
@@ -217,6 +217,15 @@ struct Bubble: View {
     @EnvironmentObject var model: AppModel
     let dm: Dm
 
+    /// A direct message that went out or came in (never an e-mail, never one still sending).
+    private var canReact: Bool { dm.kind == 14 && dm.pending != true && dm.failed == nil && !model.guestReading }
+
+    private func react(_ emoji: String) {
+        EmojiUsage.used(emoji)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Task { try? await model.dms?.react(emoji, on: dm) }
+    }
+
     var body: some View {
         let report = model.dms?.report(dm.emailId)
         VStack(alignment: dm.mine ? .trailing : .leading, spacing: 4) {
@@ -233,6 +242,30 @@ struct Bubble: View {
             }
                 .padding(10)
                 .background(dm.mine ? Color.brand.opacity(0.14) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .contextMenu {
+                    // the reactions row, then the menu (board home/conversation); not on e-mails
+                    if canReact {
+                        ControlGroup {
+                            ForEach(EmojiUsage.top(5), id: \.self) { e in
+                                Button { react(e) } label: { Text(e) }.accessibilityLabel("React with \(e)")
+                            }
+                        }
+                        .controlGroupStyle(.compactMenu)
+                    }
+                    Button {
+                        UIPasteboard.general.string = dm.text
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    } label: { Label("Copy text", systemImage: "doc.on.doc") }
+                }
+            // reactions under the bubble, on its side: the same chips as in channels
+            if canReact {
+                let chips = model.dms?.chips(dm.rid) ?? []
+                if !chips.isEmpty {
+                    ReactionBar(reactions: chips.map { Reaction(emoji: $0.emoji, who: $0.who, mine: $0.mine ? dm.rid : nil) }) { e in react(e) }
+                        .accessibilityIdentifier("dm-reactions")
+                }
+            }
             HStack(spacing: 6) {
                 Text(Format.time(dm.at)).font(.caption2).foregroundStyle(.secondary)
                 if let f = dm.failed {

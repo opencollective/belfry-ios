@@ -268,6 +268,7 @@ public struct Reaction: Hashable, Sendable {
     public let emoji: String
     public var who: [String] // in first-seen order
     public var mine: String? // my reaction event id
+    public init(emoji: String, who: [String], mine: String? = nil) { self.emoji = emoji; self.who = who; self.mine = mine }
 }
 
 public struct ThreadInfo: Hashable, Sendable {

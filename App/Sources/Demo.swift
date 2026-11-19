@@ -385,7 +385,7 @@ enum Demo {
         engine.add([ev(you, 30078, now - 3 * day, [["d", "seen:general"], ["h", "general"]])], verify: false)
 
         dms.myAddress = "sam@demo.belfry.sh"
-        try? await dms.demoDM(from: ps["ana"]!, text: "Hi Sam! Can you open the hall on Saturday at 9?", at: now - 7200)
+        try? await dms.demoDM(from: ps["ana"]!, text: "Hi Sam! Can you open the hall on Saturday at 9?", at: now - 7200, reaction: "👍")
         try? await dms.demoDM(from: ps["dev"]!, text: "I found the spare bike parts you asked about.", at: now - 2 * day)
         try? await dms.demoMail(bridgeSecret: secret("bridge"), sender: "\"Town Hall\" <events@townhall.example>", subject: "Street party permit",
                                 text: "Hello,\n\nYour request for the street party on 14 June is approved.\n\nKind regards,\nTown Hall", at: now - 5 * 3600)

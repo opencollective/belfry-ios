@@ -2352,3 +2352,18 @@ event pages `https://chat.<domain>/events/<link>` and `https://<domain>/events/<
 - Not built on iOS: the `a` tag added on send for an event or proposal coord in the text.
 (iOS: `References.target / parts / split`, `Derive.refShown`, views `MessageText`, `RefBox`,
 `MarkdownText.refName`; tests `ReferencesTests`.)
+
+### 19.50 Reactions to direct messages; a conversation's header (iOS, 2026-11-19; = Android SPEC 19.45; board home/conversation; #issues 6e9d7518, 419fffd4; `vectors/dm-reactions.json` copied byte for byte from belfry-android)
+A reaction to a direct message is an unsigned kind 7 rumor, content = the emoji, tags
+`["e", <the kind 14 rumor's id>, "", <its author>]`, `["p", <its author>]`, `["k", "14"]`, then
+`["p", …]` for the other participants, gift-wrapped (NIP-59) to every participant and to
+yourself. Taking it back: a kind 5 rumor `["e", <the reaction rumor's id>]`, `["k", "7"]`,
+`["p", …]` for the others, wrapped the same way; it counts only from the reaction's author, and
+also when it is read before the reaction. Readers key on the last `e` tag; one per person per
+emoji; `+` or empty = 👍; more than 16 UTF-16 units = ignored. A reaction never moves a
+conversation or its unread count. Never on e-mail (1301).
+The chips sit under the bubble on its side, as in channels: a tap adds or takes back mine;
+holding a bubble opens the menu with the reactions row and Copy text. The header of a one-to-one
+conversation shows the person's face and name; a tap opens their profile.
+(iOS: `DmReactions.apply / chips / addTags / removeTags`, `DirectMessages.react / chips`;
+tests `DmReactionsTests`.)

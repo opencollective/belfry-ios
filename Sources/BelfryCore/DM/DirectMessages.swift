@@ -20,6 +20,8 @@ public final class DirectMessages: @unchecked Sendable {
     private var seen = Set<String>()
     private var read = [String: Int]()
     private var reports = [String: DeliveryReport]()
+    /// Reactions to direct messages (SPEC 19.50): never messages, never unread.
+    private var reactions = DmReactions()
     private var busy = false
     public var myAddress: String?
     public private(set) var bridge: String?
@@ -33,14 +35,16 @@ public final class DirectMessages: @unchecked Sendable {
         read = db.get("dm-read", as: [String: Int].self) ?? [:]
         reports = db.get("dm-reports", as: [String: DeliveryReport].self) ?? [:]
         bridge = db.get("dm-bridge", as: String.self)
+        reactions = db.get("dm-reactions", as: DmReactions.self) ?? DmReactions()
     }
 
     var me: String { engine.me }
 
     private func save() {
         lock.lock()
-        let list = Array(items.values), s = Array(seen), rp = reports
+        let list = Array(items.values), s = Array(seen), rp = reports, rx = reactions
         lock.unlock()
+        db.set("dm-reactions", rx)
         db.set("dm-items", list)
         db.set("dm-seen", s)
         db.set("dm-reports", rp)
@@ -80,6 +84,8 @@ public final class DirectMessages: @unchecked Sendable {
                 if e.kind == 1059 {
                     if let opened = try await GiftWrap.unwrap(e, signer: engine.signer) {
                         lock.lock()
+                        // a reaction or its taking back: under the bubble, never a message
+                        if opened.rumor.kind == 7 || opened.rumor.kind == 5 { reactions.apply(opened.rumor) }
                         let known = items.values.map { (messageId: $0.messageId, conv: $0.conv) }
                         lock.unlock()
                         d = DmReader.dm(from: opened.rumor, me: me, bridge: bridge, known: known)
@@ -170,6 +176,33 @@ public final class DirectMessages: @unchecked Sendable {
             if engine.localOnly, p == me { engine.add([w], verify: false) }
             engine.enqueueSigned(w, target: .main, dm: rumor.id)
         }
+    }
+
+    /// The chips under a direct message, for me.
+    public func chips(_ rid: String) -> [DmChip] {
+        lock.lock(); defer { lock.unlock() }
+        return reactions.chips(rid, viewer: me)
+    }
+
+    /// Tap a chip or pick an emoji: adds my reaction to D, or takes it back when I gave it.
+    /// Shown at once; wrapped to every participant and to me. Never on e-mail.
+    public func react(_ emoji: String, on d: Dm) async throws {
+        try engine.guestMode.check()
+        guard d.kind == 14, d.pending != true else { return }
+        let others = MailThreads.peers(d.conv).filter { $0 != me }
+        guard !others.isEmpty, others.allSatisfy(isHex64) else { return }
+        lock.lock()
+        let mine = reactions.mine(d.rid, emoji: emoji, viewer: me)
+        lock.unlock()
+        let rumor: NostrEvent
+        if let mine {
+            rumor = GiftWrap.rumor(kind: 5, pubkey: me, tags: DmReactions.removeTags(reaction: mine, participants: others, me: me), content: "")
+        } else {
+            rumor = GiftWrap.rumor(kind: 7, pubkey: me, tags: DmReactions.addTags(message: d.rid, author: d.from, participants: others + [me], me: me), content: emoji)
+        }
+        lock.lock(); reactions.apply(rumor); lock.unlock()
+        save()
+        try await deliver(rumor, to: others)
     }
 
     /// Called when this device sends a DM or an e-mail (push: stay quiet for its own echo).
@@ -362,9 +395,16 @@ public final class DirectMessages: @unchecked Sendable {
     }
 
     /// Demo mode: a NIP-17 message from FROM.
-    public func demoDM(from: LocalSigner, text: String, at: Int) async throws {
+    @discardableResult
+    public func demoDM(from: LocalSigner, text: String, at: Int, reaction: String? = nil) async throws -> String {
         let rumor = GiftWrap.rumor(kind: 14, pubkey: from.pubkey, tags: [["p", me]], content: text, createdAt: at)
         let w = try await GiftWrap.wrap(rumor, to: me, signer: from)
         engine.add([w], verify: false)
+        // the demo's own reaction to it (wrapped to me like any other)
+        if let reaction {
+            let r = GiftWrap.rumor(kind: 7, pubkey: me, tags: DmReactions.addTags(message: rumor.id, author: from.pubkey, participants: [from.pubkey, me], me: me), content: reaction, createdAt: at + 60)
+            engine.add([try await GiftWrap.wrap(r, to: me, signer: engine.signer)], verify: false)
+        }
+        return rumor.id
     }
 }
