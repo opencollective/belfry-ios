@@ -63,12 +63,20 @@ extension AppModel {
         saveAccounts()
     }
 
+    /// "Steward", "Gardener", "Member": my role's name here; nil while the roles are not loaded
+    /// (the saved one stays).
+    var myRoleName: String? {
+        if let l = roles.label(of: me) { return l }
+        guard !roles.members.isEmpty else { return nil }
+        return roles.role(Role.member)?.label ?? "Member"
+    }
+
     /// What the switcher shows of the open account.
     func describeAccount() {
         guard !isDemo, accounts.open != nil else { return }
         let before = accounts
         accounts.describe(Keychain.slot, name: realName(me), address: derive.myAddress ?? "", community: config.name,
-                          picture: profiles[me]?.picture ?? "", guest: derive.amGuest || guestReading)
+                          picture: profiles[me]?.picture ?? "", guest: derive.amGuest || guestReading, role: myRoleName)
         if accounts != before { saveAccounts() }
     }
 

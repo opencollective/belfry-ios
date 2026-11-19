@@ -65,6 +65,18 @@ final class AccountsTests: XCTestCase {
         XCTAssertEqual(l.open?.line, "xavier@belfry.sh")
         l.describe("", name: "", address: "", community: "Belfry", picture: "", guest: true)
         XCTAssertEqual(l.open?.line, "Guest · Belfry")
+        XCTAssertEqual(l.open?.placeLine, "Guest · Belfry")
+        var e = AccountEntry(slot: "", domain: "riverside.example", pubkey: nil)
+        XCTAssertEqual(e.placeLine, "riverside.example")
+        e.community = "Riverside Commons"
+        XCTAssertEqual(e.placeLine, "Riverside Commons")
+        e.role = "Steward"
+        XCTAssertEqual(e.placeLine, "Riverside Commons · Steward")
+        // a list saved before the role existed still opens
+        let old = #"{"accounts":[{"slot":"","domain":"belfry.sh","name":"","address":"","community":"","picture":"","guest":false}],"current":"","nextSlot":2}"#
+        let saved = try? JSONDecoder().decode(AccountList.self, from: Data(old.utf8))
+        XCTAssertEqual(saved?.accounts.count, 1)
+        XCTAssertNil(saved?.accounts.first?.role)
         let data = try! JSONEncoder().encode(l)
         XCTAssertEqual(try! JSONDecoder().decode(AccountList.self, from: data), l)
     }

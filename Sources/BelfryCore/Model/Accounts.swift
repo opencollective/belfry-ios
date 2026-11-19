@@ -15,6 +15,8 @@ public struct AccountEntry: Codable, Hashable, Sendable, Identifiable {
     public var community: String = ""
     public var picture: String = ""
     public var guest: Bool = false
+    /// Their role's name there ("Steward", "Member", "Gardener"), as last seen; nil before that.
+    public var role: String?
 
     public init(slot: String, domain: String, pubkey: String?) {
         self.slot = slot; self.domain = domain; self.pubkey = pubkey
@@ -26,6 +28,14 @@ public struct AccountEntry: Codable, Hashable, Sendable, Identifiable {
         let place = community.isEmpty ? domain : community
         if guest { return "Guest · " + place }
         return address.isEmpty ? place : address
+    }
+    /// The accounts screen's line (board home/accounts): "Riverside Commons · Steward",
+    /// "Guest · Riverside Commons", or the community alone while the role is not known.
+    public var placeLine: String {
+        let place = community.isEmpty ? domain : community
+        if guest { return "Guest · " + place }
+        guard let role, !role.isEmpty else { return place }
+        return place + " · " + role
     }
 }
 
@@ -78,8 +88,9 @@ public struct AccountList: Codable, Hashable, Sendable {
     }
 
     /// What the switcher shows of SLOT (name, address, community, picture, guest).
-    public mutating func describe(_ slot: String, name: String, address: String, community: String, picture: String, guest: Bool) {
+    public mutating func describe(_ slot: String, name: String, address: String, community: String, picture: String, guest: Bool, role: String? = nil) {
         guard let i = accounts.firstIndex(where: { $0.slot == slot }) else { return }
+        if let role { accounts[i].role = role }
         accounts[i].name = name; accounts[i].address = address; accounts[i].community = community
         accounts[i].picture = picture; accounts[i].guest = guest
     }

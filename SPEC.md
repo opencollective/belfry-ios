@@ -2572,3 +2572,7 @@ who has no main channel, keeps the channel they were in.
   the role under the name. The number leaves out a request I vouched for (a steward counts
   them all); "1 vouch" / "2 vouches" stands beside the buttons, no names. Guests as rows and the
   guests-reading line wait for the server (canvas v64).
+- **Accounts** (board home/accounts, 2026-11-19): each account's line is "<community> · <role>"
+  (the role's name as last seen while that account was open; "Guest · <community>" for a guest;
+  the community alone before a role is known); a red dot on an account that is not open and has
+  a notification still shown by the system; the footer says so.

@@ -1,5 +1,6 @@
 import BelfryCore
 import SwiftUI
+import UserNotifications
 
 // The accounts on this phone (SPEC 19.24), behind "you" at the drawer's bottom: each account
 // (face, name, name@domain or "Guest · community"; a check on the open one), Add an account
@@ -15,6 +16,8 @@ struct AccountsSheet: View {
     /// `-screen about`: About Belfry pushed at once, for its screenshot (the sheet).
     @State private var about = false
     @State private var scanning = false
+    /// Slots of the other accounts that have news (a red dot on their row).
+    @State private var news: Set<String> = []
 
     var body: some View {
         if pushed {
@@ -38,7 +41,7 @@ struct AccountsSheet: View {
             Section {
                 if model.isDemo {
                     row(name: model.realName(model.me).isEmpty ? "You" : model.realName(model.me), line: "Demo · " + model.config.name,
-                        picture: "", open: true, initial: model.me)
+                        picture: "", open: true, initial: model.me, news: false)
                 }
                 ForEach(model.accounts.accounts) { a in
                     let isOpen = !model.isDemo && a.slot == Keychain.slot
@@ -46,14 +49,16 @@ struct AccountsSheet: View {
                         if !isOpen { model.switchAccount(a.slot) }
                         if !pushed { dismiss() }
                     } label: {
-                        row(name: a.name.isEmpty ? a.domain : a.name, line: a.line, picture: a.picture, open: isOpen, initial: a.pubkey ?? a.domain)
+                        row(name: a.name.isEmpty ? a.domain : a.name, line: a.placeLine, picture: a.picture, open: isOpen, initial: a.pubkey ?? a.domain,
+                            news: !isOpen && news.contains(a.slot))
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(isOpen ? .isSelected : [])
                 }
             } header: { Text("On this phone") } footer: {
-                Text("Each account has its own messages and notifications. One is open at a time.")
+                Text("Each account has its own messages and notifications. One is open at a time; a red dot means news in another one.")
             }
+            .task { news = await AccountsSheet.slotsWithNews() }
             Section {
                 Button {
                     if !pushed { dismiss() }
@@ -107,7 +112,14 @@ struct AccountsSheet: View {
         .contentShape(Rectangle())
     }
 
-    private func row(name: String, line: String, picture: String, open: Bool, initial: String) -> some View {
+    /// The accounts with a notification still in Notification Centre (each carries its account's
+    /// slot, set by the notification service).
+    static func slotsWithNews() async -> Set<String> {
+        let list = await UNUserNotificationCenter.current().deliveredNotifications()
+        return Set(list.compactMap { $0.request.content.userInfo["account"] as? String })
+    }
+
+    private func row(name: String, line: String, picture: String, open: Bool, initial: String, news: Bool) -> some View {
         HStack(spacing: 12) {
             AccountFace(name: name, picture: picture, seed: initial)
             VStack(alignment: .leading, spacing: 2) {
@@ -115,6 +127,7 @@ struct AccountsSheet: View {
                 Text(line).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)
+            if news { Circle().fill(.red).frame(width: 10, height: 10).accessibilityLabel("News") }
             if open { Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Color.brand).accessibilityLabel("Open") }
         }
         .padding(.vertical, 2)
