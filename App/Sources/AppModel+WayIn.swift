@@ -49,7 +49,8 @@ extension AppModel {
     func wayInSignedIn(_ s: GuestSignedIn, _ c: BelfryConfig, said address: String) {
         guard let key = wayInKey(c.domain) else { return }
         let st = StoredSession(domain: c.domain, bunkerURL: s.bunkerURL, clientSecret: key.secret.hex, pubkey: s.pubkey)
-        resetWayInKey(c.domain)
+        // the applicant key is let go only once the saved session has signed (`releaseWayInKey`):
+        // a crash between this answer and the save doesn't cost a second code
         UserDefaults.standard.removeObject(forKey: AppModel.wayInPendingKey)
         store(st)
         pendingCode = nil
@@ -57,6 +58,14 @@ extension AppModel {
         signInNote = nil
         open(st, config: c)
         showToast("Signed in as \(s.nip05 ?? address)")
+    }
+
+    /// The open session answered its relay (so it signed, with the key the way in made): that key
+    /// is the session's own now and is no longer kept as this belfry's applicant key.
+    func releaseWayInKey() {
+        guard let s = session, !s.demo else { return }
+        let vault = KeychainVault()
+        if vault.get(AppModel.wayInKeyName(s.domain)) == s.clientSecret { vault.remove(AppModel.wayInKeyName(s.domain)) }
     }
 
     func wayInPending(_ c: BelfryConfig?) {

@@ -2518,7 +2518,9 @@ who has no main channel, keeps the channel they were in.
   a smaller **Apply to join**.
 - **The applicant key**: the phone makes a key per belfry, keeps it in the Keychain, and signs
   every call below with it (NIP-98). A session is only ever bound to that key: once signed in it
-  is that session's own key. `409 key_taken` → a new key for the next try.
+  is that session's own key, and it is let go as the applicant key only after the saved session
+  has answered its relay (a crash between the answer and the save costs no second code).
+  `409 key_taken` → a new key for the next try.
 - **Log in**: `POST <api>/login/start {email}` (an e-mail, or `username@<domain>`) → the six
   boxes → `/login/verify {email, code}` → `signed_in` (the chat, "Signed in as <address>"),
   `pending` (the pending screen), or `unknown` + `proof`: "No account here yet … isn't a member

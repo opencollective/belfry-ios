@@ -398,7 +398,7 @@ final class AppModel: ObservableObject {
         e.onEOSE = { [weak rs, weak self] t in
             if t == .main { rs?.relayAnswered() }
             // the groups relay answered: does it still have the groups this device knows?
-            if t == .groups { Task { @MainActor in await self?.checkGroups() } }
+            if t == .groups { Task { @MainActor in self?.releaseWayInKey(); await self?.checkGroups() } }
         }
         e.onSent = { [weak d] item, _ in d?.outboxSent(item) }
         e.onFailed = { [weak d] item in d?.outboxFailed(item) }
