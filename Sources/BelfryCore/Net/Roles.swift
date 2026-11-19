@@ -447,3 +447,47 @@ public extension BelfryAPI {
     /// Send the confirmation e-mail again.
     func resendMailForward(channel: String) async throws -> MailForward? { try await mailForwardCall(["channel": channel, "resend": true]) }
 }
+
+// ---- the invite sheet's choices (SPEC 19.57; boards inviting/sheet-external, -edit, -guest) ------
+
+/// Who an invitation can bring in, as the sheet's "Invite as" rows.
+public enum InviteRole: String, Sendable, CaseIterable, Identifiable {
+    case member, steward, agent
+    public var id: String { rawValue }
+    public var title: String { self == .member ? "Member" : self == .steward ? "Steward" : "Agent" }
+    public var line: String {
+        switch self {
+        case .member: return "Joins open channels, invites guests, votes."
+        case .steward: return "Runs the belfry: settings, roles, the charter."
+        case .agent: return "Your agent, a member while you are one."
+        }
+    }
+}
+
+public enum InviteChoices {
+    /// The roles the viewer may give, never one the server would refuse: Member for a steward or
+    /// when the membership settings let members invite members (`GET /membership`
+    /// `may_invite_members`); Steward for stewards; Agent for whoever may add one. Without Member
+    /// the sheet makes a guest link and shows no rows; with a single role there are no rows either.
+    public static func roles(steward: Bool, mayInviteMembers: Bool, mayAddAgent: Bool) -> [InviteRole] {
+        guard steward || mayInviteMembers else { return [] }
+        var out: [InviteRole] = [.member]
+        if steward { out.append(.steward) }
+        if mayAddAgent { out.append(.agent) }
+        return out
+    }
+
+    /// The one line under the QR code: it always describes the current link.
+    public static func line(who: JoinsAs, people: Int, linkDays: Int, channel: String) -> String {
+        let n = who.people(people) == 50 ? "up to 50 people" : "one person"
+        let works = linkDays == 7 ? "a week" : linkDays == 30 ? "a month" : "24 hours"
+        switch who {
+        case .member(_, let m):
+            return "This QR code and link work for \(n) for \(works)." + (m == "permanent" ? "" : " They stay \(JoinsAs.membershipWord(m)).")
+        case .guest(let d):
+            return "This QR code and link let \(n) join \(channel) as a guest for \(JoinsAs.daysWord(d))." + (linkDays == 1 ? "" : " The link works for \(works).")
+        case .agent:
+            return "This link works once, for \(works)."
+        }
+    }
+}

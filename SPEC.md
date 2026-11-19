@@ -2478,3 +2478,27 @@ belfry's apple-app-site-association), to open another session under the same ide
 - **An account of that address already on the phone**: it is switched to, no code; when it is the
   open one, "You're logged in as <address>".
 (iOS: `LoginLink.parse / isUsername`, `AppModel.logIn(with:)`, `InviteScanner`; test `LoginLinkTests`.)
+
+### 19.57 The invite sheet's external part: "Invite as", one line, Edit (iOS, 2026-11-19; boards inviting/sheet-external, sheet-external-edit, sheet-external-guest; canvas v45–v48)
+Rule (the lead): `GET /membership` → `may_invite_members` is read first; the sheet never offers
+what the server would refuse, and no link is made before that answer.
+- **Invite as**: radio rows, each with one line: Member ("Joins open channels, invites guests,
+  votes."), Steward ("Runs the belfry: settings, roles, the charter."), Agent ("Your agent, a
+  member while you are one."). Only the roles the viewer may give: Member for a steward or when
+  `may_invite_members`; Steward for stewards; Agent for whoever has room for one. Member is the
+  default. With one role there are no rows. Without Member: a guest link for the channel, no
+  rows, and "Only stewards invite new members here."
+- **One line** describes the current link, with Edit: "This QR code and link work for one person
+  for 24 hours." (up to 50 people; a week, a month; " They stay one month." / one year), or "This
+  QR code and link let one person join #Garden as a guest for a day." (" The link works for a
+  week."). Edit unfolds in place, Done folds: People (One person / Up to 50 people; a Steward link
+  is always one person), Works for (24 hours / A week / A month), Stays (Permanent / One month /
+  One year), Instead (Guest of #channel only, for a day / a week / a month). A guest-only viewer
+  gets People and Works for. Any change makes a new code and link; the QR greys with a spinner.
+- **Agent** swaps the QR for the text to paste to it ("Join <belfry> as my agent: read <address>
+  and follow it."); that link works once.
+- **Copy link** and **Share…** are two secondary buttons side by side.
+- Server: `POST /channel-invites {channel, "as": "member", role, membership, people, link_days}`
+  as before (19.43). Not offered any more from this sheet: a custom role (Roles settings give it
+  afterwards).
+(iOS: `InviteRole`, `InviteChoices.roles / line`, `InviteSheet.external / options`; test `InviteChoicesTests`.)

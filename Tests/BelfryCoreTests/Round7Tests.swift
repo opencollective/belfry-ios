@@ -508,3 +508,30 @@ final class LoginLinkTests: XCTestCase {
         }
     }
 }
+
+/// The invite sheet's choices (boards inviting/sheet-external, -edit, -guest; canvas v45–v48).
+final class InviteChoicesTests: XCTestCase {
+    func testRolesTheViewerMayGive() {
+        XCTAssertEqual(InviteChoices.roles(steward: true, mayInviteMembers: false, mayAddAgent: true), [.member, .steward, .agent])
+        XCTAssertEqual(InviteChoices.roles(steward: true, mayInviteMembers: true, mayAddAgent: false), [.member, .steward])
+        XCTAssertEqual(InviteChoices.roles(steward: false, mayInviteMembers: true, mayAddAgent: false), [.member])
+        XCTAssertEqual(InviteChoices.roles(steward: false, mayInviteMembers: true, mayAddAgent: true), [.member, .agent])
+        // only stewards invite new members here: a guest link, no rows
+        XCTAssertEqual(InviteChoices.roles(steward: false, mayInviteMembers: false, mayAddAgent: true), [])
+    }
+
+    func testTheLineDescribesTheLink() {
+        let m = JoinsAs.member(role: Role.member, membership: "permanent")
+        XCTAssertEqual(InviteChoices.line(who: m, people: 1, linkDays: 1, channel: "#Garden"), "This QR code and link work for one person for 24 hours.")
+        XCTAssertEqual(InviteChoices.line(who: m, people: 50, linkDays: 7, channel: "#Garden"), "This QR code and link work for up to 50 people for a week.")
+        XCTAssertEqual(InviteChoices.line(who: .member(role: Role.member, membership: "year"), people: 1, linkDays: 30, channel: "#Garden"),
+                       "This QR code and link work for one person for a month. They stay one year.")
+        // a Steward link is always one person
+        XCTAssertEqual(InviteChoices.line(who: .member(role: Role.admin, membership: "permanent"), people: 50, linkDays: 1, channel: "#Garden"),
+                       "This QR code and link work for one person for 24 hours.")
+        XCTAssertEqual(InviteChoices.line(who: .guest(days: 1), people: 1, linkDays: 1, channel: "#Garden"),
+                       "This QR code and link let one person join #Garden as a guest for a day.")
+        XCTAssertEqual(InviteChoices.line(who: .guest(days: 7), people: 50, linkDays: 30, channel: "#Garden"),
+                       "This QR code and link let up to 50 people join #Garden as a guest for a week. The link works for a month.")
+    }
+}
