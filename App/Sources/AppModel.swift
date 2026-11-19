@@ -741,10 +741,10 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// "Kofi", or "Unknown" (never "You", never a key).
+    /// "Kofi", or "Somebody" (never "You", never a key).
     func realNameOrKey(_ pk: String) -> String {
         let n = realName(pk)
-        return n.isEmpty ? Derive.shortKey(pk) : n
+        return n.isEmpty ? derive.nameless(pk) : n
     }
 
     /// Someone to write to (a NIP-17 conversation), from a message menu or a profile.

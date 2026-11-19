@@ -527,14 +527,15 @@ public final class Derive {
 
     public func realName(_ pubkey: String) -> String { Derive.realName(pubkey, profileMap) }
 
-    /// Someone whose name is not known here: "Unknown", never their key or part of it (Xavier,
-    /// 2026-11-18). A list of names says "and one other" / "and N others" for them (`namesLine`).
-    public static func shortKey(_ pubkey: String) -> String { "Unknown" }
+    /// Someone whose name is not known here: "Somebody", an agent "An agent"; never their key or
+    /// part of it (Xavier, 2026-11-18), never "Unknown" (the canvas's Main board, 2026-11-19). A
+    /// list of names says "and one other" / "and N others" for them (`namesLine`).
+    public func nameless(_ pubkey: String) -> String { isAgent(pubkey) ? "An agent" : "Somebody" }
 
     /// "Ana", "Ana and Ben", "Ana, Ben and Chloé"; people with no name here are counted, never
     /// shown by their key: "Ana and one other", "Ana and 2 others", "one person" / "2 people".
     public func namesLine(_ pubkeys: [String]) -> String {
-        let known = pubkeys.map { displayName($0) }.filter { $0 != "Unknown" }
+        let known = pubkeys.filter { $0 == me || !realName($0).isEmpty }.map { displayName($0) }
         let unknown = pubkeys.count - known.count
         var parts = known
         if unknown > 0 {
@@ -549,7 +550,7 @@ public final class Derive {
     public func displayName(_ pubkey: String, _ ps: [String: Profile]) -> String {
         if pubkey == me { return "You" }
         let r = Derive.realName(pubkey, ps)
-        return r.isEmpty ? Derive.shortKey(pubkey) : r
+        return r.isEmpty ? nameless(pubkey) : r
     }
 
     public func displayName(_ pubkey: String) -> String { displayName(pubkey, profileMap) }

@@ -41,10 +41,10 @@ extension Derive {
         return nil
     }
 
-    /// "Kofi" or "Unknown" (never "You", never a key).
+    /// "Kofi" or "Somebody" (never "You", never a key).
     func realNameOr(_ pubkey: String) -> String {
         let n = realName(pubkey)
-        return n.isEmpty ? Derive.shortKey(pubkey) : n
+        return n.isEmpty ? nameless(pubkey) : n
     }
 
     /// The people the invite search finds: everyone with a name, me left out; a word of the name

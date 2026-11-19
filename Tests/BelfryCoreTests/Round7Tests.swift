@@ -168,7 +168,7 @@ final class NoIdsAsTextTests: XCTestCase {
     func testUnknownPeopleAndLists() {
         let ana = ev(A, 0, 1, [], #"{"name":"Ana"}"#)
         let d = Derive(events: [ana], me: String(repeating: "f", count: 64))
-        XCTAssertEqual(d.displayName(B), "Unknown")
+        XCTAssertEqual(d.displayName(B), "Somebody")
         XCTAssertEqual(d.namesLine([A]), "Ana")
         XCTAssertEqual(d.namesLine([A, B]), "Ana and one other")
         XCTAssertEqual(d.namesLine([B, RELAY]), "2 people")
