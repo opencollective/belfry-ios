@@ -94,7 +94,12 @@ public final class SyncEngine: @unchecked Sendable {
     /// Stores events (signatures checked for relay events), returns the new ones.
     @discardableResult
     public func add(_ list: [NostrEvent], verify: Bool = true) -> [NostrEvent] {
-        let ok = verify ? list.filter(\.isValid) : list
+        // known ids first: a replayed subscription (a reconnect) costs no signature checks
+        lock.lock()
+        let fresh = list.filter { events[$0.id] == nil }
+        lock.unlock()
+        guard !fresh.isEmpty else { return [] }
+        let ok = verify ? fresh.filter(\.isValid) : fresh
         lock.lock()
         let unseen = ok.filter { events[$0.id] == nil }
         for e in unseen { events[e.id] = e }
@@ -476,7 +481,25 @@ public final class SyncEngine: @unchecked Sendable {
             guard let self, let r else { return }
             self.eose(t, sub, relay: r)
         }
-        r.refilter = { [weak self] id in id == "live-" + t.rawValue ? self?.filters(t, fromStart: true) : nil }
+        r.refilter = { [weak self] id in
+            guard let self, id == "live-" + t.rawValue else { return nil }
+            // from 0 until one answer after AUTH came in this run; a later reconnect asks from
+            // `since`, which that answer made safe (replaying 2000 events at every reconnect kept
+            // the phone busy and live events late)
+            self.lock.lock(); let had = self.authedAnswer.contains(t); self.lock.unlock()
+            return self.filters(t, fromStart: !had)
+        }
+    }
+
+    /// The relays whose answer after AUTH (an EOSE of the live subscription) came in this run.
+    private var authedAnswer = Set<Target>()
+
+    /// Every 15 s and when the app comes back: a relay that sent nothing for IDLE seconds is asked
+    /// for a pong; a socket that doesn't answer is dropped and connected again (a phone back from
+    /// sleep, or a network that changed, can hold a dead socket that still looks up: no live events).
+    public func checkSockets(idle: TimeInterval = 25) {
+        lock.lock(); let rs = Array(relays.values); lock.unlock()
+        for r in rs where r.isUp && r.quietFor >= idle { r.ping() }
     }
 
     /// An end of stored events from relay R. Before AUTH the answer holds only public events: it
@@ -492,6 +515,7 @@ public final class SyncEngine: @unchecked Sendable {
             }
             return
         }
+        if sub.hasPrefix("live-"), r.authed { lock.lock(); authedAnswer.insert(t); lock.unlock() }
         eose(t, sub)
     }
     static var authGrace: TimeInterval = 5
@@ -577,6 +601,8 @@ public final class SyncEngine: @unchecked Sendable {
     /// Network back, app in the foreground, pull to refresh: reconnect, catch up, send.
     public func wake() {
         lock.lock(); attempts = [:]; lock.unlock()
+        // a socket that looks up may have died while the app slept: ask each one now
+        checkSockets(idle: 0)
         Task {
             await connect(.groups)
             await connect(.main)
@@ -596,6 +622,7 @@ public final class SyncEngine: @unchecked Sendable {
     private func tick() {
         if localOnly { return }
         if online { for t in [Target.groups, .main] where relays[t]?.isUp != true { Task { await connect(t) } } }
+        checkSockets()
         if outboxItems().contains(where: { $0.status != .failed }) { flushSoon() }
     }
 
