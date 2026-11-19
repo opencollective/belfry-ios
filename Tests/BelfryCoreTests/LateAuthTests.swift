@@ -117,6 +117,15 @@ final class LateAuthTests: XCTestCase {
         XCTAssertEqual(r2.refilter?("live-groups")?[0]["since"] as? Int, 1_800_000_000 - 3600)
     }
 
+    /// A group first learned of asks its own history from 0, by its id.
+    func testHistoryFiltersOfANewGroup() {
+        let f = SyncEngine.historyFilters(["garden-3f2a"])
+        XCTAssertEqual(f.count, 1)
+        XCTAssertEqual(f[0]["#h"] as? [String], ["garden-3f2a"])
+        XCTAssertNil(f[0]["since"])
+        XCTAssertEqual(f[0]["kinds"] as? [Int], SyncEngine.kindsGroups)
+    }
+
     /// A subscription replayed after a reconnect: events already held cost nothing and are not new.
     func testKnownEventsAreNotAddedTwice() throws {
         let me = try LocalSigner(secret: Keys.generateSecret())

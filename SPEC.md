@@ -2209,8 +2209,13 @@ Same wire format as Android SPEC 19.40 (written there the same day; this section
   within 5 s of it, in case it is), neither ends a pending catch-up nor starts the deleted-by-absence
   check. Metadata (39000–39003) and the charter (2100 / 2101) are asked without `since` anyway.
   (iOS: `Relay.refilter`, `Relay.challenged / authed`, `SyncEngine.eose(_:_:relay:)`, `LateAuthTests`.)
-  From 0 only until one answer after AUTH came in this run of the app: a later reconnect asks from
-  `since` again (2026-11-19: replaying 2000 events at every reconnect made live events late).
+  **From 0 once per run of the app, after the first authed answer** (the lead, 2026-11-19:
+  replaying 2000 events at every reconnect made live events late). Three things stay per
+  connection: (a) after AUTH the subscription is still sent again (from `since`), because that
+  connection's pre-AUTH answer is public-only; (b) 39000–39003 and the charter's to-do kinds stay
+  without `since`; (c) a group the device first learns of from that metadata (added to a closed
+  group, a new channel) gets its own history asked from 0 (`{kinds, "#h": [<id>], limit: 2000}`).
+  The catch-up mark and the absence check still come only from an EOSE after AUTH.
 - **A live connection is kept and checked** (iOS, 2026-11-19; #issues 587ba310 "live thread
   replies not appearing"): the web socket has no idle timeout of its own (URLSession's request
   timeout dropped a quiet connection every 30 s); a relay that sent nothing for 25 s is pinged

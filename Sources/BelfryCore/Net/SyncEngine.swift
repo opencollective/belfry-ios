@@ -57,7 +57,7 @@ public final class SyncEngine: @unchecked Sendable {
         self.signer = signer
         self.localOnly = localOnly
         self.attachmentsDir = attachmentsDir
-        for e in db.allEvents() { events[e.id] = e }
+        for e in db.allEvents() { events[e.id] = e; if e.kind == 39000, let d = e.tag("d") { knownGroups.insert(d) } }
         for o in db.outbox() { outbox[o.localId] = o }
         lastCreatedAt = events.values.filter { $0.pubkey == signer.pubkey }.map(\.createdAt).max() ?? 0
     }
@@ -103,6 +103,10 @@ public final class SyncEngine: @unchecked Sendable {
         lock.lock()
         let unseen = ok.filter { events[$0.id] == nil }
         for e in unseen { events[e.id] = e }
+        // groups this device hears of for the first time (added to a closed group, a new channel)
+        var learned = [String]()
+        for e in unseen where e.kind == 39000 { if let d = e.tag("d"), knownGroups.insert(d).inserted { learned.append(d) } }
+        let askHistory = !learned.isEmpty && authedAnswer.contains(.groups)
         // my own events from another device: what I write next comes after them (a profile of
         // the same second would tie, and the lower id would win over mine)
         let me = signer.pubkey
@@ -112,6 +116,7 @@ public final class SyncEngine: @unchecked Sendable {
         db.add(unseen)
         changed()
         onNewEvents?(unseen)
+        if askHistory { historyOf(learned) }
         return unseen
     }
 
@@ -488,6 +493,24 @@ public final class SyncEngine: @unchecked Sendable {
             // the phone busy and live events late)
             self.lock.lock(); let had = self.authedAnswer.contains(t); self.lock.unlock()
             return self.filters(t, fromStart: !had)
+        }
+    }
+
+    /// The groups (39000 `d`) this device holds metadata of.
+    private var knownGroups = Set<String>()
+
+    /// The filters that ask the whole history of newly learned groups.
+    static func historyFilters(_ groups: [String]) -> [[String: Any]] {
+        [["kinds": kindsGroups, "#h": groups, "limit": 2000]]
+    }
+
+    /// A group first learned from the metadata after this run's from-0 answer: its own history
+    /// is asked from 0 (the live subscription asks from `since`, which is past it).
+    func historyOf(_ groups: [String]) {
+        if localOnly { return }
+        Task { [weak self] in
+            guard let self else { return }
+            self.add(await self.query(.groups, SyncEngine.historyFilters(groups), timeout: 15))
         }
     }
 
