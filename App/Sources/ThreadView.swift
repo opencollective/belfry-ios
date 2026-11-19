@@ -9,6 +9,9 @@ struct ThreadView: View {
     let group: String
     let rootId: String
     var focusReply = false
+    /// A reply to centre and flash: a message link led to it (board channels/message-link).
+    var focusId: String? = nil
+    @State private var flash: String?
     /// Layout callbacks write here, never view state (see ChannelView).
     @State private var feedPos = FeedPosition()
     @State private var actionsFor: Message?
@@ -46,7 +49,7 @@ struct ThreadView: View {
                         ContentUnavailableView("This message is gone", systemImage: "bubble.left")
                     }
                     ForEach(replies) { r in
-                        ReplyRow(group: group, r: r) { hold(r) }.padding(.horizontal).id(r.id)
+                        ReplyRow(group: group, r: r, flash: flash == r.id) { hold(r) }.padding(.horizontal).id(r.id)
                     }
                     // the end (the composer sits under the scroll view)
                     Color.clear.frame(height: 1).id("bottom")
@@ -56,15 +59,25 @@ struct ThreadView: View {
             .initialScrollAnchorBottom()
             .feedScroll(feedPos, proxy)
             .onChange(of: replies.count) { _, _ in
+                if flash != nil { return }
                 feedPos.toEnd(animated: true)
                 model.markThreadRead(group, rootId)
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
-                feedPos.settle { feedPos.toEnd() }
+                if focusId == nil { feedPos.settle { feedPos.toEnd() } }
             }
             .onAppear {
                 model.markThreadRead(group, rootId)
-                DispatchQueue.main.async { feedPos.toEnd() }
+                if let focusId, replies.contains(where: { $0.id == focusId }) {
+                    // the reply the link names: centred, flashed for about 2 s
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        withAnimation { proxy.scrollTo(focusId, anchor: .center) }
+                        flash = focusId
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { withAnimation(.easeOut(duration: 0.5)) { flash = nil } }
+                    }
+                } else {
+                    DispatchQueue.main.async { feedPos.toEnd() }
+                }
             }
         }
         .bottomBar {

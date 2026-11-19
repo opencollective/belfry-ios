@@ -38,6 +38,8 @@ public enum Links {
     public enum Target: Equatable, Sendable {
         /// A channel of this belfry (`#/c/<id>` on its chat).
         case channel(String)
+        /// One message of a channel (`#/c/<id>/m/<event id>`; board channels/message-link).
+        case message(String, String)
         /// A guest link or an event / ticket link of this belfry's chat: the app handles it.
         case app
         /// Anything else: the browser.
@@ -51,7 +53,9 @@ public enum Links {
         let chat = host == "chat." + d
         // the web chat's own routes: #/c/<id>[/…]
         if chat || host == d, let f = url.fragment, f.hasPrefix("/c/") {
-            let id = f.dropFirst(3).split(separator: "/").first.map(String.init)?.removingPercentEncoding ?? ""
+            let parts = f.dropFirst(3).split(separator: "/").map(String.init)
+            let id = parts.first?.removingPercentEncoding ?? ""
+            if !id.isEmpty, parts.count == 3, parts[1] == "m", isHex64(parts[2]) { return .message(id, parts[2]) }
             if !id.isEmpty { return .channel(id) }
         }
         guard chat else { return .browser }

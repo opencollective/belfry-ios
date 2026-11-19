@@ -65,6 +65,26 @@ extension Derive {
     /// The web chat's link to a channel, as a member invite carries it: https://chat.<domain>/#/c/<id>.
     public func channelURL(_ id: String) -> String { "https://chat.\(ctx.domain)/#/c/" + MailThreads.encodeURIComponent(id) }
 
+    /// The link to one message or thread reply: …/#/c/<channel>/m/<event id> ("Copy link").
+    public func messageURL(_ group: String, _ messageId: String) -> String { channelURL(group) + "/m/" + messageId }
+
+    /// Where a message link leads in a channel this key reads.
+    public enum MessagePlace: Equatable, Sendable {
+        /// A message of the channel's feed: the channel, scrolled to it.
+        case message
+        /// A thread reply (1111): the thread of ROOT, that reply centred.
+        case reply(root: String)
+        /// Deleted, unknown or not readable: "This message isn't available".
+        case missing
+    }
+
+    public func messagePlace(_ group: String, _ messageId: String) -> MessagePlace {
+        guard let g = self.group(group), inChannel(g, me) else { return .missing }
+        if messages(group).contains(where: { $0.id == messageId }) { return .message }
+        if let r = threadReply(group, messageId), let root = Derive.rootOf(r.ev) { return .reply(root: root) }
+        return .missing
+    }
+
     /// The direct message a member invite sends (my name as others know it, never "You"). ASKED: a
     /// closed group I do not administer, they still have to apply.
     public func inviteText(_ groupId: String, asked: Bool) -> String {

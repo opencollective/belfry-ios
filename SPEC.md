@@ -2319,3 +2319,12 @@ shows the same parts as its second line. A vote waiting comes first, this line u
   false) these count as unclaimed.
 (iOS: `Derive.todoCounts`, `Derive.todoLine`, `TodoCounts.parts`, `TodoTask.claimed / idle / doneAt`;
 test `CategoriesTests`.) "On you" / "nobody took" lines are gone.
+
+### 19.48 A link to one message (iOS, 2026-11-19; board channels/message-link, #issues e8862295)
+`https://chat.<domain>/#/c/<channel>/m/<event id>` (64 hex) names one message. "Copy link" in the
+message menu gives it (for a thread reply: the reply's own id). Opening it (a tap in a message,
+a notification): a message of the feed → the channel scrolled to it, flashed yellow for about
+2 s; a thread reply (1111) → its thread, the reply centred and flashed; deleted, unknown, or a
+channel this key can't read → the channel with the fixed line "This message isn't available"
+until the feed is scrolled. Never the id as text. (iOS: `Links.Target.message`,
+`Derive.messageURL`, `Derive.messagePlace`; tests `MessageLinkTests`, `LinksTests.testTargets`.)

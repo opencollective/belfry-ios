@@ -109,7 +109,7 @@ struct MessageRow: View {
         .padding(.top, first ? 8 : 2)
         .padding(.bottom, 2)
         .opacity(pending == nil ? 1 : 0.65)
-        .background(flash ? Color.brand.opacity(0.15) : announce ? Color.brand.opacity(0.06) : .clear)
+        .background(flash ? Color.flash : announce ? Color.brand.opacity(0.06) : .clear)
         .contentShape(Rectangle())
         .sensoryFeedback(.selection, trigger: tapped)
         .accessibilityElement(children: .combine)
@@ -361,6 +361,8 @@ struct ReplyRow: View {
     @Environment(\.messageMenu) private var menu
     var group = ""
     let r: Message
+    /// A message link led here.
+    var flash = false
     let onHold: () -> Void
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -385,6 +387,8 @@ struct ReplyRow: View {
             }
             Spacer(minLength: 0)
         }
+        .padding(.vertical, flash ? 4 : 0)
+        .background(flash ? Color.flash : Color.clear, in: RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .messageMenu(r, group: group.isEmpty ? (r.ev.tag("h") ?? "") : group, handlers: menu, guest: model.guestReading || model.locked(r.ev.tag("h") ?? group), inset: 8, hold: onHold)

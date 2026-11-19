@@ -134,8 +134,22 @@ struct RootView: View {
             .task { try? await Task.sleep(nanoseconds: 1_500_000_000); checkWelcome() }
     }
 
-    private func openChat(_ id: String, _ message: String?) {
+    private func openChat(_ id: String, _ linked: String?) {
         closeDrawer()
+        // a message link (board channels/message-link): a message of the feed is scrolled to; a
+        // thread reply opens its thread; anything else says "This message isn't available"
+        var message = linked
+        if let mid = linked {
+            switch model.derive.messagePlace(id, mid) {
+            case .message: break
+            case .reply(let root):
+                message = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { model.openThread = ThreadRoute(group: id, root: root, focus: mid) }
+            case .missing:
+                message = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { withAnimation { model.missingMessage = id } }
+            }
+        }
         // a chat pushes over the place it was opened from (Home, Calendar, Groups)
         if phone && model.tab != .town {
             pushChat(id, message)
@@ -155,6 +169,7 @@ struct RootView: View {
             if url.scheme == "belfry-user", let pk = url.pathComponents.last, isHex64(pk) { model.openProfile = pk; return .handled }
             switch Links.target(url, domain: model.config.domain) {
             case .channel(let gid): openChat(gid, nil); return .handled
+            case .message(let gid, let mid): openChat(gid, mid); return .handled
             case .app: model.handle(url: url); return .handled
             case .browser: return .systemAction
             }

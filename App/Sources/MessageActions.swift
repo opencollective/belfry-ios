@@ -63,9 +63,9 @@ struct MessageActions: View {
                             } label: { ActionRow(icon: "doc.on.doc", title: "Copy text") }
                         }
                         Button {
-                            UIPasteboard.general.string = d.channelURL(group)
+                            UIPasteboard.general.string = d.messageURL(group, m.id)
                             dismiss()
-                        } label: { ActionRow(icon: "link", title: "Copy link to the channel") }
+                        } label: { ActionRow(icon: "link", title: "Copy link") }
                         if m.pubkey != model.me && !d.isGuest(model.me) {
                             Button {
                                 dismiss()
@@ -286,9 +286,9 @@ struct MessageMenu: View {
                 } label: { Label("Copy text", systemImage: "doc.on.doc") }
             }
             Button {
-                UIPasteboard.general.string = d.channelURL(group)
+                UIPasteboard.general.string = d.messageURL(group, m.id)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-            } label: { Label("Copy link to the channel", systemImage: "link") }
+            } label: { Label("Copy link", systemImage: "link") }
             if case .memberMail(let subject, let original?) = m.special {
                 Button { model.fullMail = FullMailRef(subject: subject, original: original) } label: { Label("Full e-mail", systemImage: "envelope.open") }
             }

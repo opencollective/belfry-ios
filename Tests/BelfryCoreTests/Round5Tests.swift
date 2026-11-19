@@ -153,6 +153,9 @@ final class LinksTests: XCTestCase {
         XCTAssertEqual(t("https://chat.opensourcevillage.org/events/repair-cafe"), .app)
         XCTAssertEqual(t("https://chat.opensourcevillage.org/#/c/website"), .channel("website"))
         XCTAssertEqual(t("https://opensourcevillage.org/chat/#/c/garden-3f2a/m/x"), .channel("garden-3f2a"))
+        // board channels/message-link: a link to one message
+        let mid = String(repeating: "ab", count: 32)
+        XCTAssertEqual(t("https://chat.opensourcevillage.org/#/c/garden-3f2a/m/\(mid)"), .message("garden-3f2a", mid))
         XCTAssertEqual(t("https://opensourcevillage.org"), .browser)
         XCTAssertEqual(t("https://belfry.opensourcevillage.org/website"), .browser)
         XCTAssertEqual(t("https://chat.belfry.sh/join/abc"), .browser) // another belfry: the browser (and its universal link)

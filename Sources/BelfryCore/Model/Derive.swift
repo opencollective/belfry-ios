@@ -975,6 +975,9 @@ public final class Derive {
     public static func rootOf(_ e: NostrEvent) -> String? { e.tags.first { $0.first == "E" && $0.count > 1 }?[1] }
 
     private var repliesCache = [String: [Message]]()
+    /// A thread reply of the group by its id.
+    public func threadReply(_ groupId: String, _ id: String) -> Message? { allReplies(groupId).first { $0.id == id } }
+
     private func allReplies(_ groupId: String) -> [Message] {
         if let c = repliesCache[groupId] { return c }
         let out = inGroupSorted(groupId).filter { $0.kind == 1111 && !deletedSet.contains($0.id) }.map(parse)

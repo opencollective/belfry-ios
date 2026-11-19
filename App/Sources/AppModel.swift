@@ -48,6 +48,8 @@ final class AppModel: ObservableObject {
     var messagesOpen = false
     /// A thread to open in its channel (a tapped thread-reply notification).
     @Published var openThread: ThreadRoute?
+    /// The channel a message link led to without finding its message ("This message isn't available").
+    @Published var missingMessage: String?
     /// Events read through the belfry's API, by link (a minute).
     var remoteEvents = [String: (at: Date, event: ApiEvent)]()
     /// Text to put in a channel's composer (an event's URL after making it from the channel's ＋).

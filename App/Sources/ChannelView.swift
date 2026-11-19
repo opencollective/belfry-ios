@@ -7,7 +7,7 @@ import SwiftUI
 // separators, blocks per author, cards, reactions, inline threads, resurfaced threads, join
 // lines), the composer. Holding a message opens its menu (a Discord-style list).
 
-struct ThreadRoute: Hashable { let group: String; let root: String; var reply = false }
+struct ThreadRoute: Hashable { let group: String; let root: String; var reply = false; /** A reply to centre and flash (a message link). */ var focus: String? = nil }
 
 struct ChannelView: View {
     @EnvironmentObject var model: AppModel
@@ -149,7 +149,8 @@ struct ChannelView: View {
             }
             .onChange(of: scrollTarget) { _, t in if let t { jump(to: t, proxy); scrollTarget = nil } }
             .onChange(of: model.openThread) { _, _ in takeThread() }
-            .onDisappear { if model.visibleChannel == id { model.visibleChannel = nil } }
+            .onDisappear { if model.visibleChannel == id { model.visibleChannel = nil }; if model.missingMessage == id { model.missingMessage = nil } }
+            .onUserScroll { if model.missingMessage == id { withAnimation { model.missingMessage = nil } } }
             .bottomBar {
                 VStack(spacing: 0) {
                 if model.guestReading {
@@ -179,6 +180,8 @@ struct ChannelView: View {
                 if !embedded {
                 VStack(spacing: 0) {
                     if locked { ArchivedBanner(id: id) }
+                    // a message link whose message is deleted, unknown or not readable: until the feed is scrolled
+                    if model.missingMessage == id { MissingMessageLine().onTapGesture { withAnimation { model.missingMessage = nil } } }
                     // only while something asks for attention; the counts live in the subtitle
                     if let line = d.attentionLine(id, now: .now, topic: topic, hiddenPins: model.hiddenPins) {
                         ChannelLineBar(id: id, line: line, open: { togglePull() }, showAll: { withAnimation { topic = nil } },
@@ -262,7 +265,7 @@ struct ChannelView: View {
         } message: {
             Text(failedSettings.map(SettingsQueue.message).first ?? "")
         }
-        .navigationDestination(item: $thread) { r in ThreadView(group: r.group, rootId: r.root, focusReply: r.reply) }
+        .navigationDestination(item: $thread) { r in ThreadView(group: r.group, rootId: r.root, focusReply: r.reply, focusId: r.focus) }
         .navigationDestination(item: $place) { p in
             ChannelPlaceView(id: id, place: p, go: { g in back(to: g) }, filter: { t in place = nil; withAnimation { topic = t } })
         }
@@ -305,6 +308,7 @@ struct ChannelView: View {
             }
             switch Links.target(url, domain: model.config.domain) {
             case .channel(let gid): openChannel(gid, nil); return .handled
+            case .message(let gid, let mid): openChannel(gid, mid); return .handled
             case .app: model.handle(url: url); return .handled
             case .browser: return .systemAction
             }
@@ -367,7 +371,8 @@ struct ChannelView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             withAnimation { proxy.scrollTo(mid, anchor: .center) }
             flash = mid
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { if flash == mid { flash = nil } }
+            // the flash fades after about 2 s (board channels/message-link)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { if flash == mid { withAnimation(.easeOut(duration: 0.5)) { flash = nil } } }
         }
     }
 
@@ -674,5 +679,38 @@ struct PodApplySheet: View {
         }
         .presentationDetents([.medium])
         .solidSheet()
+    }
+}
+
+/// "This message isn't available": a message link led to a message that is deleted, unknown or
+/// not readable for this person (board channels/message-link). Fixed words, never the link.
+struct MissingMessageLine: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lock").foregroundStyle(.secondary)
+            Text("This message isn’t available").font(.subheadline).foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal).padding(.vertical, 6)
+        .accessibilityIdentifier("missing-message")
+    }
+}
+
+extension Color {
+    /// The flash on a message a link or a search result led to.
+    static let flash = Color.yellow.opacity(0.28)
+}
+
+extension View {
+    /// Runs ACTION when the person starts scrolling this scroll view (iOS 18+; before, nothing:
+    /// a drag gesture beside a scroll view's own can stop it from scrolling).
+    @ViewBuilder func onUserScroll(_ action: @escaping () -> Void) -> some View {
+        if #available(iOS 18.0, *) {
+            onScrollPhaseChange { _, phase in if phase == .interacting { action() } }
+        } else {
+            self
+        }
     }
 }

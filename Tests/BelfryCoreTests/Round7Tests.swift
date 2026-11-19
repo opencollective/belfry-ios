@@ -275,3 +275,21 @@ final class NoLinkTests: XCTestCase {
         XCTAssertNil(NoLink.invite("hello there", domain: "riverside.example"))
     }
 }
+
+final class MessageLinkTests: XCTestCase {
+    /// Board channels/message-link: where …/#/c/<channel>/m/<event> leads.
+    func testWhereAMessageLinkLeads() {
+        let meta = ev(RELAY, 39000, 100, [["d", "g"], ["name", "Garden"]])
+        let root = ev(A, 9, 110, [["h", "g"]], "root")
+        let reply = ev(B, 1111, 120, [["h", "g"], ["E", root.id], ["e", root.id]], "a reply")
+        let gone = ev(B, 9, 130, [["h", "g"]], "oops")
+        let del = ev(B, 5, 140, [["h", "g"], ["e", gone.id]])
+        let d = Derive(events: [meta, root, reply, gone, del], me: A)
+        XCTAssertEqual(d.messagePlace("g", root.id), .message)
+        XCTAssertEqual(d.messagePlace("g", reply.id), .reply(root: root.id))
+        XCTAssertEqual(d.messagePlace("g", gone.id), .missing)
+        XCTAssertEqual(d.messagePlace("g", String(repeating: "0", count: 64)), .missing)
+        XCTAssertEqual(d.messagePlace("nowhere", root.id), .missing)
+        XCTAssertEqual(Derive(events: [meta, root], context: WorldContext(me: A, domain: "belfry.sh")).messageURL("g", root.id), "https://chat.belfry.sh/#/c/g/m/" + root.id)
+    }
+}
