@@ -104,7 +104,7 @@ struct MailForwardScreen: View {
         hideKeyboard()
         if model.engine?.localOnly != false { error = BelfryAPI.mailForwardErrors["unsupported"]; return }
         do { try await work() }
-        catch let e as ApiError { error = e.message }
-        catch { error = BelfryAPI.network }
+        catch let e as ApiError { self.error = e.message }
+        catch { self.error = BelfryAPI.network }
     }
 }
