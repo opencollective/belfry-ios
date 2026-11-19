@@ -175,7 +175,7 @@ struct InviteCodeScreen: View {
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text("Invitation link or code").font(.subheadline.weight(.semibold))
-                TextField("https://chat.\(community.domain)/join/…", text: $text)
+                TextField(text: $text, prompt: Text(verbatim: "https://chat.\(community.domain)/join/…")) { Text("Invitation link or code") }
                     .font(.body)
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
@@ -365,6 +365,5 @@ struct ApplySentScreen: View {
                 .buttonBorderShape(.capsule)
         }
         .padding(.top, 100)
-        .navigationBarBackButtonHidden()
     }
 }

@@ -32,7 +32,7 @@ struct SignInView: View {
                 }
             }
             .navigationDestination(for: NoLinkStep.self) { step in
-                page {
+                page(hideBack: { if case .sent = step { return true } else { return false } }()) {
                     // a code on its way shows over whatever was pushed
                     if let pending = model.pendingCode {
                         CodeScreen(pending: pending)
@@ -57,7 +57,7 @@ struct SignInView: View {
         }
     }
 
-    private func page<V: View>(@ViewBuilder _ content: () -> V) -> some View {
+    private func page<V: View>(hideBack: Bool = false, @ViewBuilder _ content: () -> V) -> some View {
         ScrollView {
             content()
                 .padding(24)
@@ -67,7 +67,7 @@ struct SignInView: View {
         .scrollDismissesKeyboard(.interactively)
         .navigationBarTitleDisplayMode(.inline)
         // a code on its way: the code screen has its own way back
-        .navigationBarBackButtonHidden(model.pendingCode != nil)
+        .navigationBarBackButtonHidden(hideBack || model.pendingCode != nil)
     }
 }
 
