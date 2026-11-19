@@ -535,3 +535,46 @@ final class InviteChoicesTests: XCTestCase {
                        "This QR code and link let up to 50 people join #Garden as a guest for a week. The link works for a month.")
     }
 }
+
+/// The way in: each endpoint's answers → the screen shown (vectors/way-in.json).
+final class WayInTests: XCTestCase {
+    func testVectors() throws {
+        let v = try vector("way-in")
+        let domain = try XCTUnwrap(v.str("domain"))
+        let cases = v.list("cases")
+        XCTAssertEqual(cases.count, 40)
+        for c in cases {
+            let name = (c.str("call") ?? "") + ": " + (c.str("name") ?? "")
+            let call = try XCTUnwrap(WayIn.Call(rawValue: c.str("call") ?? ""), name)
+            let a = WayIn.answer(call, status: c.int("status") ?? 0, body: c["body"] as? [String: Any], domain: domain)
+            XCTAssertEqual(a.screen.rawValue, c.str("screen"), name)
+            XCTAssertEqual(a.message, c.str("message"), name)
+            XCTAssertEqual(a.clearsCode, c["clears_code"] as? Bool ?? false, name)
+            XCTAssertEqual(a.proof, c.str("proof"), name)
+            XCTAssertEqual(a.nip05, c.str("nip05"), name)
+            XCTAssertEqual(a.suggestions, c.strs("suggestions"), name)
+            XCTAssertEqual(a.session != nil, c.str("screen") == "signed_in" && call != .welcome, name)
+            if let p = c["pending"] as? [String: Any] {
+                XCTAssertEqual(a.pending, WayInAnswer.Pending(name: p["name"] as? String ?? "", username: p["username"] as? String ?? "",
+                                                              email: p["email"] as? String ?? "", motivation: p["motivation"] as? String ?? ""), name)
+            }
+        }
+        for c in v.list("username_check") {
+            XCTAssertEqual(UsernameCheck.parse(c["body"] as? [String: Any])?.line(domain: domain), c.str("line"), c.str("name") ?? "")
+        }
+    }
+
+    func testBodies() {
+        let b = WayIn.applyBody(email: " Lina@Example.org ", motivation: " Hello ", name: "Lina   Moreau", username: " Lina ", agreed: ["a", "b"], proof: nil)
+        XCTAssertEqual(b["email"] as? String, "lina@example.org")
+        XCTAssertEqual(b["name"] as? String, "Lina Moreau")
+        XCTAssertEqual(b["username"] as? String, "lina")
+        XCTAssertEqual(b["motivation"] as? String, "Hello")
+        XCTAssertNil(b["proof"])
+        XCTAssertEqual(WayIn.applyBody(email: "a@b.c", motivation: "x", name: "L", username: "", agreed: [], proof: "p")["proof"] as? String, "p")
+        XCTAssertNil(WayIn.applyBody(email: "a@b.c", motivation: "x", name: "L", username: "", agreed: [], proof: nil)["username"])
+        XCTAssertEqual(WayIn.codeBody(email: " A@b.c", code: " 123456 ")["code"] as? String, "123456")
+        XCTAssertEqual(UsernameCheck.suggested(["suggested": "lina", "suggestions": ["lina"]]), "lina")
+        XCTAssertNil(UsernameCheck.suggested(["suggested": "Lina!"]))
+    }
+}
