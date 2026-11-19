@@ -255,6 +255,8 @@ struct SettingsTab: View {
     @State private var access = ChannelAccess.members
     @State private var askPublic = false
     @State private var vouches = 0
+    /// What can be posted: "" = anything, else thread / event / proposal (/ request when it is set so).
+    @State private var posts = ""
 
     var body: some View {
         let g = model.group(id)
@@ -282,6 +284,21 @@ struct SettingsTab: View {
                 Text(vouches > 0 ? "Once enough of its members vouch (not guests, not agents), they're in. Stewards can still answer." : "A steward accepts or declines each request.")
             }
         }
+        if g?.type == .channel {
+            Section {
+                Picker("Posts", selection: $posts) {
+                    Text("Anything").tag("")
+                    Text("Threads").tag("thread")
+                    Text("Events").tag("event")
+                    Text("Proposals").tag("proposal")
+                    if posts == "request" { Text("Requests").tag("request") }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings-posts")
+            } header: { Text("Posts") } footer: {
+                Text(posts.isEmpty ? "People post messages, and anything else." : "Only this kind of post starts something here; people answer in its thread.")
+            }
+        }
         Section {
             Toggle("E-mails from anyone", isOn: $inbox).tint(Theme.toggle)
         } footer: {
@@ -304,6 +321,7 @@ struct SettingsTab: View {
                     model.editGroupMeta(id, name: n, about: a, closed: access == .closed, prompt: g.prompt ?? "")
                 } else { model.editChannel(id, name: n, about: a, inbox: nil) }
                 if g?.type == .channel || g?.isPod == true { model.setVisibility(id, public: access == .public) }
+                if g?.type == .channel { model.setPosts(id, posts.isEmpty ? nil : posts) }
                 if inbox != model.derive.isInbox(g) { model.editChannelInbox(id, inbox) }
                 dismiss()
             } label: {
@@ -332,6 +350,7 @@ struct SettingsTab: View {
             prompt = g.prompt ?? ""
             vouches = g.vouches
             access = model.derive.channelAccess(g)
+            posts = model.derive.webPage(g)?.posts ?? ""
             if model.launch.screen == "chpublic" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { askPublic = true } }
         }
         .alert("Make \(label(g)) public?", isPresented: $askPublic) {

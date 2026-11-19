@@ -265,6 +265,21 @@ public extension Actions {
         return webPage(g.id, content: c)
     }
 
+    /// What can be posted in a channel (board channels/settings "Posts"; the web settings' `posts`):
+    /// nil = anything, else one of `Derive.postTypes`. The settings' other keys are kept; a
+    /// channel without web settings yet gets them as members only, page off. nil when it is that already.
+    static func setPosts(_ g: Group, posts: String?, derive d: Derive) -> Draft? {
+        let want = posts.flatMap { Derive.postTypes.contains($0) ? $0 : nil }
+        let w = d.webPage(g)
+        if w?.posts == want { return nil }
+        var c = d.webContent(g)
+        if let want { c["posts"] = want } else { c["posts"] = nil }
+        if c["on"] == nil { c["on"] = false }
+        if c["visibility"] == nil { c["visibility"] = "members" }
+        if (c["slug"].map { "\($0)" } ?? "").isEmpty { c["slug"] = Derive.slugify(g.rawName.isEmpty ? g.name : g.rawName) }
+        return webPage(g.id, content: c)
+    }
+
     /// The admins' order of the channel list (30078 d=belfry:channel-order on the community relay).
     static func channelOrder(_ ids: [String]) -> Draft {
         Draft(.main, kind: 30078, content: JSON.encode(["order": Array(ids.prefix(1000))]), tags: [["d", Derive.orderD]])

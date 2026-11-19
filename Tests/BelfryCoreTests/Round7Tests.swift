@@ -421,3 +421,31 @@ final class ReferenceTagsTests: XCTestCase {
         XCTAssertTrue(d.eventTagsFor("Just words and https://example.org", mainRelay: "wss://x").isEmpty)
     }
 }
+
+final class ChannelPostsTests: XCTestCase {
+    /// Board channels/settings "Posts": the web settings' `posts`, the other keys kept.
+    func testSetPosts() throws {
+        let meta = ev(RELAY, 39000, 100, [["d", "garden"], ["name", "Garden"]])
+        let admins = ev(RELAY, 39001, 100, [["d", "garden"], ["p", A, "admin"]])
+        let d0 = Derive(events: [meta, admins], me: A)
+        let g0 = try XCTUnwrap(d0.group("garden"))
+        XCTAssertNil(Actions.setPosts(g0, posts: nil, derive: d0), "anything already")
+        let dr = try XCTUnwrap(Actions.setPosts(g0, posts: "thread", derive: d0))
+        let c = try XCTUnwrap(JSON.parse(dr.content) as? [String: Any])
+        XCTAssertEqual(c["posts"] as? String, "thread")
+        XCTAssertEqual(c["on"] as? Bool, false)
+        XCTAssertEqual(c["visibility"] as? String, "members")
+        // set, with a public page: back to anything keeps the page as it is
+        let web = ev(A, 30078, 200, dr.tags, #"{"on":true,"visibility":"public","slug":"garden","periods":[[150,null]],"posts":"event"}"#)
+        let d1 = Derive(events: [meta, admins, web], me: A)
+        let g1 = try XCTUnwrap(d1.group("garden"))
+        XCTAssertEqual(d1.webPage(g1)?.posts, "event")
+        XCTAssertNil(Actions.setPosts(g1, posts: "event", derive: d1))
+        let back = try XCTUnwrap(JSON.parse(try XCTUnwrap(Actions.setPosts(g1, posts: nil, derive: d1)).content) as? [String: Any])
+        XCTAssertNil(back["posts"])
+        XCTAssertEqual(back["visibility"] as? String, "public")
+        XCTAssertEqual(back["on"] as? Bool, true)
+        XCTAssertNotNil(back["periods"])
+        XCTAssertNil(Actions.setPosts(g0, posts: "nonsense", derive: d0), "an unknown kind is anything")
+    }
+}

@@ -916,6 +916,12 @@ final class AppModel: ObservableObject {
         engine?.enqueue(d)
     }
 
+    /// What can be posted in the channel: anything (nil), or one kind of post.
+    func setPosts(_ id: String, _ posts: String?) {
+        guard let g = group(id), let d = Actions.setPosts(g, posts: posts, derive: derive) else { return }
+        engine?.enqueue(d)
+    }
+
     /// Opening a channel tells it, at most every 6 hours.
     func markSeen(_ id: String) {
         if guestReading { return } // guest mode: reading leaves no trace
