@@ -235,6 +235,8 @@ private struct CodeScreen: View {
     @State private var digits = ""
     @State private var verifying = false
     @State private var error: String?
+    /// The last code was not right (the boxes say so until the next digit).
+    @State private var wrong = false
     @State private var note: String?
     /// The digits are right as far as we know (no connection, too many tries): the same code again.
     @State private var canRetry = false
@@ -253,7 +255,7 @@ private struct CodeScreen: View {
                 Text("We sent a 6-digit code to \(pending.to ?? "your e-mail address") to sign in as \(pending.address). It works for 10 minutes.")
                     .foregroundStyle(.secondary)
             }
-            CodeBoxes(digits: $digits, enabled: !verifying, focused: $focused) { Task { await submit() } }
+            CodeBoxes(digits: $digits, enabled: !verifying, focused: $focused, bad: wrong) { Task { await submit() } }
             if verifying {
                 HStack(spacing: 10) {
                     ProgressView()
@@ -304,6 +306,7 @@ private struct CodeScreen: View {
         switch e.failure {
         case .wrongCode:
             digits = ""
+            wrong = true
             canRetry = false
             focused = true
         case .signer:
@@ -339,6 +342,8 @@ struct CodeBoxes: View {
     @Binding var digits: String
     let enabled: Bool
     var focused: FocusState<Bool>.Binding
+    /// The code just typed was not right: the empty boxes are outlined in red (board onboarding/sign-in-code).
+    var bad = false
     let complete: () -> Void
     /// What the boxes held after the last change (a seventh digit bounced back to the same six
     /// does not call COMPLETE again).
@@ -356,7 +361,7 @@ struct CodeBoxes: View {
                         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke(focused.wrappedValue && enabled && i == min(typed.count, 5) ? Color.brand : Color.clear, lineWidth: 2)
+                                .stroke(bad && typed.isEmpty ? Color.red : focused.wrappedValue && enabled && i == min(typed.count, 5) ? Color.brand : Color.clear, lineWidth: 2)
                         )
                 }
             }
