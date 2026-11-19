@@ -93,6 +93,8 @@ final class AppModel: ObservableObject {
     @Published var tabReselected = 0
     /// The accounts / belfries switcher (the belfry's name at the top of a place, ⇅ in the drawer).
     @Published var showAccounts = false
+    /// The drawer's "Apply to join" while the relay doesn't let this key in.
+    @Published var showAlmostIn = false
     /// A channel whose composer takes the keyboard when it appears (Create → Message).
     @Published var focusComposer: String?
     /// A guest's request to become a member as the belfry last told it (stored per account).

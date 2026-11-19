@@ -116,6 +116,7 @@ struct RootView: View {
                 AccountsSheet { switcher = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { openMe() } }
             }
             .onChange(of: model.showAccounts) { _, on in if on { model.showAccounts = false; openAccounts() } }
+            .onChange(of: model.showAlmostIn) { _, on in if on { model.showAlmostIn = false; closeDrawer(); push(PlaceRoute.almostIn) } }
             .sheet(isPresented: $model.showCreate) {
                 CreateMenuSheet(start: model.tab == .town ? model.townChannel : generalId, first: model.createFirst) { id in
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { openFromCreate(id) }
@@ -780,8 +781,9 @@ struct ChannelDrawer: View {
                 } else {
                     if model.access == .denied {
                         Section {
-                            Label("This belfry doesn't let your key in yet. Ask an admin, or check your membership.", systemImage: "lock")
+                            Label("You’re logged in, but not a member of \(model.config.name) yet.", systemImage: "lock")
                                 .font(.callout)
+                            Button("Apply to join") { model.showAlmostIn = true }
                         }
                     }
                     Section {

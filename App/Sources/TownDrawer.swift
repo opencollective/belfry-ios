@@ -92,7 +92,8 @@ struct TownDrawer: View {
             Group {
                 if model.access == .denied {
                     Section {
-                        Label("This belfry doesn't let your key in yet. Ask a steward, or check your membership.", systemImage: "lock").font(.callout)
+                        Label("You’re logged in, but not a member of \(model.config.name) yet.", systemImage: "lock").font(.callout)
+                        Button("Apply to join") { model.showAlmostIn = true }.accessibilityIdentifier("almost-in")
                     }
                 }
                 Section {

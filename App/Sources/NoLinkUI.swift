@@ -214,6 +214,12 @@ struct ApplyFormScreen: View {
     let onSent: () -> Void
     /// "I'm a member: log in".
     let onLogIn: () -> Void
+    /// Logged in already, not a member yet ("Almost in"): its own heading and line, the e-mail
+    /// the belfry knows for this account filled in and locked, no "log in" under the form.
+    var heading = "Apply to join"
+    var intro: String? = nil
+    var knownEmail: String? = nil
+    var offersLogin = true
     @State private var email = ""
     @State private var why = ""
     @State private var rules: [Agreement]?
@@ -231,9 +237,14 @@ struct ApplyFormScreen: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Apply to join").font(.largeTitle.bold())
+            VStack(alignment: .leading, spacing: 8) {
+                Text(heading).font(.largeTitle.bold())
+                if let intro { Text(intro).foregroundStyle(.secondary) }
+            }
             field("Your e-mail") {
                 TextField("you@example.org", text: $email)
+                    .disabled(knownEmail != nil)
+                    .foregroundStyle(knownEmail != nil ? Color.secondary : Color.primary)
                     .font(.body)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
@@ -291,11 +302,12 @@ struct ApplyFormScreen: View {
             .buttonStyle(.brand)
             .disabled(!allTicked || !filled)
             .accessibilityIdentifier("apply-send")
-            Button("I’m a member: log in", action: onLogIn)
+            if offersLogin { Button("I’m a member: log in", action: onLogIn) }
             .font(.body.weight(.medium))
             .frame(maxWidth: .infinity)
         }
         .task { if rules == nil { await load() } }
+        .onChange(of: knownEmail, initial: true) { _, e in if let e, !e.isEmpty { email = e } }
     }
 
     private func field<F: View>(_ label: String, @ViewBuilder _ content: () -> F) -> some View {
@@ -365,5 +377,55 @@ struct ApplySentScreen: View {
                 .buttonBorderShape(.capsule)
         }
         .padding(.top, 100)
+    }
+}
+
+/// Signed in, but the belfry's relay doesn't let this key in (not a member yet): "Almost in" with
+/// the Apply form, the e-mail the belfry knows filled in and locked; then Thank you (board
+/// onboarding/no-link, its last line; Android's NoAccessScreen).
+struct AlmostInScreen: View {
+    @EnvironmentObject var model: AppModel
+    @State private var known: String?
+    @State private var sent = false
+
+    var body: some View {
+        ScrollView {
+            SwiftUI.Group {
+                if sent {
+                    VStack(spacing: 0) {
+                        Text("Thank you").font(.title.bold()).accessibilityIdentifier("apply-sent")
+                        Text("Your request is in. You get a confirmation by e-mail now, and the answer by e-mail too.")
+                            .foregroundStyle(.secondary).multilineTextAlignment(.center)
+                            .padding(.top, 10).padding(.bottom, 28)
+                        check
+                    }
+                    .padding(.top, 80)
+                } else {
+                    ApplyFormScreen(community: model.config, onSent: { sent = true }, onLogIn: {},
+                                    heading: "Almost in",
+                                    intro: "You’re logged in" + (known.map { " as \($0)" } ?? "") + ", but you’re not a member of \(model.config.name) yet. Apply to join: the answer comes by e-mail.",
+                                    knownEmail: known, offersLogin: false)
+                    check.padding(.top, 12)
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: 520)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            // the address the belfry mails this account at
+            if known == nil, !model.isDemo, let e = try? await model.api.follows().email.trimmingCharacters(in: .whitespacesAndNewlines), !e.isEmpty { known = e }
+        }
+    }
+
+    private var check: some View {
+        BusyButton { model.wake(); try? await Task.sleep(nanoseconds: 1_500_000_000) } label: {
+            Text("I’ve been let in: check again").frame(maxWidth: .infinity).padding(.vertical, 6)
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .accessibilityIdentifier("noaccess-check")
     }
 }

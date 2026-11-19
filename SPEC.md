@@ -2298,7 +2298,11 @@ says what would change in the proposal's chat; a client never validates or inven
   by e-mail too." Refusals have fixed words per `error` (`missing` / `bad_request`, `unticked`,
   429, anything else); only `refused` shows the server's `message`, as plain text, 300 characters
   at most (`ApplyForm`, tests `ApplyFormTests`, `NoLinkTests`: Android's cases).
-- Not built: logged in with an address that isn't a member's → the same form with the e-mail filled in.
+- **Logged in, not a member** (the relay refuses this key): the drawer says "You're logged in,
+  but not a member of <belfry> yet." with **Apply to join** → "Almost in": the same form, the
+  e-mail the belfry knows for this account (`GET /me/follows`) filled in and locked, then Thank
+  you with "I've been let in: check again". (Android takes the whole screen for it; iOS keeps
+  the app and offers it from the drawer, since the refusal is read from the relay's words.)
 
 ### 19.46 A to-do's text is never cut (2026-11-19, the lead: the rule for every platform)
 A to-do's title holds 300 UTF-16 units (19.8). The forms count ("n of 300" from 250 on), say
