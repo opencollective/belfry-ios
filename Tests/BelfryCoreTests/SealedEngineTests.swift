@@ -163,6 +163,35 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertTrue(b.all().isEmpty)
     }
 
+    /// A device with nothing loaded and a silent relay cannot tell whether the conversation is
+    /// sealed: the send is refused and nothing is queued; the old way needs a complete answer.
+    func testNothingGoesTheOldWayOnSilence() async throws {
+        let b = FakeBelfry()
+        let alice = try b.signIn("alice", "phone")
+        let bob = try LocalSigner(secret: secret("bob")).pubkey
+        let conv = "n:" + bob
+        let dms = DirectMessages(engine: alice.engine)
+        dms.sealed = alice.sealed
+        // the relay does not answer
+        alice.sealed.askChains = { _ in nil }
+        XCTAssertEqual(alice.sealed.way(conv, now: now), .unknown)
+        do {
+            try await dms.send("Hello Bob", in: conv)
+            XCTFail("sent on silence")
+        } catch {}
+        XCTAssertTrue(dms.thread(conv).isEmpty)
+        XCTAssertTrue(alice.engine.outboxItems().isEmpty)
+        // the relay answers, completely: neither has a chain. Now it is known: today's way.
+        alice.sealed.askChains = { _ in [] }
+        try await dms.send("Hello Bob", in: conv)
+        XCTAssertEqual(dms.thread(conv).map(\.text), ["Hello Bob"])
+        let out = alice.engine.outboxItems().compactMap(\.signed)
+        XCTAssertEqual(out.count, 2)
+        XCTAssertTrue(out.allSatisfy { $0.kind == 1059 && $0.tag("lb") == nil })
+        // an answer older than 10 minutes is no knowledge any more
+        XCTAssertEqual(alice.sealed.way(conv, now: Int.now + 601), .unknown)
+    }
+
     func testNotMeRevokesAndChangesNoRoster() async throws {
         let b = FakeBelfry()
         let phone = try b.signIn("alice", "phone")

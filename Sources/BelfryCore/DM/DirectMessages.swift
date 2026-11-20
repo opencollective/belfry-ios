@@ -221,7 +221,12 @@ public final class DirectMessages: @unchecked Sendable {
         try engine.guestMode.check()
         // the people's heads as the relay has them now (at most 3 s), then:
         // sealed (docs/sealed.md): made on this device, no signer call, never the old way again
-        if let s = sealed, conv != nil || mail { await s.refresh(conv.map(MailThreads.peers) ?? []) }
+        if let s = sealed, conv != nil || mail {
+            await s.refresh(conv.map(MailThreads.peers) ?? [])
+            // the old way only on knowledge, never on silence (sealed.md 6): refused, the text is kept
+            let way = conv.map { s.way($0) } ?? s.mailWay()
+            if way == .unknown { throw BelfryError.invalid("Not sent: the belfry did not answer in time to check the lock. Try again.") }
+        }
         if let s = sealed, let conv, s.isSealed(conv) {
             hold(rumor)
             for w in try s.wraps(rumor, to: to, selfCopy: selfCopy) { engine.enqueueSigned(w, target: .main, dm: rumor.id) }

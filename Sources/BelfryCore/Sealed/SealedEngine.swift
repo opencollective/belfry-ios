@@ -82,6 +82,9 @@ public final class SealedEngine: @unchecked Sendable {
     var runsLocally = false
     var askAnchor: (() async -> [NostrEvent]?)?
     var removalWait: ClosedRange<UInt64> = 0...60
+    var askChains: (([String]) async -> [NostrEvent]?)?
+    /// Per person: when the relay last gave a complete answer about their anchor and rosters.
+    private var answered = [String: Int]()
 
     public init?(engine: SyncEngine, deviceSecret: Data, store: SealedKeyStore) {
         guard let pub = try? Keys.publicKeyHex(secret: deviceSecret) else { return nil }
@@ -410,14 +413,43 @@ public final class SealedEngine: @unchecked Sendable {
 
     /// Before each send, and when a sealed conversation opens: the relay is asked again for these
     /// people's anchors and rosters (at most 3 s, then what is known is used). Sealing to a
-    /// letterbox its owner has left would let the removed device read.
-    public func refresh(_ accounts: [String]) async {
+    /// letterbox its owner has left would let the removed device read. A complete answer (after
+    /// AUTH, to EOSE) is remembered per person: only that is knowledge of "no ready chain".
+    public func refresh(_ accounts: [String], now: Int = .now) async {
         let who = Array(Set(accounts + [me])).filter(isHex64)
-        guard !engine.localOnly, !who.isEmpty else { return }
-        let found = await engine.query(.main, [["kinds": [30078], "authors": who, "#d": [SealedKind.anchorD]],
-                                               ["kinds": [SealedKind.roster], "#p": who]], timeout: 3)
+        guard !who.isEmpty else { return }
+        let found: [NostrEvent]?
+        if let askChains { found = await askChains(who) }
+        else if engine.localOnly || !engine.answeredAfterAuth(.main) { found = nil }
+        else {
+            found = await engine.queryComplete(.main, [["kinds": [30078], "authors": who, "#d": [SealedKind.anchorD]],
+                                                       ["kinds": [SealedKind.roster], "#p": who]], timeout: 3)
+        }
+        guard let found else { return }
         engine.add(found)
-        observe(who)
+        lock.lock(); for a in who { answered[a] = now }; lock.unlock()
+        observe(who, now: now)
+    }
+
+    public enum Way: Sendable { case sealed, old, unknown }
+
+    /// How a message of CONV goes. Sealed once every participant has a ready chain (and for good).
+    /// The old way only on knowledge, never on silence: this device must hold, for some
+    /// participant, a complete answer of the relay (since this start, at most 10 minutes old)
+    /// that shows no ready chain. Otherwise it cannot tell, and the send is refused.
+    public func way(_ conv: String, now: Int = .now) -> Way {
+        if isSealed(conv, now: now) { return .sealed }
+        guard let people = SealedEngine.people(conv, me: me) else { return .old }
+        lock.lock(); let known = answered; lock.unlock()
+        return people.contains { p in (known[p].map { now - $0 <= 600 } ?? false) && chain(p)?.ready != true } ? .old : .unknown
+    }
+
+    /// The same for my e-mail: sealed with a ready chain of mine; the old way only when the relay
+    /// told this device that I have none.
+    public func mailWay(now: Int = .now) -> Way {
+        if mailSealed { return .sealed }
+        lock.lock(); let at = answered[me]; lock.unlock()
+        return (at.map { now - $0 <= 600 } ?? false) ? .old : .unknown
     }
 
     /// The first device (5.1) or a fresh start (5.4): a new letterbox, a root with this device, the anchor.
