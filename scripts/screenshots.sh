@@ -155,6 +155,9 @@ shot 58b-members-dark directory dark
 shot 59-my-card mycard light
 shot 59b-role-picker rolepicker light
 shot 59c-profile-dark profile dark
+shot 176-profile-guest guestprofile light
+shot 176b-profile-guest-dark guestprofile dark
+shot 177-profile-guest-agent guestagentprofile light
 shot 62-accounts accounts light
 shot 155-about about light
 shot 155b-about-dark about dark

@@ -557,6 +557,12 @@ struct RootView: View {
         case "rolepicker":
             selection = .members
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openProfile = Demo.signer("dev").pubkey }
+        case "guestprofile", "guestagentprofile":
+            // a guest's card (board home/profile-guest): Lou, with the tags the register holds; the guest agent
+            selection = .channel(generalId)
+            let who = Demo.signer(model.launch.screen == "guestprofile" ? "guest" : "helper").pubkey
+            model.guestTags[Demo.signer("guest").pubkey] = ["repair", "sewing", "bikes"]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openProfile = who }
         case "profile":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openProfile = Demo.signer("ana").pubkey }
