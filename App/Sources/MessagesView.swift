@@ -72,9 +72,9 @@ struct MessagesView: View {
             if screen == "encshared" || screen == "encsharedwhy" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("dev").pubkey) } }
             if screen == "enclocked" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("ana").pubkey) } }
             if ["encthread", "encdevices", "encshare"].contains(screen) {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("lina").pubkey) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate("n:" + Demo.signer("lina").pubkey) }
             }
-            if screen == "encgroup" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate(Demo.groupConv(me: model.me)) } }
+            if screen == "encgroup" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate(Demo.groupConv(me: model.me)) } }
             if screen == "enchow" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { how = true } }
         }
     }
@@ -268,7 +268,7 @@ struct ConversationView: View {
             // screenshots (boards messages/encryption-*)
             let screen = model.launch.screen ?? ""
             guard ["encdevices", "encgroup", "encmaildevices", "encshare"].contains(screen) else { return }
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: 700_000_000) // after the push: the picture is taken 6 s after launch
             if screen == "encshare" { sharing = sealed?.notices.first { $0.what == .locked } } else { encryption = true }
         }
         .onAppear { model.markConversationRead(conv); model.visibleConversation = conv }
