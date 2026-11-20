@@ -58,10 +58,14 @@ struct MessagesView: View {
             didLaunch = true
             let screen = model.launch.screen ?? ""
             if ["conversation", "mail", "encmail", "encmaildevices"].contains(screen) {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    let list = model.dms?.threads() ?? []
-                    let pick = screen == "conversation" ? list.first { !MailThreads.isMail($0.conv) } : list.first { MailThreads.isMail($0.conv) }
-                    if let pick { navigate(pick.conv) }
+                // the demo's e-mail may still be on its way in: look a few times
+                Task { @MainActor in
+                    for _ in 0..<6 {
+                        try? await Task.sleep(nanoseconds: 700_000_000)
+                        let list = model.dms?.threads() ?? []
+                        let pick = screen == "conversation" ? list.first { !MailThreads.isMail($0.conv) } : list.first { MailThreads.isMail($0.conv) }
+                        if let pick { navigate(pick.conv); return }
+                    }
                 }
             }
             // boards messages/encryption-*: Lina's conversation, the group's, the three steps
@@ -111,7 +115,11 @@ struct ThreadRow: View {
                 }
                 if mail, !model.lockedHere(thread.conv) { Text(model.dms?.threadName(thread.conv) ?? "").font(.subheadline.weight(.medium)).lineLimit(1) }
                 if model.lockedHere(thread.conv) {
-                    Label("Locked on this device", systemImage: "lock.fill").font(.subheadline).foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        Image(systemName: "lock.fill").font(.caption)
+                        Text("Locked on this device").font(.subheadline)
+                    }
+                    .foregroundStyle(.secondary)
                 } else {
                     Text((thread.last.mine ? "You: " : "") + (mail ? thread.last.text : model.derive.plainRefs(thread.last.text))).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                 }

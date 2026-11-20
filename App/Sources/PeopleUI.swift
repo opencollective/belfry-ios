@@ -663,7 +663,7 @@ struct DevicesView: View {
                         }
                     }
                 } header: {
-                    Text("Signed in as \(model.name(model.me))").textCase(nil)
+                    Text("Signed in as \(model.myName)").textCase(nil)
                 } footer: {
                     Text("To remove this device, sign out on it.")
                 }
@@ -682,7 +682,10 @@ struct DevicesView: View {
         .task {
             await load()
             // screenshots: the question about the other device
-            if model.launch.screen == "encremove" { asking = list?.first { $0.bunkerPubkey != model.mySessionKey } }
+            if model.launch.screen == "encremove" {
+                try? await Task.sleep(nanoseconds: 1_200_000_000) // after the push: an alert asked during it is dropped
+                asking = list?.first { $0.bunkerPubkey != model.mySessionKey }
+            }
         }
     }
 

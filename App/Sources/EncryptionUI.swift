@@ -122,7 +122,7 @@ struct EncryptionScreen: View {
                     } label: {
                         HStack(spacing: 12) {
                             Avatar(pubkey: model.me, size: 32)
-                            (Text(model.name(model.me)) + Text(" (you)").foregroundStyle(.secondary)).lineLimit(1)
+                            (Text(model.myName) + Text(" (you)").foregroundStyle(.secondary)).lineLimit(1)
                             Spacer(minLength: 4)
                             Text(SealedWords.devices(mine.count)).foregroundStyle(.secondary)
                         }
@@ -135,7 +135,7 @@ struct EncryptionScreen: View {
                 } header: {
                     HStack(spacing: 8) {
                         Avatar(pubkey: model.me, size: 22)
-                        Text(model.name(model.me)).foregroundStyle(.primary) + Text(" (you)")
+                        Text(model.myName).foregroundStyle(.primary) + Text(" (you)")
                     }
                     .font(.subheadline)
                     .textCase(nil)
@@ -333,7 +333,7 @@ struct AllowPrompt: View {
                     .font(.headline).multilineTextAlignment(.center)
                 Text("It will read all your messages, including earlier ones.")
                     .font(.subheadline).multilineTextAlignment(.center)
-                Text("Signed in as \(model.name(model.me)) · \(Format.ago(ask.at))")
+                Text("Signed in as \(model.myName) · \(Format.ago(ask.at))")
                     .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 BusyButton { await answer(true) } label: { Text("Allow").frame(maxWidth: .infinity) }
                     .buttonStyle(.brand).controlSize(.large)

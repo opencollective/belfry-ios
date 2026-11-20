@@ -207,6 +207,9 @@ extension AppModel {
         sealed.convs[conv] = c
     }
 
+    /// My own name where a screen names me ("Sam Rivera (you)", "Signed in as Sam Rivera").
+    var myName: String { let r = realName(me); return r.isEmpty ? name(me) : r }
+
     /// The first name on a notice line ("Lina added a device"); "Somebody" stays whole.
     func firstName(_ pubkey: String) -> String {
         let r = realName(pubkey)
