@@ -182,7 +182,10 @@ struct PushOffer: View {
                 .buttonStyle(.borderless).accessibilityLabel("Not now")
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
-        .floatingBar()
+        // opaque: as glass over the feed, the card under it showed through as garbled text
+        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.secondary.opacity(0.2), lineWidth: 0.5))
+        .padding(.horizontal, 12).padding(.vertical, 4)
     }
 }
 
