@@ -32,6 +32,8 @@ final class AppModel: ObservableObject {
     }
     /// Someone's profile to show, from a face, a name or a mention anywhere.
     @Published var openProfile: String?
+    /// A to-do to open on the main screen's stack (a to-do's link or box in a message).
+    @Published var openTodo: TodoKey?
     /// The channel a guest link just brought me into (opened once).
     @Published var joinedChannel: String?
     /// A co-host link used by someone new: once their e-mail is proven, the link is used again.

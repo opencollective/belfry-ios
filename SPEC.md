@@ -2584,3 +2584,39 @@ who has no main channel, keeps the channel they were in.
   them as "#tag" chips where a member's stand; read-only (a guest edits them on the website); the
   answer replaces what was kept for the keys asked; no tags, no chips. Until the server sends
   `tags`, nothing shows.
+
+### 19.61 Every link to a thing of the belfry is a reference (iOS, 2026-11-20; the web's rule of the same day after Xavier: "links to things in the belfry never show as a raw link"; `vectors/references.json` copied byte for byte from the web chat, branch chat-source, sha256 19ced680079f606f…, 38 cases)
+19.49 grows; the web chat's `src/core/refs.ts` is the reference implementation, `References.route`
+its port. Any address of this belfry's chat, `https://chat.<domain>/#/…` or
+`https://<domain>/chat/#/…` (segments percent-encoded or not; an empty segment, a bad escape or a
+segment over 200 units: not a reference):
+- `#/c/<id>` and its pages (`/group`, `/info`, `/info/members`, `/about`, `/members`, `/images`,
+  `/photos`, `/files`, `/todos`, `/log`, `/events`, `/t/<topic>`) = the channel or group;
+- `#/c/<id>/todo/<task>` = a to-do `{group, task}`;
+- `#/c/<id>/m/<event>` and `#/c/<id>/thread/<event>[/reply]` (64 hex) = a message `{group, id}`
+  (before: a plain message link, 19.48; a tap still leads where 19.48 says);
+- `#/cal/<31922|31923 coord>` (older event addresses) = an event `{coord}`; `#/events/<link>` =
+  an event `{link}`; `#/events/<link>/m/<event>` = a message `{link, id}`; a ticket stays a link;
+- `#/u/<npub or hex>` = a person `{pubkey}`;
+- `https://<domain>/drop/<token>` (8–100 of `[A-Za-z0-9_-]`) = a drop box `{token}`.
+The app's other places (`#/calendar`, `#/home`, …) stay links.
+
+How they read (`Derive.refShown`), inside the text and as the box at the end:
+- **To-do**: "☐ <title>" ("☑ " when done); box: the title, "To-do in <channel> · Done | Nobody on
+  it yet | <name> is on it | You are on it". Opens the to-do's screen.
+- **Message**: "a message from <name>"; box: the author's face and name, "Message in <channel>"
+  (or the event's title), two lines of its text (one line of at most 160 units, mentions and
+  channel references as names). Opens the channel at the message (or its thread).
+- **Person**: "@<name>"; box: face, name, "Guest" / their address at this belfry / "Agent" /
+  "Person". Opens the profile.
+- **Drop box**: "the drop box of <channel>" ("a drop box" while its event isn't here); box: "Drop
+  box", "Files go to <channel> · until 12 Nov" (or "Send files without an account"). Opens the
+  page in the browser. Ended or deleted: "an ended drop box", nothing to open.
+- Not here yet: the kind's word ("To-do", "Message") after the grey bar; in a closed channel I am
+  not in: "a to-do in a closed channel" / "a message in a closed channel", "Only its members can
+  open it"; deleted: "a deleted to-do" / "a deleted message".
+- A label's link (`[words](address)`) to one of these opens it in the app too.
+- An event's own address the app gives (Share, Copy link) is `https://<domain>/events/<slug or d>`
+  (`Derive.eventURL`): never a coordinate with a key. Old `#/cal/…` links still open.
+- Not done: the direct actions on the boxes (canvas v69 `channels/card-*`, drafts); one-line
+  previews (channel list, notifications) still show such an address as written, as on the web.

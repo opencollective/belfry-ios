@@ -308,6 +308,7 @@ struct ChannelView: View {
                 model.openProfile = pk
                 return .handled
             }
+            if model.openRef(url, openChannel: openChannel) { return .handled }
             switch Links.target(url, domain: model.config.domain) {
             case .channel(let gid): openChannel(gid, nil); return .handled
             case .message(let gid, let mid): openChannel(gid, mid); return .handled

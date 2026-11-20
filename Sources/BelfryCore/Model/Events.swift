@@ -496,7 +496,7 @@ extension Derive {
             let t: RefTarget
             switch p { case .ref(let x), .box(let x): t = x; case .text: continue }
             let coord: String?
-            switch t { case .event(_, let c): coord = c; case .proposal(let c): coord = c; case .group: coord = nil }
+            switch t { case .event(_, let c): coord = c; case .proposal(let c): coord = c; default: coord = nil }
             if let coord, !out.contains(where: { $0[1] == coord }) { out.append(["a", coord, mainRelay]) }
         }
         return out

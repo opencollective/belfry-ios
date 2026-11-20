@@ -294,7 +294,8 @@ final class MessageLinkTests: XCTestCase {
     }
 }
 
-/// References in a message (vectors/references.json, copied byte for byte from belfry-android d5e831d).
+/// References in a message (vectors/references.json, copied byte for byte from the web chat,
+/// commonshub/collective-belfry branch chat-source, sha256 19ced680079f606f…).
 final class ReferencesTests: XCTestCase {
     func testVectors() throws {
         let v = try vector("references")
@@ -304,11 +305,15 @@ final class ReferencesTests: XCTestCase {
             case "group": return .group(o["id"] as? String ?? "")
             case "event": return .event(link: o["link"] as? String, coord: o["coord"] as? String)
             case "proposal": return .proposal(o["coord"] as? String ?? "")
+            case "todo": return .todo(group: o["group"] as? String ?? "", task: o["task"] as? String ?? "")
+            case "message": return .message(group: o["group"] as? String, link: o["link"] as? String, id: o["id"] as? String ?? "")
+            case "person": return .person(o["pubkey"] as? String ?? "")
+            case "drop": return .drop(o["token"] as? String ?? "")
             default: return nil
             }
         }
         let cases = v.list("cases")
-        XCTAssertEqual(cases.count, 20)
+        XCTAssertEqual(cases.count, 38)
         for c in cases {
             let want: [RefPart] = try (c["parts"] as? [[String: Any]] ?? []).map { p in
                 if let t = p["text"] as? String { return .text(t) }
@@ -329,6 +334,56 @@ final class ReferencesTests: XCTestCase {
         XCTAssertEqual(b.text, "Is it https://chat.riverside.example/#/c/garden?")
         XCTAssertNil(b.box)
         XCTAssertEqual(References.split("https://riverside.example/events/repair-cafe", domain: d).text, "")
+    }
+
+    /// Routes the vectors don't spell out (refs.ts routeRef): a thread's reply, a topic, a page
+    /// that isn't one, an empty segment, a bad escape.
+    func testRoutes() {
+        let d = "riverside.example", h = "https://chat.riverside.example/#/", x = String(repeating: "ab", count: 32)
+        XCTAssertEqual(References.target(h + "c/garden/thread/\(x)/reply", domain: d), .message(group: "garden", link: nil, id: x))
+        XCTAssertEqual(References.target(h + "c/garden/t/seeds", domain: d), .group("garden"))
+        XCTAssertNil(References.target(h + "c/garden/settings", domain: d))
+        XCTAssertNil(References.target(h + "c/garden/files/x", domain: d))
+        XCTAssertNil(References.target(h + "c//m/\(x)", domain: d))
+        XCTAssertNil(References.target(h + "c/%E9", domain: d))
+        XCTAssertNil(References.target(h + "u/npub1nope", domain: d))
+        XCTAssertNil(References.target(h + "events/repair-cafe/m/\(x)/more", domain: d))
+        XCTAssertNil(References.target("https://riverside.example/drop/short", domain: d))
+        XCTAssertNil(References.target("https://chat.riverside.example/drop/Zx81kQ_p-3aB9cD0", domain: d))
+    }
+
+    /// How the new kinds read: a to-do, a message, a person, a drop box (SPEC 19.61).
+    func testShown() throws {
+        let prof = ev(B, 0, 1, [], "{\"name\":\"Ben\"}")
+        let msg = ev(B, 9, 110, [["h", "garden"]], "Bring   the\nseeds on Saturday")
+        let task = ev(B, 2100, 200, Actions.addTask("garden", title: "Water the beds").tags, "Water the beds")
+        let claim = ev(B, 2101, 210, Actions.taskAction("garden", taskId: task.id, action: "claim").tags)
+        let d = Derive(events: channel("garden", "Garden", members: [A, B]) + channel("crew", "Crew", members: [B], closed: true) + [prof, msg, task, claim],
+                       context: WorldContext(me: A, domain: "riverside.example"))
+        let t = d.refShown(.todo(group: "garden", task: task.id))
+        XCTAssertEqual(t.kind, .todo)
+        XCTAssertEqual(t.name, "☐ Water the beds")
+        XCTAssertEqual(t.line, "To-do in #Garden · Ben is on it")
+        XCTAssertEqual(t.open, .todo(group: "garden", task: task.id))
+        XCTAssertEqual(d.refShown(.todo(group: "crew", task: task.id)).kind, .locked)
+        XCTAssertEqual(d.refShown(.message(group: "crew", link: nil, id: msg.id)).name, "a message in a closed channel")
+        let m = d.refShown(.message(group: "garden", link: nil, id: msg.id))
+        XCTAssertEqual(m.kind, .message)
+        XCTAssertEqual(m.name, "a message from Ben")
+        XCTAssertEqual(m.title, "Ben")
+        XCTAssertEqual(m.line, "Message in #Garden")
+        XCTAssertEqual(m.about, "Bring the seeds on Saturday")
+        XCTAssertEqual(m.open, .message(group: "garden", id: msg.id))
+        XCTAssertEqual(d.refShown(.message(group: "garden", link: nil, id: String(repeating: "0", count: 64))).kind, .unknown)
+        XCTAssertEqual(d.refShown(.message(group: "nowhere", link: nil, id: msg.id)).name, "Message")
+        let p = d.refShown(.person(B))
+        XCTAssertEqual(p.name, "@Ben")
+        XCTAssertEqual(p.open, .person(B))
+        XCTAssertEqual(d.refShown(.todo(group: "garden", task: "nope")).name, "To-do")
+        let drop = d.refShown(.drop("Zx81kQ_p-3aB9cD0"))
+        XCTAssertEqual(drop.title, "Drop box")
+        XCTAssertEqual(drop.open, .url("https://riverside.example/drop/Zx81kQ_p-3aB9cD0"))
+        XCTAssertEqual(References.excerpt(String(repeating: "a", count: 200)).utf16.count, 160)
     }
 }
 

@@ -178,6 +178,8 @@ shot 69b-check-in-dark checkin dark
 shot 70-check-in-card checkincard light
 shot 71-profile-in-event eventrole light
 shot 72-members-invite membersinvite light
+shot 178-link-boxes linkboxes light
+shot 178b-link-boxes-dark linkboxes dark
 shot 73-group-cards groupcards light
 shot 73b-group-cards-dark groupcards dark
 shot 74-group-deleted groupdeleted light

@@ -195,6 +195,7 @@ struct PlaceDestinations: ViewModifier {
             .navigationDestination(for: ChatRoute.self) { r in ChannelScreen(id: r.id, focus: r.focus, pushed: true) }
             .navigationDestination(for: PlaceRoute.self) { r in r.view }
             .navigationDestination(for: ConvRoute.self) { r in ConversationView(conv: r.conv) }
+            .navigationDestination(for: TodoKey.self) { k in TodoScreen(key: k) }
     }
 }
 

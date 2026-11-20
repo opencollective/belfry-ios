@@ -274,8 +274,15 @@ enum Demo {
         evs.append(ev(groupsKey, 1985, now - 1900, [["h", "general"], ["L", "belfry/guest"], ["l", "saved", "belfry/guest"], ["p", signer("guest").pubkey]]))
         evs.append(ev(groupsKey, 9000, now - 1500, [["h", "general"], ["p", signer("helper").pubkey, "member"], ["invited-by", me], ["agent", "1"], ["name", "Minutes helper"]]))
         evs.append(ev(ps["ana"]!, 1985, now - 10 * day, Actions.setTopics("general", ["garden"]).tags))
-        msg(ps["ben"]!, "garden-3f2a", now - 4 * day, "Tomatoes are in. Watering rota: Mon Ana, Wed me, Fri Chloé.")
+        let rota = msg(ps["ben"]!, "garden-3f2a", now - 4 * day, "Tomatoes are in. Watering rota: Mon Ana, Wed me, Fri Chloé.")
         msg(ps["chloe"]!, "garden-3f2a", now - 2 * day, "The basil did not survive the cold night 🥲")
+        // links to things of the belfry (SPEC 19.61): a person and a message named inside the
+        // text, a message and a to-do as boxes; the last line is plain so one-line previews stay words
+        let chat = "https://chat.demo.belfry.sh/#/"
+        msg(ps["ana"]!, "garden-3f2a", now - 2 * day + 100, "Ask \(chat)u/\(Bech32.npub(ps["ben"]!.pubkey) ?? "") about \(chat)c/garden-3f2a/m/\(rota.id) if your day doesn't work.")
+        msg(ps["dev"]!, "garden-3f2a", now - 2 * day + 200, "The rota is still this one \(chat)c/garden-3f2a/m/\(rota.id)")
+        msg(ps["ana"]!, "garden-3f2a", now - 2 * day + 300, "Who can help Chloé with this? \(chat)c/general/todo/\(compost.id)")
+        msg(ps["chloe"]!, "garden-3f2a", now - 2 * day + 400, "Thanks, the compost comes on Friday.")
         msg(ps["dev"]!, "repair-cafe-91bc", now - 3 * day, "Who can fix a **sewing machine**? Asking for Mrs. Dupont.")
         msg(ps["emma"]!, "kitchen-7d10", now - 6 * 3600, "Soup on Thursday, I need two helpers to chop.")
         // 2026-11-16 (bottom bar): #proposals (under its default name: shown as is since 2026-11-17), a group Sam is in

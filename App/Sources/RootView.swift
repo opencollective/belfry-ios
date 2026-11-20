@@ -172,6 +172,7 @@ struct RootView: View {
             if url.scheme == "belfry-channel", let gid = url.pathComponents.last?.removingPercentEncoding { openChat(gid, nil); return .handled }
             if url.scheme == "belfry-event", let c = url.pathComponents.last?.removingPercentEncoding { model.openEvent = c; return .handled }
             if url.scheme == "belfry-user", let pk = url.pathComponents.last, isHex64(pk) { model.openProfile = pk; return .handled }
+            if model.openRef(url, openChannel: { id, m in openChat(id, m) }) { return .handled }
             switch Links.target(url, domain: model.config.domain) {
             case .channel(let gid): openChat(gid, nil); return .handled
             case .message(let gid, let mid): openChat(gid, mid); return .handled
@@ -252,6 +253,14 @@ struct RootView: View {
             model.openProfile = nil
             closeDrawer()
             push(ProfileKey(pubkey: pk))
+        }
+        // a to-do named in a message opens its own screen
+        .onChange(of: model.openTodo) { _, k in
+            guard let k else { return }
+            model.openTodo = nil
+            hideKeyboard()
+            closeDrawer()
+            push(k)
         }
         .sheet(item: Binding(get: { model.guestReading ? nil : model.pendingInvite }, set: { if $0 == nil { model.pendingInvite = nil } })) { inv in
             JoinWithAccountSheet(invite: inv)
@@ -539,6 +548,7 @@ struct RootView: View {
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
         case "pod": selection = .channel("pod-seed-swap-5e1d")
+        case "linkboxes": selection = .channel("garden-3f2a")
         case "pullempty", "pullemptyclosed": selection = .channel("kitchen-7d10")
         case "group":
             selection = .channel(generalId)

@@ -126,6 +126,22 @@ struct MarkdownText: View {
             a.foregroundColor = .brand
             a.link = URL(string: "belfry-event://open/" + MailThreads.encodeURIComponent(coord))
             return adding(.stronglyEmphasized, a)
+        case .message(let g, let id)?:
+            a.foregroundColor = .brand
+            a.link = RefLink.message(g, id)
+            return adding(.stronglyEmphasized, a)
+        case .todo(let g, let task)?:
+            a.foregroundColor = .brand
+            a.link = RefLink.todo(g, task)
+            return adding(.stronglyEmphasized, a)
+        case .person(let pk)?:
+            a.foregroundColor = .brand
+            a.link = URL(string: "belfry-user://open/" + pk)
+            return adding(.stronglyEmphasized, a)
+        case .url(let u)?:
+            a.foregroundColor = .brand
+            a.link = URL(string: u)
+            return adding(.stronglyEmphasized, a)
         case nil:
             a.foregroundColor = .secondary
             return a
