@@ -613,6 +613,11 @@ final class AppModel: ObservableObject {
         // Sam administers the demo belfry (settings, roles, requests, the charter show); the reader is a guest
         // `-member`: the same demo as a plain member (no Belfry settings, no dragging)
         cfg.admins = launch.member ? [Demo.signer("ana").pubkey] : [(try! LocalSigner(secret: Demo.meSecret)).pubkey]
+        // screenshots `brand…`: a belfry with a dark brand colour (the colours it serves per appearance)
+        if launch.screen?.hasPrefix("brand") == true {
+            cfg.branding = Branding(primary: "#2b402e", secondary: "#ad6e21",
+                                    colors: .init(light: .init(accent: "#2b402e", onAccent: "#ffffff"), dark: .init(accent: "#58835e", onAccent: "#ffffff")))
+        }
         open(s, config: cfg)
         groupsKey = Demo.signer("groups").pubkey
         groupsAbsent = [Demo.deletedGroup: 0] // what the relay's answer would leave (SPEC 19.30)

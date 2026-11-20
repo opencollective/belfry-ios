@@ -180,6 +180,11 @@ shot 71-profile-in-event eventrole light
 shot 72-members-invite membersinvite light
 shot 178-link-boxes linkboxes light
 shot 178b-link-boxes-dark linkboxes dark
+# 2026-11-20: a belfry with a dark brand colour: the tint per appearance (never the raw primary)
+shot 179-brand-feed brandfeed light
+shot 179b-brand-feed-dark brandfeed dark
+shot 179c-brand-new-channel brandnewchannel light
+shot 179d-brand-new-channel-dark brandnewchannel dark
 shot 73-group-cards groupcards light
 shot 73b-group-cards-dark groupcards dark
 shot 74-group-deleted groupdeleted light

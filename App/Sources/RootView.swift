@@ -547,6 +547,11 @@ struct RootView: View {
         case "drawer", "channels":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
+        // a branded belfry: the channel (title, +, a mention), the New channel sheet (Cancel, Create off)
+        case "brandfeed": selection = .channel(generalId)
+        case "brandnewchannel":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { newChannel = true }
         case "pod": selection = .channel("pod-seed-swap-5e1d")
         case "linkboxes": selection = .channel("garden-3f2a")
         case "pullempty", "pullemptyclosed": selection = .channel("kitchen-7d10")

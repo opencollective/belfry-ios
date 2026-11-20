@@ -18,6 +18,7 @@ SMOKE = "home|feed|drawer|pulldown|event|charter|members|composer"
 SMOKE_TESTS = "testKeyboardComposer testMessageMenu"
 # file (regex on its path) → screens (regex on the screenshot script's screen names), UI tests
 MAP = [
+    (r"App/Sources/Theme", "brand.*|feed|home", ""),
     (r"App/Sources/(InviteSheet|AgentUI)", "invite.*|membersinvite.*|addagent|myprofile", ""),
     (r"App/Sources/(CharterUI|AppModel\+Charter)", "charter|whoagreed|agreement|welcomecharter|guest-apply|home", ""),
     (r"App/Sources/WelcomeUI", "welcome.*", ""),
