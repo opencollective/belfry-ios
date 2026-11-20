@@ -338,7 +338,8 @@ public final class SealedEngine: @unchecked Sendable {
     }
 
     private static func counted(_ sessions: [SessionInfo], now: Int) -> [String] {
-        sessions.filter { $0.chat && (SessionInfo.time($0.lastActivity).map { now - $0 <= 30 * 86400 } ?? false) }.compactMap(\.clientPubkey)
+        // counted: a chat client last active less than 30 days ago (created, when never active)
+        sessions.filter { s in s.chat && ((SessionInfo.time(s.lastActivity) ?? SessionInfo.time(s.createdAt)).map { now - $0 < 30 * 86400 } ?? false) }.compactMap(\.clientPubkey)
     }
 
     private func writeNames(_ c: RosterChain, gone: [String: Int] = [:]) async {
