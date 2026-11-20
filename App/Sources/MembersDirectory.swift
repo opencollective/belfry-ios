@@ -4,7 +4,7 @@ import SwiftUI
 // Members (web Directory.tsx, 8f0ccb8 / 98c33fc): the first row of the drawer. At its top, only
 // when something waits, the request sections (agents asking to join, people asking to join the
 // belfry, requests to my groups: RequestsView.swift); then everyone in the belfry, their own
-// agents under them, with search.
+// agents folded into their row ("+ 2 agents"; Xavier, 2026-11-20, board home/members), with search.
 
 struct MembersDirectory: View {
     @EnvironmentObject var model: AppModel
@@ -63,14 +63,11 @@ struct MembersDirectory: View {
 
     @ViewBuilder private func letterSection(_ l: String, _ people: [DirMember]) -> some View {
         Section {
+            // a member's agents have no row of their own: a grey second line on the member's row
+            // (their profile lists them); an agent that belongs to nobody here is in the list itself
             ForEach(people) { m in
-                Button { model.openProfile = m.pubkey } label: { row(m.pubkey, m.name, size: 40, detail: roleLine(m), role: nil) }
+                Button { model.openProfile = m.pubkey } label: { row(m.pubkey, m.name, size: 40, detail: agentsLine(m), role: roleLine(m)) }
                     .buttonStyle(.plain)
-                ForEach(m.agents, id: \.pubkey) { a in
-                    Button { model.openProfile = a.pubkey } label: { row(a.pubkey, a.name, size: 40, detail: m.pubkey == model.me ? "your agent" : "agent of \(name(m.pubkey, m.name))", role: nil) }
-                        .buttonStyle(.plain)
-                        .padding(.leading, 24)
-                }
             }
         } header: { Text(l) }
         .indexLabel(l)
@@ -104,6 +101,26 @@ struct MembersDirectory: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// "+ 1 agent" / "+ 2 agents"; while a search matches an agent's name and not the member's,
+    /// the agents that match, the match in bold ("+ **Comp**ost bot").
+    private func agentsLine(_ m: DirMember) -> AttributedString? {
+        guard !m.agents.isEmpty else { return nil }
+        let q = query.jsTrim().lowercased()
+        let hits = q.isEmpty || name(m.pubkey, m.name).lowercased().contains(q) ? [] : m.agents.map { name($0.pubkey, $0.name) }.filter { $0.lowercased().contains(q) }
+        guard !hits.isEmpty else { return AttributedString(m.agents.count == 1 ? "+ 1 agent" : "+ \(m.agents.count) agents") }
+        var out = AttributedString("+ ")
+        for (i, n) in hits.enumerated() {
+            if i > 0 { out += AttributedString(", ") }
+            var part = AttributedString(n)
+            if let r = part.range(of: q, options: .caseInsensitive) {
+                part[r].font = .footnote.weight(.semibold)
+                part[r].foregroundColor = .primary
+            }
+            out += part
+        }
+        return out
+    }
+
     private func roleLabel(_ id: String?) -> String? {
         guard let id, id != Role.member else { return nil }
         return model.roles.role(id)?.label
@@ -128,7 +145,7 @@ struct MembersDirectory: View {
         return keys.map { k in DirMember(pubkey: k, name: "", role: nil, agents: model.config.agents.filter { $0.value == k }.map { (pubkey: $0.key, name: "") }) }
     }
 
-    private func row(_ pk: String, _ fallback: String, size: CGFloat, detail: String?, role: String?) -> some View {
+    private func row(_ pk: String, _ fallback: String, size: CGFloat, detail: AttributedString?, role: String?) -> some View {
         HStack(spacing: 10) {
             Avatar(pubkey: pk, size: size)
             VStack(alignment: .leading, spacing: 1) {
@@ -136,7 +153,7 @@ struct MembersDirectory: View {
                 if let detail { Text(detail).font(.footnote).foregroundStyle(.secondary) }
             }
             Spacer()
-            if let role { Text(role).font(.subheadline).foregroundStyle(.secondary) }
+            if let role { Text(role).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
         }
         .contentShape(Rectangle())
     }
