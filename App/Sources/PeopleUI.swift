@@ -60,6 +60,8 @@ struct ProfileView: View {
     @State private var edit = false
     @State private var error: String?
     @State private var confirmRemove = false
+    /// Inside a sheet's own stack, a profile opens there.
+    @Environment(\.showProfile) private var showProfile
 
     var body: some View {
         if pushed { card } else { NavigationStack { card.toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } } } }
@@ -81,7 +83,7 @@ struct ProfileView: View {
                 if d.isAgent(pubkey) { Chip(text: "agent") }
                 Text(guestWords(place, unsaved: by == nil && join?.unsaved == true)).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 if let by {
-                    Button { model.openProfile = by } label: {
+                    Button { (showProfile ?? { model.openProfile = $0 })(by) } label: {
                         Text("invited by \(by == model.me ? "you" : model.name(by))" + (join?.unsaved == true ? " (not saved)" : ""))
                             .font(.subheadline).underline()
                     }
