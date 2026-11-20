@@ -1461,7 +1461,7 @@ public final class Derive {
     /// The same, whole: when it is over the limit the form shows it and the person shortens it
     /// (SPEC 19.46: a to-do's text is never cut silently).
     public func todoText(_ m: Message) -> String {
-        Rx("\\s+").replace(plainRefs(m.text, npub: ""), with: " ").jsTrim()
+        Rx("\\s+").replace(plainRefs(m.text, npub: "", links: false), with: " ").jsTrim()
     }
 
     /// "Turn into a to-do" is offered: sent, with a title, and no to-do made from it yet.

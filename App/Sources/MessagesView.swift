@@ -92,7 +92,7 @@ struct ThreadRow: View {
                     Text(Format.brief(thread.last.at)).font(.caption).foregroundStyle(.secondary)
                 }
                 if mail { Text(model.dms?.threadName(thread.conv) ?? "").font(.subheadline.weight(.medium)).lineLimit(1) }
-                Text(thread.last.mine ? "You: \(thread.last.text)" : thread.last.text).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                Text((thread.last.mine ? "You: " : "") + (mail ? thread.last.text : model.derive.plainRefs(thread.last.text))).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
             }
             if thread.unread > 0 {
                 Circle().fill(Color.brand).frame(width: 10, height: 10).padding(.top, 6).accessibilityLabel("Unread")

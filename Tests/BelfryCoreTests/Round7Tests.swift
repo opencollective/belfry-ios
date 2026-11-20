@@ -295,7 +295,7 @@ final class MessageLinkTests: XCTestCase {
 }
 
 /// References in a message (vectors/references.json, copied byte for byte from the web chat,
-/// commonshub/collective-belfry branch chat-source, sha256 19ced680079f606f…).
+/// commonshub/collective-belfry branch chat-source, sha256 5df35e6a5fc0b040…).
 final class ReferencesTests: XCTestCase {
     func testVectors() throws {
         let v = try vector("references")
@@ -313,7 +313,8 @@ final class ReferencesTests: XCTestCase {
             }
         }
         let cases = v.list("cases")
-        XCTAssertEqual(cases.count, 38)
+        XCTAssertEqual(cases.count, 43)
+        let known = v.dict("known")
         for c in cases {
             let want: [RefPart] = try (c["parts"] as? [[String: Any]] ?? []).map { p in
                 if let t = p["text"] as? String { return .text(t) }
@@ -321,6 +322,8 @@ final class ReferencesTests: XCTestCase {
                 return .box(try XCTUnwrap(target(p["box"] as? [String: Any] ?? [:])))
             }
             XCTAssertEqual(References.parts(c.str("text") ?? "", domain: domain), want, c.str("name") ?? "")
+            // as plain text (one-line previews): the known name, else the generic word
+            XCTAssertEqual(References.plain(c.str("text") ?? "", domain: domain) { known[References.refKey($0)] as? String }, c.str("plain"), "plain: " + (c.str("name") ?? ""))
         }
     }
 
@@ -384,6 +387,14 @@ final class ReferencesTests: XCTestCase {
         XCTAssertEqual(drop.title, "Drop box")
         XCTAssertEqual(drop.open, .url("https://riverside.example/drop/Zx81kQ_p-3aB9cD0"))
         XCTAssertEqual(References.excerpt(String(repeating: "a", count: 200)).utf16.count, 160)
+        // one-line previews: names, generic words, never the address
+        let h = "https://chat.riverside.example/#/"
+        XCTAssertEqual(d.plainRefs("Take \(h)c/garden/todo/\(task.id)"), "Take ☐ Water the beds")
+        XCTAssertEqual(d.plainRefs("See \(h)c/garden/m/\(msg.id) and \(h)u/\(B)."), "See a message from Ben and @Ben.")
+        XCTAssertEqual(d.plainRefs("See \(h)c/garden/todo/nope"), "See a to-do")
+        XCTAssertEqual(d.plainRefs("In \(h)c/crew/m/\(msg.id)"), "In a message in a closed channel")
+        XCTAssertEqual(d.plainRefs("Take \(h)c/garden/todo/\(task.id)", links: false), "Take \(h)c/garden/todo/\(task.id)")
+        XCTAssertEqual(Rx("x").replace("x", with: NSRegularExpression.escapedTemplate(for: "@…")), "@…")
     }
 }
 

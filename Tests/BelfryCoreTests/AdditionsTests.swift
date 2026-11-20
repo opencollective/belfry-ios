@@ -33,7 +33,12 @@ final class ChannelRefsTests: XCTestCase {
         }
         let names = v.dict("groups")
         for c in v.list("plain") {
-            XCTAssertEqual(ChannelRefs.plain(c.str("text")!) { names[$0] as? String }, c.str("plain"), c.str("text")!)
+            // since 2026-11-20 the rule is references.json's `plain` (a 30023 naddr reads "a proposal")
+            let got = References.plain(c.str("text")!, domain: "") { r in
+                if case .group(let id) = r { return (names[id] as? String).map { "#" + $0 } }
+                return nil
+            }
+            XCTAssertEqual(got, c.str("plain"), c.str("text")!)
         }
     }
 

@@ -151,6 +151,59 @@ public enum References {
         return out
     }
 
+    // ---- plain text (one-line previews: the channel list, notifications, the pinned line, search
+    // results, the DM list; SPEC 19.61): every reference reads as the thing's name, never its
+    // address; a thing not known on this device reads as a generic word.
+
+    /// The key a name is known by (vectors/references.json `known`).
+    public static func refKey(_ r: RefTarget) -> String {
+        switch r {
+        case .group(let id): return "group:" + id
+        case .event(let link, let coord): return "event:" + (coord ?? link ?? "")
+        case .proposal(let coord): return "proposal:" + coord
+        case .todo(let g, let task): return "todo:\(g)/\(task)"
+        case .message(_, _, let id): return "message:" + id
+        case .person(let pk): return "person:" + pk
+        case .drop(let token): return "drop:" + token
+        }
+    }
+
+    /// The word for a thing not known (yet) on this device: never its address. A channel keeps
+    /// "#channel", a group "#group" (vectors/channel-refs.json).
+    public static func genericWord(_ r: RefTarget) -> String {
+        switch r {
+        case .group(let id):
+            if id.hasPrefix("prop-") { return "a proposal" }
+            if id.hasPrefix("pod-") { return "#group" }
+            if id.hasPrefix("ev-") || id.hasPrefix("ws-") { return "an event" }
+            return "#channel"
+        case .event: return "an event"
+        case .proposal: return "a proposal"
+        case .todo: return "a to-do"
+        case .message: return "a message"
+        case .person: return "someone"
+        case .drop: return "a drop box"
+        }
+    }
+
+    static let npubRx = Rx("nostr:npub1[02-9ac-hj-np-z]+")
+
+    /// TEXT as plain text: mentions as NPUB, each reference as NAME(r), else its generic word. A
+    /// box at the end follows the text after one space.
+    public static func plain(_ text: String, domain: String, npub: String = "@…", name: (RefTarget) -> String?) -> String {
+        var out = ""
+        for p in parts(text, domain: domain) {
+            switch p {
+            case .text(let s): out += npubRx.replace(s, with: NSRegularExpression.escapedTemplate(for: npub))
+            case .ref(let r): out += name(r).flatMap { $0.isEmpty ? nil : $0 } ?? genericWord(r)
+            case .box(let r):
+                if !out.isEmpty, !Rx("\\s$").test(out) { out += " " }
+                out += name(r).flatMap { $0.isEmpty ? nil : $0 } ?? genericWord(r)
+            }
+        }
+        return out
+    }
+
     /// A message's text as its box shows it: one line of at most 160 units.
     public static func excerpt(_ text: String) -> String {
         let s = Rx("\\s+").replace(text, with: " ").jsTrim()
@@ -216,7 +269,8 @@ public struct RefShown: Hashable, Sendable {
 
 public extension Derive {
     /// How reference T reads for me (SPEC 19.49): the name, the box's lines, where it opens.
-    func refShown(_ t: RefTarget) -> RefShown {
+    /// EXCERPT false: a message's text is left out (one-line previews name it only).
+    func refShown(_ t: RefTarget, excerpt: Bool = true) -> RefShown {
         switch t {
         case .person(let pk):
             let n5 = profiles()[pk]?.nip05 ?? ""
@@ -234,7 +288,7 @@ public extension Derive {
                 return RefShown(kind: .deleted, name: "an ended drop box", title: "An ended drop box", line: "")
             }
             let g = e.tag("h").flatMap { group($0) }
-            return RefShown(kind: .drop, name: "the drop box" + (g.map { " of " + $0.label } ?? ""), title: "Drop box",
+            return RefShown(kind: .drop, name: "the drop box" + (g.flatMap { $0.named ? " of #" + $0.name : nil } ?? ""), title: "Drop box",
                             line: g.map { "Files go to " + $0.label } ?? "Send files without an account", open: url, until: until > 0 ? until : nil)
         case .todo(let gid, let task):
             guard let g = group(gid) else {
@@ -261,7 +315,7 @@ public extension Derive {
             let e = ev ?? eventOfGroup(g.id)
             let who = m.pubkey == me ? "you" : displayName(m.pubkey)
             return RefShown(kind: .message, name: "a message from " + who, title: displayName(m.pubkey),
-                            line: "Message in " + (e?.title ?? g.label), about: References.excerpt(plainRefs(m.text)),
+                            line: "Message in " + (e?.title ?? g.label), about: excerpt ? References.excerpt(plainRefs(m.text)) : "",
                             open: .message(group: g.id, id: id), face: m.pubkey)
         case .event(let link, let coord):
             let ref = EventRef(coord: coord, link: link)
@@ -296,6 +350,15 @@ public extension Derive {
             return RefShown(kind: g.isPod ? .group : .channel, name: name, title: name, line: word + " · " + membersWord(g.members.count),
                             about: g.about, open: .channel(id))
         }
+    }
+
+    /// A reference's name in plain text, as far as this device knows; nil: its generic word.
+    func plainName(_ t: RefTarget) -> String? {
+        let s = refShown(t, excerpt: false)
+        if s.kind == .unknown { return nil }
+        if case .group(let id) = t, let g = group(id), !g.named, s.kind == .channel || s.kind == .group { return nil }
+        if s.kind == .drop, s.until == nil, s.name == "a drop box" { return nil }
+        return s.name
     }
 
     private func shown(_ p: Proposal) -> RefShown {

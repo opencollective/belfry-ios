@@ -2619,5 +2619,16 @@ How they read (`Derive.refShown`), inside the text and as the box at the end:
 - A label's link (`[words](address)`) to one of these opens it in the app too.
 - An event's own address the app gives (Share, Copy link) is `https://<domain>/events/<slug or d>`
   (`Derive.eventURL`): never a coordinate with a key. Old `#/cal/…` links still open.
-- Not done: the direct actions on the boxes (canvas v69 `channels/card-*`, drafts); one-line
-  previews (channel list, notifications) still show such an address as written, as on the web.
+- **As plain text** (`References.plain`, `Derive.plainRefs`; the vectors' `plain`, 43 cases,
+  sha256 5df35e6a5fc0b040…; `vectors/channel-refs.json` 361472f4123b157e…: a 30023 naddr reads
+  "a proposal"): wherever a message shows as one line (the channel list, the pinned line, search
+  results, Mentions, Home, the DM list, a message box's excerpt, the delete confirmation) each
+  reference reads as its name when the thing is known here ("#Garden", an event's or proposal's
+  title, "☐ title", "a message from Ana", "@Ana", "the drop box of #Garden"; the locked and
+  deleted words), else its generic word: "#channel", "#group", "an event", "a proposal", "a
+  to-do", "a message", "someone", "a drop box" (a group id `ev-`/`ws-` = "an event", `prop-` =
+  "a proposal"); never the address. A box at the end follows the text after one space. A
+  notification's body (`Push.open`, so the notification service extension too) gets the generic
+  words: no names are known there. Copy text and a to-do made from a message keep addresses
+  (`links: false`).
+- Not done: the direct actions on the boxes (canvas v69 `channels/card-*`, drafts).

@@ -85,9 +85,15 @@ extension Derive {
         return Nip19.naddr(Nip19.Addr(kind: ChannelRefs.kind, pubkey: pubkey, identifier: id, relays: relays)).map { "nostr:" + $0 }
     }
 
-    /// Text for one-line previews: mentions as "@…" (or NPUB), channel references as "#name".
-    public func plainRefs(_ text: String, npub: String = "@…") -> String {
-        ChannelRefs.plain(text, npub: npub) { self.group($0)?.name }
+    /// Text for one-line previews: mentions as "@…" (or NPUB), each reference to something of this
+    /// belfry (a channel, event, to-do, message, person, drop box…) as its name, or its generic
+    /// word when it isn't known here; never its address (SPEC 19.61, vectors/references.json
+    /// `plain`). LINKS false (text that is copied or kept, not shown): only channel references are
+    /// named, addresses stay.
+    public func plainRefs(_ text: String, npub: String = "@…", links: Bool = true) -> String {
+        if !links { return ChannelRefs.plain(text, npub: npub) { self.group($0)?.name } }
+        if !text.contains("nostr:") && !text.contains("https://") { return text }
+        return References.plain(text, domain: ctx.domain, npub: npub) { self.plainName($0) }
     }
 
     /// What a channel reference shows: the channel when it is known here.

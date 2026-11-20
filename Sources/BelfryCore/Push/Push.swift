@@ -61,7 +61,9 @@ public enum Push {
         func s(_ k: String) -> String? { (o[k] as? String).flatMap { $0.isEmpty ? nil : $0 } }
         let type = s("type") ?? "message"
         let title = (s("title") ?? domain).sliceUnits(120)
-        let body = (s("body") ?? "New notification").sliceUnits(180)
+        // an address of something of the belfry never shows: its generic word (nothing is known
+        // by name in the extension; SPEC 19.61)
+        let body = References.plain(s("body") ?? "New notification", domain: domain) { _ in nil }.sliceUnits(180)
         return PushContent(domain: domain, type: type, title: title, body: body, channel: s("channel"),
                            event: s("event").flatMap { isHex64($0) ? $0 : nil }, from: s("from").flatMap { isHex64($0) ? $0 : nil }, url: s("url"))
     }

@@ -57,7 +57,7 @@ struct MessageActions: View {
                         }
                         if !m.text.isEmpty {
                             Button {
-                                UIPasteboard.general.string = d.plainRefs(m.text, npub: "@…")
+                                UIPasteboard.general.string = d.plainRefs(m.text, npub: "@…", links: false)
                                 copied = true
                                 dismiss()
                             } label: { ActionRow(icon: "doc.on.doc", title: "Copy text") }
@@ -281,7 +281,7 @@ struct MessageMenu: View {
             }
             if !m.text.isEmpty {
                 Button {
-                    UIPasteboard.general.string = d.plainRefs(m.text, npub: "@…")
+                    UIPasteboard.general.string = d.plainRefs(m.text, npub: "@…", links: false)
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 } label: { Label("Copy text", systemImage: "doc.on.doc") }
             }
