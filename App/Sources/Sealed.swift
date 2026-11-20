@@ -76,9 +76,12 @@ struct SealedState: Equatable {
     var myDevices: [MyDevice] = []
     /// The sealed conversations (a conversation that is not in here shows no lock).
     var convs: [String: SealedConv] = [:]
-    /// This is a new device nobody allowed yet: it reads no sealed message, old or new (it has no
-    /// letterbox secret, sealed.md 5.2); messages from before the conversation was sealed stay readable.
+    /// This device is not in my head (a new device nobody allowed yet): it reads no sealed
+    /// message, old or new; messages from before a conversation was sealed stay readable. ONLY
+    /// this hides messages or the composer.
     var notAllowed = false
+    /// It holds a wrap for one of my own letterboxes that it has no key for: the banner, nothing else.
+    var missingKeys = false
     var ask: AllowAsk?
     /// Asks the user closed without an answer (20 devices already): not shown again in this run.
     var dismissed: Set<String> = []
@@ -88,20 +91,59 @@ struct SealedState: Equatable {
     var removed: Set<String> = []
 }
 
-/// The letterbox secrets of one account on this device: in the Keychain (the session's own
-/// accessibility), never in the database, never logged; gone on sign-out.
+/// The letterbox secrets of one account on this device: one Keychain item per account slot,
+/// this device only, never synchronised, in the app's own access group (not the one shared with
+/// the notification extension); never in the database, never logged; gone on sign-out. The item
+/// carries its owner: a stale one (a reinstall, another account in the same slot) is never used.
 final class KeychainKeyStore: SealedKeyStore, @unchecked Sendable {
-    private let account: String
-    init(slot: String) { account = slot.isEmpty ? "sealed-keys" : "sealed-keys@" + slot }
+    private struct Stored: Codable { var account: String; var keys: [String: String] }
+    private let name: String
+    private let owner: String
+
+    init(slot: String, account: String) {
+        name = slot.isEmpty ? "sealed-keys" : "sealed-keys@" + slot
+        owner = account
+    }
+
+    /// The app's own group ($(AppIdentifierPrefix)sh.belfry.app); nil on an unsigned build.
+    private static let group: String? = (Bundle.main.object(forInfoDictionaryKey: "BelfryPrivateKeychainGroup") as? String).flatMap { $0.isEmpty || $0.hasPrefix("sh.") ? nil : $0 }
+
+    private var base: [String: Any] {
+        var q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: Keychain.service + ".sealed",
+                                kSecAttrAccount as String: name, kSecAttrSynchronizable as String: false]
+        if let g = KeychainKeyStore.group { q[kSecAttrAccessGroup as String] = g }
+        return q
+    }
+
     func load() -> KeyChain {
-        guard let text = Keychain.string(account), let c = try? JSONDecoder().decode(KeyChain.self, from: Data(text.utf8)) else { return KeyChain() }
-        return KeyChain(keys: c.keys)
+        var q = base
+        q[kSecReturnData as String] = true
+        q[kSecMatchLimit as String] = kSecMatchLimitOne
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data,
+              let s = try? JSONDecoder().decode(Stored.self, from: data), s.account == owner else { return KeyChain() }
+        return KeyChain(keys: s.keys)
     }
+
     func save(_ chain: KeyChain) {
-        guard let d = try? JSONEncoder().encode(chain) else { return }
-        Keychain.setString(String(decoding: d, as: UTF8.self), account)
+        guard let data = try? JSONEncoder().encode(Stored(account: owner, keys: chain.keys)) else { return }
+        // updated in place when it exists (a delete that worked followed by an add that failed would lose every key)
+        let change: [String: Any] = [kSecValueData as String: data]
+        let status = SecItemUpdate(base as CFDictionary, change as CFDictionary)
+        if status == errSecItemNotFound {
+            var q = base
+            q[kSecValueData as String] = data
+            q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            if SecItemAdd(q as CFDictionary, nil) != errSecSuccess { failed = true }
+        } else if status != errSecSuccess {
+            failed = true
+        }
     }
-    func wipe() { Keychain.removeString(account) }
+
+    /// The Keychain refused a write: the keys live only in memory until the next one works.
+    private(set) var failed = false
+
+    func wipe() { SecItemDelete(base as CFDictionary) }
 }
 
 @MainActor
@@ -114,7 +156,6 @@ extension AppModel {
     // ---- the real thing (docs/sealed.md) ---------------------------------------------------------------
 
     func wireSealed(_ se: SealedEngine, dms d: DirectMessages) {
-        se.bridge = { [weak d] in d?.bridge }
         se.sessions = { [weak self] in
             guard let api = await self?.api else { return nil }
             return try? await api.sessions()
@@ -125,7 +166,14 @@ extension AppModel {
         }
         let pad = UIDevice.current.userInterfaceIdiom == .pad
         se.myName = { Sealed.DeviceName(name: pad ? "iPad" : "iPhone", kind: pad ? "tablet" : "phone", added: Int.now) }
-        se.onKeys = { [weak d] in Task { await d?.process() } }
+        // new keys: what was kept opens now, and the relay is asked again for my wraps from the start
+        se.onKeys = { [weak d, weak self] in
+            Task {
+                await d?.process()
+                await self?.engine?.fetchAllWraps()
+                await d?.process()
+            }
+        }
         se.onChange = { [weak self] in Task { @MainActor in self?.refreshSealed() } }
         d.sealed = se
         if let l = pendingLinkSecret { se.setLink(l); pendingLinkSecret = nil }
@@ -168,7 +216,8 @@ extension AppModel {
             return MyDevice(id: d, name: names[d]?.name ?? (this ? UIDevice.current.model : "A device"), kind: kind(d) ?? .computer,
                             added: j?.at ?? 0, from: j?.from.flatMap { names[$0]?.name }, this: this)
         }
-        st.notAllowed = se.mine == .waiting || dms.lockedWraps > 0
+        st.notAllowed = se.mine == .waiting
+        st.missingKeys = dms.lockedWraps > 0
         for t in dms.threads() {
             let conv = t.conv
             if MailThreads.isMail(conv) {
@@ -192,21 +241,22 @@ extension AppModel {
     }
 
     /// Allow / Not me on the prompt. The first device to answer wins: the prompt goes either way.
-    /// False: Allow was refused because the account already has 20 devices (the card says so).
-    @discardableResult
-    func answerAllow(_ ask: AllowAsk, allow: Bool) async -> Bool {
+    /// What the card shows after Allow / Not me: it closes only on `.done`.
+    func answerAllow(_ ask: AllowAsk, allow: Bool) async -> SealedEngine.Answer {
         if let se = sealedEngine {
-            // 20 devices already: refused, and said, before any key is handed over
-            if allow, se.full, se.chain(me)?.devices.contains(ask.id) != true { return false }
-            _ = allow ? await se.allow(ask.id) : await se.deny(ask.id)
+            let answer: SealedEngine.Answer
+            if allow { answer = await se.allow(ask.id) } else { answer = await se.deny(ask.id) ? .done : .failed }
+            // not done: the card stays and says so (a refused "Not me" leaves that session live)
+            guard answer == .done else { return answer }
             let next = await se.asks().first { $0.device != ask.id && !sealed.dismissed.contains($0.device) }
             sealed.ask = next.map { AllowAsk(id: $0.device, device: $0.name, kind: DeviceKind.of($0.name), at: $0.at) }
-            return true
+            refreshSealed()
+            return .done
         }
         try? await Task.sleep(nanoseconds: 700_000_000) // the demo's stand-in for the call
-        if allow, launch.screen == "encallowfull" { return false }
+        if allow, launch.screen == "encallowfull" { return .full }
         if sealed.ask?.id == ask.id { sealed.ask = nil }
-        return true
+        return .done
     }
 
     /// The Allow card closed without an answer: the new device stays locked.
@@ -217,16 +267,30 @@ extension AppModel {
     }
 
     /// Share history with someone's new device; the amber line then reads "<name> added a device".
-    func shareHistory(_ notice: DeviceNotice, in conv: String) async {
+    /// Nil when it went; else what to tell the person (the sheet stays).
+    func shareHistory(_ notice: DeviceNotice, in conv: String) async -> String? {
         if let se = sealedEngine, let dms {
-            try? se.share(dms.rumors(conv), with: notice.who, notice: notice.id)
+            // to the person's head as the relay has it now, never to one they may have left
+            guard await se.refresh([notice.who]) else { return "The belfry did not answer. Try again." }
+            do { try se.share(dms.rumors(conv), with: notice.who, notice: notice.id) } catch {
+                return (error as? BelfryError)?.errorDescription ?? "It could not be shared. Try again."
+            }
             refreshSealed()
-            return
+            return nil
         }
         try? await Task.sleep(nanoseconds: 700_000_000)
-        guard var c = sealed.convs[conv], let i = c.notices.firstIndex(where: { $0.id == notice.id }) else { return }
+        guard var c = sealed.convs[conv], let i = c.notices.firstIndex(where: { $0.id == notice.id }) else { return nil }
         c.notices[i].what = .added
         sealed.convs[conv] = c
+        return nil
+    }
+
+    /// Every 6 hours while the app runs (sealed.md 5.6): a device whose session is gone leaves.
+    func startSealedUpkeep() {
+        sealedTimer?.invalidate()
+        sealedTimer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.sealedNews([]) }
+        }
     }
 
     /// My own name where a screen names me ("Sam Rivera (you)", "Signed in as Sam Rivera").

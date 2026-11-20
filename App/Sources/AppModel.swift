@@ -231,6 +231,7 @@ final class AppModel: ObservableObject {
     private(set) var sealedEngine: SealedEngine?
     /// The secret of the login link being used to sign in (`#l=`), until the session opens.
     var pendingLinkSecret: String?
+    var sealedTimer: Timer?
     private(set) var session: StoredSession?
     /// (model version, the engine's outbox version, snapshot): the outbox's too, so a screen opened
     /// right after my own action (a group I just made, a saved setting) sees it in the same frame
@@ -379,7 +380,9 @@ final class AppModel: ObservableObject {
         if s.demo {
             db = (try? .memory())!
         } else {
-            db = (try? Database(path: AppModel.dbURL(s.domain, slot: Keychain.slot).path)) ?? (try! .memory())
+            let file = AppModel.dbURL(s.domain, slot: Keychain.slot)
+            db = (try? Database(path: file.path)) ?? (try! .memory())
+            AppModel.protect(file)
         }
         config = cfg ?? db.get("config", as: BelfryConfig.self) ?? .defaults(domain: s.domain)
         db.set("config", config)
@@ -413,9 +416,10 @@ final class AppModel: ObservableObject {
             if t == .groups { Task { @MainActor in self?.releaseWayInKey(); await self?.checkGroups() } }
         }
         if !s.demo, s.reading != true, let secret = Data(hex: s.clientSecret),
-           let se = SealedEngine(engine: e, deviceSecret: secret, store: KeychainKeyStore(slot: Keychain.slot)) {
+           let se = SealedEngine(engine: e, deviceSecret: secret, store: KeychainKeyStore(slot: Keychain.slot, account: signer.pubkey)) {
             wireSealed(se, dms: d)
             sealedEngine = se
+            startSealedUpkeep()
             e.onNewEvents = { [weak d, weak rs, weak self] list in
                 if list.contains(where: { $0.kind == 1059 || $0.kind == 4 }) { Task { await d?.process() } }
                 rs?.offer(list)
@@ -549,12 +553,16 @@ final class AppModel: ObservableObject {
                 req.httpBody = try? JSONSerialization.data(withJSONObject: ["client_id": SignIn.clientId])
                 _ = try? await URLSession.shared.data(for: req)
             }
-            try? FileManager.default.removeItem(at: AppModel.dbURL(s.domain, slot: slot))
+            // the database with its write-ahead files (they hold what the main file does)
+            let dbFile = AppModel.dbURL(s.domain, slot: slot)
+            for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: dbFile.path + suffix) }
             UserDefaults.standard.removeObject(forKey: AppModel.perAccount("belfry-mentions-seen"))
             // the demo is not in the list and has no Keychain item: never clear the real account's
             Keychain.clear(slot: slot)
-            // signing out wipes this device's letterbox keys (sealed.md 5.6)
-            KeychainKeyStore(slot: slot).wipe()
+            // signing out wipes this device's letterbox keys (sealed.md 5.6); whatever the engine
+            // still had under way saves and publishes nothing more
+            sealedEngine?.wipe()
+            KeychainKeyStore(slot: slot, account: "").wipe()
         }
         nativeFlow.cancel()
         pendingCode = nil
@@ -593,6 +601,8 @@ final class AppModel: ObservableObject {
         engine = nil
         dms = nil
         sealedEngine = nil
+        sealedTimer?.invalidate()
+        sealedTimer = nil
         sealed = SealedState()
         session = nil
         cachedDerive = nil
@@ -611,6 +621,19 @@ final class AppModel: ObservableObject {
         let u = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
         return u
+    }
+
+    /// The database holds what was read (messages opened on this device): unreadable until the
+    /// phone was unlocked once after a restart, and never in a backup.
+    static func protect(_ file: URL) {
+        for suffix in ["", "-wal", "-shm"] {
+            var u = URL(fileURLWithPath: file.path + suffix)
+            guard FileManager.default.fileExists(atPath: u.path) else { continue }
+            try? FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: u.path)
+            var v = URLResourceValues()
+            v.isExcludedFromBackup = true
+            try? u.setResourceValues(v)
+        }
     }
 
     static func dbURL(_ domain: String, slot: String) -> URL { supportDir.appendingPathComponent(AccountList.dbName(domain: domain, slot: slot)) }

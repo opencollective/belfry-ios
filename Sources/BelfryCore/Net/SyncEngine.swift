@@ -274,7 +274,7 @@ public final class SyncEngine: @unchecked Sendable {
         if let made = item.signed {
             if localOnly { return made }
             // a sealed wrap whose letterbox changed while it waited is sealed again (sealed.md 9)
-            let signed = reseal?(item) ?? made
+            let signed = try await reseal?(item) ?? made
             try await publish(item.target, signed)
             return signed
         }
@@ -480,7 +480,8 @@ public final class SyncEngine: @unchecked Sendable {
     /// for my account, the key hand-overs to this device, my device names. Always whole (no `since`).
     public var sealedDevice: String?
     /// A queued sealed wrap, made again for the head its letterbox moved to; nil = send it as it is.
-    public var reseal: ((OutboxItem) -> NostrEvent?)?
+    /// Throws to keep the item for a later try (its people's heads could not be checked just now).
+    public var reseal: ((OutboxItem) async throws -> NostrEvent?)?
     var sealedFilters: [[String: Any]] {
         guard let d = sealedDevice else { return [] }
         return [
@@ -534,8 +535,38 @@ public final class SyncEngine: @unchecked Sendable {
         }
     }
 
-    /// Whether T answered after AUTH in this run (a question asked before that proves nothing).
-    public func answeredAfterAuth(_ t: Target) -> Bool { lock.lock(); defer { lock.unlock() }; return authedAnswer.contains(t) }
+    /// Every gift wrap addressed to me, from the start, in pages (after a device was given keys:
+    /// what it could not read before is asked again, sealed.md 5.5).
+    public func fetchAllWraps() async {
+        if localOnly { return }
+        var until = Int.now + 3 * 86400
+        for _ in 0..<40 {
+            guard let page = await queryAuthed(.main, [["kinds": [1059], "#p": [me], "until": until, "limit": 500]], timeout: 15), !page.isEmpty else { return }
+            add(page)
+            guard let oldest = page.map(\.createdAt).min(), oldest < until else { return }
+            until = oldest
+            if page.count < 500 { return }
+        }
+    }
+
+    /// Whether T's live subscription was answered after AUTH on the connection that is open now
+    /// (a question asked before that, or on an earlier connection, proves nothing).
+    public func answeredAfterAuth(_ t: Target) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard let r = relays[t], r.authed else { return false }
+        return liveAnswer[t] == ObjectIdentifier(r)
+    }
+    private var liveAnswer = [Target: ObjectIdentifier]()
+
+    /// A one-off question whose answer counts as knowledge: asked on an authenticated socket,
+    /// complete to EOSE, the socket still the same and still authenticated at the end. Nil otherwise.
+    public func queryAuthed(_ t: Target, _ filters: [[String: Any]], timeout: TimeInterval = 8) async -> [NostrEvent]? {
+        if localOnly { return nil }
+        guard let r = try? await relay(t), r.authed else { return nil }
+        guard let found = await r.queryComplete(filters, timeout: timeout) else { return nil }
+        lock.lock(); let same = relays[t] === r; lock.unlock()
+        return same && r.authed ? found : nil
+    }
 
     /// The relays whose answer after AUTH (an EOSE of the live subscription) came in this run.
     private var authedAnswer = Set<Target>()
@@ -561,7 +592,7 @@ public final class SyncEngine: @unchecked Sendable {
             }
             return
         }
-        if sub.hasPrefix("live-"), r.authed { lock.lock(); authedAnswer.insert(t); lock.unlock() }
+        if sub.hasPrefix("live-"), r.authed { lock.lock(); authedAnswer.insert(t); liveAnswer[t] = ObjectIdentifier(r); lock.unlock() }
         eose(t, sub)
     }
     static var authGrace: TimeInterval = 5

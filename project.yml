@@ -31,7 +31,9 @@ targets:
         # push (docs/push.md): APNs, the App Group and the keychain group shared with the extension
         aps-environment: $(APS_ENVIRONMENT)
         com.apple.security.application-groups: [group.sh.belfry.app]
-        keychain-access-groups: [$(AppIdentifierPrefix)sh.belfry.app.shared]
+        # the shared group (push key, read by the notification extension), and the app's own
+        # (letterbox keys: never readable by the extension)
+        keychain-access-groups: [$(AppIdentifierPrefix)sh.belfry.app.shared, $(AppIdentifierPrefix)sh.belfry.app]
         # guest links https://chat.<domain>/join/<token> and event addresses /events/<link> open
         # in the app once each chat host serves apple-app-site-association (SERVER-NEEDS.md 5)
         com.apple.developer.associated-domains:
@@ -58,6 +60,7 @@ targets:
         NSMicrophoneUsageDescription: Record audio to post in a channel (a meeting, a voice note).
         NSCameraUsageDescription: Scan the QR code of an invitation or of a ticket at an event.
         BelfryKeychainGroup: $(AppIdentifierPrefix)sh.belfry.app.shared
+        BelfryPrivateKeychainGroup: $(AppIdentifierPrefix)sh.belfry.app
         # audio: a recording goes on with the screen locked (Recorder.swift)
         UIBackgroundModes: [remote-notification, audio]
         ITSAppUsesNonExemptEncryption: false

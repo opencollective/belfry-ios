@@ -2675,4 +2675,14 @@ Android; this section only says where the iPhone app implements it. Vectors: `ve
   anchor, and only when the belfry's session list shows this device's own session.
 - Deviation, told to the lead: a send in a sealed conversation with no head to seal to fails
   with a message (the text stays in the composer) instead of waiting in the outbox.
+- After the independent review (2026-11-21): only "this device is not in my head" hides messages
+  or the composer; a wrap to a letterbox that is not one of my chain's is dropped; no fresh start
+  is made by the app itself; the belfry's key speaks only for a kind 1301 of its own; a roster and
+  its anchor are signed first and sent together, and a change counts as done only when the relay
+  holds both and the chain read back has it; Remove revokes first; relay knowledge needs an EOSE
+  after AUTH on the open connection; the database is excluded from backups and protected until the
+  first unlock; the link secret is never stored; letterbox keys are in the app's own Keychain group
+  with their owner.
+- Not done: the live subscription still asks rosters and anchors with a limit (5000) instead of
+  paging; a queued reaction or e-mail copy is sealed again only while the app runs.
 - Not done: "I don't have another device" (the user's own fresh start) waits for the owner.

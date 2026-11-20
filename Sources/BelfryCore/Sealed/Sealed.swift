@@ -49,7 +49,8 @@ public struct KeyChain: Codable, Hashable, Sendable {
 public enum Sealed {
     /// The letterbox a wrap is sealed to; nil for a wrap of the old kind (it goes to the signer).
     public static func lb(of wrap: NostrEvent) -> String? {
-        guard wrap.kind == 1059, let lb = wrap.tag("lb"), isHex64(lb) else { return nil }
+        // exactly one lb (a wrap that names two is no sealed wrap)
+        guard wrap.kind == 1059, wrap.tags.filter({ $0.first == "lb" }).count == 1, let lb = wrap.tag("lb"), isHex64(lb) else { return nil }
         return lb
     }
 
@@ -114,9 +115,11 @@ public enum Sealed {
 
     /// Whether the key that signed a seal may speak for the rumor's author: a device of the
     /// author's valid chain (the head, or an earlier roster for a rumor not dated after the roster
-    /// that dropped it), or the belfry's own key for a rumor of the belfry (a mail, sealed.md 7).
+    /// that dropped it). The one exception (sealed.md 7): a mail, kind 1301, whose author and
+    /// whose seal's signer are both the belfry's key (the key in belfry.json); any other kind
+    /// sealed by that key is refused.
     public static func accepted(_ rumor: NostrEvent, sealPubkey: String, chain: RosterChain?, belfry: String?) -> Bool {
-        if let belfry, sealPubkey == belfry { return rumor.pubkey == belfry }
+        if let belfry, sealPubkey == belfry { return rumor.pubkey == belfry && rumor.kind == 1301 }
         guard let chain, chain.account == rumor.pubkey else { return false }
         return chain.accepts(device: sealPubkey, rumorAt: rumor.createdAt)
     }
@@ -125,7 +128,7 @@ public enum Sealed {
     /// sharer and the receiver are in (author or `p`).
     public static func sharedTaken(_ history: NostrEvent, receiver: String) -> [NostrEvent] {
         // the 8564's own p must be the receiver; only messages, reactions and their taking back
-        guard history.tag("p") == receiver else { return [] }
+        guard history.tags.filter({ $0.first == "p" }).count == 1, history.tag("p") == receiver else { return [] }
         let sharer = history.pubkey
         func inIt(_ r: NostrEvent, _ who: String) -> Bool { r.pubkey == who || r.tagValues("p").contains(who) }
         return sharedRumors(history).filter { [14, 7, 5].contains($0.kind) && inIt($0, sharer) && inIt($0, receiver) }
@@ -177,7 +180,7 @@ public enum Sealed {
     /// a device of a roster of its own account's chains; each secret is checked on merge.
     public static func openKeys(_ wrap: NostrEvent, device: Data) -> Handover? {
         guard wrap.kind == 1059, case .opened(let rumor, let giver) = open(wrap, secret: device),
-              rumor.kind == SealedKind.keys, rumor.pubkey == giver,
+              rumor.kind == SealedKind.keys, rumor.pubkey == giver, rumor.tags.filter({ $0.first == "p" }).count == 1,
               let o = JSON.parse(rumor.content) as? [String: Any], (o["v"] as? Int) == 1,
               let account = o["account"] as? String, isHex64(account), rumor.tag("p") == account,
               let list = o["keys"] as? [[String: Any]] else { return nil }
@@ -207,7 +210,9 @@ public enum Sealed {
     /// Whether REQUEST carries the proof of one of the link secrets this device showed.
     public static func linked(_ request: NostrEvent, secrets: [String]) -> Bool {
         guard request.kind == SealedKind.request, let proof = request.tag("link") else { return false }
-        return secrets.contains { linkProof(secret: $0, device: request.pubkey) == proof }
+        guard let given = Data(hex: proof) else { return false }
+        // compared in constant time
+        return secrets.contains { s in linkProof(secret: s, device: request.pubkey).flatMap { Data(hex: $0) }.map { Crypto.equal($0, given) } ?? false }
     }
 
     // ---- my device names (sealed.md 3.5) ----------------------------------------------------------------

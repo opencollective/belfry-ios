@@ -323,6 +323,7 @@ struct AllowPrompt: View {
     @State private var busy = false
     /// Allow was refused: the account already has 20 devices.
     @State private var full = false
+    @State private var failed: String?
 
     var body: some View {
         ZStack {
@@ -331,6 +332,11 @@ struct AllowPrompt: View {
                 Image(systemName: ask.kind.icon).font(.system(size: 30)).foregroundStyle(.secondary)
                     .frame(width: 60, height: 60).background(Color.secondary.opacity(0.15), in: Circle())
                     .accessibilityHidden(true)
+                if let failed {
+                    // it did not go through: said plainly, the card stays
+                    Label(failed, systemImage: "exclamationmark.circle").font(.footnote).foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                }
                 if full {
                     Text("You already have 20 devices. Remove one in Devices, then try again.")
                         .font(.headline).multilineTextAlignment(.center)
@@ -372,8 +378,12 @@ struct AllowPrompt: View {
 
     private func answer(_ allow: Bool) async {
         busy = true
-        let done = await model.answerAllow(ask, allow: allow)
-        if !done { full = true }
+        failed = nil
+        switch await model.answerAllow(ask, allow: allow) {
+        case .done: break
+        case .full: full = true
+        case .failed: failed = allow ? "Not done: the belfry did not confirm it. Try again." : "Not done: that device is still signed in. Try again."
+        }
         busy = false
     }
 }
@@ -386,6 +396,7 @@ struct ShareHistorySheet: View {
     let conv: String
     let notice: DeviceNotice
     @State private var busy = false
+    @State private var error: String?
 
     var body: some View {
         let who = model.firstName(notice.who)
@@ -404,11 +415,12 @@ struct ShareHistorySheet: View {
             Text("A new \(kind) · signed in \(SealedWords.dayWord(notice.at, now: Int.now)) \(Format.time(notice.at))")
                 .font(.footnote).foregroundStyle(.secondary)
             Spacer(minLength: 8)
+            if let error { Label(error, systemImage: "exclamationmark.circle").font(.footnote).foregroundStyle(.red) }
             BusyButton {
                 busy = true
-                await model.shareHistory(notice, in: conv)
+                error = await model.shareHistory(notice, in: conv)
                 busy = false
-                dismiss()
+                if error == nil { dismiss() }
             } label: { Text("Share history").frame(maxWidth: .infinity) }
                 .buttonStyle(.brand).controlSize(.large)
                 .accessibilityIdentifier("share-history")

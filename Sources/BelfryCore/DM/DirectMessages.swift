@@ -30,6 +30,8 @@ public final class DirectMessages: @unchecked Sendable {
     public private(set) var lockedWraps = 0
     /// The rumors of sealed wraps still in the outbox (to seal them again if a head changes).
     private var queued = [String: NostrEvent]()
+    /// Reactions that came with a shared history (their take-backs may remove only these).
+    private var sharedReactions = Set<String>()
     public private(set) var bridge: String?
     public var onChange: (() -> Void)?
 
@@ -90,8 +92,11 @@ public final class DirectMessages: @unchecked Sendable {
             // opened yet (no key here, its author's chain not loaded) is kept and tried again
             if e.kind == 1059, Sealed.lb(of: e) != nil {
                 guard let s = sealed else { continue }
+                // kept for an author whose chain did not accept it: opened again only when a chain changed
+                if !s.worthTrying(e) { continue }
                 switch s.open(e) {
                 case .keep:
+                    // the banner: only a wrap to a letterbox of my own chain that this device has no key for
                     if s.isLocked(e) { locked += 1 }
                     continue
                 case .drop: break
@@ -107,8 +112,13 @@ public final class DirectMessages: @unchecked Sendable {
                 if e.kind == 1059 {
                     if let opened = try await GiftWrap.unwrap(e, signer: engine.signer) {
                         lock.lock()
-                        // a reaction or its taking back: under the bubble, never a message
-                        if opened.rumor.kind == 7 || opened.rumor.kind == 5 { reactions.apply(opened.rumor) }
+                        // a reaction or its taking back: under the bubble, never a message. One that
+                        // comes the old way into a conversation already sealed here is ignored.
+                        if opened.rumor.kind == 7 || opened.rumor.kind == 5 {
+                            let conv = MailThreads.nostrConv(author: opened.rumor.pubkey, pTags: opened.rumor.tagValues("p"), me: me)
+                            let since = sealed?.sealedSince(conv)
+                            if since.map({ opened.rumor.createdAt < $0 }) ?? true { reactions.apply(opened.rumor) }
+                        }
                         let known = items.values.map { (messageId: $0.messageId, conv: $0.conv) }
                         lock.unlock()
                         d = DmReader.dm(from: opened.rumor, me: me, bridge: bridge, known: known)
@@ -122,9 +132,17 @@ public final class DirectMessages: @unchecked Sendable {
                 }
                 lock.lock()
                 if let d {
-                    var n = d
-                    if let old = items[d.rid] { n.mine = d.mine || old.mine; n.pending = old.pending; n.failed = old.failed }
-                    items[d.rid] = n
+                    // the old way never replaces a message this device holds, except my own while
+                    // it is still on its way (its copy coming back)
+                    if let old = items[d.rid] {
+                        if old.rumor == nil, old.sharedBy == nil, old.kind == d.kind, old.conv == d.conv, old.from == d.from {
+                            var n = d
+                            n.mine = d.mine || old.mine; n.pending = old.pending; n.failed = old.failed; n.unsealed = old.unsealed ?? d.unsealed
+                            items[d.rid] = n
+                        }
+                    } else {
+                        items[d.rid] = d
+                    }
                 }
                 seen.insert(e.id)
                 done += 1
@@ -150,7 +168,21 @@ public final class DirectMessages: @unchecked Sendable {
     private func take(_ rumor: NostrEvent, sharedBy: String?) {
         lock.lock()
         defer { lock.unlock() }
-        if rumor.kind == 7 || rumor.kind == 5 { reactions.apply(rumor); return }
+        if rumor.kind == 7 || rumor.kind == 5 {
+            // shared history is not proven: its reactions count only on messages that are themselves
+            // shared, and its take-backs only for reactions that came the same way; they never
+            // touch a real reaction
+            guard sharedBy != nil else { reactions.apply(rumor); return }
+            let targets = rumor.tagValues("e")
+            if rumor.kind == 7 {
+                guard let t = targets.last, items[t]?.sharedBy != nil else { return }
+                sharedReactions.insert(rumor.id)
+                reactions.apply(rumor)
+            } else if !targets.isEmpty, targets.allSatisfy(sharedReactions.contains) {
+                reactions.apply(rumor)
+            }
+            return
+        }
         if sharedBy != nil, items[rumor.id] != nil { return }
         let known = items.values.map { (messageId: $0.messageId, conv: $0.conv) }
         guard var d = DmReader.dm(from: rumor, me: me, bridge: bridge, known: known) else { return }
@@ -233,6 +265,7 @@ public final class DirectMessages: @unchecked Sendable {
             return
         }
         if let s = sealed, mail, s.mailSealed, let b = to.first {
+            guard s.mine == .inside else { throw BelfryError.invalid("You can write here once this device is allowed.") }
             var list = [try s.mailWrap(rumor, bridge: b)]
             if selfCopy { hold(rumor); list += try s.wraps(rumor, to: [], selfCopy: true) }
             for w in list { engine.enqueueSigned(w, target: .main, dm: rumor.id) }
@@ -240,6 +273,7 @@ public final class DirectMessages: @unchecked Sendable {
         }
         var targets = [String]()
         for p in to + (selfCopy ? [me] : []) where !targets.contains(p) { targets.append(p) }
+        if sealed != nil, conv != nil { hold(rumor) }
         for p in targets {
             let w = try await GiftWrap.wrap(rumor, to: p, signer: engine.signer)
             if engine.localOnly, p == me { engine.add([w], verify: false) }
@@ -247,18 +281,30 @@ public final class DirectMessages: @unchecked Sendable {
         }
     }
 
-    private func hold(_ rumor: NostrEvent) {
+    func hold(_ rumor: NostrEvent) {
         lock.lock(); queued[rumor.id] = rumor; lock.unlock()
-        if engine.reseal == nil { engine.reseal = { [weak self] item in self?.reseal(item) } }
+        if engine.reseal == nil { engine.reseal = { [weak self] item in try await self?.reseal(item) } }
     }
 
-    /// A queued sealed wrap whose letterbox is no longer its account's head: sealed again.
-    private func reseal(_ item: OutboxItem) -> NostrEvent? {
-        guard let s = sealed, let w = item.signed, let lb = Sealed.lb(of: w), let account = w.tag("p"), let rid = item.dm else { return nil }
+    /// A queued wrap, just before it leaves (sealed.md 9). A sealed one: its account's head is
+    /// asked from the relay first (no complete answer: it waits for the next try), and it is
+    /// sealed again when its letterbox is no longer that head. An old-style one whose conversation
+    /// became sealed while it waited is sealed now instead: never the old way once sealed.
+    func reseal(_ item: OutboxItem) async throws -> NostrEvent? {
+        guard let s = sealed, let w = item.signed, w.kind == 1059, let account = w.tag("p"), let rid = item.dm else { return nil }
         lock.lock()
         let rumor = queued[rid] ?? items[rid]?.rumor.flatMap(NostrEvent.from(json:))
         lock.unlock()
-        return rumor.flatMap { s.again($0, for: account, was: lb) }
+        if let lb = Sealed.lb(of: w) {
+            guard await s.refresh([account]) else { throw BelfryError.relay("timeout: the lock could not be checked") }
+            return rumor.flatMap { s.again($0, for: account, was: lb) }
+        }
+        // old-style: only messages, reactions and take-backs between people are ever sealed
+        guard let rumor, [14, 7, 5].contains(rumor.kind) else { return nil }
+        let conv = MailThreads.nostrConv(author: rumor.pubkey, pTags: rumor.tagValues("p"), me: me)
+        guard s.isSealed(conv) else { return nil }
+        guard await s.refresh([account]) else { throw BelfryError.relay("timeout: the lock could not be checked") }
+        return try s.wrapOne(rumor, to: account)
     }
 
     /// The chips under a direct message, for me.
@@ -283,9 +329,10 @@ public final class DirectMessages: @unchecked Sendable {
         } else {
             rumor = GiftWrap.rumor(kind: 7, pubkey: me, tags: DmReactions.addTags(message: d.rid, author: d.from, participants: others + [me], me: me), content: emoji)
         }
+        // shown once it is on its way: a send that is refused leaves nothing behind
+        try await deliver(rumor, to: others, conv: d.conv)
         lock.lock(); reactions.apply(rumor); lock.unlock()
         save()
-        try await deliver(rumor, to: others, conv: d.conv)
     }
 
     /// Called when this device sends a DM or an e-mail (push: stay quiet for its own echo).

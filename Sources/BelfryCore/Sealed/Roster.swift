@@ -29,7 +29,10 @@ public struct Roster: Hashable, Sendable {
 
     /// nil for anything that is not a well-formed roster (the signature is the caller's check).
     public init?(_ e: NostrEvent) {
-        guard e.kind == SealedKind.roster, let p = e.tag("p"), isHex64(p), let nText = e.tag("n"), let n = Int(nText), n >= 1, String(n) == nText,
+        // exactly one p, one n, one lb, at most one prev: a tag given twice makes it invalid
+        func count(_ name: String) -> Int { e.tags.filter { $0.first == name }.count }
+        guard e.kind == SealedKind.roster, count("p") == 1, count("n") == 1, count("lb") == 1, count("prev") <= 1,
+              let p = e.tag("p"), isHex64(p), let nText = e.tag("n"), let n = Int(nText), n >= 1, String(n) == nText,
               let lb = e.tag("lb"), isHex64(lb) else { return nil }
         // invalid: no device, more than 20, one listed twice
         let devices = e.tagValues("device")
@@ -64,7 +67,9 @@ public struct RosterChain: Hashable, Sendable {
     /// accepted: an anchor whose head is an ancestor of it is not followed back.
     /// VERIFY: check ids and signatures here (events from the local log were checked when stored).
     public static func resolve(account: String, anchor: NostrEvent?, rosters events: [NostrEvent], pinnedHead: String? = nil, verify: Bool = true) -> RosterChain? {
+        // the anchor: exactly one d and one root (a tag given twice makes it invalid)
         guard let anchor, anchor.kind == 30078, anchor.pubkey == account, anchor.tag("d") == SealedKind.anchorD,
+              anchor.tags.filter({ $0.first == "d" }).count == 1, anchor.tags.filter({ $0.first == "root" }).count == 1,
               let rootId = anchor.tag("root"), !verify || anchor.isValid else { return nil }
         var byId = [String: Roster]()
         var byPrev = [String: [Roster]]()

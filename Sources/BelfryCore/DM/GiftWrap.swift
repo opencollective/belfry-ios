@@ -29,7 +29,10 @@ public enum GiftWrap {
         let rumorJSON = try await signer.nip44Decrypt(peer: seal.pubkey, payload: seal.content)
         guard var rumor = NostrEvent.from(json: rumorJSON) else { return nil }
         guard rumor.pubkey == seal.pubkey else { return nil }
-        if rumor.id.isEmpty { rumor = rumor.withId() }
+        // a rumor is unsigned: its id is what its content gives, never what it claims (a rumor
+        // carrying another message's id must not take its place)
+        rumor = rumor.withId()
+        rumor.sig = ""
         return Opened(rumor: rumor, sealPubkey: seal.pubkey)
     }
 }

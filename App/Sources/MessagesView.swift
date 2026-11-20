@@ -18,7 +18,8 @@ struct MessagesView: View {
         List {
             // a new device nobody allowed yet (board messages/encryption-new-device); the banner
             // goes when it is unlocked, or when there is no older conversation
-            if threads.contains(where: { model.lockedHere($0.conv) }) {
+            // the banner: this device is not allowed yet, or holds messages it has no key for
+            if threads.contains(where: { model.lockedHere($0.conv) }) || model.sealed.missingKeys {
                 LockedHereBanner { how = true }
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
