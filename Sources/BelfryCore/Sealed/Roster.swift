@@ -10,7 +10,8 @@ public enum SealedKind {
     public static let request = 8562
     public static let history = 8564
     public static let anchorD = "belfry:sealed"
-    public static let devicesD = "belfry:devices"
+    /// My device names: one event per device, `d` = this prefix + the device's key.
+    public static let deviceD = "belfry:device:"
     public static let maxDevices = 20
 }
 

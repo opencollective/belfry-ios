@@ -2657,7 +2657,7 @@ Android; this section only says where the iPhone app implements it. Vectors: `ve
 - `Sealed/Sealed.swift`: the key chain (every secret checked against its public key), sealing
   and opening (the opener computes the rumor's id and ignores `id` / `sig` inside the seal; a
   sealed rumor's JSON is at most 40 000 bytes), the key hand-over (8561, a wrap to the device),
-  the request (8562) and its link proof, `belfry:devices`, shared history (8564: packed until
+  the request (8562) and its link proof, a device's name record (`belfry:device:<key>`), shared history (8564: packed until
   its own JSON would pass 40 000 bytes, or 200 rumors).
 - `Sealed/SealedEngine.swift`: this device's upkeep (first device, request, allow / not me, a
   device leaving, `ready`), pins and fresh starts, which conversations are sealed (remembered

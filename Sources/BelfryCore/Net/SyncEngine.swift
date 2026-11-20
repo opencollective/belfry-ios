@@ -488,7 +488,8 @@ public final class SyncEngine: @unchecked Sendable {
             ["kinds": [SealedKind.roster], "limit": 5000],
             ["kinds": [SealedKind.request], "#p": [me], "limit": 200],
             ["kinds": [1059], "#p": [d], "limit": 200],
-            ["kinds": [30078], "authors": [me], "#d": [SealedKind.devicesD], "limit": 5],
+            // my device names (`belfry:device:<key>`): by author, the `d` prefix matched here
+            ["kinds": [30078], "authors": [me], "limit": 200],
         ]
     }
 

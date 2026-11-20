@@ -165,22 +165,17 @@ final class SealedMessageTests: XCTestCase {
     func testDeviceNames() throws {
         var chain = KeyChain()
         let lb = try chain.make()
-        let mac: [String: Any] = ["name": "Safari on Mac", "kind": "computer", "added": 10, "x": 1]
-        let goneEntry: [String: Any] = ["name": "Old", "kind": "phone", "added": 1]
-        let devices: [String: Any] = [pub("mac"): mac, pub("gone"): goneEntry]
-        let old: [String: Any] = ["v": 1, "later": "kept", "devices": devices]
-        let doc = Sealed.deviceDoc(old, device: pub("phone"), entry: .init(name: "iPhone", kind: "phone", added: 20),
-                                   gone: [pub("gone"): 0], now: 91 * 86400)
-        let e = try Sealed.devicesTemplate(doc, lb: lb, keys: chain, now: 30).event(pubkey: "").signed(with: key("alice"))
-        XCTAssertEqual(e.tags, [["d", "belfry:devices"], ["lb", lb]])
-        let read = try XCTUnwrap(Sealed.deviceNames(e, keys: chain))
-        XCTAssertEqual(read["later"] as? String, "kept")
-        XCTAssertEqual(((read["devices"] as? [String: Any])?[pub("mac")] as? [String: Any])?["x"] as? Int, 1)
-        let names = Sealed.names(in: read)
-        XCTAssertEqual(names[pub("phone")], .init(name: "iPhone", kind: "phone", added: 20))
-        XCTAssertEqual(names[pub("mac")]?.name, "Safari on Mac")
-        XCTAssertNil(names[pub("gone")])
-        XCTAssertNil(Sealed.deviceNames(e, keys: KeyChain()))
+        let t = try Sealed.deviceTemplate(device: pub("mac"), entry: .init(name: "Safari on Mac", kind: "computer", added: 20), lb: lb, keys: chain, now: 30)
+        let e = try t.event(pubkey: "").signed(with: key("alice"))
+        XCTAssertEqual(e.tags, [["d", "belfry:device:" + pub("mac")], ["lb", lb]])
+        XCTAssertFalse(e.content.contains("Safari"))
+        let read = try XCTUnwrap(Sealed.deviceName(e, keys: chain))
+        XCTAssertEqual(read.device, pub("mac"))
+        XCTAssertEqual(read.name, .init(name: "Safari on Mac", kind: "computer", added: 20))
+        // a record under an older letterbox opens as long as the chain has that key; never without
+        _ = try chain.make()
+        XCTAssertNotNil(Sealed.deviceName(e, keys: chain))
+        XCTAssertNil(Sealed.deviceName(e, keys: KeyChain()))
     }
 
     func testSharedHistory() throws {

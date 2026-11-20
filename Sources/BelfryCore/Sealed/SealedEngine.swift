@@ -92,7 +92,7 @@ public final class SealedEngine: @unchecked Sendable {
     /// names, key hand-overs).
     public static func concerns(_ e: NostrEvent) -> Bool {
         e.kind == SealedKind.roster || e.kind == SealedKind.request
-            || (e.kind == 30078 && (e.tag("d") == SealedKind.anchorD || e.tag("d") == SealedKind.devicesD))
+            || (e.kind == 30078 && (e.tag("d") == SealedKind.anchorD || (e.tag("d") ?? "").hasPrefix(SealedKind.deviceD)))
     }
 
     private func remember(_ change: (inout SealedMemory) -> Void) {
@@ -351,25 +351,47 @@ public final class SealedEngine: @unchecked Sendable {
         sessions.filter { s in s.chat && ((SessionInfo.time(s.lastActivity) ?? SessionInfo.time(s.createdAt)).map { now - $0 < 30 * 86400 } ?? false) }.compactMap(\.clientPubkey)
     }
 
-    private func writeNames(_ c: RosterChain, gone: [String: Int] = [:]) async {
-        guard var name = myName?() else { return }
-        // its own name is the `device` of its own session row: what the Allow prompt showed
-        lock.lock(); let listed = sessionName; lock.unlock()
-        if let listed, !listed.isEmpty { name.name = String(listed.prefix(60)) }
-        lock.lock(); let k = keys; lock.unlock()
-        let old = engine.snapshot().filter { $0.kind == 30078 && $0.pubkey == me && $0.tag("d") == SealedKind.devicesD }.max { $0.createdAt < $1.createdAt }
-        let doc = old.flatMap { Sealed.deviceNames($0, keys: k) }
-        let has = Sealed.names(in: doc)[devicePub]
-        if old?.tag("lb") == c.lb, has?.name == name.name, has?.kind == name.kind { return }
-        let next = Sealed.deviceDoc(doc, device: devicePub, entry: name, gone: gone)
-        if let t = try? Sealed.devicesTemplate(next, lb: c.lb, keys: k) { try? await publishAsAccount(t) }
+    private func nameEvents() -> [NostrEvent] {
+        var latest = [String: NostrEvent]()
+        for e in engine.snapshot() where e.kind == 30078 && e.pubkey == me {
+            guard let d = e.tag("d"), d.hasPrefix(SealedKind.deviceD) else { continue }
+            if let old = latest[d], old.createdAt >= e.createdAt { continue }
+            latest[d] = e
+        }
+        return Array(latest.values)
     }
 
-    /// My devices' names, from `belfry:devices`.
+    /// This device's own name record: written when it joins the head and after each letterbox change.
+    private func writeNames(_ c: RosterChain) async {
+        guard c.devices.contains(devicePub), var name = myName?() else { return }
+        // its own name is the `device` of its own session row: what the Allow prompt showed
+        lock.lock(); let listed = sessionName, k = keys; lock.unlock()
+        if let listed, !listed.isEmpty { name.name = String(listed.prefix(60)) }
+        let mineNow = nameEvents().first { $0.tag("d") == SealedKind.deviceD + devicePub }
+        let has = mineNow.flatMap { Sealed.deviceName($0, keys: k) }?.name
+        if mineNow?.tag("lb") == c.lb, has?.name == name.name, has?.kind == name.kind { return }
+        if let has { name.added = has.added }
+        if let t = try? Sealed.deviceTemplate(device: devicePub, entry: name, lb: c.lb, keys: k) { try? await publishAsAccount(t) }
+    }
+
+    /// My devices' names (entries of devices in no roster are the caller's to ignore).
     public func deviceNames() -> [String: Sealed.DeviceName] {
         lock.lock(); let k = keys; lock.unlock()
-        let e = engine.snapshot().filter { $0.kind == 30078 && $0.pubkey == me && $0.tag("d") == SealedKind.devicesD }.max { $0.createdAt < $1.createdAt }
-        return Sealed.names(in: e.flatMap { Sealed.deviceNames($0, keys: k) })
+        var out = [String: Sealed.DeviceName]()
+        for e in nameEvents() { if let n = Sealed.deviceName(e, keys: k) { out[n.device] = n.name } }
+        return out
+    }
+
+    /// Before each send, and when a sealed conversation opens: the relay is asked again for these
+    /// people's anchors and rosters (at most 3 s, then what is known is used). Sealing to a
+    /// letterbox its owner has left would let the removed device read.
+    public func refresh(_ accounts: [String]) async {
+        let who = Array(Set(accounts + [me])).filter(isHex64)
+        guard !engine.localOnly, !who.isEmpty else { return }
+        let found = await engine.query(.main, [["kinds": [30078], "authors": who, "#d": [SealedKind.anchorD]],
+                                               ["kinds": [SealedKind.roster], "#p": who]], timeout: 3)
+        engine.add(found)
+        observe(who)
     }
 
     /// The first device (5.1) or a fresh start (5.4): a new letterbox, a root with this device, the anchor.
@@ -504,7 +526,7 @@ public final class SealedEngine: @unchecked Sendable {
             if let w = try? Sealed.keysWrap(k, account: me, device: device, to: d) { engine.enqueueSigned(w, target: .main, dm: nil) }
         }
         guard (try? publish(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: lb, devices: stay, ready: false, now: now))) != nil else { return }
-        if let next = chain(me) { await writeNames(next, gone: Dictionary(uniqueKeysWithValues: gone.map { ($0, now) })) }
+        if let next = chain(me) { await writeNames(next) }
     }
 
     /// The user removes one of their devices: its session is revoked, then it leaves the roster.

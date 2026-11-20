@@ -171,46 +171,24 @@ public enum Sealed {
         public init(name: String, kind: String, added: Int) { self.name = name; self.kind = kind; self.added = added }
     }
 
-    /// The content of `belfry:devices`, opened with the letterbox its `lb` tag names.
-    public static func deviceNames(_ e: NostrEvent, keys: KeyChain) -> [String: Any]? {
-        guard e.kind == 30078, e.tag("d") == SealedKind.devicesD, let lb = e.tag("lb"), let s = keys.secret(lb),
+    /// One device's name record (30078 `belfry:device:<device>`), opened with the letterbox its
+    /// `lb` tag names (the key chain has the older ones).
+    public static func deviceName(_ e: NostrEvent, keys: KeyChain) -> (device: String, name: DeviceName)? {
+        guard e.kind == 30078, let d = e.tag("d"), d.hasPrefix(SealedKind.deviceD) else { return nil }
+        let device = String(d.dropFirst(SealedKind.deviceD.count))
+        guard isHex64(device), let lb = e.tag("lb"), let s = keys.secret(lb),
               let text = try? NIP44.decrypt(e.content, conversationKey: conv(s, lb)),
-              let o = JSON.parse(text) as? [String: Any] else { return nil }
-        return o
+              let o = JSON.parse(text) as? [String: Any], let name = o["name"] as? String else { return nil }
+        let kind = (o["kind"] as? String).flatMap { ["phone", "tablet", "computer"].contains($0) ? $0 : nil } ?? "computer"
+        return (device, DeviceName(name: String(name.prefix(60)), kind: kind, added: (o["added"] as? Int) ?? 0))
     }
 
-    public static func names(in doc: [String: Any]?) -> [String: DeviceName] {
-        var out = [String: DeviceName]()
-        for (k, v) in (doc?["devices"] as? [String: Any]) ?? [:] {
-            guard isHex64(k), let d = v as? [String: Any], let name = d["name"] as? String else { continue }
-            let kind = (d["kind"] as? String).flatMap { ["phone", "tablet", "computer"].contains($0) ? $0 : nil } ?? "computer"
-            out[k] = DeviceName(name: String(name.prefix(60)), kind: kind, added: (d["added"] as? Int) ?? 0)
-        }
-        return out
-    }
-
-    /// The document with this device's own entry written; unknown fields and the other devices'
-    /// entries are kept; entries of devices in no roster any more go after 90 days.
-    /// GONE: device → when it left the last roster that had it.
-    public static func deviceDoc(_ old: [String: Any]?, device: String, entry: DeviceName, gone: [String: Int] = [:], now: Int = .now) -> [String: Any] {
-        var doc = old ?? [:]
-        doc["v"] = 1
-        var devices = (doc["devices"] as? [String: Any]) ?? [:]
-        var mine = (devices[device] as? [String: Any]) ?? [:]
-        mine["name"] = entry.name
-        mine["kind"] = entry.kind
-        if mine["added"] == nil { mine["added"] = entry.added }
-        devices[device] = mine
-        for (d, at) in gone where d != device && now - at > 90 * 86400 { devices[d] = nil }
-        doc["devices"] = devices
-        return doc
-    }
-
-    /// `belfry:devices` to sign with the account: encrypted to the head letterbox itself.
-    public static func devicesTemplate(_ doc: [String: Any], lb: String, keys: KeyChain, now: Int = .now) throws -> EventTemplate {
+    /// This device's own record, to sign with the account: encrypted to the head letterbox itself.
+    public static func deviceTemplate(device: String, entry: DeviceName, lb: String, keys: KeyChain, now: Int = .now) throws -> EventTemplate {
         guard let s = keys.secret(lb) else { throw BelfryError.crypto("no letterbox key") }
-        let content = try NIP44.encrypt(JSON.encode(doc), conversationKey: conv(s, lb))
-        return EventTemplate(kind: 30078, content: content, tags: [["d", SealedKind.devicesD], ["lb", lb]], createdAt: now)
+        let text = "{\"v\":1,\"name\":\(JSON.string(entry.name)),\"kind\":\(JSON.string(entry.kind)),\"added\":\(entry.added)}"
+        return EventTemplate(kind: 30078, content: try NIP44.encrypt(text, conversationKey: conv(s, lb)),
+                             tags: [["d", SealedKind.deviceD + device], ["lb", lb]], createdAt: now)
     }
 
     // ---- sharing history (sealed.md 8) --------------------------------------------------------------------

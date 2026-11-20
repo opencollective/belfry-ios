@@ -272,6 +272,8 @@ struct ConversationView: View {
             if screen == "encshare" { sharing = sealed?.notices.first { $0.what == .locked } } else { encryption = true }
         }
         .onAppear { model.markConversationRead(conv); model.visibleConversation = conv }
+        // a sealed conversation opened: its people's device lists as the relay has them now
+        .task { if sealed != nil, let se = model.sealedEngine { await se.refresh(MailThreads.peers(conv)); model.refreshSealed() } }
         .onDisappear { if model.visibleConversation == conv { model.visibleConversation = nil } }
         .onChange(of: list.count) { _, _ in model.markConversationRead(conv) }
         .bottomBar {

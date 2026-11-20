@@ -217,7 +217,9 @@ public final class DirectMessages: @unchecked Sendable {
     /// CONV: the Nostr conversation it belongs to; MAIL: it goes to the belfry's bridge.
     func deliver(_ rumor: NostrEvent, to: [String], selfCopy: Bool = true, conv: String? = nil, mail: Bool = false) async throws {
         try engine.guestMode.check()
+        // the people's heads as the relay has them now (at most 3 s), then:
         // sealed (docs/sealed.md): made on this device, no signer call, never the old way again
+        if let s = sealed, conv != nil || mail { await s.refresh(conv.map(MailThreads.peers) ?? []) }
         if let s = sealed, let conv, s.isSealed(conv) {
             hold(rumor)
             for w in try s.wraps(rumor, to: to, selfCopy: selfCopy) { engine.enqueueSigned(w, target: .main, dm: rumor.id) }
