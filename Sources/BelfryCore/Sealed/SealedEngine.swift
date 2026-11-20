@@ -239,6 +239,12 @@ public final class SealedEngine: @unchecked Sendable {
         }
     }
 
+    /// A queued wrap of RUMOR for ACCOUNT, made again when that account's letterbox is no longer LB.
+    public func again(_ rumor: NostrEvent, for account: String, was lb: String) -> NostrEvent? {
+        guard let now = letterbox(account), now != lb else { return nil }
+        return try? Sealed.wrap(rumor, device: device, to: account, lb: now)
+    }
+
     /// An e-mail on its way out: sealed by the device to the belfry's key (sealed.md 7).
     public func mailWrap(_ rumor: NostrEvent, bridge b: String) throws -> NostrEvent {
         let json = rumor.json
@@ -277,8 +283,11 @@ public final class SealedEngine: @unchecked Sendable {
         case .opened(let rumor, let seal):
             // a mail from the belfry: its seal is signed by the belfry's key
             if let b = bridge?(), seal == b, rumor.pubkey == b { return .rumor(rumor) }
-            guard let c = chain(rumor.pubkey) else { return .keep }
-            guard c.accepts(device: seal, rumorAt: rumor.createdAt) else { return .drop }
+            // it opens, but its author's device is in no chain loaded here yet: kept and tried
+            // again (each new roster, each start), given up after 30 days
+            guard let c = chain(rumor.pubkey), c.accepts(device: seal, rumorAt: rumor.createdAt) else {
+                return Int.now - wrap.createdAt > 32 * 86400 ? .drop : .keep // a wrap is back-dated by up to 2 days
+            }
             if rumor.kind == SealedKind.history {
                 // each rumor's conversation must have the sharer in it
                 let sharer = rumor.pubkey

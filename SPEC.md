@@ -2665,5 +2665,7 @@ Android; this section only says where the iPhone app implements it. Vectors: `ve
   again while its key or its author's chain is missing).
 - The device key is the session's `clientSecret`. Letterbox secrets: Keychain item `sealed-keys`
   (`sealed-keys@<slot>`), the session's accessibility; wiped on sign-out. Never in SQLite.
-- Not done: re-sealing a queued wrap when a head changed before it left; "I don't have another
-  device" (the user's own fresh start) waits for the owner.
+- A queued wrap is sealed again when its letterbox is no longer its account's head (`SyncEngine.reseal`;
+  after a restart only for kind 14, whose rumor is kept with the message). A wrap that opens but
+  whose author's device is in no chain loaded yet is kept and tried again, for 30 days.
+- Not done: "I don't have another device" (the user's own fresh start) waits for the owner.

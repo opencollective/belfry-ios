@@ -271,8 +271,10 @@ public final class SyncEngine: @unchecked Sendable {
                                                                        kind: shown.kind, tags: shown.tags, content: shown.content); lock.unlock()
             return nil
         }
-        if let signed = item.signed {
-            if localOnly { return signed }
+        if let made = item.signed {
+            if localOnly { return made }
+            // a sealed wrap whose letterbox changed while it waited is sealed again (sealed.md 9)
+            let signed = reseal?(item) ?? made
             try await publish(item.target, signed)
             return signed
         }
@@ -477,6 +479,8 @@ public final class SyncEngine: @unchecked Sendable {
     /// Sealed conversations (docs/sealed.md): the anchors and rosters of everybody, the requests
     /// for my account, the key hand-overs to this device, my device names. Always whole (no `since`).
     public var sealedDevice: String?
+    /// A queued sealed wrap, made again for the head its letterbox moved to; nil = send it as it is.
+    public var reseal: ((OutboxItem) -> NostrEvent?)?
     var sealedFilters: [[String: Any]] {
         guard let d = sealedDevice else { return [] }
         return [

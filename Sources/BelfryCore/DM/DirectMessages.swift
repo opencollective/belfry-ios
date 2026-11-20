@@ -28,6 +28,8 @@ public final class DirectMessages: @unchecked Sendable {
     public var sealed: SealedEngine?
     /// Wraps kept because this device has no secret for their letterbox (the banner).
     public private(set) var lockedWraps = 0
+    /// The rumors of sealed wraps still in the outbox (to seal them again if a head changes).
+    private var queued = [String: NostrEvent]()
     public private(set) var bridge: String?
     public var onChange: (() -> Void)?
 
@@ -217,12 +219,13 @@ public final class DirectMessages: @unchecked Sendable {
         try engine.guestMode.check()
         // sealed (docs/sealed.md): made on this device, no signer call, never the old way again
         if let s = sealed, let conv, s.isSealed(conv) {
+            hold(rumor)
             for w in try s.wraps(rumor, to: to, selfCopy: selfCopy) { engine.enqueueSigned(w, target: .main, dm: rumor.id) }
             return
         }
         if let s = sealed, mail, s.mailSealed, let b = to.first {
             var list = [try s.mailWrap(rumor, bridge: b)]
-            if selfCopy { list += try s.wraps(rumor, to: [], selfCopy: true) }
+            if selfCopy { hold(rumor); list += try s.wraps(rumor, to: [], selfCopy: true) }
             for w in list { engine.enqueueSigned(w, target: .main, dm: rumor.id) }
             return
         }
@@ -233,6 +236,20 @@ public final class DirectMessages: @unchecked Sendable {
             if engine.localOnly, p == me { engine.add([w], verify: false) }
             engine.enqueueSigned(w, target: .main, dm: rumor.id)
         }
+    }
+
+    private func hold(_ rumor: NostrEvent) {
+        lock.lock(); queued[rumor.id] = rumor; lock.unlock()
+        if engine.reseal == nil { engine.reseal = { [weak self] item in self?.reseal(item) } }
+    }
+
+    /// A queued sealed wrap whose letterbox is no longer its account's head: sealed again.
+    private func reseal(_ item: OutboxItem) -> NostrEvent? {
+        guard let s = sealed, let w = item.signed, let lb = Sealed.lb(of: w), let account = w.tag("p"), let rid = item.dm else { return nil }
+        lock.lock()
+        let rumor = queued[rid] ?? items[rid]?.rumor.flatMap(NostrEvent.from(json:))
+        lock.unlock()
+        return rumor.flatMap { s.again($0, for: account, was: lb) }
     }
 
     /// The chips under a direct message, for me.
@@ -371,6 +388,7 @@ public final class DirectMessages: @unchecked Sendable {
     /// Outbox news: a DM is out once no wrap for someone else waits any more.
     public func outboxSent(_ item: OutboxItem) {
         guard let rid = item.dm else { return }
+        if !engine.outboxItems().contains(where: { $0.dm == rid }) { lock.lock(); queued[rid] = nil; lock.unlock() }
         let left = engine.outboxItems().filter { $0.dm == rid && $0.tags.contains { $0.first == "p" && $0.count > 1 && $0[1] != me } }
         guard left.isEmpty else { return }
         lock.lock()
