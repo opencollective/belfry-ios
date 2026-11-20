@@ -553,7 +553,8 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertNotEqual(old.tag("lb"), head)
         XCTAssertEqual(alice.sealed.chain(bob.account)?.lb, old.tag("lb")) // stale here
         // before it leaves, the relay is asked: sealed again to the letterbox Bob has now
-        let again = try XCTUnwrap(try await dms.reseal(item))
+        let made = try await dms.reseal(item)
+        let again = try XCTUnwrap(made)
         XCTAssertEqual(again.tag("lb"), head)
         guard case .rumor(let r) = bob.sealed.open(again) else { return XCTFail("Bob does not open the new wrap") }
         XCTAssertEqual(r.id, rumor.id)
