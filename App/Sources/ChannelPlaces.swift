@@ -68,7 +68,7 @@ struct ChannelPlaceView: View {
         }
         .navigationTitle(place.title)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $todo) { k in TodoScreen(key: k, go: go) }
+        .navigationDestination(item: $todo) { k in TodoScreen(key: k, go: go).overRoot() }
         .task {
             // screenshots: a to-do's own screen (and its Assign to…). The demo's to-dos may not be
             // derived yet when this appears (the dark pass of 44337540709 shot the list): wait for them.
@@ -274,7 +274,7 @@ struct ChannelMembersScreen: View {
         }
         .navigationTitle("Members")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group) }
+        .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group).overRoot() }
         .sheet(isPresented: $invite) { InviteSheet(id: id) }
         .sheet(isPresented: $asking) { if let g { PodApplySheet(group: g) } }
         .task {

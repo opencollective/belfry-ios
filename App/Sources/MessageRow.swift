@@ -263,9 +263,13 @@ struct ReactionBar: View {
         FlowRow(spacing: 6) {
             ForEach(reactions, id: \.emoji) { r in
                 Button { toggle(r.emoji) } label: {
-                    Text("\(r.emoji) \(r.who.count)")
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 8).padding(.vertical, 3)
+                    // the emoji at reading size, its count beside it: a chip a thumb can hit
+                    HStack(spacing: 5) {
+                        Text(r.emoji).font(.body)
+                        Text("\(r.who.count)").font(.subheadline.weight(.semibold)).monospacedDigit()
+                    }
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .frame(minHeight: 32)
                         .background(r.mine != nil ? Color.brand.opacity(0.15) : Color.secondary.opacity(0.12), in: Capsule())
                         .overlay(Capsule().stroke(r.mine != nil ? Color.brand : .clear, lineWidth: 1))
                 }
@@ -366,23 +370,24 @@ struct ReplyRow: View {
     let onHold: () -> Void
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Avatar(pubkey: r.ev.pubkey, size: 24)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(model.name(r.ev.pubkey)).font(.caption.weight(.semibold))
+            // a reply reads like any message: the same sizes (Xavier, 2026-11-20)
+            Avatar(pubkey: r.ev.pubkey, size: 30)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(model.name(r.ev.pubkey)).font(.subheadline.weight(.semibold)).lineLimit(1)
                     AgentTag(pubkey: r.ev.pubkey)
-                    Text(Format.time(r.ev.createdAt)).font(.caption2).foregroundStyle(.secondary)
+                    Text(Format.time(r.ev.createdAt)).font(.caption).foregroundStyle(.secondary)
                     if r.edited != nil { Text("edited").font(.caption2).foregroundStyle(.secondary) }
                     if let p = model.pending(r.id) { Text(p.stateText).font(.caption2).foregroundStyle(p.status == .failed ? .red : .secondary) }
                 }
-                if !r.text.isEmpty { MessageText(text: r.text, shownEvents: r.eventRefs).font(.subheadline) }
+                if !r.text.isEmpty { MessageText(text: r.text, shownEvents: r.eventRefs) }
                 MessageButtonsView(m: r, group: group.isEmpty ? (r.ev.tag("h") ?? "") : group)
                 ForEach(r.media, id: \.url) { MediaView(media: $0, all: r.media) }
                 // reactions on a reply (Xavier 2026-11-18), as on a message
                 let g = group.isEmpty ? (r.ev.tag("h") ?? "") : group
                 let reactions = model.derive.reactions(g)[r.id] ?? []
                 if !reactions.isEmpty {
-                    ReactionBar(reactions: reactions) { emoji in model.toggleReaction(emoji, on: r, in: g) }.padding(.top, 2)
+                    ReactionBar(reactions: reactions) { emoji in model.toggleReaction(emoji, on: r, in: g) }.padding(.top, 4)
                 }
             }
             Spacer(minLength: 0)

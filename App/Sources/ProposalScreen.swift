@@ -109,9 +109,9 @@ struct ProposalScreenBody: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar { toolbar }
-            .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group) }
+            .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group).overRoot() }
             .navigationDestination(item: $place) { pl in
-                ChannelPlaceView(id: id, place: pl, go: { _ in place = nil }, filter: { _ in place = nil })
+                ChannelPlaceView(id: id, place: pl, go: { _ in place = nil }, filter: { _ in place = nil }).overRoot()
             }
             .sheet(isPresented: $revise) { ReviseProposalSheet(p: p) }
             .sheet(isPresented: $notify) { NotifySheet(id: id) }

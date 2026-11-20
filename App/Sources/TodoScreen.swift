@@ -230,7 +230,7 @@ struct TodoScreen: View {
                 dismiss()
             }
         } message: { Text("It goes for everyone in \(channelName).") }
-        .navigationDestination(isPresented: $picking) { AssignPicker(key: key) }
+        .navigationDestination(isPresented: $picking) { AssignPicker(key: key).overRoot() }
         .onAppear {
             if model.launch.screen == "todoassign" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { picking = true } }
         }

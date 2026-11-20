@@ -71,7 +71,7 @@ struct CharterView: View {
         .sheet(isPresented: $writing) { AgreementForm(editing: nil) }
         .sheet(item: $editing) { AgreementForm(editing: $0) }
         .sheet(isPresented: $ordering) { CharterOrderSheet() }
-        .navigationDestination(item: $who) { WhoAgreed(rule: $0) }
+        .navigationDestination(item: $who) { WhoAgreed(rule: $0).overRoot() }
         .task { await model.loadPublicCharter() }
         .onAppear {
             switch model.launch.screen {
@@ -294,7 +294,7 @@ struct MyTodosView: View {
         .listStyle(.insetGrouped)
         .navigationTitle("My to-dos")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $open) { k in TodoScreen(key: k) }
+        .navigationDestination(item: $open) { k in TodoScreen(key: k).overRoot() }
     }
 }
 

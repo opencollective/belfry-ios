@@ -87,6 +87,10 @@ final class AppModel: ObservableObject {
     @Published var accounts = AccountList()
     /// "Add an account": the sign-in over the app; the open account stays until the new one is in.
     @Published var addingAccount = false
+    /// Screens pushed over a place's root by a view's own destination (a thread, a channel's
+    /// screen…): they are not in the place's path, and while one is up the drawer's edge strip
+    /// must give way to the system's swipe back (`overRoot()`).
+    @Published var pushedOverRoot = 0
     /// iPhone: the bottom bar's place (Home · Calendar · Groups · Town; Create is a sheet).
     @Published var tab: AppTab = .home
     /// The Create sheet (the bar's ＋).

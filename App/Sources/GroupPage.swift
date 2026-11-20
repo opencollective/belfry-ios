@@ -75,7 +75,7 @@ struct GroupPage: View {
             .navigationTitle("Group")
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $asking) { if let g { PodApplySheet(group: g) } }
-            .navigationDestination(item: $shownProfile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group) }
+            .navigationDestination(item: $shownProfile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group).overRoot() }
             .onAppear { model.lookFor(id) }
     }
 

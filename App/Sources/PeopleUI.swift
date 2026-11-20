@@ -30,7 +30,7 @@ struct ProfileStack: ViewModifier {
     @State private var shown: ProfileKey?
     func body(content: Content) -> some View {
         content
-            .navigationDestination(item: $shown) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group) }
+            .navigationDestination(item: $shown) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group).overRoot() }
             .environment(\.showProfile) { pk in hideKeyboard(); shown = ProfileKey(pubkey: pk) }
     }
 }
@@ -248,7 +248,7 @@ struct RoleSection: View {
         Section("Role") {
             roleRows(d)
         }
-        .navigationDestination(isPresented: $picking) { RoleChoiceList(pubkey: pubkey, report: report) }
+        .navigationDestination(isPresented: $picking) { RoleChoiceList(pubkey: pubkey, report: report).overRoot() }
         .onAppear { if model.launch.screen == "rolepicker", d.isCommunityAdmin { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { picking = true } } }
     }
 

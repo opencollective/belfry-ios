@@ -225,6 +225,7 @@ struct ConversationView: View {
 struct Bubble: View {
     @EnvironmentObject var model: AppModel
     let dm: Dm
+    @State private var moreEmoji = false
 
     /// A direct message that went out or came in (never an e-mail, never one still sending).
     private var canReact: Bool { dm.kind == 14 && dm.pending != true && dm.failed == nil && !model.guestReading }
@@ -255,10 +256,12 @@ struct Bubble: View {
                 .contextMenu {
                     // the reactions row, then the menu (board home/conversation); not on e-mails
                     if canReact {
+                        // as on a channel's message: the four I use most, then the larger choice
                         ControlGroup {
-                            ForEach(EmojiUsage.top(5), id: \.self) { e in
+                            ForEach(EmojiUsage.top(4), id: \.self) { e in
                                 Button { react(e) } label: { Text(e) }.accessibilityLabel("React with \(e)")
                             }
+                            Button { moreEmoji = true } label: { Label("More reactions", systemImage: "face.smiling") }
                         }
                         .controlGroupStyle(.compactMenu)
                     }
@@ -292,6 +295,12 @@ struct Bubble: View {
         }
         .frame(maxWidth: .infinity, alignment: dm.mine ? .trailing : .leading)
         .accessibilityElement(children: .combine)
+        .sheet(isPresented: $moreEmoji) {
+            ReactionPicker { e in
+                moreEmoji = false
+                react(e)
+            }
+        }
     }
 }
 

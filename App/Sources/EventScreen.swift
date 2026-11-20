@@ -138,7 +138,7 @@ struct EventScreenBody: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar { toolbar(d) }
-        .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group) }
+        .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group).overRoot() }
         .environment(\.showProfile) { pk in openProfile(pk) }
         .fullScreenCover(isPresented: $showTicket) { MyTicketView(e: e) }
         .fullScreenCover(isPresented: $checkingIn) { CheckInScreen(e: e) }

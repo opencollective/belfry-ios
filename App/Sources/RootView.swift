@@ -333,7 +333,7 @@ struct RootView: View {
                 switch model.tab {
                 case .home:
                     // Home's ☰ opens the same Town drawer (2026-11-17)
-                    DrawerContainer(open: $drawer, edgeSwipe: homePath.isEmpty) {
+                    DrawerContainer(open: $drawer, edgeSwipe: homePath.isEmpty && model.pushedOverRoot == 0) {
                         drawerList(inDrawer: true)
                     } main: {
                         NavigationStack(path: $homePath) { HomeView().tabBarInset().placeDestinations() }
@@ -341,21 +341,21 @@ struct RootView: View {
                     }
                 case .calendar:
                     // Calendar and Groups have the same ☰ and drawer as Home (2026-11-17)
-                    DrawerContainer(open: $drawer, edgeSwipe: calendarPath.isEmpty) {
+                    DrawerContainer(open: $drawer, edgeSwipe: calendarPath.isEmpty && model.pushedOverRoot == 0) {
                         drawerList(inDrawer: true)
                     } main: {
                         NavigationStack(path: $calendarPath) { CalendarView().tabBarInset().placeDestinations() }
                             .environment(\.openDrawer) { openDrawer() }
                     }
                 case .groups:
-                    DrawerContainer(open: $drawer, edgeSwipe: groupsPath.isEmpty) {
+                    DrawerContainer(open: $drawer, edgeSwipe: groupsPath.isEmpty && model.pushedOverRoot == 0) {
                         drawerList(inDrawer: true)
                     } main: {
                         NavigationStack(path: $groupsPath) { GroupsView().tabBarInset().placeDestinations() }
                             .environment(\.openDrawer) { openDrawer() }
                     }
                 case .town:
-                    DrawerContainer(open: $drawer, edgeSwipe: path.isEmpty) {
+                    DrawerContainer(open: $drawer, edgeSwipe: path.isEmpty && model.pushedOverRoot == 0) {
                         drawerList(inDrawer: true)
                     } main: {
                         detail.environment(\.openDrawer) { openDrawer() }

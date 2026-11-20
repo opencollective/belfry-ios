@@ -199,3 +199,20 @@ struct GroupTitle: View {
         }
     }
 }
+
+/// A screen pushed by a view's own `navigationDestination(item:)` / `(isPresented:)`: swiping from
+/// the left edge goes back to its parent (Xavier, 2026-11-20: on a thread the swipe opened the
+/// drawer, whose edge strip only knew the place's path).
+private struct OverRoot: ViewModifier {
+    @EnvironmentObject var model: AppModel
+    @State private var counted = false
+    func body(content: Content) -> some View {
+        content
+            .onAppear { if !counted { counted = true; model.pushedOverRoot += 1 } }
+            .onDisappear { if counted { counted = false; model.pushedOverRoot = max(0, model.pushedOverRoot - 1) } }
+    }
+}
+
+extension View {
+    func overRoot() -> some View { modifier(OverRoot()) }
+}
