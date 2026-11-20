@@ -730,7 +730,7 @@ final class BrandColorsTests: XCTestCase {
         // stored and read back, and an older stored copy (no `colors` key) still reads
         let back = try? JSONDecoder().decode(Branding.self, from: JSONEncoder().encode(b))
         XCTAssertEqual(back, b)
-        let old = try? JSONDecoder().decode(Branding.self, from: Data(#"{"logo":"","cover":"","primary":"#2b402e","secondary":"","description":""}"#.utf8))
+        let old = try? JSONDecoder().decode(Branding.self, from: Data(##"{"logo":"","cover":"","primary":"#2b402e","secondary":"","description":""}"##.utf8))
         XCTAssertEqual(old?.primary, "#2b402e")
         XCTAssertNil(old?.colors)
     }
