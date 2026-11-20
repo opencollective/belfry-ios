@@ -180,13 +180,16 @@ final class SealedEngineTests: XCTestCase {
             XCTFail("sent on silence")
         } catch {}
         XCTAssertTrue(dms.thread(conv).isEmpty)
+        await alice.engine.flush()
         XCTAssertTrue(alice.engine.outboxItems().isEmpty)
+        XCTAssertTrue(b.all().isEmpty) // nothing left this device
         // the relay answers, completely: neither has a chain. Now it is known: today's way.
         alice.sealed.askChains = { _ in [] }
         try await dms.send("Hello Bob", in: conv)
         XCTAssertEqual(dms.thread(conv).map(\.text), ["Hello Bob"])
-        let out = alice.engine.outboxItems().compactMap(\.signed)
-        XCTAssertEqual(out.count, 2)
+        await alice.engine.flush()
+        let out = b.all()
+        XCTAssertEqual(out.count, 2) // one wrap for Bob, one for me
         XCTAssertTrue(out.allSatisfy { $0.kind == 1059 && $0.tag("lb") == nil })
         // an answer older than 10 minutes is no knowledge any more
         XCTAssertEqual(alice.sealed.way(conv, now: Int.now + 601), .unknown)
