@@ -2577,8 +2577,9 @@ who has no main channel, keeps the channel they were in.
   the community alone before a role is known); a red dot on an account that is not open and has
   a notification still shown by the system; the footer says so.
 - **A guest's profile** (canvas v66, boards home/profile and home/profile-guest, 2026-11-20): under
-  the name "Guest in #<channel> · invited by <name>" ("Agent, a guest" for an agent; "invited by
-  you"), no E-mail button. Tags: `POST /whois` answers may carry `tags: {<hex>: [..]}` for guests;
+  the name "Guest in #<channel>", then "invited by <name>" (opens the inviter's profile; "invited
+  by you"), " (not saved)" after it while the guest has no saved account; an "agent" chip for a
+  guest agent; Share only: no Message (a guest can't receive direct messages), no E-mail (v67). Tags: `POST /whois` answers may carry `tags: {<hex>: [..]}` for guests;
   the app cleans them like a member's own (19.16), keeps them per account (`guest-tags`), and shows
   them as "#tag" chips where a member's stand; read-only (a guest edits them on the website); the
   answer replaces what was kept for the keys asked; no tags, no chips. Until the server sends

@@ -70,15 +70,32 @@ struct ProfileView: View {
         return d.isGuest(pubkey) ? (model.guestTags[pubkey] ?? []) : []
     }
 
-    /// "Guest in #garden · invited by Ana Silva" under a guest's name (board home/profile-guest).
-    private func guestLine(_ d: Derive) -> String? {
-        guard d.isGuest(pubkey) else { return nil }
-        var s = d.isAgent(pubkey) ? "Agent, a guest" : "Guest"
-        let places = d.groups().filter { g in d.guestJoins(g.id).contains { $0.pubkey == pubkey && !$0.member } }
-        if let g = places.first, g.named { s += " in " + (g.isPod || g.isEvent || g.isProposal ? g.name : "#" + g.name) }
-        let by = places.first.flatMap { g in d.guestJoins(g.id).first { $0.pubkey == pubkey }?.by }
-        if let by { s += " · invited by " + (by == model.me ? "you" : model.name(by)) }
-        return s
+    /// "Guest in #garden · invited by Ana Silva (not saved)" under a guest's name, an "agent" chip
+    /// for an agent; the inviter's name opens their profile (boards home/profile-guest, v67).
+    @ViewBuilder private func guestLine(_ d: Derive) -> some View {
+        if d.isGuest(pubkey) {
+            let place = d.groups().first { g in d.guestJoins(g.id).contains { $0.pubkey == pubkey && !$0.member } }
+            let join = place.flatMap { g in d.guestJoins(g.id).first { $0.pubkey == pubkey } }
+            let by = join?.by
+            VStack(spacing: 6) {
+                if d.isAgent(pubkey) { Chip(text: "agent") }
+                Text(guestWords(place, unsaved: by == nil && join?.unsaved == true)).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                if let by {
+                    Button { model.openProfile = by } label: {
+                        Text("invited by \(by == model.me ? "you" : model.name(by))" + (join?.unsaved == true ? " (not saved)" : ""))
+                            .font(.subheadline).underline()
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("profile-inviter")
+                }
+            }
+        }
+    }
+
+    private func guestWords(_ g: Channel?, unsaved: Bool) -> String {
+        var s = "Guest"
+        if let g, g.named { s += " in " + (g.isPod || g.isEvent || g.isProposal ? g.name : "#" + g.name) }
+        return s + (unsaved ? " (not saved)" : "")
     }
 
     private var card: some View {
@@ -95,9 +112,10 @@ struct ProfileView: View {
                     Text(me ? (model.realName(pubkey).isEmpty ? "You" : model.realName(pubkey)) : model.name(pubkey))
                         .font(.title.bold()).multilineTextAlignment(.center)
                     if let address { Text(address).font(.subheadline).foregroundStyle(.secondary).textSelection(.enabled) }
-                    if let g = guestLine(d) { Text(g).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center) }
+                    guestLine(d)
                     HStack(spacing: 12) {
-                        if !me && !d.isGuest(model.me) {
+                        // a guest's card has Share only: a guest can't receive direct messages
+                        if !me && !d.isGuest(model.me) && !d.isGuest(pubkey) {
                             RoundAction(symbol: "message.fill", title: "Message") { model.messageAuthor = pubkey; if !pushed { dismiss() } }
                         }
                         if let address, !me, !d.isGuest(pubkey) {
