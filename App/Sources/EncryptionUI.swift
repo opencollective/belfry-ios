@@ -372,7 +372,8 @@ struct AllowPrompt: View {
 
     private func answer(_ allow: Bool) async {
         busy = true
-        if await !model.answerAllow(ask, allow: allow) { full = true }
+        let done = await model.answerAllow(ask, allow: allow)
+        if !done { full = true }
         busy = false
     }
 }
