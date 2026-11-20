@@ -616,7 +616,7 @@ final class AppModel: ObservableObject {
         // screenshots `brand…`: a belfry with a dark brand colour (the colours it serves per appearance)
         if launch.screen?.hasPrefix("brand") == true {
             cfg.branding = Branding(primary: "#2b402e", secondary: "#ad6e21",
-                                    colors: .init(light: .init(accent: "#2b402e", onAccent: "#ffffff"), dark: .init(accent: "#58835e", onAccent: "#ffffff")))
+                                    colors: .init(light: .init(accent: "#2b402e", onAccent: "#ffffff"), dark: .init(accent: "#608f67", onAccent: "#111111")))
         }
         open(s, config: cfg)
         groupsKey = Demo.signer("groups").pubkey
