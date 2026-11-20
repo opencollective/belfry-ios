@@ -219,7 +219,7 @@ public extension Derive {
     func refShown(_ t: RefTarget) -> RefShown {
         switch t {
         case .person(let pk):
-            let n5 = profileMap[pk]?.nip05 ?? ""
+            let n5 = profiles()[pk]?.nip05 ?? ""
             let name = displayName(pk)
             return RefShown(kind: .person, name: "@" + (realName(pk).isEmpty ? name : realName(pk)), title: name,
                             line: isGuest(pk) ? "Guest" : n5.contains("@") ? n5 : isAgent(pk) ? "Agent" : "Person",
