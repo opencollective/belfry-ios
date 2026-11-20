@@ -66,7 +66,7 @@ final class RosterChainTests: XCTestCase {
         XCTAssertEqual(anchored?.devices, [pub("phone")])
         // not anchored yet (the head is still r2): the lower id wins for now
         let provisional = RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id, head: r2.id), rosters: all)
-        XCTAssertEqual(provisional?.head.id, all.filter { $0.prev == r2.id }.map(\.id).min())
+        XCTAssertEqual(provisional?.head.id, all.filter { $0.tag("prev") == r2.id }.map(\.id).min())
         // what follows the anchored head is still read
         let r4 = roster(A, by: "phone", n: 4, prev: r3.id, lb: lb2, devices: ["phone", "pad"], at: 400)
         XCTAssertEqual(RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id, head: r3.id), rosters: all + [r4])?.head.id, r4.id)
