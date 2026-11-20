@@ -53,6 +53,9 @@ public enum Sealed {
         return lb
     }
 
+    /// The most a sealed rumor's JSON may weigh (what NIP-44 carries once sealed and wrapped).
+    public static let maxRumorBytes = 40_000
+
     private static func conv(_ secret: Data, _ pub: String) throws -> Data {
         guard let p = Data(hex: pub), p.count == 32 else { throw BelfryError.crypto("bad key") }
         return try NIP44.conversationKey(secret: secret, publicKey: p)
@@ -61,7 +64,10 @@ public enum Sealed {
     /// Seal (signed by the device) and wrap (a one-time key) RUMOR for ACCOUNT's letterbox LB
     /// (sealed.md 4). SIGN: nil = the device key signs the seal.
     public static func wrap(_ rumor: NostrEvent, device: Data, to account: String, lb: String, now: Int = .now) throws -> NostrEvent {
-        let sealContent = try NIP44.encrypt(rumor.json, conversationKey: conv(device, lb))
+        let json = rumor.json
+        // a sealed rumor's JSON is at most 40 000 bytes: a sender never seals a larger one
+        guard json.utf8.count <= maxRumorBytes else { throw BelfryError.invalid("This message is too long to send.") }
+        let sealContent = try NIP44.encrypt(json, conversationKey: conv(device, lb))
         let seal = try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 13, tags: [], content: sealContent).signed(with: device)
         let one = Keys.generateSecret()
         let content = try NIP44.encrypt(seal.json, conversationKey: conv(one, lb))
@@ -211,7 +217,11 @@ public enum Sealed {
 
     /// What one wrap may hold: 200 rumors, and no more text than NIP-44 can carry once sealed.
     public static let historyMaxRumors = 200
-    public static let historyMaxBytes = 40_000
+    public static let historyMaxBytes = maxRumorBytes
+
+    /// Room for the rumors inside one 8564 rumor, which is itself a sealed rumor of at most
+    /// `maxRumorBytes` (its own id, keys and tags take the rest).
+    static let historyBudget = maxRumorBytes - 400
 
     /// The rumors (oldest first) as 8564 rumors of SHARER for PERSON, split to fit.
     public static func history(_ rumors: [NostrEvent], sharer: String, person: String, now: Int = .now) -> [NostrEvent] {
@@ -225,8 +235,8 @@ public enum Sealed {
         for r in rumors {
             let j = r.json
             let n = j.utf8.count + 1
-            if n > historyMaxBytes { continue } // one rumor too large to share: left out
-            if batch.count >= historyMaxRumors || size + n > historyMaxBytes { flush() }
+            if n > historyBudget { continue } // one rumor too large to share: left out
+            if batch.count >= historyMaxRumors || size + n > historyBudget { flush() }
             batch.append(j); size += n
         }
         flush()
