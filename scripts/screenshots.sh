@@ -180,6 +180,23 @@ shot 71-profile-in-event eventrole light
 shot 72-members-invite membersinvite light
 shot 178-link-boxes linkboxes light
 shot 178b-link-boxes-dark linkboxes dark
+# 2026-11-20: end-to-end encrypted conversations (boards messages/encryption-*), demo data only
+shot 180-enc-thread encthread light
+shot 180b-enc-thread-dark encthread dark
+shot 181-enc-devices encdevices light
+shot 181b-enc-devices-dark encdevices dark
+shot 182-enc-group encgroup light
+shot 183-enc-mail encmail light
+shot 184-enc-mail-devices encmaildevices light
+shot 185-enc-new-device encnewdevice light
+shot 185b-enc-new-device-dark encnewdevice dark
+shot 186-enc-how enchow light
+shot 187-enc-allow encallow light
+shot 187b-enc-allow-dark encallow dark
+shot 188-enc-linked enclinked light
+shot 189-enc-share encshare light
+shot 189b-enc-share-dark encshare dark
+shot 190-enc-remove encremove light
 shot 73-group-cards groupcards light
 shot 73b-group-cards-dark groupcards dark
 shot 74-group-deleted groupdeleted light

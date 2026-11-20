@@ -87,6 +87,9 @@ final class AppModel: ObservableObject {
     @Published var accounts = AccountList()
     /// "Add an account": the sign-in over the app; the open account stays until the new one is in.
     @Published var addingAccount = false
+    /// End-to-end encrypted conversations: what their screens show (Sealed.swift; demo data only
+    /// until the lead's contract).
+    @Published var sealed = SealedState()
     /// iPhone: the bottom bar's place (Home · Calendar · Groups · Town; Create is a sheet).
     @Published var tab: AppTab = .home
     /// The Create sheet (the bar's ＋).
@@ -614,6 +617,7 @@ final class AppModel: ObservableObject {
             Task {
                 await Demo.seed(engine: e, dms: d)
                 self.updateAddress()
+                if !reader { self.sealed = Demo.sealed(me: e.me, dms: d, screen: self.launch.screen) }
                 // SPEC 19.37: a settings change the relay refused (the mark by the channel's name)
                 if self.launch.screen?.hasPrefix("settingsfailed") == true {
                     e.demoPut(OutboxItem(target: .groups, kind: 9002, content: "",

@@ -392,6 +392,16 @@ enum Demo {
         engine.add([ev(you, 30078, now - 3 * day, [["d", "seen:general"], ["h", "general"]])], verify: false)
 
         dms.myAddress = "sam@demo.belfry.sh"
+        // sealed conversations (boards messages/encryption-*): Lina (a profile, not a member of the
+        // channels: the other screens keep their people), and a group of five
+        let lina = signer("lina")
+        engine.add([ev(lina, 0, now - 30 * day, [], "{\"name\":\"Lina Moreau\",\"nip05\":\"lina@demo.belfry.sh\"}")], verify: false)
+        try? await dms.demoDM(from: lina, text: "Can you bring the long ladder on Saturday?", at: now - 26 * 3600)
+        try? await dms.demoSent(to: lina.pubkey, text: "Yes, I'll drop it at the hall at 8:30.", at: now - 26 * 3600 + 120)
+        try? await dms.demoDM(from: lina, text: "Thanks! The key is under the blue pot.", at: now - 2 * 3600 - 600)
+        try? await dms.demoDM(from: lina, text: "Writing from my new phone 👋", at: now - 1800)
+        try? await dms.demoDM(from: ps["emma"]!, text: "Who brings the soup pots on Sunday?", at: now - 3 * day,
+                              others: [ps["ana"]!.pubkey, ps["ben"]!.pubkey, lina.pubkey])
         try? await dms.demoDM(from: ps["ana"]!, text: "Hi Sam! Can you open the hall on Saturday at 9?", at: now - 7200, reaction: "👍")
         try? await dms.demoDM(from: ps["dev"]!, text: "I found the spare bike parts you asked about.", at: now - 2 * day)
         try? await dms.demoMail(bridgeSecret: secret("bridge"), sender: "\"Town Hall\" <events@townhall.example>", subject: "Street party permit",

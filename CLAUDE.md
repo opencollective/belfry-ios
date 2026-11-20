@@ -379,3 +379,14 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   `not_guest`); a channel's name before its metadata = id without its random ending, metadata
   always subscribed without `since`, `SyncEngine.catchUpFromStart` after access changed (19.42).
   `kinds` (whois) is stored per account (`db "kinds"`). Screens `todo`, `todoassign`, `join-member`.
+
+- 2026-11-20 encryption screens (branch `encryption`, boards messages/encryption-*; held for the
+  lead's review, not for main): SCREENS ONLY on demo data. `Sealed.swift` (`model.sealed`: my
+  devices, the sealed conversations with a count per other person, device lines, the Allow
+  question; filled by `Demo.sealed` and nothing else) and `EncryptionUI.swift` (the lock, device
+  lines, `EncryptionScreen`, the new-device banner and its three steps, `AllowPrompt` over the
+  root, `ShareHistorySheet`); `DevicesView` asks before Remove; `LinkDeviceScreen(linked:)`.
+  `SealedWords` (core, tested) has the wording. No key, crypto or wire work until the lead's
+  contract (collective-belfry docs/sealed.md + vectors): outside the demo nothing is sealed and
+  no lock shows. Screens `encthread`, `encdevices`, `encgroup`, `encmail`, `encmaildevices`,
+  `encnewdevice`, `enchow`, `encallow`, `enclinked`, `encshare`, `encremove`.

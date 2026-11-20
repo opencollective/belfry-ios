@@ -10,11 +10,19 @@ struct MessagesView: View {
     @State private var newOne = false
     @State private var path = [ConvRoute]()
     @State private var didLaunch = false
+    @State private var how = false
 
     var body: some View {
         let _ = model.version
         let threads = model.dms?.threads() ?? []
         List {
+            // a new device nobody allowed yet (board messages/encryption-new-device); the banner
+            // goes when it is unlocked, or when there is no older conversation
+            if threads.contains(where: { model.lockedHere($0.conv) }) {
+                LockedHereBanner { how = true }
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+            }
             if threads.isEmpty {
                 ContentUnavailableView("No messages", systemImage: "envelope", description: Text("Write to anyone in the town with the pen."))
             }
@@ -42,18 +50,26 @@ struct MessagesView: View {
             }
         }
         .sheet(isPresented: $newOne) { NewConversation() }
+        .navigationDestination(isPresented: $how) { UnlockHowScreen() }
         .onDisappear { model.messagesOpen = false }
         .onAppear {
             model.messagesOpen = true
             guard !didLaunch else { return }
             didLaunch = true
-            if model.launch.screen == "conversation" || model.launch.screen == "mail" {
+            let screen = model.launch.screen ?? ""
+            if ["conversation", "mail", "encmail", "encmaildevices"].contains(screen) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     let list = model.dms?.threads() ?? []
-                    let pick = model.launch.screen == "mail" ? list.first { MailThreads.isMail($0.conv) } : list.first { !MailThreads.isMail($0.conv) }
+                    let pick = screen == "conversation" ? list.first { !MailThreads.isMail($0.conv) } : list.first { MailThreads.isMail($0.conv) }
                     if let pick { navigate(pick.conv) }
                 }
             }
+            // boards messages/encryption-*: Lina's conversation, the group's, the three steps
+            if ["encthread", "encdevices", "encshare"].contains(screen) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("lina").pubkey) }
+            }
+            if screen == "encgroup" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate(Demo.groupConv(me: model.me)) } }
+            if screen == "enchow" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { how = true } }
         }
     }
 
@@ -91,8 +107,12 @@ struct ThreadRow: View {
                     Spacer()
                     Text(Format.brief(thread.last.at)).font(.caption).foregroundStyle(.secondary)
                 }
-                if mail { Text(model.dms?.threadName(thread.conv) ?? "").font(.subheadline.weight(.medium)).lineLimit(1) }
-                Text((thread.last.mine ? "You: " : "") + (mail ? thread.last.text : model.derive.plainRefs(thread.last.text))).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                if mail, !model.lockedHere(thread.conv) { Text(model.dms?.threadName(thread.conv) ?? "").font(.subheadline.weight(.medium)).lineLimit(1) }
+                if model.lockedHere(thread.conv) {
+                    Label("Locked on this device", systemImage: "lock.fill").font(.subheadline).foregroundStyle(.secondary)
+                } else {
+                    Text((thread.last.mine ? "You: " : "") + (mail ? thread.last.text : model.derive.plainRefs(thread.last.text))).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                }
             }
             if thread.unread > 0 {
                 Circle().fill(Color.brand).frame(width: 10, height: 10).padding(.top, 6).accessibilityLabel("Unread")
@@ -120,19 +140,49 @@ struct ConversationView: View {
     @State private var subject = ""
     @State private var error: String?
     @State private var sending = 0
+    /// The Encryption screen, pushed by the lock and by a device line.
+    @State private var encryption = false
+    /// The amber line's sheet: share history with someone's new device.
+    @State private var sharing: DeviceNotice?
+    @State private var how = false
+
+    /// Messages and device lines, in the order they happened.
+    private enum Row: Identifiable {
+        case dm(Dm), notice(DeviceNotice)
+        var id: String { switch self { case .dm(let d): return d.rid; case .notice(let n): return "notice:" + n.id } }
+        var at: Int { switch self { case .dm(let d): return d.at; case .notice(let n): return n.at } }
+    }
+
+    private func rows(_ list: [Dm], _ sealed: SealedConv?) -> [Row] {
+        guard let sealed, !sealed.notices.isEmpty else { return list.map { .dm($0) } }
+        return (list.map { Row.dm($0) } + sealed.notices.map { Row.notice($0) }).sorted { $0.at < $1.at }
+    }
 
     var body: some View {
         let _ = model.version
-        let list = model.dms?.thread(conv) ?? []
+        let locked = model.lockedHere(conv)
+        let list = locked ? [] : (model.dms?.thread(conv) ?? [])
         let mail = MailThreads.isMail(conv)
+        // a sealed conversation has the lock by its name; one that is not sealed has none
+        let sealed = model.sealedConv(conv)
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
-                if list.isEmpty {
+                if locked {
+                    // a new device nobody allowed yet: what was written before it stays locked
+                    LockedHereBanner { how = true }
+                } else if list.isEmpty {
                     Text(mail ? "A new e-mail to \(MailThreads.address(conv)): its subject names the thread. It goes out from \(model.dms?.myAddress ?? "your address here"); answers land in the thread."
                          : "No messages yet. Only you two can read them.")
                         .font(.callout).foregroundStyle(.secondary).padding()
                 }
-                ForEach(list) { d in Bubble(dm: d) }
+                ForEach(rows(list, locked ? nil : sealed)) { r in
+                    switch r {
+                    case .dm(let d): Bubble(dm: d)
+                    case .notice(let n):
+                        // the amber line opens the sheet; every other line the Encryption screen
+                        DeviceNoticeLine(notice: n) { hideKeyboard(); if n.what == .locked { sharing = n } else { encryption = true } }
+                    }
+                }
             }
             .padding()
         }
@@ -144,20 +194,46 @@ struct ConversationView: View {
             // a person: their face and name, a tap pushes their profile (board home/conversation)
             if !mail, MailThreads.peers(conv).count == 1, let peer = MailThreads.peers(conv).first, isHex64(peer) {
                 ToolbarItem(placement: .principal) {
-                    Button { model.openProfile = peer } label: {
-                        VStack(spacing: 1) {
-                            Avatar(pubkey: peer, size: 26)
-                            HStack(spacing: 3) {
-                                Text(convName(model, conv)).font(.caption.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
-                                Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary)
+                    // the face and the name push the profile; the small lock by the name of a sealed
+                    // conversation pushes the Encryption screen (board messages/encryption-thread)
+                    VStack(spacing: 1) {
+                        Button { model.openProfile = peer } label: { Avatar(pubkey: peer, size: 26) }
+                            .buttonStyle(.plain)
+                            .accessibilityHidden(true)
+                        HStack(spacing: 0) {
+                            Button { model.openProfile = peer } label: {
+                                HStack(spacing: 3) {
+                                    Text(convName(model, conv)).font(.caption.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+                                    if sealed == nil { Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary) }
+                                }
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Open \(convName(model, conv))’s profile")
+                            .accessibilityIdentifier("dm-header")
+                            if sealed != nil { SealedLock { hideKeyboard(); encryption = true }.frame(width: 20, height: 16) }
                         }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open \(convName(model, conv))’s profile")
-                    .accessibilityIdentifier("dm-header")
+                }
+            } else if sealed != nil {
+                // a group, an e-mail thread: its title with the lock
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 0) {
+                        Text(mail && !MailThreads.isNewMail(conv) ? (model.dms?.threadName(conv) ?? "") : convName(model, conv))
+                            .font(.headline).lineLimit(1)
+                        SealedLock { hideKeyboard(); encryption = true }.frame(width: 24, height: 30)
+                    }
                 }
             }
+        }
+        .navigationDestination(isPresented: $encryption) { EncryptionScreen(conv: conv) }
+        .navigationDestination(isPresented: $how) { UnlockHowScreen() }
+        .sheet(item: $sharing) { n in ShareHistorySheet(conv: conv, notice: n) }
+        .task {
+            // screenshots (boards messages/encryption-*)
+            let screen = model.launch.screen ?? ""
+            guard ["encdevices", "encgroup", "encmaildevices", "encshare"].contains(screen) else { return }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            if screen == "encshare" { sharing = sealed?.notices.first { $0.what == .locked } } else { encryption = true }
         }
         .onAppear { model.markConversationRead(conv); model.visibleConversation = conv }
         .onDisappear { if model.visibleConversation == conv { model.visibleConversation = nil } }
@@ -173,7 +249,7 @@ struct ConversationView: View {
                 // the channel composer's shape: a capsule field with Send inside it
                 let can = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 HStack(alignment: .bottom, spacing: 0) {
-                    TextField(mail ? "Write an e-mail" : "Message", text: $text, axis: .vertical)
+                    TextField(mail ? (MailThreads.isNewMail(conv) ? "Write an e-mail" : "Reply by e-mail") : "Message", text: $text, axis: .vertical)
                         .font(.body)
                         .lineLimit(1...8)
                         .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 8)

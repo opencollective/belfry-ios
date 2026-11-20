@@ -201,11 +201,15 @@ struct PlaceDestinations: ViewModifier {
 
 /// Screens a place pushes by name (the Home tiles, the drawer's town rows, the person row).
 enum PlaceRoute: Hashable {
-    case messages, mentions, todos, members, charter, me, settings, archived, events, channels, accounts, about, almostIn
+    case messages, mentions, todos, members, charter, me, settings, archived, events, channels, accounts, about, almostIn, devices, linked
 
     @MainActor @ViewBuilder var view: some View {
         switch self {
         case .messages: MessagesView()
+        case .devices: DevicesView()
+        // screenshots: "iPad is linked" (the demo has no address of its own to link)
+        case .linked:
+            if let a = MemberAddress.parse("sam@demo.belfry.sh") { LinkDeviceScreen(address: a, linked: "iPad") }
         case .mentions: MentionsView()
         case .todos: MyTodosView()
         case .members: MembersDirectory()

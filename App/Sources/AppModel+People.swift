@@ -275,8 +275,13 @@ extension AppModel {
 
     func sessions() async -> Result<[SessionInfo], ApiError> {
         if engine?.localOnly != false {
-            return .success([SessionInfo(applicationName: "Belfry for iPhone", device: "iPhone", redirectOrigin: "sh.belfry.app://connect",
-                                         bunkerPubkey: String(repeating: "0", count: 64), createdAt: "2026-11-01", lastActivity: "2026-11-11")])
+            let iso = ISO8601DateFormatter()
+            func at(_ days: Int) -> String { iso.string(from: Date().addingTimeInterval(TimeInterval(-days * 86400))) }
+            let all = [SessionInfo(applicationName: "Belfry for iPhone", device: "iPhone", redirectOrigin: "sh.belfry.app://connect",
+                                   bunkerPubkey: AppModel.demoSessionKey, createdAt: at(100), lastActivity: at(0)),
+                       SessionInfo(applicationName: "Belfry", device: "Safari on Mac", redirectOrigin: "https://chat.demo.belfry.sh",
+                                   bunkerPubkey: String(repeating: "1", count: 64), createdAt: at(49), lastActivity: at(3))]
+            return .success(all.filter { !sealed.removed.contains($0.bunkerPubkey) })
         }
         do { return .success(try await api.sessions()) }
         catch let e as ApiError { return .failure(e) }
@@ -284,10 +289,16 @@ extension AppModel {
     }
 
     /// This device's session: the bunker URL's key.
-    var mySessionKey: String? { session?.bunkerURL.flatMap(BunkerURL.init)?.remotePubkey }
+    var mySessionKey: String? { isDemo ? AppModel.demoSessionKey : session?.bunkerURL.flatMap(BunkerURL.init)?.remotePubkey }
+    static let demoSessionKey = String(repeating: "0", count: 64)
 
     func endSession(_ pk: String) async -> String? {
-        if engine?.localOnly != false { return nil }
+        if engine?.localOnly != false {
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            sealed.removed.insert(pk)
+            sealed.myDevices.removeAll { !$0.this }
+            return nil
+        }
         do { try await api.revokeSession(pk); return nil } catch let e as ApiError { return e.message } catch { return BelfryAPI.generic }
     }
 

@@ -611,7 +611,7 @@ struct AccountSheet: View {
                     NavigationLink { NotificationsView() } label: {
                         ActionRow(icon: "bell", title: "Notifications", detail: model.pushState == .on ? "On" : model.pushState == .denied ? "Off in Settings" : "Turn on")
                     }
-                    NavigationLink { DevicesView() } label: { ActionRow(icon: "iphone", title: "Signed-in devices") }
+                    NavigationLink { DevicesView() } label: { ActionRow(icon: "iphone", title: "Devices") }
                     if !queued.isEmpty {
                         ActionRow(icon: "tray.and.arrow.up", title: "\(queued.count) waiting to be sent",
                                   detail: queued.contains { $0.status == .failed } ? "Some could not be sent: Retry or Discard them where they are" : nil)
@@ -633,41 +633,90 @@ struct AccountSheet: View {
         }
 }
 
-/// Signed-in devices: the sessions open on my key; end one (this device is marked).
+/// Devices (Me → Devices; board messages/encryption-remove-device): the sessions open on my key.
+/// Remove asks first; this device is marked and leaves by Sign out.
 struct DevicesView: View {
     @EnvironmentObject var model: AppModel
     @State private var list: [SessionInfo]?
     @State private var error: String?
+    @State private var asking: SessionInfo?
+    @State private var removing: String?
 
     var body: some View {
         List {
             if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) }
             if let list {
-                ForEach(list) { s in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(s.applicationName.isEmpty ? "An app" : s.applicationName).font(.subheadline.weight(.semibold))
-                            Text([s.device, s.lastActivity.map { "last used " + $0.prefix(10) }].compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if s.bunkerPubkey == model.mySessionKey {
-                            Text("This device").font(.caption).foregroundStyle(.secondary)
-                        } else {
-                            BusyButton("End", role: .destructive) {
-                                if let e = await model.endSession(s.bunkerPubkey) { error = e } else { await load() }
+                Section {
+                    ForEach(list) { s in
+                        let this = s.bunkerPubkey == model.mySessionKey
+                        HStack {
+                            MyDeviceRow(icon: DeviceKind.of(name(s)).icon, name: name(s), line: line(s, this: this), this: this)
+                            Spacer(minLength: 4)
+                            if removing == s.id {
+                                ProgressView()
+                            } else if !this {
+                                Button("Remove", role: .destructive) { asking = s }
+                                    .buttonStyle(.borderless)
+                                    .disabled(removing != nil)
+                                    .accessibilityIdentifier("device-remove")
                             }
-                            .font(.caption)
-                            .buttonStyle(.bordered)
                         }
                     }
+                } header: {
+                    Text("Signed in as \(model.name(model.me))").textCase(nil)
+                } footer: {
+                    Text("To remove this device, sign out on it.")
                 }
             } else {
                 ProgressView()
             }
         }
-        .navigationTitle("Signed-in devices")
-        .task { await load() }
+        .navigationTitle("Devices")
+        .navigationBarTitleDisplayMode(.inline)
+        .alert("Remove \(asking.map(name) ?? "this device")?", isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }), presenting: asking) { s in
+            Button("Remove", role: .destructive) { remove(s) }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("It will be signed out and stop reading new messages, in all your conversations. What it already shows stays on it.")
+        }
+        .task {
+            await load()
+            // screenshots: the question about the other device
+            if model.launch.screen == "encremove" { asking = list?.first { $0.bunkerPubkey != model.mySessionKey } }
+        }
+    }
+
+    /// The device's own name ("iPhone", "Safari on Mac"); an older session has only its app's.
+    private func name(_ s: SessionInfo) -> String {
+        if let d = s.device, !d.isEmpty { return d }
+        return s.applicationName.isEmpty ? "A device" : s.applicationName
+    }
+
+    private func line(_ s: SessionInfo, this: Bool) -> String {
+        var bits = [String]()
+        if let at = DevicesView.time(s.createdAt) { bits.append(SealedWords.added(at)) }
+        if this { bits.append("active now") } else if let at = s.lastActivity.flatMap(DevicesView.time) { bits.append("active " + Format.ago(at)) }
+        return bits.joined(separator: " · ")
+    }
+
+    /// The server's time text (ISO 8601, with or without fractions, or a plain day) as seconds.
+    static func time(_ text: String) -> Int? {
+        let f = ISO8601DateFormatter()
+        if let d = f.date(from: text) { return Int(d.timeIntervalSince1970) }
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: text) { return Int(d.timeIntervalSince1970) }
+        f.formatOptions = [.withFullDate]
+        return f.date(from: String(text.prefix(10))).map { Int($0.timeIntervalSince1970) }
+    }
+
+    /// Remove locks while it works: the row shows progress and no other row can be removed.
+    private func remove(_ s: SessionInfo) {
+        guard removing == nil else { return }
+        removing = s.id
+        Task {
+            if let e = await model.endSession(s.bunkerPubkey) { error = e } else { error = nil; await load() }
+            removing = nil
+        }
     }
 
     func load() async {

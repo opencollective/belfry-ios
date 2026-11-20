@@ -396,8 +396,8 @@ public final class DirectMessages: @unchecked Sendable {
 
     /// Demo mode: a NIP-17 message from FROM.
     @discardableResult
-    public func demoDM(from: LocalSigner, text: String, at: Int, reaction: String? = nil) async throws -> String {
-        let rumor = GiftWrap.rumor(kind: 14, pubkey: from.pubkey, tags: [["p", me]], content: text, createdAt: at)
+    public func demoDM(from: LocalSigner, text: String, at: Int, reaction: String? = nil, others: [String] = []) async throws -> String {
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: from.pubkey, tags: ([me] + others).map { ["p", $0] }, content: text, createdAt: at)
         let w = try await GiftWrap.wrap(rumor, to: me, signer: from)
         engine.add([w], verify: false)
         // the demo's own reaction to it (wrapped to me like any other)
@@ -406,5 +406,11 @@ public final class DirectMessages: @unchecked Sendable {
             engine.add([try await GiftWrap.wrap(r, to: me, signer: engine.signer)], verify: false)
         }
         return rumor.id
+    }
+
+    /// Demo mode: a NIP-17 message of mine to TO (my own copy of it).
+    public func demoSent(to: String, text: String, at: Int) async throws {
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: [["p", to]], content: text, createdAt: at)
+        engine.add([try await GiftWrap.wrap(rumor, to: me, signer: engine.signer)], verify: false)
     }
 }

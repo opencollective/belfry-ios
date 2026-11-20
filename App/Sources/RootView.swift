@@ -102,6 +102,8 @@ struct RootView: View {
 
     var body: some View {
         withSheets
+            // "Give your new device … access?" over whatever screen is open (board messages/encryption-allow)
+            .overlay { if let ask = model.sealed.ask { AllowPrompt(ask: ask) } }
             .fullScreenCover(item: $model.lightbox) { LightboxView(box: $0) }
             .sheet(isPresented: $model.joinAsked) { JoinSheet() }
             .sheet(isPresented: $newChannel) {
@@ -626,6 +628,14 @@ struct RootView: View {
             }
         case "membersinvite": selection = .members
         case "messages", "conversation", "mail": selection = .messages
+        // boards messages/encryption-*: MessagesView and ConversationView open the rest
+        case "encthread", "encdevices", "encgroup", "encmail", "encmaildevices", "encnewdevice", "enchow", "encallow", "encshare": selection = .messages
+        case "encremove":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { push(PlaceRoute.devices) }
+        case "enclinked":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { push(PlaceRoute.linked) }
         case "mentions": selection = .mentions
         case "requests": selection = .requests
         case "directory": selection = .members

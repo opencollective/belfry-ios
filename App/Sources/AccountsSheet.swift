@@ -189,11 +189,41 @@ extension AppModel {
 /// https://chat.<domain>/login/<username> for the open account. Nothing secret is in it: the
 /// other device asks for the 6-digit code mailed to this account.
 struct LinkDeviceScreen: View {
+    @Environment(\.dismiss) private var dismiss
     let address: MemberAddress
+    /// The device that scanned the code and is in ("iPad"): the confirmation (board
+    /// messages/encryption-link-qr). Set by the demo only until the lead's contract says how
+    /// this device learns it.
+    var linked: String?
 
     private var link: String { "https://chat.\(address.domain)/login/\(address.name)" }
 
     var body: some View {
+        if let linked { done(linked) } else { code }
+    }
+
+    private func done(_ device: String) -> some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "checkmark.circle.fill").font(.system(size: 64)).foregroundStyle(.green)
+                .accessibilityHidden(true)
+            Text("\(device) is linked").font(.title2.weight(.bold)).multilineTextAlignment(.center)
+            Text("It can read your conversations, including earlier ones.").multilineTextAlignment(.center)
+            Text("Scanning your code was the confirmation: nothing more to allow.")
+                .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Spacer()
+            Spacer()
+            // back to Accounts
+            Button { dismiss() } label: { Text("Done").frame(maxWidth: .infinity) }
+                .buttonStyle(.brand).controlSize(.large)
+                .accessibilityIdentifier("link-done")
+        }
+        .padding(.horizontal, 20).padding(.bottom, 24)
+        .navigationTitle("Link a phone or tablet")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var code: some View {
         List {
             Section {
                 VStack(spacing: 12) {

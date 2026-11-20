@@ -712,3 +712,26 @@ final class EventsOverTests: XCTestCase {
         XCTAssertEqual(d.eventsIn(.upcoming, now: now).first { !$0.allDay }?.d, "ongoing")
     }
 }
+
+// 2026-11-20: the words of the Encryption screens (boards messages/encryption-*).
+final class SealedWordsTests: XCTestCase {
+    func testWords() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Europe/Brussels")!
+        let now = 1795183200 // 2026-11-20 15:00 in Brussels
+        let day = 86400
+        XCTAssertEqual(SealedWords.devices(1), "1 device")
+        XCTAssertEqual(SealedWords.devices(3), "3 devices")
+        XCTAssertEqual(SealedWords.summary(people: 5, devices: 11), "5 people · 11 devices")
+        XCTAssertEqual(SealedWords.change(added: false, at: now - 3600, now: now, calendar: cal), "Removed a device today")
+        // 00:30 today is today; 23:30 the evening before is yesterday, whatever the hours between
+        XCTAssertEqual(SealedWords.change(added: true, at: now - 14 * 3600 - 1800, now: now, calendar: cal), "Added a device today")
+        XCTAssertEqual(SealedWords.change(added: true, at: now - 15 * 3600 - 1800, now: now, calendar: cal), "Added a device yesterday")
+        XCTAssertEqual(SealedWords.change(added: false, at: now - 18 * day, now: now, calendar: cal), "Removed a device on 2 Nov")
+        XCTAssertEqual(SealedWords.change(added: false, at: now - 30 * day, now: now, calendar: cal), "Removed a device on 21 Oct")
+        XCTAssertNil(SealedWords.change(added: false, at: now - 30 * day - 1, now: now, calendar: cal))
+        XCTAssertNil(SealedWords.change(added: true, at: now + 60, now: now, calendar: cal))
+        XCTAssertEqual(SealedWords.added(now - 100 * day, calendar: cal), "Added 12 Aug")
+        XCTAssertEqual(SealedWords.added(now - 49 * day, from: "iPhone", calendar: cal), "Added 2 Oct · from iPhone")
+    }
+}
