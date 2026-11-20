@@ -303,7 +303,8 @@ final class SealedEngineTests: XCTestCase {
         guard case .rumor(let got) = bob.sealed.open(wraps[0]) else { return XCTFail("Bob does not open it") }
         XCTAssertEqual(got.content, "Hello Bob")
         guard case .rumor = mac.sealed.open(wraps[1]) else { return XCTFail("my other device does not open my copy") }
-        guard case .keep = bob.sealed.open(wraps[1]) else { return XCTFail("Bob opened my copy") }
+        // my copy is sealed to my letterbox, which is none of Bob's: on his device it is dropped
+        guard case .drop = bob.sealed.open(wraps[1]) else { return XCTFail("Bob kept or opened my copy") }
 
         // the Mac's session is gone: the phone drops it, with a new letterbox the Mac never gets
         b.lock.lock(); b.sessions[alice.account]?.removeAll { $0.clientPubkey == mac.pub }; b.lock.unlock()
