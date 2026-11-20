@@ -134,7 +134,8 @@ extension AppModel {
         se.observe(list.filter { $0.kind == SealedKind.roster }.compactMap { $0.tag("p") } + list.filter { $0.kind == 30078 }.map(\.pubkey))
         // only what touches my own account costs a look at my sessions
         let mine = list.isEmpty || list.contains { $0.pubkey == me || $0.hasTag("p", me) || $0.hasTag("p", se.devicePub) }
-        guard mine else { refreshSealed(); return }
+        // a kept wrap is tried again at each new roster (its author's chain may be whole now)
+        guard mine else { Task { await dms?.process(); refreshSealed() }; return }
         Task {
             await se.maintain()
             await dms?.process()
