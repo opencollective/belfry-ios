@@ -611,7 +611,7 @@ struct AccountSheet: View {
                     NavigationLink { NotificationsView() } label: {
                         ActionRow(icon: "bell", title: "Notifications", detail: model.pushState == .on ? "On" : model.pushState == .denied ? "Off in Settings" : "Turn on")
                     }
-                    NavigationLink { DevicesView() } label: { ActionRow(icon: "iphone", title: "Devices") }
+                    NavigationLink { DevicesView() } label: { ActionRow(icon: "iphone", title: "Devices", detail: "Where you're signed in") }
                     if !queued.isEmpty {
                         ActionRow(icon: "tray.and.arrow.up", title: "\(queued.count) waiting to be sent",
                                   detail: queued.contains { $0.status == .failed } ? "Some could not be sent: Retry or Discard them where they are" : nil)

@@ -382,7 +382,7 @@ struct ShareHistorySheet: View {
                 .accessibilityHidden(true)
             Text("Share this \(group ? "group" : "conversation")'s history with \(who)'s new device?")
                 .font(.title3.weight(.bold)).multilineTextAlignment(.center)
-            Text("\(who) signed in on a new device that can't read earlier messages yet, and has no other device to unlock it. Only do this if you're sure it's \(who): ask in person or by phone if you're not.")
+            Text("\(who) started over on a new device and can't read your earlier messages. Only do this if you're sure it's \(who): ask in person or by phone if you're not.")
                 .font(.subheadline).multilineTextAlignment(.center)
             Text("A new \(kind) · signed in \(SealedWords.dayWord(notice.at, now: Int.now)) \(Format.time(notice.at))")
                 .font(.footnote).foregroundStyle(.secondary)

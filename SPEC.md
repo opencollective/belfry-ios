@@ -2644,3 +2644,26 @@ the drawer's next-event line, the public list a guest sees. Before: an event sta
 until midnight of the day it ended (compared with the start of today), and an event with no end
 counted as over at its start (no answering once it began). Check-in's days (`onEventDays`) read
 an all-day end date as the last day too. Test: `EventsOverTests` (fixed clock, Europe/Brussels).
+
+### 19.63 Sealed conversations (2026-11-20)
+
+The contract is collective-belfry `docs/sealed.md` (version 1), shared with the web chat and
+Android; this section only says where the iPhone app implements it. Vectors: `vectors/sealed.json`
+(the lead's `docs/sealed-vectors.json`, copied byte for byte when it arrives).
+
+- `Sealed/Roster.swift`: a roster (8560), the valid chain from the anchor (30078 `belfry:sealed`),
+  forks (lower id, lower-case hex), which device may have signed a seal (`accepts`), the changes
+  roster by roster (the device lines), who added a device.
+- `Sealed/Sealed.swift`: the key chain (every secret checked against its public key), sealing
+  and opening (the opener computes the rumor's id and ignores `id` / `sig` inside the seal; a
+  sealed rumor's JSON is at most 40 000 bytes), the key hand-over (8561, a wrap to the device),
+  the request (8562) and its link proof, `belfry:devices`, shared history (8564: packed until
+  its own JSON would pass 40 000 bytes, or 200 rumors).
+- `Sealed/SealedEngine.swift`: this device's upkeep (first device, request, allow / not me, a
+  device leaving, `ready`), pins and fresh starts, which conversations are sealed (remembered
+  per device), the wraps of a send (no signer call), how an arriving wrap opens (kept and tried
+  again while its key or its author's chain is missing).
+- The device key is the session's `clientSecret`. Letterbox secrets: Keychain item `sealed-keys`
+  (`sealed-keys@<slot>`), the session's accessibility; wiped on sign-out. Never in SQLite.
+- Not done: re-sealing a queued wrap when a head changed before it left; "I don't have another
+  device" (the user's own fresh start) waits for the owner.
