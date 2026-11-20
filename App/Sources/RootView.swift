@@ -118,6 +118,7 @@ struct RootView: View {
                 AccountsSheet { switcher = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { openMe() } }
             }
             .onChange(of: model.showAccounts) { _, on in if on { model.showAccounts = false; openAccounts() } }
+            .onChange(of: model.sealed.openDevices) { _, on in if on { model.sealed.openDevices = false; closeDrawer(); push(PlaceRoute.devices) } }
             .onChange(of: model.showAlmostIn) { _, on in if on { model.showAlmostIn = false; closeDrawer(); push(PlaceRoute.almostIn) } }
             .sheet(isPresented: $model.showCreate) {
                 CreateMenuSheet(start: model.tab == .town ? model.townChannel : generalId, first: model.createFirst) { id in
@@ -629,7 +630,7 @@ struct RootView: View {
         case "membersinvite": selection = .members
         case "messages", "conversation", "mail": selection = .messages
         // boards messages/encryption-*: MessagesView and ConversationView open the rest
-        case "encthread", "encdevices", "encgroup", "encmail", "encmaildevices", "encnewdevice", "enchow", "encallow", "encshare", "enclocked", "encshared", "encsharedwhy": selection = .messages
+        case "encthread", "encdevices", "encgroup", "encmail", "encmaildevices", "encnewdevice", "enchow", "encallow", "encallowfull", "encshare", "enclocked", "encshared", "encsharedwhy": selection = .messages
         case "encremove":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { push(PlaceRoute.devices) }

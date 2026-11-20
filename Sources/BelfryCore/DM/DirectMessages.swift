@@ -505,6 +505,14 @@ public final class DirectMessages: @unchecked Sendable {
         save()
     }
 
+    /// Demo mode: the message TEXT of CONV came the old way after the conversation was sealed.
+    public func demoUnsealed(conv: String, text: String) {
+        lock.lock()
+        for (k, d) in items where d.conv == conv && d.text == text { items[k]?.unsealed = true }
+        lock.unlock()
+        save()
+    }
+
     /// Demo mode: a NIP-17 message of mine to TO (my own copy of it).
     public func demoSent(to: String, text: String, at: Int) async throws {
         let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: [["p", to]], content: text, createdAt: at)

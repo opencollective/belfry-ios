@@ -80,6 +80,10 @@ struct SealedState: Equatable {
     /// letterbox secret, sealed.md 5.2); messages from before the conversation was sealed stay readable.
     var notAllowed = false
     var ask: AllowAsk?
+    /// Asks the user closed without an answer (20 devices already): not shown again in this run.
+    var dismissed: Set<String> = []
+    /// "Devices" on the Allow card: Me → Devices is pushed.
+    var openDevices = false
     /// Demo: devices removed in Devices.
     var removed: Set<String> = []
 }
@@ -142,7 +146,7 @@ extension AppModel {
         Task {
             await se.maintain()
             await dms?.process()
-            let ask = await se.asks().first
+            let ask = await se.asks().first { !sealed.dismissed.contains($0.device) }
             let now = ask.map { AllowAsk(id: $0.device, device: $0.name, kind: DeviceKind.of($0.name), at: $0.at) }
             if sealed.ask != now { sealed.ask = now }
             refreshSealed()
@@ -154,6 +158,7 @@ extension AppModel {
         guard let se = sealedEngine, let dms, !isDemo else { return }
         var st = SealedState()
         st.ask = sealed.ask
+        st.dismissed = sealed.dismissed
         let mine = se.chain(me)
         let names = se.deviceNames()
         func kind(_ d: String) -> DeviceKind? { names[d].flatMap { DeviceKind(rawValue: $0.kind) } }
@@ -187,20 +192,28 @@ extension AppModel {
     }
 
     /// Allow / Not me on the prompt. The first device to answer wins: the prompt goes either way.
-    func answerAllow(_ ask: AllowAsk, allow: Bool) async {
+    /// False: Allow was refused because the account already has 20 devices (the card says so).
+    @discardableResult
+    func answerAllow(_ ask: AllowAsk, allow: Bool) async -> Bool {
         if let se = sealedEngine {
             // 20 devices already: refused, and said, before any key is handed over
-            if allow, se.full, se.chain(me)?.devices.contains(ask.id) != true {
-                showToast("You already have 20 devices. Remove one in Devices first.")
-                return
-            }
+            if allow, se.full, se.chain(me)?.devices.contains(ask.id) != true { return false }
             _ = allow ? await se.allow(ask.id) : await se.deny(ask.id)
-            let next = await se.asks().first { $0.device != ask.id }
+            let next = await se.asks().first { $0.device != ask.id && !sealed.dismissed.contains($0.device) }
             sealed.ask = next.map { AllowAsk(id: $0.device, device: $0.name, kind: DeviceKind.of($0.name), at: $0.at) }
-            return
+            return true
         }
         try? await Task.sleep(nanoseconds: 700_000_000) // the demo's stand-in for the call
+        if allow, launch.screen == "encallowfull" { return false }
         if sealed.ask?.id == ask.id { sealed.ask = nil }
+        return true
+    }
+
+    /// The Allow card closed without an answer: the new device stays locked.
+    func closeAsk(_ ask: AllowAsk, devices: Bool) {
+        sealed.dismissed.insert(ask.id)
+        sealed.ask = nil
+        if devices { sealed.openDevices = true }
     }
 
     /// Share history with someone's new device; the amber line then reads "<name> added a device".
@@ -267,7 +280,7 @@ extension Demo {
         switch screen {
         case "encnewdevice", "enchow", "enclocked":
             s.notAllowed = true
-        case "encallow":
+        case "encallow", "encallowfull":
             s.ask = AllowAsk(id: "mac", device: "Safari on Mac", kind: .computer, at: now - 120)
         default: break
         }

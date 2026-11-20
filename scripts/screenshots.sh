@@ -195,6 +195,7 @@ shot 185d-enc-locked-thread-dark enclocked dark
 shot 186-enc-how enchow light
 shot 187-enc-allow encallow light
 shot 187b-enc-allow-dark encallow dark
+shot 187c-enc-allow-full encallowfull light
 shot 188-enc-linked enclinked light
 shot 189-enc-share encshare light
 shot 189b-enc-share-dark encshare dark

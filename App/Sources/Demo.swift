@@ -409,5 +409,7 @@ enum Demo {
         await dms.process()
         // board messages/encryption-shared-history: Dev shared the earlier messages with this device
         dms.demoShared(conv: "n:" + ps["dev"]!.pubkey, by: ps["dev"]!.pubkey)
+        // board messages/encryption-thread: one message that came without the lock ("Not sealed")
+        dms.demoUnsealed(conv: "n:" + lina.pubkey, text: "Thanks! The key is under the blue pot.")
     }
 }

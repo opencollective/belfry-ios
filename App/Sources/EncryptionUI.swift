@@ -321,6 +321,8 @@ struct AllowPrompt: View {
     @EnvironmentObject var model: AppModel
     let ask: AllowAsk
     @State private var busy = false
+    /// Allow was refused: the account already has 20 devices.
+    @State private var full = false
 
     var body: some View {
         ZStack {
@@ -329,21 +331,31 @@ struct AllowPrompt: View {
                 Image(systemName: ask.kind.icon).font(.system(size: 30)).foregroundStyle(.secondary)
                     .frame(width: 60, height: 60).background(Color.secondary.opacity(0.15), in: Circle())
                     .accessibilityHidden(true)
-                Text("Give your new device “\(ask.device)” access to your conversations?")
-                    .font(.headline).multilineTextAlignment(.center)
-                Text("It will read all your messages, including earlier ones.")
-                    .font(.subheadline).multilineTextAlignment(.center)
-                Text("Signed in as \(model.myName) · \(Format.ago(ask.at))")
-                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                BusyButton { await answer(true) } label: { Text("Allow").frame(maxWidth: .infinity) }
-                    .buttonStyle(.brand).controlSize(.large)
-                    .padding(.top, 6)
-                    .accessibilityIdentifier("allow-device")
-                BusyButton(role: .destructive) { await answer(false) } label: { Text("Not me").frame(maxWidth: .infinity) }
-                    .buttonStyle(.bordered).controlSize(.large).tint(.red)
-                    .accessibilityIdentifier("allow-not-me")
-                Text("Not me removes that device and signs it out.")
-                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                if full {
+                    Text("You already have 20 devices. Remove one in Devices, then try again.")
+                        .font(.headline).multilineTextAlignment(.center)
+                    Button { model.closeAsk(ask, devices: true) } label: { Text("Devices").frame(maxWidth: .infinity) }
+                        .buttonStyle(.brand).controlSize(.large)
+                        .padding(.top, 6)
+                    Button { model.closeAsk(ask, devices: false) } label: { Text("OK").frame(maxWidth: .infinity) }
+                        .buttonStyle(.bordered).controlSize(.large)
+                } else {
+                    Text("Give your new device “\(ask.device)” access to your conversations?")
+                        .font(.headline).multilineTextAlignment(.center)
+                    Text("It will read all your messages, including earlier ones.")
+                        .font(.subheadline).multilineTextAlignment(.center)
+                    Text("Signed in as \(model.myName) · \(Format.ago(ask.at))")
+                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    BusyButton { await answer(true) } label: { Text("Allow").frame(maxWidth: .infinity) }
+                        .buttonStyle(.brand).controlSize(.large)
+                        .padding(.top, 6)
+                        .accessibilityIdentifier("allow-device")
+                    BusyButton(role: .destructive) { await answer(false) } label: { Text("Not me").frame(maxWidth: .infinity) }
+                        .buttonStyle(.bordered).controlSize(.large).tint(.red)
+                        .accessibilityIdentifier("allow-not-me")
+                    Text("Not me removes that device and signs it out.")
+                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }
             }
             .disabled(busy)
             .padding(20)
@@ -352,11 +364,15 @@ struct AllowPrompt: View {
             .padding(.horizontal, 28)
             .accessibilityAddTraits(.isModal)
         }
+        .task {
+            // screenshots: the card after Allow was refused
+            if model.launch.screen == "encallowfull" { full = true }
+        }
     }
 
     private func answer(_ allow: Bool) async {
         busy = true
-        await model.answerAllow(ask, allow: allow)
+        if await !model.answerAllow(ask, allow: allow) { full = true }
         busy = false
     }
 }
