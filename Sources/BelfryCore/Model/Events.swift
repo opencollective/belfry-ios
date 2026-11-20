@@ -392,10 +392,9 @@ extension Derive {
     public func eventOfGroup(_ groupId: String) -> CalEvent? { calendar.first { $0.groupId == groupId } }
     public func eventURL(_ e: CalEvent) -> String { EventLinks.url(domain: ctx.domain, link: e.link) }
 
-    /// Upcoming events (ending today or later), of one channel or of all.
+    /// Upcoming events (not over at NOW: one going on stays), of one channel or of all.
     public func upcoming(_ channel: String? = nil, now: Int) -> [CalEvent] {
-        let today = startOfDay(now)
-        return calendar.filter { ($0.end ?? $0.start) >= today && (channel == nil || $0.channels.contains(channel!)) }
+        calendar.filter { !isPast($0, now: now) && (channel == nil || $0.channels.contains(channel!)) }
     }
 
     public func eventPeople(_ e: CalEvent) -> EventPeople { e.remote ? .empty : EventLinks.people(inGroupSorted(e.groupId)) }
@@ -460,8 +459,35 @@ extension Derive {
     }
 
     public func endOf(_ e: CalEvent) -> Int { e.end ?? e.start }
-    public func isPast(_ e: CalEvent, now: Int) -> Bool { endOf(e) < startOfDay(now) }
-    public func ended(_ e: CalEvent, now: Int) -> Bool { endOf(e) < now }
+
+    /// When E is over (SPEC 19.62, the one rule of every list; the lead, 2026-11-20): its end; a
+    /// timed event with no end ends an hour after its start; an all-day event ends at the start
+    /// of the day after its last day (its end date is inclusive), in the event's time zone, the
+    /// viewer's when it has none.
+    public func endsAt(_ e: CalEvent) -> Int {
+        guard e.allDay else { return e.end ?? e.start + 3600 }
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = e.tz.flatMap { TimeZone(identifier: $0) } ?? ctx.timeZone
+        func day(_ v: String?) -> Date? {
+            let p = (v ?? "").prefix(10).split(separator: "-").compactMap { Int($0) }
+            guard p.count == 3 else { return nil }
+            return c.date(from: DateComponents(year: p[0], month: p[1], day: p[2]))
+        }
+        // its dates as written (a day is a day in its own zone); read from the belfry's API: the
+        // days as they were parsed
+        func parsed(_ t: Int) -> Date? {
+            c.date(from: calendarForDays.dateComponents([.year, .month, .day], from: Date(timeIntervalSince1970: TimeInterval(t))))
+        }
+        let first = day(e.ev.tag("start")) ?? parsed(e.start) ?? Date(timeIntervalSince1970: TimeInterval(e.start))
+        var last = day(e.ev.tag("end")) ?? e.end.flatMap { parsed($0) } ?? first
+        if last < first { last = first }
+        return Int((c.date(byAdding: .day, value: 1, to: last) ?? last.addingTimeInterval(86400)).timeIntervalSince1970)
+    }
+
+    /// Over: NOW is at or after its end. An event going on now is not past: it stays upcoming,
+    /// and stays the next one.
+    public func isPast(_ e: CalEvent, now: Int) -> Bool { now >= endsAt(e) }
+    public func ended(_ e: CalEvent, now: Int) -> Bool { isPast(e, now: now) }
     /// Taking a place still makes sense: not cancelled, not over.
     public func isOpen(_ e: CalEvent, now: Int) -> Bool { e.status != .cancelled && !ended(e, now: now) }
 
@@ -481,7 +507,7 @@ extension Derive {
     public func yourEvents(now: Int) -> [CalEvent] {
         let since = now - 30 * 86400
         let keep: Set<MyState> = [.host, .ticket, .maybe, .applied, .waitlist]
-        return calendar.filter { $0.isNew && endOf($0) >= since && ($0.hosts.contains(me) || keep.contains(myState($0)) || ($0.meeting && $0.invited.contains(me))) }
+        return calendar.filter { $0.isNew && endsAt($0) > since && ($0.hosts.contains(me) || keep.contains(myState($0)) || ($0.meeting && $0.invited.contains(me))) }
     }
 
     /// The `a` tags of the events a text links to (those this device knows).

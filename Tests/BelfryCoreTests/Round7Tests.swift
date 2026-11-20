@@ -658,3 +658,57 @@ final class WayInTests: XCTestCase {
         XCTAssertEqual(BelfryAPI.whoisTags(nil), [:])
     }
 }
+
+/// One rule for every list of events (SPEC 19.62): past = now ≥ end, with a fixed clock.
+final class EventsOverTests: XCTestCase {
+    func testPastIsNowAtOrAfterTheEnd() throws {
+        let zone = try XCTUnwrap(TimeZone(identifier: "Europe/Brussels"))
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = zone
+        func at(_ day: Int, _ h: Int, _ m: Int = 0) -> Int {
+            Int(cal.date(from: DateComponents(year: 2026, month: 11, day: day, hour: h, minute: m))!.timeIntervalSince1970)
+        }
+        let now = at(20, 15)
+        func timed(_ d: String, _ start: Int, _ end: Int?) -> NostrEvent {
+            ev(A, 31923, 1, [["d", d], ["title", d], ["start", String(start)]] + (end.map { [["end", String($0)]] } ?? []))
+        }
+        func days(_ d: String, _ start: String, _ end: String? = nil, tz: String? = nil) -> NostrEvent {
+            ev(A, 31922, 1, [["d", d], ["title", d], ["start", start]] + (end.map { [["end", $0]] } ?? []) + (tz.map { [["start_tzid", $0]] } ?? []))
+        }
+        let evs = [
+            timed("morning", at(20, 9), at(20, 10)),          // ended earlier today: past (not until midnight)
+            timed("noend-old", at(20, 13, 30), nil),          // no end: over an hour after its start
+            timed("noend-now", at(20, 14, 30), nil),          // no end, started 30 min ago: still on
+            timed("ongoing", at(20, 14), at(20, 16)),         // going on now: upcoming
+            timed("ends-now", at(20, 13), now),               // now ≥ end: past
+            timed("later", at(20, 18), at(20, 19)),
+            days("day-today", "2026-11-20"),                  // all day today: until midnight
+            days("day-range", "2026-11-18", "2026-11-20"),    // the end date is its last day
+            days("day-yesterday", "2026-11-19"),
+            days("day-auckland", "2026-11-20", tz: "Pacific/Auckland"), // its day ended at 12:00 in Brussels
+        ]
+        func world() -> Derive { Derive(events: evs, context: WorldContext(me: A, timeZone: zone)) }
+        let d = world()
+        XCTAssertEqual(Set(d.eventsIn(.upcoming, now: now).map(\.d)), ["noend-now", "ongoing", "later", "day-today", "day-range"])
+        XCTAssertEqual(Set(d.eventsIn(.past, now: now).map(\.d)), ["morning", "noend-old", "ends-now", "day-yesterday", "day-auckland"])
+        XCTAssertEqual(Set(d.eventsIn(.hosting, now: now).map(\.d)), Set(d.eventsIn(.upcoming, now: now).map(\.d)))
+        XCTAssertEqual(Set(d.upcoming(now: now).map(\.d)), Set(d.eventsIn(.upcoming, now: now).map(\.d)))
+        func e(_ id: String) throws -> CalEvent { try XCTUnwrap(d.calendar.first { $0.d == id }) }
+        XCTAssertEqual(d.endsAt(try e("noend-now")), at(20, 15, 30))
+        XCTAssertEqual(d.endsAt(try e("day-today")), at(21, 0))
+        XCTAssertEqual(d.endsAt(try e("day-range")), at(21, 0))
+        XCTAssertEqual(d.endsAt(try e("day-auckland")), at(20, 12))
+        // answering closes by the same rule
+        XCTAssertTrue(d.isOpen(try e("ongoing"), now: now))
+        XCTAssertTrue(d.isOpen(try e("noend-now"), now: now))
+        XCTAssertFalse(d.isOpen(try e("morning"), now: now))
+        XCTAssertFalse(d.isOpen(try e("noend-old"), now: now))
+        // the edges: the second before the end it is on, at the end it is over
+        XCTAssertFalse(d.isPast(try e("ongoing"), now: at(20, 16) - 1))
+        XCTAssertTrue(d.isPast(try e("ongoing"), now: at(20, 16)))
+        XCTAssertFalse(d.isPast(try e("day-range"), now: at(21, 0) - 1))
+        XCTAssertTrue(d.isPast(try e("day-range"), now: at(21, 0)))
+        // the next one in time order among those not over
+        XCTAssertEqual(d.eventsIn(.upcoming, now: now).first { !$0.allDay }?.d, "ongoing")
+    }
+}

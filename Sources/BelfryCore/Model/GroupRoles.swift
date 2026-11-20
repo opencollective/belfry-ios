@@ -128,9 +128,8 @@ public extension Derive {
     func onEventDays(_ e: CalEvent, now: Int) -> Bool {
         let c = calendarForDays
         let first = c.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(e.start)))
-        var lastAt = endOf(e)
-        // an all-day event's end date is the day after its last day
-        if e.allDay, let end = e.end, end > e.start { lastAt = end - 1 }
+        // an all-day event's end date is its last day (inclusive, SPEC 19.62)
+        let lastAt = endOf(e)
         let lastDay = c.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(lastAt)))
         guard let after = c.date(byAdding: .day, value: 1, to: lastDay) else { return false }
         let t = Date(timeIntervalSince1970: TimeInterval(now))

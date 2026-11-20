@@ -2632,3 +2632,15 @@ How they read (`Derive.refShown`), inside the text and as the box at the end:
   words: no names are known there. Copy text and a to-do made from a message keep addresses
   (`links: false`).
 - Not done: the direct actions on the boxes (canvas v69 `channels/card-*`, drafts).
+
+### 19.62 When an event is over: one rule for every list (iOS, 2026-11-20; a member's report on OSV: "Upcoming events show events of the current day that have already passed"; the web's fix chat 39a2b85)
+`Derive.endsAt(e)`: its end; a timed event with no end ends at start + 1 h; an all-day event ends
+at the start of the day after its last day (its end date is inclusive), in the event's time zone,
+the viewer's when it has none. **Past = now ≥ endsAt** (`isPast` = `ended`); an event going on now
+stays upcoming and stays the next one; answering (`isOpen`) closes by the same rule. Every list
+reads it: Events (Upcoming / Mine / Hosting / Past), Calendar (Today, This week, Later, the past
+weeks), Home's "Coming up" and next event, a channel's pull-down Events and its attention line,
+the drawer's next-event line, the public list a guest sees. Before: an event stayed "upcoming"
+until midnight of the day it ended (compared with the start of today), and an event with no end
+counted as over at its start (no answering once it began). Check-in's days (`onEventDays`) read
+an all-day end date as the last day too. Test: `EventsOverTests` (fixed clock, Europe/Brussels).

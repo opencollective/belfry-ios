@@ -90,7 +90,7 @@ extension AppModel {
             let local = all.filter { e in e.visibility == .public || e.channels.contains { c in mine.contains(c) } }
             // the belfry's public list (a guest can't read the calendar's relay), cached on the phone
             let known = Set(local.map(\.coord))
-            let remote = publicEvents.filter { !known.contains($0.coord) && derive.endOf($0) >= derive.startOfDay(now) && $0.status != .cancelled }
+            let remote = publicEvents.filter { !known.contains($0.coord) && !derive.isPast($0, now: now) && $0.status != .cancelled }
             return (local + remote).sorted { $0.start < $1.start }
         }
     }
