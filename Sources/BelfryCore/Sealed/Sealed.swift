@@ -112,6 +112,23 @@ public enum Sealed {
         return .opened(rumor: rumor, sealPubkey: seal.pubkey)
     }
 
+    /// Whether the key that signed a seal may speak for the rumor's author: a device of the
+    /// author's valid chain (the head, or an earlier roster for a rumor not dated after the roster
+    /// that dropped it), or the belfry's own key for a rumor of the belfry (a mail, sealed.md 7).
+    public static func accepted(_ rumor: NostrEvent, sealPubkey: String, chain: RosterChain?, belfry: String?) -> Bool {
+        if let belfry, sealPubkey == belfry { return rumor.pubkey == belfry }
+        guard let chain, chain.account == rumor.pubkey else { return false }
+        return chain.accepts(device: sealPubkey, rumorAt: rumor.createdAt)
+    }
+
+    /// The rumors of a shared history (8564) that RECEIVER takes: those of conversations both the
+    /// sharer and the receiver are in (author or `p`).
+    public static func sharedTaken(_ history: NostrEvent, receiver: String) -> [NostrEvent] {
+        let sharer = history.pubkey
+        func inIt(_ r: NostrEvent, _ who: String) -> Bool { r.pubkey == who || r.tagValues("p").contains(who) }
+        return sharedRumors(history).filter { inIt($0, sharer) && inIt($0, receiver) }
+    }
+
     // ---- handing keys to a device (sealed.md 5.5) --------------------------------------------------
 
     public struct Handover: Sendable {

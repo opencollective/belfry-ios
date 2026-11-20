@@ -74,6 +74,11 @@ public final class SealedEngine: @unchecked Sendable {
     public var onChange: (() -> Void)?
     /// New keys came: the wraps kept locked can be tried again.
     public var onKeys: (() -> Void)?
+    /// Tests: the upkeep runs on a local-only engine, the anchor question and the wait before a
+    /// removal are the test's own.
+    var runsLocally = false
+    var askAnchor: (() async -> [NostrEvent]?)?
+    var removalWait: ClosedRange<UInt64> = 0...60
 
     public init?(engine: SyncEngine, deviceSecret: Data, store: SealedKeyStore) {
         guard let pub = try? Keys.publicKeyHex(secret: deviceSecret) else { return nil }
@@ -282,19 +287,16 @@ public final class SealedEngine: @unchecked Sendable {
         case .locked: return .keep
         case .opened(let rumor, let seal):
             // a mail from the belfry: its seal is signed by the belfry's key
-            if let b = bridge?(), seal == b, rumor.pubkey == b { return .rumor(rumor) }
+            let b = bridge?()
+            if let b, seal == b { return rumor.pubkey == b ? .rumor(rumor) : .drop }
             // it opens, but its author's device is in no chain loaded here yet: kept and tried
             // again (each new roster, each start), given up after 30 days
-            guard let c = chain(rumor.pubkey), c.accepts(device: seal, rumorAt: rumor.createdAt) else {
+            guard Sealed.accepted(rumor, sealPubkey: seal, chain: chain(rumor.pubkey), belfry: b) else {
                 return Int.now - wrap.createdAt > 32 * 86400 ? .drop : .keep // a wrap is back-dated by up to 2 days
             }
             if rumor.kind == SealedKind.history {
-                // each rumor's conversation must have the sharer in it
-                let sharer = rumor.pubkey
-                let ok = Sealed.sharedRumors(rumor).filter { r in
-                    r.kind == 14 && (r.pubkey == sharer || r.tagValues("p").contains(sharer)) && (r.pubkey == me || r.tagValues("p").contains(me))
-                }
-                return .shared(ok, by: sharer)
+                // each rumor's conversation must have the sharer and me in it
+                return .shared(Sealed.sharedTaken(rumor, receiver: me), by: rumor.pubkey)
             }
             return .rumor(rumor)
         }
@@ -347,13 +349,11 @@ public final class SealedEngine: @unchecked Sendable {
     }
 
     /// Whether a roster with DEVICES may carry `ready`: every counted session is one of them.
+    /// Counted: a chat client last active less than 30 days ago (created, when never active). A
+    /// counted session without a client key is no device, so nothing is ready with it.
     static func mayCarryReady(_ sessions: [SessionInfo], devices: [String], now: Int) -> Bool {
-        counted(sessions, now: now).allSatisfy(devices.contains)
-    }
-
-    static func counted(_ sessions: [SessionInfo], now: Int) -> [String] {
-        // counted: a chat client last active less than 30 days ago (created, when never active)
-        sessions.filter { s in s.chat && ((SessionInfo.time(s.lastActivity) ?? SessionInfo.time(s.createdAt)).map { now - $0 < 30 * 86400 } ?? false) }.compactMap(\.clientPubkey)
+        sessions.filter { s in s.chat && ((SessionInfo.time(s.lastActivity) ?? SessionInfo.time(s.createdAt)).map { now - $0 < 30 * 86400 } ?? false) }
+            .allSatisfy { s in s.clientPubkey.map(devices.contains) ?? false }
     }
 
     private func nameEvents() -> [NostrEvent] {
@@ -400,14 +400,14 @@ public final class SealedEngine: @unchecked Sendable {
     }
 
     /// The first device (5.1) or a fresh start (5.4): a new letterbox, a root with this device, the anchor.
-    private func startChain(counted: [String]) async {
+    private func startChain(_ sessions: [SessionInfo], now: Int) async {
         lock.lock()
         var k = keys
         guard let lb = try? k.make() else { lock.unlock(); return }
         keys = k
         lock.unlock()
         store.save(k)
-        let ready = counted.allSatisfy { $0 == devicePub }
+        let ready = SealedEngine.mayCarryReady(sessions, devices: [devicePub], now: now)
         guard let root = try? publish(RosterChain.template(account: me, n: 1, prev: nil, lb: lb, devices: [devicePub], ready: ready)) else { return }
         try? await publishAsAccount(RosterChain.anchor(root: root.id))
         if let c = chain(me) { await writeNames(c) }
@@ -416,7 +416,7 @@ public final class SealedEngine: @unchecked Sendable {
     /// The upkeep of my account's chain. Call after the main relay answered, when rosters, anchors
     /// or requests arrive, and every 6 hours. `removing`: a device the user removes now.
     public func maintain(now: Int = .now) async {
-        if engine.localOnly || engine.guestMode.reading { return }
+        if (engine.localOnly && !runsLocally) || engine.guestMode.reading { return }
         lock.lock()
         if working { lock.unlock(); return }
         working = true
@@ -429,18 +429,18 @@ public final class SealedEngine: @unchecked Sendable {
         lock.lock(); sessionName = sessions.first { $0.clientPubkey == devicePub }?.device; lock.unlock()
         // only a session the belfry lists as a chat client takes part
         guard sessions.contains(where: { $0.clientPubkey == devicePub && $0.chat }) else { return }
-        let counted = SealedEngine.counted(sessions, now: now)
         guard let c = chain(me) else {
             // no anchor for my account, asked from the relay itself (never from a cold store)
-            guard let found = await engine.queryComplete(.main, [["kinds": [30078], "authors": [me], "#d": [SealedKind.anchorD]]]), found.isEmpty else { return }
-            await startChain(counted: counted)
+            let asked = askAnchor != nil ? await askAnchor?() : await engine.queryComplete(.main, [["kinds": [30078], "authors": [me], "#d": [SealedKind.anchorD]]])
+            guard let found = asked, found.isEmpty else { return }
+            await startChain(sessions, now: now)
             onChange?()
             return
         }
         if !c.devices.contains(devicePub) {
             // nobody of the head has a live session: start fresh (5.4); else ask (5.2), every 24 h
             if !c.devices.contains(where: live.contains) {
-                await startChain(counted: counted)
+                await startChain(sessions, now: now)
             } else {
                 lock.lock(); let last = memory.lastRequest, link = memory.link; lock.unlock()
                 if now - last >= 86400, (try? publish(Sealed.request(account: me, device: devicePub, link: link, now: now))) != nil {
@@ -453,7 +453,7 @@ public final class SealedEngine: @unchecked Sendable {
         // a device whose session is gone leaves (5.6), after a random wait and a second look
         let gone = c.devices.filter { $0 != devicePub && !live.contains($0) }
         if !gone.isEmpty {
-            try? await Task.sleep(nanoseconds: UInt64.random(in: 0...60) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: UInt64.random(in: removalWait) * 1_000_000_000)
             if let again = chain(me), again.head.id == c.head.id { await drop(Set(gone), from: again) }
             onChange?()
             return
@@ -464,7 +464,7 @@ public final class SealedEngine: @unchecked Sendable {
             await allow(r.event.pubkey)
             return
         }
-        if !c.ready, counted.allSatisfy(c.devices.contains) {
+        if !c.ready, SealedEngine.mayCarryReady(sessions, devices: c.devices, now: now) {
             _ = try? publish(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: c.lb, devices: c.devices, ready: true, now: now))
             onChange?()
         }
@@ -500,9 +500,8 @@ public final class SealedEngine: @unchecked Sendable {
         lock.lock(); let k = keys; lock.unlock()
         guard let w = try? Sealed.keysWrap(k, account: me, device: device, to: newDevice) else { return false }
         engine.enqueueSigned(w, target: .main, dm: nil)
-        let counted = (await sessions?()).map { SealedEngine.counted($0, now: now) } ?? []
         let devices = c.devices + [newDevice]
-        let ready = counted.allSatisfy(devices.contains)
+        let ready = (await sessions?()).map { SealedEngine.mayCarryReady($0, devices: devices, now: now) } ?? false
         guard (try? publish(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: c.lb, devices: devices, ready: ready, now: now))) != nil else { return false }
         onChange?()
         return true
