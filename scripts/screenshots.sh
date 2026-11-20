@@ -190,6 +190,8 @@ shot 183-enc-mail encmail light
 shot 184-enc-mail-devices encmaildevices light
 shot 185-enc-new-device encnewdevice light
 shot 185b-enc-new-device-dark encnewdevice dark
+shot 185c-enc-locked-thread enclocked light
+shot 185d-enc-locked-thread-dark enclocked dark
 shot 186-enc-how enchow light
 shot 187-enc-allow encallow light
 shot 187b-enc-allow-dark encallow dark
@@ -197,6 +199,9 @@ shot 188-enc-linked enclinked light
 shot 189-enc-share encshare light
 shot 189b-enc-share-dark encshare dark
 shot 190-enc-remove encremove light
+shot 191-enc-shared encshared light
+shot 191b-enc-shared-dark encshared dark
+shot 192-enc-shared-why encsharedwhy light
 shot 73-group-cards groupcards light
 shot 73b-group-cards-dark groupcards dark
 shot 74-group-deleted groupdeleted light

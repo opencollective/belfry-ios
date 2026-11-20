@@ -56,6 +56,8 @@ struct DeviceNotice: Identifiable, Hashable {
 }
 
 struct SealedConv: Hashable {
+    /// When the conversation became sealed: what was written before reads on any device.
+    var since: Int?
     var others: [SealedPerson]
     var notices: [DeviceNotice] = []
 }
@@ -72,10 +74,9 @@ struct SealedState {
     var myDevices: [MyDevice] = []
     /// The sealed conversations (a conversation that is not in here shows no lock).
     var convs: [String: SealedConv] = [:]
-    /// This is a new device nobody allowed yet: earlier messages are locked on it.
-    var lockedHere = false
-    /// On such a device, the conversations that read normally (started after it was added).
-    var open: Set<String> = []
+    /// This is a new device nobody allowed yet: it reads no sealed message, old or new (it has no
+    /// letterbox secret, sealed.md 5.2); messages from before the conversation was sealed stay readable.
+    var notAllowed = false
     var ask: AllowAsk?
     /// Demo: devices removed in Devices.
     var removed: Set<String> = []
@@ -85,8 +86,8 @@ struct SealedState {
 extension AppModel {
     func sealedConv(_ conv: String) -> SealedConv? { sealed.convs[conv] }
 
-    /// "Locked on this device": a new device nobody allowed, and a conversation from before it.
-    func lockedHere(_ conv: String) -> Bool { sealed.lockedHere && !sealed.open.contains(conv) }
+    /// "Locked on this device": a sealed conversation on a device nobody allowed yet.
+    func lockedHere(_ conv: String) -> Bool { sealed.notAllowed && sealed.convs[conv] != nil }
 
     /// Allow / Not me on the prompt. The first device to answer wins: the prompt goes either way.
     func answerAllow(_ ask: AllowAsk, allow: Bool) async {
@@ -129,7 +130,7 @@ extension Demo {
                 DeviceNotice(id: "l3", at: now - 3 * 3600 + 600, who: me, what: .added, device: "Safari on Mac", kind: .computer),
                 DeviceNotice(id: "l4", at: now - 2400, who: pk("lina"), what: .locked, kind: .phone),
             ])
-        s.convs["n:" + pk("ana")] = SealedConv(others: [SealedPerson(id: pk("ana"), devices: 3, changeAt: now - 5 * 3600)])
+        s.convs["n:" + pk("ana")] = SealedConv(since: now - 3600, others: [SealedPerson(id: pk("ana"), devices: 3, changeAt: now - 5 * 3600)])
         s.convs["n:" + pk("dev")] = SealedConv(others: [SealedPerson(id: pk("dev"), devices: 1)])
         let group = MailThreads.nostrConv(author: pk("emma"), pTags: [me, pk("ana"), pk("ben"), pk("lina")], me: me)
         s.convs[group] = SealedConv(others: [
@@ -142,9 +143,8 @@ extension Demo {
             s.convs[mail] = SealedConv(others: [SealedPerson(id: mail, mailName: "Town Hall")])
         }
         switch screen {
-        case "encnewdevice", "enchow":
-            s.lockedHere = true
-            s.open = [lina]
+        case "encnewdevice", "enchow", "enclocked":
+            s.notAllowed = true
         case "encallow":
             s.ask = AllowAsk(id: "mac", device: "Safari on Mac", kind: .computer, at: now - 120)
         default: break

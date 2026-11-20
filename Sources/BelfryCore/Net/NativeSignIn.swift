@@ -429,8 +429,10 @@ public enum LoginLink {
     /// The address a link logs in as; nil for anything that is not exactly a login link.
     public static func parse(_ url: URL) -> MemberAddress? {
         guard let c = URLComponents(url: url, resolvingAgainstBaseURL: false), c.scheme == "https",
-              c.user == nil, c.password == nil, c.port == nil, c.query == nil, c.fragment == nil,
+              c.user == nil, c.password == nil, c.port == nil, c.query == nil,
               let host = c.host?.lowercased(), host.hasPrefix("chat.") else { return nil }
+        // the only fragment a login link may carry: the one-time link secret (sealed.md 5.2)
+        if let f = c.percentEncodedFragment, secret(fragment: f) == nil { return nil }
         let domain = String(host.dropFirst(5))
         guard Discovery.isDomain(domain) else { return nil }
         // the path as written (no percent-decoding: a username has nothing to decode)
@@ -446,5 +448,22 @@ public enum LoginLink {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (t as NSString).length <= 512, let u = URL(string: t) else { return nil }
         return parse(u)
+    }
+
+    private static func secret(fragment f: String) -> String? {
+        guard f.hasPrefix("l="), isHex64(String(f.dropFirst(2))) else { return nil }
+        return String(f.dropFirst(2))
+    }
+
+    /// The link secret of "Link a phone or tablet" (`#l=<64 hex>`): the device that signs in from
+    /// the link proves with it that it scanned the code. It never reaches a server.
+    public static func linkSecret(_ url: URL) -> String? {
+        guard parse(url) != nil, let f = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedFragment else { return nil }
+        return secret(fragment: f)
+    }
+
+    /// The link a QR code shows: https://chat.<domain>/login/<username>, with the secret when given.
+    public static func link(_ a: MemberAddress, secret: String? = nil) -> String {
+        "https://chat.\(a.domain)/login/\(a.name)" + (secret.map { "#l=" + $0 } ?? "")
     }
 }

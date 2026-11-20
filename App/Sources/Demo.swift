@@ -407,5 +407,7 @@ enum Demo {
         try? await dms.demoMail(bridgeSecret: secret("bridge"), sender: "\"Town Hall\" <events@townhall.example>", subject: "Street party permit",
                                 text: "Hello,\n\nYour request for the street party on 14 June is approved.\n\nKind regards,\nTown Hall", at: now - 5 * 3600)
         await dms.process()
+        // board messages/encryption-shared-history: Dev shared the earlier messages with this device
+        dms.demoShared(conv: "n:" + ps["dev"]!.pubkey, by: ps["dev"]!.pubkey)
     }
 }

@@ -408,6 +408,14 @@ public final class DirectMessages: @unchecked Sendable {
         return rumor.id
     }
 
+    /// Demo mode: the messages of CONV as history shared by BY.
+    public func demoShared(conv: String, by: String) {
+        lock.lock()
+        for (k, d) in items where d.conv == conv { items[k]?.sharedBy = by }
+        lock.unlock()
+        save()
+    }
+
     /// Demo mode: a NIP-17 message of mine to TO (my own copy of it).
     public func demoSent(to: String, text: String, at: Int) async throws {
         let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: [["p", to]], content: text, createdAt: at)

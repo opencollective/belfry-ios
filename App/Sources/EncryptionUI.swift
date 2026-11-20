@@ -203,7 +203,7 @@ struct LockedHereBanner: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "lock.fill").foregroundStyle(.orange).padding(.top, 2).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Earlier messages are locked on this device").font(.subheadline.weight(.semibold))
+                Text("Messages are locked on this device").font(.subheadline.weight(.semibold))
                 Text("Open Belfry on another device of yours to unlock them.").font(.subheadline)
                 Button("Show how", action: showHow)
                     .font(.subheadline.weight(.semibold))
@@ -215,6 +215,76 @@ struct LockedHereBanner: View {
         }
         .padding(12)
         .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+/// In a sealed conversation on a device nobody allowed yet, after the messages from before it was
+/// sealed (board messages/encryption-locked-thread).
+struct LockedThreadBlock: View {
+    /// When the conversation became sealed.
+    let since: Int?
+    let showHow: () -> Void
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "lock.fill").foregroundStyle(.orange).padding(.top, 2).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Locked on this device").font(.subheadline.weight(.semibold))
+                Text(line).font(.subheadline)
+                Button("Show how", action: showHow)
+                    .font(.subheadline.weight(.semibold))
+                    .buttonStyle(.borderless)
+                    .padding(.top, 2)
+                    .accessibilityIdentifier("locked-show-how")
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var line: String {
+        guard let since else { return "Messages can be read once another device of yours allows this one." }
+        let day = SealedWords.dayWord(since, now: Int.now)
+        return "Messages from \(day.hasPrefix("on ") ? String(day.dropFirst(3)) : day) on can be read once another device of yours allows this one."
+    }
+}
+
+/// "Shared by Sam" above a block of earlier messages someone shared with this device (board
+/// messages/encryption-shared-history). A line, not a list row: it opens a small sheet.
+struct SharedByLine: View {
+    @EnvironmentObject var model: AppModel
+    let by: String
+    @State private var why = false
+
+    var body: some View {
+        let who = model.firstName(by)
+        Button { hideKeyboard(); why = true } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "square.and.arrow.up").font(.caption)
+                Text("Shared by \(who)").font(.footnote)
+                Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("shared-by")
+        .sheet(isPresented: $why) {
+            VStack(spacing: 16) {
+                Text("\(who) sent you these earlier messages. They come from \(who)'s device, so the app can't check them the way it checks new ones.")
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button { why = false } label: { Text("OK").frame(maxWidth: .infinity) }
+                    .buttonStyle(.brand).controlSize(.large)
+            }
+            .padding(.horizontal, 20).padding(.top, 28).padding(.bottom, 12)
+            .presentationDetents([.height(220)])
+            .presentationDragIndicator(.visible)
+            .solidSheet()
+        }
+        .onAppear { if model.launch.screen == "encsharedwhy" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { why = true } } }
     }
 }
 
