@@ -153,7 +153,7 @@ public final class DirectMessages: @unchecked Sendable {
         let known = items.values.map { (messageId: $0.messageId, conv: $0.conv) }
         guard var d = DmReader.dm(from: rumor, me: me, bridge: bridge, known: known) else { return }
         d.sharedBy = sharedBy
-        if d.kind == 14 { d.rumor = rumor.json }
+        if d.kind == 14 { d.rumor = Sealed.json(rumor) }
         if let old = items[d.rid] { d.mine = d.mine || old.mine; d.pending = old.pending; d.failed = old.failed }
         items[d.rid] = d
     }
@@ -293,7 +293,7 @@ public final class DirectMessages: @unchecked Sendable {
         let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: to.map { ["p", $0] }, content: text)
         var d = Dm(rid: rumor.id, conv: conv, from: me, mine: true, at: rumor.createdAt, kind: 14, text: text)
         d.pending = engine.localOnly ? nil : true
-        if sealed?.isSealed(conv) == true { d.rumor = rumor.json }
+        if sealed?.isSealed(conv) == true { d.rumor = Sealed.json(rumor) }
         lock.lock(); items[rumor.id] = d; lock.unlock()
         save()
         do {

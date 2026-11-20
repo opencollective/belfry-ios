@@ -247,7 +247,7 @@ public final class SealedEngine: @unchecked Sendable {
 
     /// An e-mail on its way out: sealed by the device to the belfry's key (sealed.md 7).
     public func mailWrap(_ rumor: NostrEvent, bridge b: String) throws -> NostrEvent {
-        let json = rumor.json
+        let json = Sealed.json(rumor)
         guard json.utf8.count <= Sealed.maxRumorBytes else { throw BelfryError.invalid("This e-mail is too long to send.") }
         guard let bp = Data(hex: b) else { throw BelfryError.crypto("bad key") }
         let seal = try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(), kind: 13, tags: [],
@@ -346,7 +346,12 @@ public final class SealedEngine: @unchecked Sendable {
         engine.enqueueSigned(e, target: .main, dm: nil)
     }
 
-    private static func counted(_ sessions: [SessionInfo], now: Int) -> [String] {
+    /// Whether a roster with DEVICES may carry `ready`: every counted session is one of them.
+    static func mayCarryReady(_ sessions: [SessionInfo], devices: [String], now: Int) -> Bool {
+        counted(sessions, now: now).allSatisfy(devices.contains)
+    }
+
+    static func counted(_ sessions: [SessionInfo], now: Int) -> [String] {
         // counted: a chat client last active less than 30 days ago (created, when never active)
         sessions.filter { s in s.chat && ((SessionInfo.time(s.lastActivity) ?? SessionInfo.time(s.createdAt)).map { now - $0 < 30 * 86400 } ?? false) }.compactMap(\.clientPubkey)
     }
@@ -497,7 +502,7 @@ public final class SealedEngine: @unchecked Sendable {
         engine.enqueueSigned(w, target: .main, dm: nil)
         let counted = (await sessions?()).map { SealedEngine.counted($0, now: now) } ?? []
         let devices = c.devices + [newDevice]
-        let ready = !counted.isEmpty && counted.allSatisfy(devices.contains)
+        let ready = counted.allSatisfy(devices.contains)
         guard (try? publish(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: c.lb, devices: devices, ready: ready, now: now))) != nil else { return false }
         onChange?()
         return true

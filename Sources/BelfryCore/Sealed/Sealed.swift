@@ -53,6 +53,16 @@ public enum Sealed {
         return lb
     }
 
+    /// A sealed rumor as it is written: compact JSON, its keys in the order id, pubkey,
+    /// created_at, kind, tags, content (no sig), non-ASCII and '/' as they are. The 40 000-byte
+    /// ceiling counts this exact string.
+    public static func json(_ r: NostrEvent) -> String {
+        var s = "{\"id\":\(JSON.string(r.id)),\"pubkey\":\(JSON.string(r.pubkey)),\"created_at\":\(r.createdAt),\"kind\":\(r.kind),\"tags\":["
+        s += r.tags.map { "[" + $0.map(JSON.string).joined(separator: ",") + "]" }.joined(separator: ",")
+        s += "],\"content\":\(JSON.string(r.content))}"
+        return s
+    }
+
     /// The most a sealed rumor's JSON may weigh (what NIP-44 carries once sealed and wrapped).
     public static let maxRumorBytes = 40_000
 
@@ -64,7 +74,7 @@ public enum Sealed {
     /// Seal (signed by the device) and wrap (a one-time key) RUMOR for ACCOUNT's letterbox LB
     /// (sealed.md 4). SIGN: nil = the device key signs the seal.
     public static func wrap(_ rumor: NostrEvent, device: Data, to account: String, lb: String, now: Int = .now) throws -> NostrEvent {
-        let json = rumor.json
+        let json = Sealed.json(rumor)
         // a sealed rumor's JSON is at most 40 000 bytes: a sender never seals a larger one
         guard json.utf8.count <= maxRumorBytes else { throw BelfryError.invalid("This message is too long to send.") }
         let sealContent = try NIP44.encrypt(json, conversationKey: conv(device, lb))
@@ -118,7 +128,7 @@ public enum Sealed {
         let content = "{\"v\":1,\"account\":\(JSON.string(account)),\"keys\":[\(list.joined(separator: ","))]}"
         let rumor = GiftWrap.rumor(kind: SealedKind.keys, pubkey: giver, tags: [["p", account]], content: content, createdAt: now)
         let seal = try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 13, tags: [],
-                                  content: NIP44.encrypt(rumor.json, conversationKey: conv(device, to))).signed(with: device)
+                                  content: NIP44.encrypt(Sealed.json(rumor), conversationKey: conv(device, to))).signed(with: device)
         let one = Keys.generateSecret()
         return try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 1059, tags: [["p", to]],
                               content: NIP44.encrypt(seal.json, conversationKey: conv(one, to))).signed(with: one)
@@ -204,7 +214,7 @@ public enum Sealed {
             GiftWrap.rumor(kind: SealedKind.history, pubkey: sharer, tags: [["p", person]],
                            content: "{\"v\":1,\"rumors\":[\(batch.joined(separator: ","))]}", createdAt: now)
         }
-        let base = make([]).json.utf8.count
+        let base = Sealed.json(make([])).utf8.count
         var out = [NostrEvent](), batch = [String](), size = base
         func flush() {
             guard !batch.isEmpty else { return }
@@ -212,7 +222,7 @@ public enum Sealed {
             batch = []; size = base
         }
         for r in rumors {
-            let j = r.json
+            let j = Sealed.json(r)
             // what it adds to the 8564's JSON: itself as escaped text, and a comma
             let n = JSON.string(j).utf8.count - 2 + 1
             if base + n > maxRumorBytes { continue }

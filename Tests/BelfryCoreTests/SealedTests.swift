@@ -184,9 +184,10 @@ final class SealedMessageTests: XCTestCase {
         let parts = Sealed.history(rumors, sharer: a, person: b, now: 5000)
         XCTAssertGreaterThanOrEqual(parts.count, 3)
         XCTAssertTrue(parts.allSatisfy { Sealed.sharedRumors($0).count <= 200 })
-        XCTAssertTrue(parts.allSatisfy { $0.kind == 8564 && $0.pubkey == a && $0.tags == [["p", b]] && $0.json.utf8.count <= 40_000 })
+        XCTAssertTrue(parts.allSatisfy { $0.kind == 8564 && $0.pubkey == a && $0.tags == [["p", b]] && Sealed.json($0).utf8.count <= 40_000 })
         // packed full: the next rumor would not have fitted
-        XCTAssertGreaterThan(parts[0].json.utf8.count, 39_000)
+        XCTAssertGreaterThan(Sealed.json(parts[0]).utf8.count, 39_000)
+        XCTAssertFalse(Sealed.json(parts[0]).contains("\"sig\""))
         XCTAssertEqual(parts.flatMap(Sealed.sharedRumors).map(\.id), rumors.map(\.id))
         // it travels like any sealed message
         var chain = KeyChain()
