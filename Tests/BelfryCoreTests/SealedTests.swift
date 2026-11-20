@@ -165,8 +165,10 @@ final class SealedMessageTests: XCTestCase {
     func testDeviceNames() throws {
         var chain = KeyChain()
         let lb = try chain.make()
-        let old: [String: Any] = ["v": 1, "later": "kept", "devices": [pub("mac"): ["name": "Safari on Mac", "kind": "computer", "added": 10, "x": 1],
-                                                                        pub("gone"): ["name": "Old", "kind": "phone", "added": 1]]]
+        let mac: [String: Any] = ["name": "Safari on Mac", "kind": "computer", "added": 10, "x": 1]
+        let goneEntry: [String: Any] = ["name": "Old", "kind": "phone", "added": 1]
+        let devices: [String: Any] = [pub("mac"): mac, pub("gone"): goneEntry]
+        let old: [String: Any] = ["v": 1, "later": "kept", "devices": devices]
         let doc = Sealed.deviceDoc(old, device: pub("phone"), entry: .init(name: "iPhone", kind: "phone", added: 20),
                                    gone: [pub("gone"): 0], now: 91 * 86400)
         let e = try Sealed.devicesTemplate(doc, lb: lb, keys: chain, now: 30).event(pubkey: "").signed(with: key("alice"))
