@@ -124,9 +124,11 @@ public enum Sealed {
     /// The rumors of a shared history (8564) that RECEIVER takes: those of conversations both the
     /// sharer and the receiver are in (author or `p`).
     public static func sharedTaken(_ history: NostrEvent, receiver: String) -> [NostrEvent] {
+        // the 8564's own p must be the receiver; only messages, reactions and their taking back
+        guard history.tag("p") == receiver else { return [] }
         let sharer = history.pubkey
         func inIt(_ r: NostrEvent, _ who: String) -> Bool { r.pubkey == who || r.tagValues("p").contains(who) }
-        return sharedRumors(history).filter { inIt($0, sharer) && inIt($0, receiver) }
+        return sharedRumors(history).filter { [14, 7, 5].contains($0.kind) && inIt($0, sharer) && inIt($0, receiver) }
     }
 
     // ---- handing keys to a device (sealed.md 5.5) --------------------------------------------------
@@ -138,17 +140,30 @@ public enum Sealed {
         public let keys: [(lb: String, secret: String)]
     }
 
-    /// A gift wrap to the DEVICE `to`: the giver's whole chain.
-    public static func keysWrap(_ chain: KeyChain, account: String, device: Data, to: String, now: Int = .now) throws -> NostrEvent {
+    /// Gift wraps to the DEVICE `to`: the giver's whole chain, in several 8561 when one would pass
+    /// the 40 000-byte ceiling.
+    public static func keysWraps(_ chain: KeyChain, account: String, device: Data, to: String, now: Int = .now) throws -> [NostrEvent] {
         let giver = try Keys.publicKeyHex(secret: device)
-        let list = chain.keys.sorted { $0.key < $1.key }.map { "{\"lb\":\(JSON.string($0.key)),\"secret\":\(JSON.string($0.value))}" }
-        let content = "{\"v\":1,\"account\":\(JSON.string(account)),\"keys\":[\(list.joined(separator: ","))]}"
-        let rumor = GiftWrap.rumor(kind: SealedKind.keys, pubkey: giver, tags: [["p", account]], content: content, createdAt: now)
-        let seal = try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 13, tags: [],
-                                  content: NIP44.encrypt(Sealed.json(rumor), conversationKey: conv(device, to))).signed(with: device)
-        let one = Keys.generateSecret()
-        return try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 1059, tags: [["p", to]],
-                              content: NIP44.encrypt(seal.json, conversationKey: conv(one, to))).signed(with: one)
+        func rumor(_ list: [String]) -> NostrEvent {
+            GiftWrap.rumor(kind: SealedKind.keys, pubkey: giver, tags: [["p", account]],
+                           content: "{\"v\":1,\"account\":\(JSON.string(account)),\"keys\":[\(list.joined(separator: ","))]}", createdAt: now)
+        }
+        let base = Sealed.json(rumor([])).utf8.count
+        var rumors = [NostrEvent](), batch = [String](), size = base
+        for k in chain.keys.sorted(by: { $0.key < $1.key }) {
+            let one = "{\"lb\":\(JSON.string(k.key)),\"secret\":\(JSON.string(k.value))}"
+            let n = JSON.string(one).utf8.count - 2 + 1
+            if !batch.isEmpty, size + n > maxRumorBytes { rumors.append(rumor(batch)); batch = []; size = base }
+            batch.append(one); size += n
+        }
+        if !batch.isEmpty || rumors.isEmpty { rumors.append(rumor(batch)) }
+        return try rumors.map { r in
+            let seal = try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 13, tags: [],
+                                      content: NIP44.encrypt(Sealed.json(r), conversationKey: conv(device, to))).signed(with: device)
+            let one = Keys.generateSecret()
+            return try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 1059, tags: [["p", to]],
+                                  content: NIP44.encrypt(seal.json, conversationKey: conv(one, to))).signed(with: one)
+        }
     }
 
     /// Opens a key hand-over addressed to this device. The caller accepts it only when `giver` is
@@ -238,7 +253,7 @@ public enum Sealed {
             out.append(make(batch))
             batch = []; size = base
         }
-        for r in rumors {
+        for r in rumors where [14, 7, 5].contains(r.kind) {
             let j = Sealed.json(r)
             // what it adds to the 8564's JSON: itself as escaped text, and a comma
             let n = JSON.string(j).utf8.count - 2 + 1

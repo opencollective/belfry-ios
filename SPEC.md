@@ -2668,4 +2668,11 @@ Android; this section only says where the iPhone app implements it. Vectors: `ve
 - A queued wrap is sealed again when its letterbox is no longer its account's head (`SyncEngine.reseal`;
   after a restart only for kind 14, whose rumor is kept with the message). A wrap that opens but
   whose author's device is in no chain loaded yet is kept and tried again, for 30 days.
+- The anchor names the head (`["head", id]`): the chain is the anchored path, a roster off it is
+  ignored whatever its id; a device anchors its own roster right after publishing it; an anchor
+  is never followed back to an ancestor of the head already accepted (`pinnedHead`).
+- A root is made only for a member's session, after the relay answered post-AUTH to EOSE with no
+  anchor, and only when the belfry's session list shows this device's own session.
+- Deviation, told to the lead: a send in a sealed conversation with no head to seal to fails
+  with a message (the text stays in the composer) instead of waiting in the outbox.
 - Not done: "I don't have another device" (the user's own fresh start) waits for the owner.

@@ -57,9 +57,13 @@ public struct RosterChain: Hashable, Sendable {
     public var lb: String { head.lb }
 
     /// The valid chain of ACCOUNT from its anchor (the newest 30078 `belfry:sealed` it signed) and
-    /// every roster that names it. VERIFY: check ids and signatures here (events from the local
-    /// log were checked when they were stored).
-    public static func resolve(account: String, anchor: NostrEvent?, rosters events: [NostrEvent], verify: Bool = true) -> RosterChain? {
+    /// every roster that names it (sealed.md 3.3). The anchored path runs from the root to the
+    /// anchor's `head`; a roster off that path that does not descend from its end is ignored
+    /// whatever its id (a dropped device cannot fork the chain). After the path's end each valid
+    /// step is followed, the lower id winning for now. PINNEDHEAD: the head this client last
+    /// accepted: an anchor whose head is an ancestor of it is not followed back.
+    /// VERIFY: check ids and signatures here (events from the local log were checked when stored).
+    public static func resolve(account: String, anchor: NostrEvent?, rosters events: [NostrEvent], pinnedHead: String? = nil, verify: Bool = true) -> RosterChain? {
         guard let anchor, anchor.kind == 30078, anchor.pubkey == account, anchor.tag("d") == SealedKind.anchorD,
               let rootId = anchor.tag("root"), !verify || anchor.isValid else { return nil }
         var byId = [String: Roster]()
@@ -70,15 +74,40 @@ public struct RosterChain: Hashable, Sendable {
             if let p = r.prev { byPrev[p, default: []].append(r) }
         }
         guard let root = byId[rootId], root.n == 1, root.prev == nil, root.devices.contains(root.signer) else { return nil }
-        var chain = [root]
-        var lbs: Set<String> = [root.lb]
+        /// NEXT is a valid step after CUR, given the letterboxes the chain had so far.
+        func valid(_ next: Roster, after cur: Roster, _ lbs: Set<String>) -> Bool {
+            guard next.prev == cur.id, next.n == cur.n + 1, cur.devices.contains(next.signer) else { return false }
+            let missing = cur.devices.contains { !next.devices.contains($0) }
+            return missing ? !lbs.contains(next.lb) : next.lb == cur.lb
+        }
+        /// The rosters from the root to ID when every step is valid; nil otherwise.
+        func path(to id: String) -> [Roster]? {
+            var back = [Roster]()
+            var cur = byId[id]
+            while let c = cur, c.id != root.id {
+                guard back.count <= byId.count, let p = c.prev else { return nil }
+                back.append(c)
+                cur = byId[p]
+            }
+            guard cur?.id == root.id else { return nil }
+            var chain = [root]
+            var lbs: Set<String> = [root.lb]
+            for r in back.reversed() {
+                guard valid(r, after: chain[chain.count - 1], lbs) else { return nil }
+                chain.append(r)
+                lbs.insert(r.lb)
+            }
+            return chain
+        }
+        var chain = anchor.tag("head").flatMap(path(to:)) ?? [root]
+        // no going back: the anchor's head is an ancestor of the head already accepted
+        if let pinnedHead, let pinned = path(to: pinnedHead), pinned.count > chain.count, pinned[chain.count - 1].id == chain[chain.count - 1].id {
+            chain = pinned
+        }
+        var lbs = Set(chain.map(\.lb))
         while let cur = chain.last {
-            let next = (byPrev[cur.id] ?? []).filter { r in
-                guard r.n == cur.n + 1, cur.devices.contains(r.signer) else { return false }
-                let missing = cur.devices.contains { !r.devices.contains($0) }
-                return missing ? !lbs.contains(r.lb) : r.lb == cur.lb
-            }.min { $0.id.lowercased() < $1.id.lowercased() } // a fork: the lower id wins
-            guard let next else { break }
+            // published, not anchored yet: the lower id wins for now
+            guard let next = (byPrev[cur.id] ?? []).filter({ valid($0, after: cur, lbs) }).min(by: { $0.id.lowercased() < $1.id.lowercased() }) else { break }
             chain.append(next)
             lbs.insert(next.lb)
         }
@@ -142,7 +171,7 @@ public struct RosterChain: Hashable, Sendable {
     }
 
     /// The anchor, signed by the account (through the signer).
-    public static func anchor(root: String, now: Int = .now) -> EventTemplate {
-        EventTemplate(kind: 30078, content: "", tags: [["d", SealedKind.anchorD], ["root", root]], createdAt: now)
+    public static func anchor(root: String, head: String? = nil, now: Int = .now) -> EventTemplate {
+        EventTemplate(kind: 30078, content: "", tags: [["d", SealedKind.anchorD], ["root", root], ["head", head ?? root]], createdAt: now)
     }
 }

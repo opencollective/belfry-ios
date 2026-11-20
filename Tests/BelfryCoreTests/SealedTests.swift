@@ -13,8 +13,8 @@ private func roster(_ account: String, by device: String, n: Int, prev: String?,
     try! RosterChain.template(account: account, n: n, prev: prev, lb: lb, devices: devices.map(pub), ready: ready, now: at).event(pubkey: "").signed(with: key(device))
 }
 
-private func anchor(_ account: String, root: String, at: Int = 100) -> NostrEvent {
-    try! RosterChain.anchor(root: root, now: at).event(pubkey: "").signed(with: key(account))
+private func anchor(_ account: String, root: String, head: String? = nil, at: Int = 100) -> NostrEvent {
+    try! RosterChain.anchor(root: root, head: head, now: at).event(pubkey: "").signed(with: key(account))
 }
 
 final class RosterChainTests: XCTestCase {
@@ -50,6 +50,35 @@ final class RosterChainTests: XCTestCase {
         let f = roster(A, by: "phone", n: 2, prev: r1.id, lb: lb1, devices: ["phone", "pad"], at: 201)
         let fork = RosterChain.resolve(account: A, anchor: a, rosters: [r1, r2, f])
         XCTAssertEqual(fork?.rosters.last?.id, min(r2.id, f.id))
+    }
+
+    func testTheAnchorNamesTheHead() {
+        let lb1 = pub("lb1"), lb2 = pub("lb2"), lb3 = pub("lb3")
+        let r1 = roster(A, by: "phone", n: 1, prev: nil, lb: lb1, devices: ["phone"], at: 100)
+        let r2 = roster(A, by: "phone", n: 2, prev: r1.id, lb: lb1, devices: ["phone", "mac"], at: 200)
+        // the phone drops the Mac (r3) and anchors it; the Mac, removed, signs siblings of r3
+        let r3 = roster(A, by: "phone", n: 3, prev: r2.id, lb: lb2, devices: ["phone"], at: 300)
+        let forks = (0..<6).map { roster(A, by: "mac", n: 3, prev: r2.id, lb: lb3, devices: ["mac"], at: 301 + $0) }
+        let all = [r1, r2, r3] + forks
+        // with the head anchored, a sibling is ignored whatever its id
+        let anchored = RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id, head: r3.id), rosters: all)
+        XCTAssertEqual(anchored?.head.id, r3.id)
+        XCTAssertEqual(anchored?.devices, [pub("phone")])
+        // not anchored yet (the head is still r2): the lower id wins for now
+        let provisional = RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id, head: r2.id), rosters: all)
+        XCTAssertEqual(provisional?.head.id, all.filter { $0.prev == r2.id }.map(\.id).min())
+        // what follows the anchored head is still read
+        let r4 = roster(A, by: "phone", n: 4, prev: r3.id, lb: lb2, devices: ["phone", "pad"], at: 400)
+        XCTAssertEqual(RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id, head: r3.id), rosters: all + [r4])?.head.id, r4.id)
+        // a head that is not a valid roster of this root: the root alone, then what is valid after it
+        XCTAssertEqual(RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id, head: String(repeating: "0", count: 64)), rosters: [r1, r2])?.head.id, r2.id)
+        // no going back: an older anchor (head r2) does not undo the head this client accepted (r3)
+        let kept = RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id, head: r2.id), rosters: all, pinnedHead: r3.id)
+        XCTAssertEqual(kept?.head.id, r3.id)
+        // but an anchor naming another branch of the same root is followed
+        let other = forks[0]
+        let moved = RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id, head: other.id), rosters: all, pinnedHead: r3.id)
+        XCTAssertEqual(moved?.head.id, other.id)
     }
 
     func testInvalidRostersAreIgnored() {
@@ -129,7 +158,7 @@ final class SealedMessageTests: XCTestCase {
         var chain = KeyChain()
         chain.add(lb: pub("lb1"), secret: key("lb1").hex)
         chain.add(lb: pub("lb2"), secret: key("lb2").hex)
-        let w = try Sealed.keysWrap(chain, account: pub("alice"), device: key("phone"), to: pub("mac"))
+        let w = try XCTUnwrap(Sealed.keysWraps(chain, account: pub("alice"), device: key("phone"), to: pub("mac")).first)
         XCTAssertEqual(w.tags, [["p", pub("mac")]])
         let h = try XCTUnwrap(Sealed.openKeys(w, device: key("mac")))
         XCTAssertEqual(h.giver, pub("phone"))

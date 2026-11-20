@@ -347,6 +347,7 @@ struct ConversationView: View {
 struct Bubble: View {
     @EnvironmentObject var model: AppModel
     let dm: Dm
+    @State private var notSealed = false
 
     /// A direct message that went out or came in (never an e-mail, never one still sending).
     private var canReact: Bool { dm.kind == 14 && dm.pending != true && dm.failed == nil && !model.guestReading }
@@ -404,6 +405,24 @@ struct Bubble: View {
                     Button("Retry") { model.dms?.retry(dm) }.font(.caption2.weight(.semibold))
                 } else if dm.pending == true {
                     Text("Sending…").font(.caption2).foregroundStyle(.secondary)
+                } else if dm.unsealed == true {
+                    // it came the old way after the conversation was sealed (board messages/encryption-thread)
+                    Button { notSealed = true } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "lock.open").font(.caption2)
+                            Text("Not sealed").font(.caption2)
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $notSealed) {
+                        Text("This message was not sent with the lock. It may come from an old app version.")
+                            .font(.footnote).multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(width: 250)
+                            .padding(14)
+                            .presentationCompactAdaptation(.popover)
+                    }
                 } else if dm.mine, let r = report {
                     Text(r.details).font(.caption2).foregroundStyle(r.status == "failed" ? .red : .secondary)
                 }

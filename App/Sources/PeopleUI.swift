@@ -654,7 +654,8 @@ struct DevicesView: View {
                             Spacer(minLength: 4)
                             if removing == s.id {
                                 ProgressView()
-                            } else if !this {
+                            } else if !this, !model.sealed.notAllowed {
+                                // a device that is itself locked removes nobody
                                 Button("Remove", role: .destructive) { asking = s }
                                     .buttonStyle(.borderless)
                                     .disabled(removing != nil)

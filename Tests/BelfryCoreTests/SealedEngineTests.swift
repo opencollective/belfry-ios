@@ -38,6 +38,7 @@ private final class FakeBelfry: @unchecked Sendable {
                                 attachmentsDir: FileManager.default.temporaryDirectory)
         let sealed = try XCTUnwrap(SealedEngine(engine: engine, deviceSecret: key, store: MemoryKeyStore()))
         sealed.runsLocally = true
+        sealed.mayStart = true
         sealed.removalWait = 0...0
         sealed.askAnchor = { [weak self] in self?.all().filter { $0.kind == 30078 && $0.pubkey == account.pubkey && $0.tag("d") == SealedKind.anchorD } }
         sealed.sessions = { [weak self] in self?.list(account.pubkey) }
@@ -88,6 +89,9 @@ final class SealedEngineTests: XCTestCase {
         await b.sync()
         XCTAssertEqual(phone.sealed.deviceNames()[phone.pub]?.name, "Alice's iPhone") // the session's own name
         XCTAssertEqual(b.all().filter { $0.kind == 8560 }.count, 1) // a second upkeep publishes nothing more
+        // the anchor names the root as the head
+        let first = b.all().filter { $0.kind == 30078 && $0.tag("d") == "belfry:sealed" }
+        XCTAssertEqual(first.map { $0.tag("head") }, [chain.root.id])
 
         // 5.2: a second device finds the chain, is not in it, asks; it reads nothing sealed
         let mac = try b.signIn("alice", "mac", name: "Safari on Mac")
@@ -126,11 +130,37 @@ final class SealedEngineTests: XCTestCase {
         let left = await phone.sealed.asks()
         XCTAssertTrue(left.isEmpty)
         XCTAssertEqual(chain.joined(mac.pub)?.from, phone.pub) // "from iPhone"
+        // the phone anchored its roster right after publishing it: same root, the new head
+        let newest = b.all().filter { $0.kind == 30078 && $0.tag("d") == "belfry:sealed" }.max { $0.createdAt < $1.createdAt }
+        XCTAssertEqual(newest?.tag("root"), chain.root.id)
+        XCTAssertEqual(newest?.tag("head"), chain.head.id)
         // each device writes its own name record, and both read both
         await mac.sealed.maintain(now: now + 20)
         await b.sync()
         XCTAssertEqual(phone.sealed.deviceNames()[mac.pub]?.name, "Safari on Mac")
         XCTAssertEqual(mac.sealed.deviceNames()[phone.pub]?.name, "Alice's iPhone")
+    }
+
+    func testAGuestSessionNeverStartsAChain() async throws {
+        let b = FakeBelfry()
+        let guest = try b.signIn("gus", "phone")
+        guest.sealed.mayStart = false
+        await guest.sealed.maintain(now: now)
+        await b.sync()
+        XCTAssertNil(guest.sealed.chain(guest.account))
+        XCTAssertTrue(b.all().isEmpty)
+        // nor does anybody when the relay gave no complete answer about the anchor
+        let alice = try b.signIn("alice", "phone")
+        alice.sealed.askAnchor = { nil }
+        await alice.sealed.maintain(now: now)
+        await b.sync()
+        XCTAssertTrue(b.all().isEmpty)
+        // nor when the belfry's session list does not show this device's own session
+        let bob = try b.signIn("bob", "phone")
+        b.lock.lock(); b.sessions[bob.account] = []; b.lock.unlock()
+        await bob.sealed.maintain(now: now)
+        await b.sync()
+        XCTAssertTrue(b.all().isEmpty)
     }
 
     func testNotMeRevokesAndChangesNoRoster() async throws {

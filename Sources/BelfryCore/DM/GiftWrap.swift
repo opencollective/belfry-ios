@@ -58,6 +58,8 @@ public struct Dm: Codable, Hashable, Sendable, Identifiable {
     public var sharedBy: String?
     /// A sealed message's rumor as it travelled (so its history can be shared with its own id).
     public var rumor: String?
+    /// It arrived the old way (no lock) in a conversation this device had already seen sealed.
+    public var unsealed: Bool?
 
     public var id: String { rid }
 

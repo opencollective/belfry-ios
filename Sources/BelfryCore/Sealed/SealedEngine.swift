@@ -35,7 +35,7 @@ struct SealedMemory: Codable {
     /// The secret of the login link this device signed in from.
     var link: String?
 
-    struct Head: Codable { var lb: String; var devices: [String] }
+    struct Head: Codable { var lb: String; var devices: [String]; var id: String? }
     struct Reset: Codable, Hashable { var root: String; var at: Int; var shared: Bool }
 }
 
@@ -76,6 +76,9 @@ public final class SealedEngine: @unchecked Sendable {
     public var onKeys: (() -> Void)?
     /// Tests: the upkeep runs on a local-only engine, the anchor question and the wait before a
     /// removal are the test's own.
+    /// A member's or an admin's own session (never a guest's): only then may this device start a
+    /// chain. Set by the app.
+    public var mayStart = false
     var runsLocally = false
     var askAnchor: (() async -> [NostrEvent]?)?
     var removalWait: ClosedRange<UInt64> = 0...60
@@ -144,7 +147,8 @@ public final class SealedEngine: @unchecked Sendable {
         lock.lock()
         if let hit = chains?.cache[account] { lock.unlock(); return hit }
         lock.unlock()
-        let c = RosterChain.resolve(account: account, anchor: anchors[account], rosters: rosters[account] ?? [], verify: false)
+        lock.lock(); let pinned = memory.heads[account]?.id; lock.unlock()
+        let c = RosterChain.resolve(account: account, anchor: anchors[account], rosters: rosters[account] ?? [], pinnedHead: pinned, verify: false)
         lock.lock(); chains?.cache[account] = .some(c); lock.unlock()
         return c
     }
@@ -192,8 +196,8 @@ public final class SealedEngine: @unchecked Sendable {
                 }
                 changed = true
             }
-            if head?.lb != c.lb || head?.devices != c.devices {
-                remember { $0.heads[a] = .init(lb: c.lb, devices: c.devices) }
+            if head?.id != c.head.id || head?.lb != c.lb || head?.devices != c.devices {
+                remember { $0.heads[a] = .init(lb: c.lb, devices: c.devices, id: c.head.id) }
                 changed = true
             }
         }
@@ -298,6 +302,12 @@ public final class SealedEngine: @unchecked Sendable {
                 // each rumor's conversation must have the sharer and me in it
                 return .shared(Sealed.sharedTaken(rumor, receiver: me), by: rumor.pubkey)
             }
+            // a sealed rumor accepted: its conversation is sealed from now on, on this device too
+            if [14, 7, 5].contains(rumor.kind) {
+                let conv = MailThreads.nostrConv(author: rumor.pubkey, pTags: rumor.tagValues("p"), me: me)
+                lock.lock(); let known = memory.sealed[conv] != nil; lock.unlock()
+                if !known { remember { $0.sealed[conv] = min(Int.now, rumor.createdAt) } }
+            }
             return .rumor(rumor)
         }
     }
@@ -340,6 +350,17 @@ public final class SealedEngine: @unchecked Sendable {
         engine.add([e], verify: false)
         engine.enqueueSigned(e, target: .main, dm: nil)
         return e
+    }
+
+    /// A roster of mine, then the anchor again right after it, naming it as the head (the root
+    /// stays): a device always anchors its own roster at once.
+    @discardableResult
+    private func publishRoster(_ t: EventTemplate, root: String?, now: Int) async -> NostrEvent? {
+        guard let r = try? publish(t) else { return nil }
+        let (anchors, _) = index()
+        let at = max(now, (anchors[me]?.createdAt ?? 0) + 1)
+        try? await publishAsAccount(RosterChain.anchor(root: root ?? r.id, head: r.id, now: at))
+        return r
     }
 
     private func publishAsAccount(_ t: EventTemplate) async throws {
@@ -408,8 +429,7 @@ public final class SealedEngine: @unchecked Sendable {
         lock.unlock()
         store.save(k)
         let ready = SealedEngine.mayCarryReady(sessions, devices: [devicePub], now: now)
-        guard let root = try? publish(RosterChain.template(account: me, n: 1, prev: nil, lb: lb, devices: [devicePub], ready: ready)) else { return }
-        try? await publishAsAccount(RosterChain.anchor(root: root.id))
+        guard await publishRoster(RosterChain.template(account: me, n: 1, prev: nil, lb: lb, devices: [devicePub], ready: ready, now: now), root: nil, now: now) != nil else { return }
         if let c = chain(me) { await writeNames(c) }
     }
 
@@ -431,7 +451,13 @@ public final class SealedEngine: @unchecked Sendable {
         guard sessions.contains(where: { $0.clientPubkey == devicePub && $0.chat }) else { return }
         guard let c = chain(me) else {
             // no anchor for my account, asked from the relay itself (never from a cold store)
-            let asked = askAnchor != nil ? await askAnchor?() : await engine.queryComplete(.main, [["kinds": [30078], "authors": [me], "#d": [SealedKind.anchorD]]])
+            // members only, and only when the relay itself, AFTER authentication and complete to
+            // EOSE, shows no anchor: never from a timeout, a cold store or a pre-AUTH answer
+            guard mayStart else { return }
+            let asked: [NostrEvent]?
+            if let askAnchor { asked = await askAnchor() }
+            else if engine.answeredAfterAuth(.main) { asked = await engine.queryComplete(.main, [["kinds": [30078], "authors": [me], "#d": [SealedKind.anchorD]]]) }
+            else { asked = nil }
             guard let found = asked, found.isEmpty else { return }
             await startChain(sessions, now: now)
             onChange?()
@@ -454,7 +480,7 @@ public final class SealedEngine: @unchecked Sendable {
         let gone = c.devices.filter { $0 != devicePub && !live.contains($0) }
         if !gone.isEmpty {
             try? await Task.sleep(nanoseconds: UInt64.random(in: removalWait) * 1_000_000_000)
-            if let again = chain(me), again.head.id == c.head.id { await drop(Set(gone), from: again) }
+            if let again = chain(me), again.head.id == c.head.id { await drop(Set(gone), from: again, now: now) }
             onChange?()
             return
         }
@@ -465,7 +491,7 @@ public final class SealedEngine: @unchecked Sendable {
             return
         }
         if !c.ready, SealedEngine.mayCarryReady(sessions, devices: c.devices, now: now) {
-            _ = try? publish(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: c.lb, devices: c.devices, ready: true, now: now))
+            await publishRoster(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: c.lb, devices: c.devices, ready: true, now: now), root: c.root.id, now: now)
             onChange?()
         }
         await writeNames(c)
@@ -496,13 +522,14 @@ public final class SealedEngine: @unchecked Sendable {
     public func allow(_ newDevice: String, now: Int = .now) async -> Bool {
         guard let c = chain(me), c.devices.contains(devicePub) else { return false }
         if c.devices.contains(newDevice) { return true } // another device answered first
+        // 20 devices already: refused before any key is handed over
         guard c.devices.count < SealedKind.maxDevices else { return false }
         lock.lock(); let k = keys; lock.unlock()
-        guard let w = try? Sealed.keysWrap(k, account: me, device: device, to: newDevice) else { return false }
-        engine.enqueueSigned(w, target: .main, dm: nil)
+        guard let ws = try? Sealed.keysWraps(k, account: me, device: device, to: newDevice) else { return false }
+        for w in ws { engine.enqueueSigned(w, target: .main, dm: nil) }
         let devices = c.devices + [newDevice]
         let ready = (await sessions?()).map { SealedEngine.mayCarryReady($0, devices: devices, now: now) } ?? false
-        guard (try? publish(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: c.lb, devices: devices, ready: ready, now: now))) != nil else { return false }
+        guard await publishRoster(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: c.lb, devices: devices, ready: ready, now: now), root: c.root.id, now: now) != nil else { return false }
         onChange?()
         return true
     }
@@ -527,11 +554,14 @@ public final class SealedEngine: @unchecked Sendable {
         lock.unlock()
         store.save(k)
         for d in stay where d != devicePub {
-            if let w = try? Sealed.keysWrap(k, account: me, device: device, to: d) { engine.enqueueSigned(w, target: .main, dm: nil) }
+            for w in (try? Sealed.keysWraps(k, account: me, device: device, to: d)) ?? [] { engine.enqueueSigned(w, target: .main, dm: nil) }
         }
-        guard (try? publish(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: lb, devices: stay, ready: false, now: now))) != nil else { return }
+        guard await publishRoster(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: lb, devices: stay, ready: false, now: now), root: c.root.id, now: now) != nil else { return }
         if let next = chain(me) { await writeNames(next) }
     }
+
+    /// Whether my roster is full (Allow then refuses, and says so).
+    public var full: Bool { (chain(me)?.devices.count ?? 0) >= SealedKind.maxDevices }
 
     /// The user removes one of their devices: its session is revoked, then it leaves the roster.
     public func remove(_ gone: String) async -> Bool {

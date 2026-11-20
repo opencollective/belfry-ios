@@ -534,6 +534,9 @@ public final class SyncEngine: @unchecked Sendable {
         }
     }
 
+    /// Whether T answered after AUTH in this run (a question asked before that proves nothing).
+    public func answeredAfterAuth(_ t: Target) -> Bool { lock.lock(); defer { lock.unlock() }; return authedAnswer.contains(t) }
+
     /// The relays whose answer after AUTH (an EOSE of the live subscription) came in this run.
     private var authedAnswer = Set<Target>()
 

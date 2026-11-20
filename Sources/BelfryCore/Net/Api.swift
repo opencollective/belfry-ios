@@ -486,7 +486,9 @@ public struct BelfryAPI: Sendable {
     public func sessions() async throws -> [SessionInfo] {
         let a = try await signed(base + "/me/sessions")
         guard a.ok, let b = a.body else { throw BelfryAPI.fail(a, [:], "Your sessions could not be read just now.") }
-        return (b["sessions"] as? [[String: Any]] ?? []).compactMap { o in
+        // an answer without the list is no answer (never "no sessions": devices would be dropped on it)
+        guard let rows = b["sessions"] as? [[String: Any]] else { throw BelfryAPI.fail(a, [:], "Your sessions could not be read just now.") }
+        return rows.compactMap { o in
             guard let pk = o["bunker_pubkey"] as? String else { return nil }
             return SessionInfo(applicationName: (o["application_name"] as? String ?? "").sliceUnits(120), device: (o["device"] as? String)?.sliceUnits(120),
                                redirectOrigin: o["redirect_origin"] as? String ?? "", bunkerPubkey: pk, createdAt: o["created_at"] as? String ?? "",

@@ -112,6 +112,8 @@ public final class DirectMessages: @unchecked Sendable {
                         let known = items.values.map { (messageId: $0.messageId, conv: $0.conv) }
                         lock.unlock()
                         d = DmReader.dm(from: opened.rumor, me: me, bridge: bridge, known: known)
+                        // the old way, in a conversation already sealed here: marked "not sealed"
+                        if let x = d, x.kind == 14, let since = sealed?.sealedSince(x.conv), x.at >= since { d?.unsealed = true }
                     }
                 } else if e.pubkey == me || e.hasTag("p", me), let bunker = engine.signer as? BunkerSigner {
                     let peer = e.pubkey == me ? (e.tag("p") ?? me) : e.pubkey
@@ -148,7 +150,7 @@ public final class DirectMessages: @unchecked Sendable {
     private func take(_ rumor: NostrEvent, sharedBy: String?) {
         lock.lock()
         defer { lock.unlock() }
-        if rumor.kind == 7 || rumor.kind == 5 { if sharedBy == nil { reactions.apply(rumor) }; return }
+        if rumor.kind == 7 || rumor.kind == 5 { reactions.apply(rumor); return }
         if sharedBy != nil, items[rumor.id] != nil { return }
         let known = items.values.map { (messageId: $0.messageId, conv: $0.conv) }
         guard var d = DmReader.dm(from: rumor, me: me, bridge: bridge, known: known) else { return }

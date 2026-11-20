@@ -135,6 +135,9 @@ extension AppModel {
         // only what touches my own account costs a look at my sessions
         let mine = list.isEmpty || list.contains { $0.pubkey == me || $0.hasTag("p", me) || $0.hasTag("p", se.devicePub) }
         // a kept wrap is tried again at each new roster (its author's chain may be whole now)
+        // and a queued wrap is sealed again for a head that moved: the outbox tries now
+        if list.contains(where: { $0.kind == SealedKind.roster }) { engine?.flushSoon() }
+        se.mayStart = !derive.amGuest && !guestReading
         guard mine else { Task { await dms?.process(); refreshSealed() }; return }
         Task {
             await se.maintain()
@@ -186,6 +189,11 @@ extension AppModel {
     /// Allow / Not me on the prompt. The first device to answer wins: the prompt goes either way.
     func answerAllow(_ ask: AllowAsk, allow: Bool) async {
         if let se = sealedEngine {
+            // 20 devices already: refused, and said, before any key is handed over
+            if allow, se.full, se.chain(me)?.devices.contains(ask.id) != true {
+                showToast("You already have 20 devices. Remove one in Devices first.")
+                return
+            }
             _ = allow ? await se.allow(ask.id) : await se.deny(ask.id)
             let next = await se.asks().first { $0.device != ask.id }
             sealed.ask = next.map { AllowAsk(id: $0.device, device: $0.name, kind: DeviceKind.of($0.name), at: $0.at) }
