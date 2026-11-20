@@ -144,19 +144,7 @@ public enum Sealed {
     /// the 40 000-byte ceiling.
     public static func keysWraps(_ chain: KeyChain, account: String, device: Data, to: String, now: Int = .now) throws -> [NostrEvent] {
         let giver = try Keys.publicKeyHex(secret: device)
-        func rumor(_ list: [String]) -> NostrEvent {
-            GiftWrap.rumor(kind: SealedKind.keys, pubkey: giver, tags: [["p", account]],
-                           content: "{\"v\":1,\"account\":\(JSON.string(account)),\"keys\":[\(list.joined(separator: ","))]}", createdAt: now)
-        }
-        let base = Sealed.json(rumor([])).utf8.count
-        var rumors = [NostrEvent](), batch = [String](), size = base
-        for k in chain.keys.sorted(by: { $0.key < $1.key }) {
-            let one = "{\"lb\":\(JSON.string(k.key)),\"secret\":\(JSON.string(k.value))}"
-            let n = JSON.string(one).utf8.count - 2 + 1
-            if !batch.isEmpty, size + n > maxRumorBytes { rumors.append(rumor(batch)); batch = []; size = base }
-            batch.append(one); size += n
-        }
-        if !batch.isEmpty || rumors.isEmpty { rumors.append(rumor(batch)) }
+        let rumors = keysRumors(chain.keys.sorted { $0.key < $1.key }.map { (lb: $0.key, secret: $0.value) }, account: account, giver: giver, now: now)
         return try rumors.map { r in
             let seal = try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 13, tags: [],
                                       content: NIP44.encrypt(Sealed.json(r), conversationKey: conv(device, to))).signed(with: device)
@@ -164,6 +152,25 @@ public enum Sealed {
             return try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 1059, tags: [["p", to]],
                                   content: NIP44.encrypt(seal.json, conversationKey: conv(one, to))).signed(with: one)
         }
+    }
+
+    /// The 8561 rumors of a hand-over: each filled until one more key would take its JSON past the
+    /// ceiling.
+    static func keysRumors(_ keys: [(lb: String, secret: String)], account: String, giver: String, now: Int) -> [NostrEvent] {
+        func rumor(_ list: [String]) -> NostrEvent {
+            GiftWrap.rumor(kind: SealedKind.keys, pubkey: giver, tags: [["p", account]],
+                           content: "{\"v\":1,\"account\":\(JSON.string(account)),\"keys\":[\(list.joined(separator: ","))]}", createdAt: now)
+        }
+        let base = Sealed.json(rumor([])).utf8.count
+        var rumors = [NostrEvent](), batch = [String](), size = base
+        for k in keys {
+            let one = "{\"lb\":\(JSON.string(k.lb)),\"secret\":\(JSON.string(k.secret))}"
+            let n = JSON.string(one).utf8.count - 2 + 1
+            if !batch.isEmpty, size + n > maxRumorBytes { rumors.append(rumor(batch)); batch = []; size = base }
+            batch.append(one); size += n
+        }
+        if !batch.isEmpty || rumors.isEmpty { rumors.append(rumor(batch)) }
+        return rumors
     }
 
     /// Opens a key hand-over addressed to this device. The caller accepts it only when `giver` is

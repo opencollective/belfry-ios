@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import BelfryCore
 
-// vectors/sealed.json = collective-belfry docs/sealed-vectors.json (sha256 572c8f01…95e4), byte
+// vectors/sealed.json = collective-belfry docs/sealed-vectors.json (sha256 1aa97802…47f2), byte
 // for byte: the roster chain, opening and acceptance, the ceiling and the packing of a shared
 // history, the key hand-over, the link proof, shared history, `ready`. Not reproduced here:
 // making the same wrap byte for byte (it needs fixed one-time keys, nonces and Schnorr auxiliary).
@@ -30,11 +30,12 @@ final class SealedVectorTests: XCTestCase {
         let v = try vector("sealed")
         let alice = key(v, "alice").pub
         let cases = list(v["chains"])
-        XCTAssertEqual(cases.count, 27)
+        XCTAssertEqual(cases.count, 39)
         for c in cases {
             let name = c["name"] as? String ?? ""
             let exp = dict(c["expected"])
-            let got = RosterChain.resolve(account: alice, anchor: try? event(c["anchor"]), rosters: try events(c["rosters"]))
+            let got = RosterChain.resolve(account: alice, anchor: try? event(c["anchor"]), rosters: try events(c["rosters"]),
+                                          pinnedHead: c["pinned_head"] as? String)
             XCTAssertEqual(got?.rosters.map(\.id) ?? [], exp["valid_ids"] as? [String] ?? [], name)
             XCTAssertEqual(got?.head.id, exp["head"] as? String, name)
             XCTAssertEqual(got?.devices ?? [], exp["devices"] as? [String] ?? [], name)
@@ -113,6 +114,20 @@ final class SealedVectorTests: XCTestCase {
         XCTAssertEqual(parts.flatMap(Sealed.sharedRumors).count, 300)
     }
 
+    func testKeysPacking() throws {
+        let v = try vector("sealed")
+        let exp = dict(dict(dict(v["ceiling"])["keys_packing"])["expected"])
+        let t0 = try XCTUnwrap(dict(v["fixed"])["T0"] as? Int)
+        let keys = try (0..<600).map { i -> (lb: String, secret: String) in
+            let s = Crypto.sha256("belfry sealed vectors/key/many-lb-\(i)")
+            return (try Keys.publicKeyHex(secret: s), s.hex)
+        }
+        let rumors = Sealed.keysRumors(keys, account: key(v, "alice").pub, giver: key(v, "alice_phone").pub, now: t0 + 600)
+        XCTAssertEqual(rumors.map { ((JSON.parse($0.content) as? [String: Any])?["keys"] as? [Any])?.count ?? 0 }, exp["keys_per_8561"] as? [Int])
+        XCTAssertEqual(rumors.map { Sealed.json($0).utf8.count }, exp["json_bytes_per_8561"] as? [Int])
+        XCTAssertEqual(rumors.map(\.id), exp["ids_of_8561"] as? [String])
+    }
+
     func testKeysHandover() throws {
         let v = try vector("sealed")
         let cases = list(v["keys_handover"])
@@ -152,7 +167,7 @@ final class SealedVectorTests: XCTestCase {
     func testHistory() throws {
         let v = try vector("sealed")
         let cases = list(v["history"])
-        XCTAssertEqual(cases.count, 3)
+        XCTAssertEqual(cases.count, 6)
         for c in cases {
             let name = c["name"] as? String ?? ""
             let exp = dict(c["expected"])

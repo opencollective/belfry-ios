@@ -99,7 +99,10 @@ public struct RosterChain: Hashable, Sendable {
             }
             return chain
         }
-        var chain = anchor.tag("head").flatMap(path(to:)) ?? [root]
+        // one well-formed head tag; none, several or a malformed one = absent (the root alone)
+        let heads = anchor.tags.filter { $0.first == "head" }
+        let named = heads.count == 1 && heads[0].count >= 2 && isHex64(heads[0][1]) ? heads[0][1] : nil
+        var chain = named.flatMap(path(to:)) ?? [root]
         // no going back: the anchor's head is an ancestor of the head already accepted
         if let pinnedHead, let pinned = path(to: pinnedHead), pinned.count > chain.count, pinned[chain.count - 1].id == chain[chain.count - 1].id {
             chain = pinned

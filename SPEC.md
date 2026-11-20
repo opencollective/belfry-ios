@@ -2649,7 +2649,7 @@ an all-day end date as the last day too. Test: `EventsOverTests` (fixed clock, E
 
 The contract is collective-belfry `docs/sealed.md` (version 1), shared with the web chat and
 Android; this section only says where the iPhone app implements it. Vectors: `vectors/sealed.json`
-(the lead's `docs/sealed-vectors.json`, copied byte for byte when it arrives).
+(the lead's `docs/sealed-vectors.json`, sha256 1aa97802…47f2, copied byte for byte).
 
 - `Sealed/Roster.swift`: a roster (8560), the valid chain from the anchor (30078 `belfry:sealed`),
   forks (lower id, lower-case hex), which device may have signed a seal (`accepts`), the changes
