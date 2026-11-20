@@ -65,6 +65,22 @@ struct ProfileView: View {
         if pushed { card } else { NavigationStack { card.toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } } } }
     }
 
+    private func shownTags(_ x: Extras?, _ d: Derive) -> [String] {
+        if let t = x?.tags, !t.isEmpty { return t }
+        return d.isGuest(pubkey) ? (model.guestTags[pubkey] ?? []) : []
+    }
+
+    /// "Guest in #garden · invited by Ana Silva" under a guest's name (board home/profile-guest).
+    private func guestLine(_ d: Derive) -> String? {
+        guard d.isGuest(pubkey) else { return nil }
+        var s = d.isAgent(pubkey) ? "Agent, a guest" : "Guest"
+        let places = d.groups().filter { g in d.guestJoins(g.id).contains { $0.pubkey == pubkey && !$0.member } }
+        if let g = places.first, g.named { s += " in " + (g.isPod || g.isEvent || g.isProposal ? g.name : "#" + g.name) }
+        let by = places.first.flatMap { g in d.guestJoins(g.id).first { $0.pubkey == pubkey }?.by }
+        if let by { s += " · invited by " + (by == model.me ? "you" : model.name(by)) }
+        return s
+    }
+
     private var card: some View {
         let _ = model.version
         let d = model.derive
@@ -79,11 +95,12 @@ struct ProfileView: View {
                     Text(me ? (model.realName(pubkey).isEmpty ? "You" : model.realName(pubkey)) : model.name(pubkey))
                         .font(.title.bold()).multilineTextAlignment(.center)
                     if let address { Text(address).font(.subheadline).foregroundStyle(.secondary).textSelection(.enabled) }
+                    if let g = guestLine(d) { Text(g).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center) }
                     HStack(spacing: 12) {
                         if !me && !d.isGuest(model.me) {
                             RoundAction(symbol: "message.fill", title: "Message") { model.messageAuthor = pubkey; if !pushed { dismiss() } }
                         }
-                        if let address, !me {
+                        if let address, !me, !d.isGuest(pubkey) {
                             RoundAction(symbol: "envelope.fill", title: "E-mail") {
                                 if let u = URL(string: "mailto:" + address) { UIApplication.shared.open(u) }
                             }
@@ -99,8 +116,10 @@ struct ProfileView: View {
                 .listRowBackground(Color.clear)
             }
             if let about = p?.about, !about.isEmpty { Section("About") { MarkdownText(text: about) } }
-            if let x, !x.tags.isEmpty {
-                Section("Tags") { FlowRow(spacing: 6) { ForEach(x.tags, id: \.self) { Chip(text: "#" + $0) } } }
+            // a member's own tags; a guest's come from the belfry's register (read-only either way here)
+            let tags = shownTags(x, d)
+            if !tags.isEmpty {
+                Section("Tags") { FlowRow(spacing: 6) { ForEach(tags, id: \.self) { Chip(text: "#" + $0) } } }
             }
             if let place = x?.place { Section("Place") { Label(People.placeLabel(place), systemImage: "mappin.and.ellipse") } }
             RoleSection(pubkey: pubkey) { error = $0 }

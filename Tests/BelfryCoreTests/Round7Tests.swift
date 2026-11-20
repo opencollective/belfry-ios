@@ -581,4 +581,14 @@ final class WayInTests: XCTestCase {
         XCTAssertEqual(UsernameCheck.suggested(["suggested": "lina", "suggestions": ["lina"]]), "lina")
         XCTAssertNil(UsernameCheck.suggested(["suggested": "Lina!"]))
     }
+
+    // A guest's tags come with /whois (canvas v66, n-home-profile-tags): cleaned like a member's.
+    func testWhoisTags() {
+        let a = String(repeating: "a", count: 64), b = String(repeating: "b", count: 64)
+        let got = BelfryAPI.whoisTags(["people": [a: "guest"], "tags": [a: ["#Repair", "bikes", "bikes", 7], b: [], "not-a-key": ["x"]]])
+        XCTAssertEqual(got, [a: ["repair", "bikes"]])
+        XCTAssertEqual(BelfryAPI.whoisTags(["people": [a: "guest"]]), [:])
+        XCTAssertEqual(BelfryAPI.whoisTags(["tags": "nope"]), [:])
+        XCTAssertEqual(BelfryAPI.whoisTags(nil), [:])
+    }
 }

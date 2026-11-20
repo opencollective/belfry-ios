@@ -233,6 +233,8 @@ final class AppModel: ObservableObject {
     @Published var groupsKey: String?
     /// What the register says people are (`POST /whois`), this session.
     @Published var kinds = [String: String]()
+    /// Guests' tags, as the belfry's register gave them with /whois (a guest edits them on the website).
+    @Published var guestTags = [String: [String]]()
     private var whoisAsked = Set<String>()
     private var configCheckedAt = Date.distantPast
     private var bump: DispatchWorkItem?
@@ -417,6 +419,7 @@ final class AppModel: ObservableObject {
         // offline first: the last copies at once, refreshed in the background
         roles = db.get("roles", as: RolesInfo.self) ?? RolesInfo()
         kinds = s.demo ? [:] : db.get("kinds", as: [String: String].self) ?? [:]
+        guestTags = s.demo ? [:] : db.get("guest-tags", as: [String: [String]].self) ?? [:]
         groupsAbsent = db.get("groups-absent", as: [String: Int].self) ?? [:]
         presenceAt = nil
         membership = db.get("membership", as: MembershipSettings.self) ?? MembershipSettings()
@@ -474,7 +477,12 @@ final class AppModel: ObservableObject {
         let list = (keys ?? derive.guestJoinKeys).filter { keys != nil || !whoisAsked.contains($0) }
         guard !list.isEmpty else { return }
         whoisAsked.formUnion(list)
-        if let got = try? await api.whois(list) {
+        if let full = try? await api.whoisFull(list) {
+            let got = full.kinds
+            // the answer is the whole truth for the keys asked: tags taken off go here too
+            var t = guestTags
+            for p in list { t[p] = full.tags[p] }
+            if t != guestTags { guestTags = t; engine.db.set("guest-tags", t) }
             var k = kinds
             for p in list { k[p] = got[p] }
             // what I became through a member link stays until the register says otherwise

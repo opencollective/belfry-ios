@@ -255,7 +255,22 @@ public struct BelfryAPI: Sendable {
 
     /// What the register says each key is: "member", "agent" or "guest"; keys with no active pass
     /// are left out. Split into calls of at most 500 keys. An old belfry answers 404 (code `http`).
-    public func whois(_ pubkeys: [String]) async throws -> [String: String] {
+    public func whois(_ pubkeys: [String]) async throws -> [String: String] { try await whoisFull(pubkeys).kinds }
+
+    /// A guest's tags from a `/whois` answer: `tags: {<hex>: [..]}`, cleaned like a member's own
+    /// (lower case, no "#", at most 30); anything else is left out.
+    public static func whoisTags(_ body: [String: Any]?) -> [String: [String]] {
+        var out = [String: [String]]()
+        for (k, v) in body?["tags"] as? [String: Any] ?? [:] where isHex64(k) {
+            let t = People.cleanTags((v as? [Any] ?? []).compactMap { $0 as? String })
+            if !t.isEmpty { out[k] = t }
+        }
+        return out
+    }
+
+    /// Who the people are, and the tags the belfry holds for the guests among them.
+    public func whoisFull(_ pubkeys: [String]) async throws -> (kinds: [String: String], tags: [String: [String]]) {
+        var tags = [String: [String]]()
         var keys = [String]()
         for k in pubkeys where isHex64(k) && !keys.contains(k) { keys.append(k) }
         var out = [String: String]()
@@ -270,8 +285,10 @@ public struct BelfryAPI: Sendable {
             for (k, v) in people {
                 if let kind = v as? String, isHex64(k), ["member", "agent", "guest"].contains(kind) { out[k] = kind }
             }
+            // only of the keys asked about
+            for (k, t) in BelfryAPI.whoisTags(a.body) where chunk.contains(k) { tags[k] = t }
         }
-        return out
+        return (out, tags)
     }
 
     // ---- a member's own agents ------------------------------------------------------------------
