@@ -21,7 +21,8 @@ struct MembersDirectory: View {
         let sections = Dictionary(grouping: shown) { letter(name($0.pubkey, $0.name)) }
         let letters = sections.keys.sorted { a, b in a == "#" ? false : b == "#" ? true : a < b }
         List {
-            if query.isEmpty {
+            // screenshots `membersagents`: the list itself on top (a member's row with "+ N agents")
+            if query.isEmpty, model.launch.screen != "membersagents" {
                 // "Invite someone": the first row, only for who may invite members (no disabled row)
                 if model.mayInviteMembers, inviteChannel != nil {
                     Button { hideKeyboard(); inviting = true } label: {
@@ -56,6 +57,7 @@ struct MembersDirectory: View {
         .sheet(isPresented: $inviting) {
             if let c = inviteChannel { InviteSheet(id: c, startAs: .member(role: model.roles.defaultRole, membership: "permanent")) }
         }
+        .onAppear { if model.launch.screen == "memberssearch", query.isEmpty { query = "minutes" } } // an agent's name: its member shows
         .onAppear { if model.launch.screen == "membersinvite" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { inviting = true } } }
         .task { await load() }
         .refreshable { await load() }

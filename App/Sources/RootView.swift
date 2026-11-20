@@ -633,7 +633,7 @@ struct RootView: View {
         case "messages", "conversation", "mail": selection = .messages
         case "mentions": selection = .mentions
         case "requests": selection = .requests
-        case "directory": selection = .members
+        case "directory", "membersagents", "memberssearch": selection = .members
         case "settings":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }

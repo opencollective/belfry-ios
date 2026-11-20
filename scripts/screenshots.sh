@@ -152,6 +152,10 @@ shot 56-log log light
 shot 57-settings settings light
 shot 58-members directory light
 shot 58b-members-dark directory dark
+# 2026-11-21: a member's agents folded into the member's row; a search by an agent's name
+shot 58c-members-agents membersagents light
+shot 58d-members-agents-dark membersagents dark
+shot 58e-members-search-agent memberssearch light
 shot 59-my-card mycard light
 shot 59b-role-picker rolepicker light
 shot 59c-profile-dark profile dark
