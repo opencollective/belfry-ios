@@ -497,7 +497,7 @@ struct EventsScreen: View {
 struct EventDestination: ViewModifier {
     let on: Bool
     func body(content: Content) -> some View {
-        if on { content.navigationDestination(for: EventRoute.self) { r in EventScreen(key: r.key, ticket: r.ticket) } } else { content }
+        if on { content.navigationDestination(for: EventRoute.self) { r in EventScreen(key: r.key, ticket: r.ticket, focus: r.focus) } } else { content }
     }
 }
 

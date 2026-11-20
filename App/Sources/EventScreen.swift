@@ -19,13 +19,15 @@ enum EventLevel: Hashable { case up, half, full }
 
 enum EventTab: String, CaseIterable, Hashable { case chat = "Chat", photos = "Photos", people = "People" }
 
-struct EventRoute: Hashable { let key: String; var ticket: String? = nil }
+struct EventRoute: Hashable { let key: String; var ticket: String? = nil; /** A message of its chat to open at (a message link). */ var focus: String? = nil }
 
 /// Finds the event (the local log first, then the belfry's API for guests) and shows it.
 struct EventScreen: View {
     @EnvironmentObject var model: AppModel
     let key: String
     var ticket: String? = nil
+    /// A message of its chat to open at (a message link, SPEC 19.61).
+    var focus: String? = nil
     /// The open screen of the drawer (☰ instead of a back button).
     var root = false
     @State private var remote: ApiEvent?
@@ -36,7 +38,7 @@ struct EventScreen: View {
         let d = model.derive
         SwiftUI.Group {
             if let e = d.eventByKey(key) {
-                EventScreenBody(e: e, api: nil, ticket: ticket, root: root)
+                EventScreenBody(e: e, api: nil, ticket: ticket, root: root, focus: focus)
             } else if let r = remote {
                 EventScreenBody(e: r.calEvent(timeZone: .current, me: model.me), api: r, ticket: nil, root: root)
             } else if let error {
@@ -62,6 +64,7 @@ struct EventScreenBody: View {
     let api: ApiEvent?
     let ticket: String?
     let root: Bool
+    var focus: String? = nil
     @State private var level: EventLevel = .half
     @State private var tab: EventTab = .chat
     @State private var drag: CGFloat = 0
@@ -323,7 +326,7 @@ struct EventScreenBody: View {
                 // exist only while shown: hidden, their scroll and list views still took part in
                 // every keyboard layout of the chat, and that layout could stop returning
                 // (the freeze when typing in the event's chat, 2026-11-16)
-                pane(.chat) { ChannelView(id: e.groupId, embedded: true) }
+                pane(.chat) { ChannelView(id: e.groupId, focus: focus, embedded: true) }
                 if tab == .photos { EventPhotosTab(e: e) }
                 if tab == .people { EventPeopleTab(e: e, open: openProfile, checkIn: { checkingIn = true }) }
             }

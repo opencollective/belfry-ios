@@ -369,7 +369,7 @@ struct RootView: View {
     /// A channel, group or event's chat pushed on the place on screen.
     private func pushChat(_ id: String, _ message: String?) {
         if Channel.typeOf(id) == .event, let e = model.derive.eventOfGroup(id), e.isNew {
-            push(EventRoute(key: e.coord))
+            push(EventRoute(key: e.coord, focus: message))
         } else {
             push(ChatRoute(id: id, focus: message))
         }
@@ -406,7 +406,7 @@ struct RootView: View {
             case .channel(let id):
                 // an event's group opens as the event (Your events in the drawer)
                 if Channel.typeOf(id) == .event, let e = model.derive.eventOfGroup(id), e.isNew {
-                    EventScreen(key: e.coord, root: true).id(id)
+                    EventScreen(key: e.coord, focus: focus?.channel == id ? focus?.message : nil, root: true).id(id + (focus?.channel == id ? focus?.message ?? "" : ""))
                 } else {
                     // the channel, or "This group has been deleted"
                     ChannelScreen(id: id, focus: focus?.channel == id ? focus?.message : nil)

@@ -189,7 +189,7 @@ struct PlaceDestinations: ViewModifier {
     func body(content: Content) -> some View {
         content
             .navigationDestination(for: ProfileKey.self) { k in ProfileView(pubkey: k.pubkey, pushed: true, group: k.group) }
-            .navigationDestination(for: EventRoute.self) { r in EventScreen(key: r.key, ticket: r.ticket) }
+            .navigationDestination(for: EventRoute.self) { r in EventScreen(key: r.key, ticket: r.ticket, focus: r.focus) }
             .navigationDestination(for: GroupRoute.self) { r in GroupPage(id: r.id) }
             .navigationDestination(for: ChannelRoute.self) { r in ChannelScreen(id: r.id, pushed: true) }
             .navigationDestination(for: ChatRoute.self) { r in ChannelScreen(id: r.id, focus: r.focus, pushed: true) }

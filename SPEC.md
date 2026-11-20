@@ -2606,7 +2606,8 @@ How they read (`Derive.refShown`), inside the text and as the box at the end:
   it yet | <name> is on it | You are on it". Opens the to-do's screen.
 - **Message**: "a message from <name>"; box: the author's face and name, "Message in <channel>"
   (or the event's title), two lines of its text (one line of at most 160 units, mentions and
-  channel references as names). Opens the channel at the message (or its thread).
+  channel references as names). Opens the channel at the message (or its thread); a message of
+  an event's chat opens the event with its chat at the message.
 - **Person**: "@<name>"; box: face, name, "Guest" / their address at this belfry / "Agent" /
   "Person". Opens the profile.
 - **Drop box**: "the drop box of <channel>" ("a drop box" while its event isn't here); box: "Drop
