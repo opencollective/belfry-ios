@@ -1164,7 +1164,9 @@ struct NewChannelSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        // full height: at half height, over the open drawer and with the keyboard up, the drawer
+        // showed through above it (Xavier, 2026-11-20)
+        .presentationDetents([.large])
         .solidSheet()
     }
 }

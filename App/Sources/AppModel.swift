@@ -197,7 +197,10 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.set(mentionsSeenAt, forKey: AppModel.perAccount("belfry-mentions-seen"))
     }
     /// Redraws everything when the belfry's colour changes (Theme).
-    var brandKey: String { config.branding?.primary ?? "" }
+    var brandKey: String {
+        guard let b = config.branding else { return "" }
+        return b.primary + (b.colors.map { $0.light.accent + $0.dark.accent + $0.light.onAccent + $0.dark.onAccent } ?? "")
+    }
     @Published var signInError: String?
     /// The native sign-in waiting for its code (SPEC 19.20): screen 2. Kept in the Keychain by
     /// `nativeFlow`, so it is back after the app was killed while the person read the e-mail.

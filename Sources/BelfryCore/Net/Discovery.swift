@@ -109,9 +109,26 @@ public struct Branding: Codable, Hashable, Sendable {
     public var primary = ""
     public var secondary = ""
     public var description = ""
+    /// The colours to draw with, per appearance, as the belfry computed them from the primary
+    /// (2026-11-20): `accent` reads on that mode's page and raised surface, `onAccent` is the
+    /// label on a button filled with it. Nil: an older belfry, or no brand colour: the app's own tint.
+    public var colors: Colors?
 
-    public init(logo: String = "", cover: String = "", primary: String = "", secondary: String = "", description: String = "") {
+    public struct Mode: Codable, Hashable, Sendable {
+        public var accent: String
+        public var onAccent: String
+        public init(accent: String, onAccent: String) { self.accent = accent; self.onAccent = onAccent }
+    }
+
+    public struct Colors: Codable, Hashable, Sendable {
+        public var light: Mode
+        public var dark: Mode
+        public init(light: Mode, dark: Mode) { self.light = light; self.dark = dark }
+    }
+
+    public init(logo: String = "", cover: String = "", primary: String = "", secondary: String = "", description: String = "", colors: Colors? = nil) {
         self.logo = logo; self.cover = cover; self.primary = primary; self.secondary = secondary; self.description = description
+        self.colors = colors
     }
 
     public var isEmpty: Bool { logo.isEmpty && cover.isEmpty && primary.isEmpty && secondary.isEmpty && description.isEmpty }
@@ -127,7 +144,15 @@ public struct Branding: Codable, Hashable, Sendable {
         }
         let raw = b["description"] as? String ?? ""
         let d = (raw as NSString).length > 500 ? (raw as NSString).substring(to: 500) : raw
-        return Branding(logo: url(b["logo"]), cover: url(b["cover"]), primary: hex(b["primary"]), secondary: hex(b["secondary"]), description: d)
+        // `colors`: both modes whole, or none of it
+        func mode(_ v: Any?) -> Mode? {
+            guard let o = v as? [String: Any] else { return nil }
+            let a = hex(o["accent"]), on = hex(o["on_accent"])
+            return a.isEmpty || on.isEmpty ? nil : Mode(accent: a, onAccent: on)
+        }
+        let c = b["colors"] as? [String: Any]
+        let colors = mode(c?["light"]).flatMap { l in mode(c?["dark"]).map { Colors(light: l, dark: $0) } }
+        return Branding(logo: url(b["logo"]), cover: url(b["cover"]), primary: hex(b["primary"]), secondary: hex(b["secondary"]), description: d, colors: colors)
     }
 
     /// RGB 0...1 of a #rrggbb colour.

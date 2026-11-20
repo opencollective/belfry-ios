@@ -101,6 +101,9 @@ struct TownDrawer: View {
                         .accessibilityIdentifier("drawer-today")
                 }
                 Section {
+                    // the title is a row, not a header: a plain list's header sticks to the top
+                    // and the rows scrolled under it, showing through (Xavier, 2026-11-20)
+                    sectionTitle(PlaceNames.Section.town.title)
                     if let general { townRow(general) }
                     placeRow(icon: "person.2", title: PlaceNames.members, note: nil, badge: requests, on: current == .members || current == .requests) { select(.members) }
                         .accessibilityIdentifier("drawer-members")
@@ -109,7 +112,7 @@ struct TownDrawer: View {
                         placeRow(icon: "doc.text", title: "Charter", note: nil, badge: left, on: current == .charter) { select(.charter) }
                             .accessibilityIdentifier("drawer-charter")
                     }
-                } header: { sectionTitle(PlaceNames.Section.town.title) }
+                }
                 // the categories as one flat list (headers are rows) so a channel can be dragged
                 // across them; only the belfry's admins can drag
                 Section {
@@ -190,15 +193,16 @@ struct TownDrawer: View {
                 .listRowBackground(Color.clear)
             }
             if !mine.isEmpty {
-                Section { ForEach(mine) { townRow($0) } } header: { sectionTitle("You were invited to") }
+                Section { sectionTitle("You were invited to"); ForEach(mine) { townRow($0) } }
             }
             if !open.isEmpty || !model.charterRules.isEmpty {
                 Section {
+                    sectionTitle("Open to everyone")
                     if !model.charterRules.isEmpty {
                         placeRow(icon: "doc.text", title: "Charter", note: nil, badge: 0, on: current == .charter) { select(.charter) }
                     }
                     ForEach(open) { townRow($0) }
-                } header: { sectionTitle("Open to everyone") }
+                }
             }
             Section {
                 Text("Read-only for guests. Members also have the Townsquare, every channel and Members.")
@@ -212,6 +216,10 @@ struct TownDrawer: View {
 
     private func sectionTitle(_ t: String) -> some View {
         Text(t.uppercased()).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+            .padding(.top, 10)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .accessibilityAddTraits(.isHeader)
     }
 
     /// A channel: #, its name (a globe when public), the unread count.
