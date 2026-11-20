@@ -1,5 +1,6 @@
 import BelfryCore
 import Foundation
+import UIKit
 
 // End-to-end encrypted conversations (boards messages/encryption-*, approved 2026-11-20): what
 // the screens show. SCREENS ONLY: this state is filled by the demo and by nothing else. No key,
@@ -52,7 +53,8 @@ struct DeviceNotice: Identifiable, Hashable {
     var what: What
     /// The device's name: only on my own lines.
     var device: String?
-    var kind: DeviceKind = .phone
+    /// Known for my own devices and in the demo; never told about someone else's.
+    var kind: DeviceKind?
 }
 
 struct SealedConv: Hashable {
@@ -70,7 +72,7 @@ struct AllowAsk: Identifiable, Hashable {
     var at: Int
 }
 
-struct SealedState {
+struct SealedState: Equatable {
     var myDevices: [MyDevice] = []
     /// The sealed conversations (a conversation that is not in here shows no lock).
     var convs: [String: SealedConv] = [:]
@@ -82,6 +84,22 @@ struct SealedState {
     var removed: Set<String> = []
 }
 
+/// The letterbox secrets of one account on this device: in the Keychain (the session's own
+/// accessibility), never in the database, never logged; gone on sign-out.
+final class KeychainKeyStore: SealedKeyStore, @unchecked Sendable {
+    private let account: String
+    init(slot: String) { account = slot.isEmpty ? "sealed-keys" : "sealed-keys@" + slot }
+    func load() -> KeyChain {
+        guard let text = Keychain.string(account), let c = try? JSONDecoder().decode(KeyChain.self, from: Data(text.utf8)) else { return KeyChain() }
+        return KeyChain(keys: c.keys)
+    }
+    func save(_ chain: KeyChain) {
+        guard let d = try? JSONEncoder().encode(chain) else { return }
+        Keychain.setString(String(decoding: d, as: UTF8.self), account)
+    }
+    func wipe() { Keychain.removeString(account) }
+}
+
 @MainActor
 extension AppModel {
     func sealedConv(_ conv: String) -> SealedConv? { sealed.convs[conv] }
@@ -89,14 +107,100 @@ extension AppModel {
     /// "Locked on this device": a sealed conversation on a device nobody allowed yet.
     func lockedHere(_ conv: String) -> Bool { sealed.notAllowed && sealed.convs[conv] != nil }
 
+    // ---- the real thing (docs/sealed.md) ---------------------------------------------------------------
+
+    func wireSealed(_ se: SealedEngine, dms d: DirectMessages) {
+        se.bridge = { [weak d] in d?.bridge }
+        se.sessions = { [weak self] in
+            guard let api = await self?.api else { return nil }
+            return try? await api.sessions()
+        }
+        se.revoke = { [weak self] pk in
+            guard let api = await self?.api else { return false }
+            return (try? await api.revokeSession(pk)) != nil
+        }
+        let pad = UIDevice.current.userInterfaceIdiom == .pad
+        se.myName = { Sealed.DeviceName(name: pad ? "iPad" : "iPhone", kind: pad ? "tablet" : "phone", added: Int.now) }
+        se.onKeys = { [weak d] in Task { await d?.process() } }
+        se.onChange = { [weak self] in Task { @MainActor in self?.refreshSealed() } }
+        d.sealed = se
+        if let l = pendingLinkSecret { se.setLink(l); pendingLinkSecret = nil }
+    }
+
+    /// Rosters, anchors, requests or keys arrived (or the relay answered): this device's upkeep,
+    /// then the question a new device may be waiting with.
+    func sealedNews(_ list: [NostrEvent]) {
+        guard let se = sealedEngine else { return }
+        se.observe(list.filter { $0.kind == SealedKind.roster }.compactMap { $0.tag("p") } + list.filter { $0.kind == 30078 }.map(\.pubkey))
+        // only what touches my own account costs a look at my sessions
+        let mine = list.isEmpty || list.contains { $0.pubkey == me || $0.hasTag("p", me) || $0.hasTag("p", se.devicePub) }
+        guard mine else { refreshSealed(); return }
+        Task {
+            await se.maintain()
+            await dms?.process()
+            let ask = await se.asks().first
+            let now = ask.map { AllowAsk(id: $0.device, device: $0.name, kind: DeviceKind.of($0.name), at: $0.at) }
+            if sealed.ask != now { sealed.ask = now }
+            refreshSealed()
+        }
+    }
+
+    /// What the screens show, from the chains as they are now.
+    func refreshSealed() {
+        guard let se = sealedEngine, let dms, !isDemo else { return }
+        var st = SealedState()
+        st.ask = sealed.ask
+        let mine = se.chain(me)
+        let names = se.deviceNames()
+        func kind(_ d: String) -> DeviceKind? { names[d].flatMap { DeviceKind(rawValue: $0.kind) } }
+        st.myDevices = (mine?.devices ?? []).map { d in
+            let j = mine?.joined(d)
+            let this = d == se.devicePub
+            return MyDevice(id: d, name: names[d]?.name ?? (this ? UIDevice.current.model : "A device"), kind: kind(d) ?? .computer,
+                            added: j?.at ?? 0, from: j?.from.flatMap { names[$0]?.name }, this: this)
+        }
+        st.notAllowed = se.mine == .waiting || dms.lockedWraps > 0
+        for t in dms.threads() {
+            let conv = t.conv
+            if MailThreads.isMail(conv) {
+                // my e-mail is sealed as soon as my chain is ready; the correspondent is not on this belfry
+                if se.mailSealed { st.convs[conv] = SealedConv(since: mine?.root.createdAt, others: [SealedPerson(id: conv, mailName: convName(self, conv))]) }
+                continue
+            }
+            guard se.isSealed(conv) else { continue }
+            let others = MailThreads.peers(conv).filter { $0 != me }.map { p -> SealedPerson in
+                let c = se.chain(p)
+                let last = c?.changes.last
+                return SealedPerson(id: p, devices: c?.devices.count ?? 0, changeAdded: last?.added ?? true, changeAt: last?.at)
+            }
+            let notices = se.notices(conv).map { n in
+                DeviceNotice(id: n.id, at: n.at, who: n.who, what: n.fresh ? .locked : (n.added ? .added : .removed),
+                             device: n.who == me ? names[n.device]?.name : nil, kind: n.who == me ? kind(n.device) : nil)
+            }
+            st.convs[conv] = SealedConv(since: se.sealedSince(conv), others: others, notices: notices)
+        }
+        if st != sealed { sealed = st }
+    }
+
     /// Allow / Not me on the prompt. The first device to answer wins: the prompt goes either way.
     func answerAllow(_ ask: AllowAsk, allow: Bool) async {
+        if let se = sealedEngine {
+            _ = allow ? await se.allow(ask.id) : await se.deny(ask.id)
+            let next = await se.asks().first { $0.device != ask.id }
+            sealed.ask = next.map { AllowAsk(id: $0.device, device: $0.name, kind: DeviceKind.of($0.name), at: $0.at) }
+            return
+        }
         try? await Task.sleep(nanoseconds: 700_000_000) // the demo's stand-in for the call
         if sealed.ask?.id == ask.id { sealed.ask = nil }
     }
 
     /// Share history with someone's new device; the amber line then reads "<name> added a device".
     func shareHistory(_ notice: DeviceNotice, in conv: String) async {
+        if let se = sealedEngine, let dms {
+            try? se.share(dms.rumors(conv), with: notice.who, notice: notice.id)
+            refreshSealed()
+            return
+        }
         try? await Task.sleep(nanoseconds: 700_000_000)
         guard var c = sealed.convs[conv], let i = c.notices.firstIndex(where: { $0.id == notice.id }) else { return }
         c.notices[i].what = .added
@@ -107,6 +211,12 @@ extension AppModel {
     func firstName(_ pubkey: String) -> String {
         let r = realName(pubkey)
         return r.isEmpty ? name(pubkey) : String(r.split(separator: " ").first ?? Substring(r))
+    }
+
+    /// The link the QR of "Link a phone or tablet" shows: with a fresh one-time secret when this
+    /// device can let the other one in.
+    func deviceLink(_ a: MemberAddress) -> String {
+        LoginLink.link(a, secret: sealedEngine?.mine == .inside ? sealedEngine?.newLinkSecret() : nil)
     }
 }
 

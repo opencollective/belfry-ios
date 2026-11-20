@@ -134,10 +134,27 @@ public struct SessionInfo: Hashable, Sendable, Identifiable {
     public let bunkerPubkey: String
     public let createdAt: String
     public let lastActivity: String?
+    /// The session's device key (sealed.md: the key a roster lists), and whether it is one of the
+    /// belfry's own chat clients (only those count for `ready`).
+    public let clientPubkey: String?
+    public let chat: Bool
     public var id: String { bunkerPubkey }
-    public init(applicationName: String, device: String?, redirectOrigin: String, bunkerPubkey: String, createdAt: String, lastActivity: String?) {
+    public init(applicationName: String, device: String?, redirectOrigin: String, bunkerPubkey: String, createdAt: String, lastActivity: String?,
+                clientPubkey: String? = nil, chat: Bool = false) {
         self.applicationName = applicationName; self.device = device; self.redirectOrigin = redirectOrigin
         self.bunkerPubkey = bunkerPubkey; self.createdAt = createdAt; self.lastActivity = lastActivity
+        self.clientPubkey = clientPubkey; self.chat = chat
+    }
+
+    /// The server's time text (ISO 8601, with or without fractions, or a plain day) as seconds.
+    public static func time(_ text: String?) -> Int? {
+        guard let text, !text.isEmpty else { return nil }
+        let f = ISO8601DateFormatter()
+        if let d = f.date(from: text) { return Int(d.timeIntervalSince1970) }
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: text) { return Int(d.timeIntervalSince1970) }
+        f.formatOptions = [.withFullDate]
+        return f.date(from: String(text.prefix(10))).map { Int($0.timeIntervalSince1970) }
     }
 }
 
@@ -473,7 +490,8 @@ public struct BelfryAPI: Sendable {
             guard let pk = o["bunker_pubkey"] as? String else { return nil }
             return SessionInfo(applicationName: (o["application_name"] as? String ?? "").sliceUnits(120), device: (o["device"] as? String)?.sliceUnits(120),
                                redirectOrigin: o["redirect_origin"] as? String ?? "", bunkerPubkey: pk, createdAt: o["created_at"] as? String ?? "",
-                               lastActivity: o["last_activity"] as? String)
+                               lastActivity: o["last_activity"] as? String,
+                               clientPubkey: (o["client_pubkey"] as? String).flatMap { isHex64($0) ? $0 : nil }, chat: o["chat"] as? Bool ?? false)
         }
     }
 

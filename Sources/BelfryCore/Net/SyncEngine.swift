@@ -468,8 +468,23 @@ public final class SyncEngine: @unchecked Sendable {
             // my read state (SPEC 19.27): always the exact d
             ["kinds": [ReadState.kind], "authors": [me], "#d": [ReadState.readD], "limit": 5],
             ["kinds": [1059], "#p": [me], "since": wraps, "limit": 1000],
+        ] + sealedFilters + [
             ["kinds": [4], "#p": [me], "since": old, "limit": 500],
             ["kinds": [4], "authors": [me], "since": old, "limit": 500],
+        ]
+    }
+
+    /// Sealed conversations (docs/sealed.md): the anchors and rosters of everybody, the requests
+    /// for my account, the key hand-overs to this device, my device names. Always whole (no `since`).
+    public var sealedDevice: String?
+    var sealedFilters: [[String: Any]] {
+        guard let d = sealedDevice else { return [] }
+        return [
+            ["kinds": [30078], "#d": [SealedKind.anchorD], "limit": 5000],
+            ["kinds": [SealedKind.roster], "limit": 5000],
+            ["kinds": [SealedKind.request], "#p": [me], "limit": 200],
+            ["kinds": [1059], "#p": [d], "limit": 200],
+            ["kinds": [30078], "authors": [me], "#d": [SealedKind.devicesD], "limit": 5],
         ]
     }
 

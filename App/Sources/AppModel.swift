@@ -226,6 +226,11 @@ final class AppModel: ObservableObject {
 
     private(set) var engine: SyncEngine?
     private(set) var dms: DirectMessages?
+    /// Sealed conversations (docs/sealed.md): this device's keys and its account's roster. Only
+    /// for a member's own session (never the demo, never a guest reading).
+    private(set) var sealedEngine: SealedEngine?
+    /// The secret of the login link being used to sign in (`#l=`), until the session opens.
+    var pendingLinkSecret: String?
     private(set) var session: StoredSession?
     /// (model version, the engine's outbox version, snapshot): the outbox's too, so a screen opened
     /// right after my own action (a group I just made, a saved setting) sees it in the same frame
@@ -329,7 +334,7 @@ final class AppModel: ObservableObject {
 
     private func changed() {
         bump?.cancel()
-        let w = DispatchWorkItem { [weak self] in self?.version += 1 }
+        let w = DispatchWorkItem { [weak self] in self?.version += 1; self?.refreshSealed() }
         bump = w
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: w)
     }
@@ -406,6 +411,21 @@ final class AppModel: ObservableObject {
             if t == .main { rs?.relayAnswered() }
             // the groups relay answered: does it still have the groups this device knows?
             if t == .groups { Task { @MainActor in self?.releaseWayInKey(); await self?.checkGroups() } }
+        }
+        if !s.demo, s.reading != true, let secret = Data(hex: s.clientSecret),
+           let se = SealedEngine(engine: e, deviceSecret: secret, store: KeychainKeyStore(slot: Keychain.slot)) {
+            wireSealed(se, dms: d)
+            sealedEngine = se
+            e.onNewEvents = { [weak d, weak rs, weak self] list in
+                if list.contains(where: { $0.kind == 1059 || $0.kind == 4 }) { Task { await d?.process() } }
+                rs?.offer(list)
+                let dev = se.devicePub
+                if list.contains(where: { SealedEngine.concerns($0) || ($0.kind == 1059 && $0.hasTag("p", dev)) }) { Task { @MainActor in self?.sealedNews(list) } }
+            }
+            e.onEOSE = { [weak rs, weak self] t in
+                if t == .main { rs?.relayAnswered(); Task { @MainActor in self?.sealedNews([]) } }
+                if t == .groups { Task { @MainActor in self?.releaseWayInKey(); await self?.checkGroups() } }
+            }
         }
         e.onSent = { [weak d] item, _ in d?.outboxSent(item) }
         e.onFailed = { [weak d] item in d?.outboxFailed(item) }
@@ -533,6 +553,8 @@ final class AppModel: ObservableObject {
             UserDefaults.standard.removeObject(forKey: AppModel.perAccount("belfry-mentions-seen"))
             // the demo is not in the list and has no Keychain item: never clear the real account's
             Keychain.clear(slot: slot)
+            // signing out wipes this device's letterbox keys (sealed.md 5.6)
+            KeychainKeyStore(slot: slot).wipe()
         }
         nativeFlow.cancel()
         pendingCode = nil
@@ -570,6 +592,8 @@ final class AppModel: ObservableObject {
         readSync = nil
         engine = nil
         dms = nil
+        sealedEngine = nil
+        sealed = SealedState()
         session = nil
         cachedDerive = nil
         groupsKey = nil

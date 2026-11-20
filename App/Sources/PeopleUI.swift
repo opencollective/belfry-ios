@@ -699,15 +699,7 @@ struct DevicesView: View {
         return bits.joined(separator: " · ")
     }
 
-    /// The server's time text (ISO 8601, with or without fractions, or a plain day) as seconds.
-    static func time(_ text: String) -> Int? {
-        let f = ISO8601DateFormatter()
-        if let d = f.date(from: text) { return Int(d.timeIntervalSince1970) }
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: text) { return Int(d.timeIntervalSince1970) }
-        f.formatOptions = [.withFullDate]
-        return f.date(from: String(text.prefix(10))).map { Int($0.timeIntervalSince1970) }
-    }
+    static func time(_ text: String) -> Int? { SessionInfo.time(text) }
 
     /// Remove locks while it works: the row shows progress and no other row can be removed.
     private func remove(_ s: SessionInfo) {

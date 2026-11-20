@@ -24,6 +24,10 @@ public final class DirectMessages: @unchecked Sendable {
     private var reactions = DmReactions()
     private var busy = false
     public var myAddress: String?
+    /// Sealed conversations (docs/sealed.md): set by the app for a member's session.
+    public var sealed: SealedEngine?
+    /// Wraps kept because this device has no secret for their letterbox (the banner).
+    public private(set) var lockedWraps = 0
     public private(set) var bridge: String?
     public var onChange: (() -> Void)?
 
@@ -78,7 +82,24 @@ public final class DirectMessages: @unchecked Sendable {
         }.sorted { $0.createdAt > $1.createdAt }
         var changed = false
         var done = 0
+        var locked = 0
         for e in todo {
+            // a sealed wrap opens on this device, never through the signer; one that can't be
+            // opened yet (no key here, its author's chain not loaded) is kept and tried again
+            if e.kind == 1059, Sealed.lb(of: e) != nil {
+                guard let s = sealed else { continue }
+                switch s.open(e) {
+                case .keep:
+                    if s.isLocked(e) { locked += 1 }
+                    continue
+                case .drop: break
+                case .rumor(let rumor): take(rumor, sharedBy: nil)
+                case .shared(let list, let by): for r in list { take(r, sharedBy: by) }
+                }
+                lock.lock(); seen.insert(e.id); lock.unlock()
+                changed = true
+                continue
+            }
             do {
                 var d: Dm?
                 if e.kind == 1059 {
@@ -113,7 +134,31 @@ public final class DirectMessages: @unchecked Sendable {
                 changed = true
             }
         }
-        if changed { save() }
+        lock.lock()
+        let was = lockedWraps
+        lockedWraps = locked
+        lock.unlock()
+        if changed { save() } else if was != locked { onChange?() }
+    }
+
+    /// A sealed rumor, opened: a message, a reaction, or (SHAREDBY) a piece of shared history,
+    /// which never replaces a message this device already has.
+    private func take(_ rumor: NostrEvent, sharedBy: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        if rumor.kind == 7 || rumor.kind == 5 { if sharedBy == nil { reactions.apply(rumor) }; return }
+        if sharedBy != nil, items[rumor.id] != nil { return }
+        let known = items.values.map { (messageId: $0.messageId, conv: $0.conv) }
+        guard var d = DmReader.dm(from: rumor, me: me, bridge: bridge, known: known) else { return }
+        d.sharedBy = sharedBy
+        if d.kind == 14 { d.rumor = rumor.json }
+        if let old = items[d.rid] { d.mine = d.mine || old.mine; d.pending = old.pending; d.failed = old.failed }
+        items[d.rid] = d
+    }
+
+    /// The sealed messages of CONV as rumors, oldest first (what Share history sends).
+    public func rumors(_ conv: String) -> [NostrEvent] {
+        thread(conv).compactMap { d in d.sharedBy == nil ? d.rumor.flatMap(NostrEvent.from(json:)) : nil }
     }
 
     // ---- views ------------------------------------------------------------------------------------
@@ -167,8 +212,20 @@ public final class DirectMessages: @unchecked Sendable {
 
     // ---- sending ----------------------------------------------------------------------------------
 
-    func deliver(_ rumor: NostrEvent, to: [String], selfCopy: Bool = true) async throws {
+    /// CONV: the Nostr conversation it belongs to; MAIL: it goes to the belfry's bridge.
+    func deliver(_ rumor: NostrEvent, to: [String], selfCopy: Bool = true, conv: String? = nil, mail: Bool = false) async throws {
         try engine.guestMode.check()
+        // sealed (docs/sealed.md): made on this device, no signer call, never the old way again
+        if let s = sealed, let conv, s.isSealed(conv) {
+            for w in try s.wraps(rumor, to: to, selfCopy: selfCopy) { engine.enqueueSigned(w, target: .main, dm: rumor.id) }
+            return
+        }
+        if let s = sealed, mail, s.mailSealed, let b = to.first {
+            var list = [try s.mailWrap(rumor, bridge: b)]
+            if selfCopy { list += try s.wraps(rumor, to: [], selfCopy: true) }
+            for w in list { engine.enqueueSigned(w, target: .main, dm: rumor.id) }
+            return
+        }
         var targets = [String]()
         for p in to + (selfCopy ? [me] : []) where !targets.contains(p) { targets.append(p) }
         for p in targets {
@@ -202,7 +259,7 @@ public final class DirectMessages: @unchecked Sendable {
         }
         lock.lock(); reactions.apply(rumor); lock.unlock()
         save()
-        try await deliver(rumor, to: others)
+        try await deliver(rumor, to: others, conv: d.conv)
     }
 
     /// Called when this device sends a DM or an e-mail (push: stay quiet for its own echo).
@@ -217,10 +274,11 @@ public final class DirectMessages: @unchecked Sendable {
         let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: to.map { ["p", $0] }, content: text)
         var d = Dm(rid: rumor.id, conv: conv, from: me, mine: true, at: rumor.createdAt, kind: 14, text: text)
         d.pending = engine.localOnly ? nil : true
+        if sealed?.isSealed(conv) == true { d.rumor = rumor.json }
         lock.lock(); items[rumor.id] = d; lock.unlock()
         save()
         do {
-            try await deliver(rumor, to: to)
+            try await deliver(rumor, to: to, conv: conv)
         } catch {
             lock.lock(); items[rumor.id] = nil; lock.unlock()
             save()
@@ -260,7 +318,7 @@ public final class DirectMessages: @unchecked Sendable {
         lock.unlock()
         save()
         do {
-            try await deliver(rumor, to: [b])
+            try await deliver(rumor, to: [b], mail: true)
         } catch {
             lock.lock()
             reports[emailId] = DeliveryReport(status: "failed", details: "It could not be prepared. Try again.")
@@ -301,7 +359,7 @@ public final class DirectMessages: @unchecked Sendable {
         lock.lock(); reports[emailId] = DeliveryReport(status: "queued", details: "Sending…"); lock.unlock()
         save()
         do {
-            try await deliver(rumor, to: [b], selfCopy: false)
+            try await deliver(rumor, to: [b], selfCopy: false, mail: true)
         } catch {
             lock.lock(); reports[emailId] = DeliveryReport(status: "failed", details: "It could not be prepared. Try again."); lock.unlock()
             save()
@@ -357,8 +415,12 @@ public final class DirectMessages: @unchecked Sendable {
         guard !open.isEmpty else { return }
         let found = await engine.query(.main, [["kinds": [7679], "authors": [b], "#r": Array(open.suffix(50))]])
         for e in found {
-            guard let eph = e.tag("ephemeral-pubkey"), let r = e.tag("r"),
-                  let text = try? await engine.signer.nip44Decrypt(peer: eph, payload: e.content),
+            // a report sealed to my letterbox opens here; an old-style one through the signer
+            let opened: String?
+            if e.tag("lb") != nil { opened = sealed?.openReport(e) }
+            else if let eph = e.tag("ephemeral-pubkey") { opened = try? await engine.signer.nip44Decrypt(peer: eph, payload: e.content) }
+            else { opened = nil }
+            guard let r = e.tag("r"), let text = opened,
                   let obj = JSON.parse(text) as? [String: Any], let status = obj["status"] as? String,
                   ["delivered", "failed", "delayed", "queued"].contains(status) else { continue }
             let fixed: String

@@ -30,7 +30,7 @@ struct DeviceNoticeLine: View {
         let warn = notice.what == .locked
         Button(action: action) {
             HStack(spacing: 8) {
-                Image(systemName: notice.device != nil ? notice.kind.icon : "lock")
+                Image(systemName: notice.device != nil ? (notice.kind ?? .computer).icon : "lock")
                     .foregroundStyle(warn ? Color.orange : Color.secondary)
                 Text(LocalizedStringKey(text)).font(.footnote).foregroundStyle(.primary).multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
@@ -373,9 +373,10 @@ struct ShareHistorySheet: View {
     var body: some View {
         let who = model.firstName(notice.who)
         let group = MailThreads.peers(conv).count > 1
-        let kind = notice.kind == .phone ? "phone" : notice.kind == .tablet ? "tablet" : "computer"
+        // the kind of someone else's device is not always known: then just "device"
+        let kind = notice.kind.map { $0 == .phone ? "phone" : $0 == .tablet ? "tablet" : "computer" } ?? "device"
         VStack(spacing: 12) {
-            Image(systemName: notice.kind.icon).font(.system(size: 30)).foregroundStyle(.secondary)
+            Image(systemName: notice.kind?.icon ?? "lock.open").font(.system(size: 30)).foregroundStyle(.secondary)
                 .frame(width: 60, height: 60).background(Color.secondary.opacity(0.15), in: Circle())
                 .padding(.top, 24)
                 .accessibilityHidden(true)

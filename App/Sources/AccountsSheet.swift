@@ -196,10 +196,14 @@ struct LinkDeviceScreen: View {
     /// this device learns it.
     var linked: String?
 
-    private var link: String { "https://chat.\(address.domain)/login/\(address.name)" }
+    @EnvironmentObject var model: AppModel
+    /// The code's link: made once per opening of the screen (it carries a fresh one-time secret
+    /// when this device can let the other one in; sealed.md 5.2).
+    @State private var made: String?
+    private var link: String { made ?? LoginLink.link(address) }
 
     var body: some View {
-        if let linked { done(linked) } else { code }
+        if let linked { done(linked) } else { code.onAppear { if made == nil { made = model.deviceLink(address) } } }
     }
 
     private func done(_ device: String) -> some View {
@@ -234,14 +238,14 @@ struct LinkDeviceScreen: View {
                             .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .accessibilityLabel("QR code to log in as \(address.description)")
                     }
-                    Text(link).font(.footnote.monospaced()).foregroundStyle(.secondary).multilineTextAlignment(.center).textSelection(.enabled)
+                    Text(LoginLink.link(address)).font(.footnote.monospaced()).foregroundStyle(.secondary).multilineTextAlignment(.center).textSelection(.enabled)
                 }
                 .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
             } footer: {
                 Text("Scan this with the Belfry app on your other phone or tablet (Accounts › Scan an invite, or its camera) to log in there as \(address.description). For security it asks for the 6-digit code we send to your e-mail: nothing secret is in this code.")
             }
-            Section { CopyRow(text: link, title: "Copy link") }
+            Section { CopyRow(text: LoginLink.link(address), title: "Copy link") }
         }
         .navigationTitle("Link a phone or tablet")
         .navigationBarTitleDisplayMode(.inline)

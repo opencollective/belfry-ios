@@ -56,6 +56,8 @@ public struct Dm: Codable, Hashable, Sendable, Identifiable {
     /// An earlier message someone shared with this device after I started fresh (sealed.md 8):
     /// who shared it. It is not proven to be authentic; the mark stays on this device.
     public var sharedBy: String?
+    /// A sealed message's rumor as it travelled (so its history can be shared with its own id).
+    public var rumor: String?
 
     public var id: String { rid }
 

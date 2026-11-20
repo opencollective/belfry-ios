@@ -217,26 +217,28 @@ public enum Sealed {
 
     /// What one wrap may hold: 200 rumors, and no more text than NIP-44 can carry once sealed.
     public static let historyMaxRumors = 200
-    public static let historyMaxBytes = maxRumorBytes
 
-    /// Room for the rumors inside one 8564 rumor, which is itself a sealed rumor of at most
-    /// `maxRumorBytes` (its own id, keys and tags take the rest).
-    static let historyBudget = maxRumorBytes - 400
-
-    /// The rumors (oldest first) as 8564 rumors of SHARER for PERSON, split to fit.
+    /// The rumors (oldest first) as 8564 rumors of SHARER for PERSON. Each is packed until its OWN
+    /// JSON (the shared rumors escaped inside its content) would pass `maxRumorBytes`, or 200
+    /// rumors; a rumor that fits in no wrap is left out.
     public static func history(_ rumors: [NostrEvent], sharer: String, person: String, now: Int = .now) -> [NostrEvent] {
-        var out = [NostrEvent](), batch = [String](), size = 0
+        func make(_ batch: [String]) -> NostrEvent {
+            GiftWrap.rumor(kind: SealedKind.history, pubkey: sharer, tags: [["p", person]],
+                           content: "{\"v\":1,\"rumors\":[\(batch.joined(separator: ","))]}", createdAt: now)
+        }
+        let base = make([]).json.utf8.count
+        var out = [NostrEvent](), batch = [String](), size = base
         func flush() {
             guard !batch.isEmpty else { return }
-            out.append(GiftWrap.rumor(kind: SealedKind.history, pubkey: sharer, tags: [["p", person]],
-                                      content: "{\"v\":1,\"rumors\":[\(batch.joined(separator: ","))]}", createdAt: now))
-            batch = []; size = 0
+            out.append(make(batch))
+            batch = []; size = base
         }
         for r in rumors {
             let j = r.json
-            let n = j.utf8.count + 1
-            if n > historyBudget { continue } // one rumor too large to share: left out
-            if batch.count >= historyMaxRumors || size + n > historyBudget { flush() }
+            // what it adds to the 8564's JSON: itself as escaped text, and a comma
+            let n = JSON.string(j).utf8.count - 2 + 1
+            if base + n > maxRumorBytes { continue }
+            if batch.count >= historyMaxRumors || size + n > maxRumorBytes { flush() }
             batch.append(j); size += n
         }
         flush()

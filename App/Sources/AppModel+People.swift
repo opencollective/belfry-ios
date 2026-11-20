@@ -17,7 +17,7 @@ extension AppModel {
     /// A guest link opened (https://chat.<domain>/join/<token>): only its domain and token are kept.
     func handle(url: URL) {
         if handleTicketURL(url) { return }
-        if let a = LoginLink.parse(url) { Task { await logIn(with: a) }; return }
+        if let a = LoginLink.parse(url) { pendingLinkSecret = LoginLink.linkSecret(url); Task { await logIn(with: a) }; return }
         guard let (domain, token) = InviteLink.parse(url) else { return }
         pendingInvite = PendingInvite(domain: domain, token: token)
         // signed out: straight to the channel in guest mode (one loading screen, no name asked)
@@ -298,6 +298,10 @@ extension AppModel {
             sealed.removed.insert(pk)
             sealed.myDevices.removeAll { !$0.this }
             return nil
+        }
+        // one of my devices leaves its roster too (sealed.md 5.6): the letterbox changes
+        if let se = sealedEngine, se.mine == .inside, let client = (try? await api.sessions())?.first(where: { $0.bunkerPubkey == pk })?.clientPubkey {
+            return await se.remove(client) ? nil : BelfryAPI.generic
         }
         do { try await api.revokeSession(pk); return nil } catch let e as ApiError { return e.message } catch { return BelfryAPI.generic }
     }
