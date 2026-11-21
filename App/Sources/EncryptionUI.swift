@@ -324,6 +324,8 @@ struct AllowPrompt: View {
     /// Allow was refused: the account already has 20 devices.
     @State private var full = false
     @State private var failed: String?
+    /// Allow could not be given yet: this device waits for its own key.
+    @State private var waiting = false
 
     var body: some View {
         ZStack {
@@ -352,10 +354,21 @@ struct AllowPrompt: View {
                         .font(.subheadline).multilineTextAlignment(.center)
                     Text("Signed in as \(model.myName) · \(Format.ago(ask.at))")
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    BusyButton { await answer(true) } label: { Text("Allow").frame(maxWidth: .infinity) }
-                        .buttonStyle(.brand).controlSize(.large)
+                    if waiting {
+                        // this device has no key itself yet (board messages/encryption-allow-waiting)
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Not allowed yet: waiting for your other device").font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .padding(.top, 6)
-                        .accessibilityIdentifier("allow-device")
+                        .accessibilityElement(children: .combine)
+                    } else {
+                        BusyButton { await answer(true) } label: { Text("Allow").frame(maxWidth: .infinity) }
+                            .buttonStyle(.brand).controlSize(.large)
+                            .padding(.top, 6)
+                            .accessibilityIdentifier("allow-device")
+                    }
                     BusyButton(role: .destructive) { await answer(false) } label: { Text("Not me").frame(maxWidth: .infinity) }
                         .buttonStyle(.bordered).controlSize(.large).tint(.red)
                         .accessibilityIdentifier("allow-not-me")
@@ -373,6 +386,7 @@ struct AllowPrompt: View {
         .task {
             // screenshots: the card after Allow was refused
             if model.launch.screen == "encallowfull" { full = true }
+            if model.launch.screen == "encallowwaiting" { waiting = true }
         }
     }
 
@@ -382,6 +396,7 @@ struct AllowPrompt: View {
         switch await model.answerAllow(ask, allow: allow) {
         case .done: break
         case .full: full = true
+        case .waiting: waiting = true
         case .failed: failed = allow ? "Not done: the belfry did not confirm it. Try again." : "Not done: that device is still signed in. Try again."
         }
         busy = false

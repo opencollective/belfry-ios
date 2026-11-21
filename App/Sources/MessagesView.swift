@@ -72,7 +72,7 @@ struct MessagesView: View {
             // boards messages/encryption-*: Lina's conversation, the group's, the three steps
             if screen == "encshared" || screen == "encsharedwhy" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("dev").pubkey) } }
             if screen == "enclocked" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("ana").pubkey) } }
-            if ["encthread", "encdevices", "encshare"].contains(screen) {
+            if ["encthread", "encdevices", "encshare", "encwaiting"].contains(screen) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate("n:" + Demo.signer("lina").pubkey) }
             }
             if screen == "encgroup" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate(Demo.groupConv(me: model.me)) } }
@@ -279,8 +279,13 @@ struct ConversationView: View {
         .onChange(of: list.count) { _, _ in model.markConversationRead(conv) }
         .bottomBar {
             if locked || (sealed != nil && model.sealed.waitingForKey) {
-                Text(locked ? "You can write here once this device is allowed." : "Waiting for another of your devices.")
-                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                // not allowed yet: a plain grey line. Allowed, the key not here yet: the same line
+                // with a small spinner (board messages/encryption-waiting); it clears by itself
+                HStack(spacing: 8) {
+                    if !locked { ProgressView().controlSize(.small) }
+                    Text(locked ? "You can write here once this device is allowed." : "Waiting for another of your devices…")
+                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 16).padding(.vertical, 14)
                     .composerBackground(compact: false)

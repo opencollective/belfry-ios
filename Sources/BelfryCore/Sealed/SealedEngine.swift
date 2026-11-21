@@ -881,6 +881,9 @@ public final class SealedEngine: @unchecked Sendable {
         /// It did not go through (the belfry or the relay did not answer, or the change lost to
         /// another one): nothing is to be taken as done; try again.
         case failed
+        /// This device is in my head but has no key itself yet: it can't hand one over. Nothing
+        /// was changed; it will be able to once another of my devices has given it the key.
+        case waiting
     }
 
     /// Allow: the keys go to the new device, then roster n+1 with it (same letterbox), then the
@@ -902,6 +905,8 @@ public final class SealedEngine: @unchecked Sendable {
         }
         // 20 devices already: refused before any key is handed over
         guard c.devices.count < SealedKind.maxDevices else { return .full }
+        // no key here yet: this device has nothing to hand over
+        if lacksKey { return .waiting }
         // its session must still be live and a chat client NOW (a card left open after another
         // device's Not me must not hand the chain over), and not refused here
         lock.lock(); let no = denied.contains(newDevice); lock.unlock()

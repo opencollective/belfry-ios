@@ -196,6 +196,9 @@ shot 186-enc-how enchow light
 shot 187-enc-allow encallow light
 shot 187b-enc-allow-dark encallow dark
 shot 187c-enc-allow-full encallowfull light
+shot 187d-enc-allow-waiting encallowwaiting light
+shot 185e-enc-waiting encwaiting light
+shot 185f-enc-waiting-dark encwaiting dark
 shot 188-enc-linked enclinked light
 shot 189-enc-share encshare light
 shot 189b-enc-share-dark encshare dark

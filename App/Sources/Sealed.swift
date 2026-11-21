@@ -368,9 +368,11 @@ extension Demo {
             s.convs[mail] = SealedConv(others: [SealedPerson(id: mail, mailName: "Town Hall")])
         }
         switch screen {
+        case "encwaiting":
+            s.waitingForKey = true
         case "encnewdevice", "enchow", "enclocked":
             s.notAllowed = true
-        case "encallow", "encallowfull":
+        case "encallow", "encallowfull", "encallowwaiting":
             s.ask = AllowAsk(id: "mac", device: "Safari on Mac", kind: .computer, at: now - 120)
         default: break
         }
