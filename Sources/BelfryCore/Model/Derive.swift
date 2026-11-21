@@ -1237,13 +1237,23 @@ public final class Derive {
 
     // ---- shared inbox setting, announcements ----------------------------------------------------
 
+    /// The shared inbox switch (docs/mail.md @73a414f): `belfry:inbox:<group>` with `h` = the group.
+    /// Until 2026-11-21 the `d` was `belfry:inbox` alone, so one admin's switch for one channel
+    /// replaced theirs for every other (a 30078 is kind + author + d; OSV's #hello lost its inbox).
     public static let inboxD = "belfry:inbox"
+    public static func inboxD(_ group: String) -> String { inboxD + ":" + group }
+
+    /// A 30078 that is GROUP's inbox switch: the new d naming it, or the old d with its h.
+    static func isInboxSwitch(_ e: NostrEvent, _ group: String) -> Bool {
+        guard e.kind == 30078, e.tag("h") == group, let d = e.tag("d") else { return false }
+        return d == inboxD(group) || d == inboxD
+    }
     /// 9002 / 39000 tags the app writes itself (the rest of the relay's copy is kept as it is).
     public static let metaKnown: Set<String> = ["d", "h", "-", "name", "about", "picture", "open", "closed", "prompt", "vouches", "archived", "client"]
 
     public func isInbox(_ g: Group?) -> Bool {
         guard let g else { return false }
-        guard let last = inGroupSorted(g.id).last(where: { $0.kind == 30078 && $0.tag("d") == Derive.inboxD && g.admins.contains($0.pubkey) }) else { return false }
+        guard let last = inGroupSorted(g.id).last(where: { Derive.isInboxSwitch($0, g.id) && g.admins.contains($0.pubkey) }) else { return false }
         let obj = JSON.parse(last.content.isEmpty ? "{}" : last.content) as? [String: Any]
         return jsTruthy(obj?["on"])
     }

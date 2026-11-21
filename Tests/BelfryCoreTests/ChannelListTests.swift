@@ -72,3 +72,36 @@ final class ChannelListTests: XCTestCase {
         XCTAssertFalse(Branding.darkText(on: "#1e40af"))
     }
 }
+
+/// The shared inbox switch per channel (docs/mail.md @73a414f): d = belfry:inbox:<group> + h.
+final class InboxSwitchTests: XCTestCase {
+    private func admins(_ id: String) -> NostrEvent { ev(RELAY, 39001, 100, [["d", id], ["p", ADMIN, "admin"]]) }
+    private func sw(_ who: String, _ at: Int, d: String, h: String, on: Bool) -> NostrEvent {
+        ev(who, 30078, at, [["d", d], ["h", h]], on ? #"{"on":true}"# : #"{"on":false}"#)
+    }
+
+    func testInboxSettingPerChannel() {
+        let base = [meta("general", "general"), meta("hello", "hello"), admins("general"), admins("hello")]
+        // one admin, two channels: each keeps its own switch; turning one off leaves the other on
+        var d = Derive(events: base + [sw(ADMIN, 200, d: Derive.inboxD("hello"), h: "hello", on: true),
+                                       sw(ADMIN, 210, d: Derive.inboxD("general"), h: "general", on: true),
+                                       sw(ADMIN, 220, d: Derive.inboxD("general"), h: "general", on: false)], me: ME)
+        XCTAssertTrue(d.isInbox(d.group("hello")))
+        XCTAssertFalse(d.isInbox(d.group("general")))
+        // the old d is read by its h; old against new, the latest wins
+        d = Derive(events: base + [sw(ADMIN, 200, d: Derive.inboxD, h: "hello", on: true)], me: ME)
+        XCTAssertTrue(d.isInbox(d.group("hello")))
+        XCTAssertFalse(d.isInbox(d.group("general")))
+        d = Derive(events: base + [sw(ADMIN, 200, d: Derive.inboxD, h: "hello", on: true), sw(ADMIN, 210, d: Derive.inboxD("hello"), h: "hello", on: false)], me: ME)
+        XCTAssertFalse(d.isInbox(d.group("hello")))
+        // a d naming another channel than its h counts for neither
+        d = Derive(events: base + [sw(ADMIN, 200, d: Derive.inboxD("general"), h: "hello", on: true)], me: ME)
+        XCTAssertFalse(d.isInbox(d.group("hello")))
+        XCTAssertFalse(d.isInbox(d.group("general")))
+        // a non-admin's never counts
+        d = Derive(events: base + [sw(OTHER, 200, d: Derive.inboxD("hello"), h: "hello", on: true)], me: ME)
+        XCTAssertFalse(d.isInbox(d.group("hello")))
+        // what the app writes
+        XCTAssertEqual(Actions.setInbox("general", on: true).tags, [["d", "belfry:inbox:general"], ["h", "general"]])
+    }
+}

@@ -80,7 +80,7 @@ public enum Actions {
     }
 
     public static func setInbox(_ group: String, on: Bool) -> Draft {
-        Draft(kind: 30078, content: on ? "{\"on\":true}" : "{\"on\":false}", tags: [["d", Derive.inboxD], ["h", group]])
+        Draft(kind: 30078, content: on ? "{\"on\":true}" : "{\"on\":false}", tags: [["d", Derive.inboxD(group)], ["h", group]])
     }
 
     public static func seen(_ group: String) -> Draft {
