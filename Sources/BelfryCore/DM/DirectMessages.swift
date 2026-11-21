@@ -41,6 +41,42 @@ public final class DirectMessages: @unchecked Sendable {
     public private(set) var lockedWraps = 0
     /// The rumors of sealed wraps still in the outbox (to seal them again if a head changes).
     private var queued = [String: NostrEvent]()
+    /// Old-style reactions and take-backs whose message is not on the device yet: the opened
+    /// rumor, kept with the conversation data (`dm-waiting-reactions`) for at most 30 days.
+    struct Waiting: Codable { var json: String; var at: Int }
+    private var waitingReactions = [String: Waiting]()
+
+    /// The conversation of the message a reaction (or the reaction a take-back) points at, as
+    /// this device holds it. Call with the lock held.
+    private func targetConv(_ rumor: NostrEvent) -> String? {
+        let es = rumor.tagValues("e")
+        let message = rumor.kind == 7 ? es.last : es.compactMap { reactions.reactions[$0]?.target }.first
+        return message.flatMap { items[$0]?.conv }
+    }
+
+    /// An old-style reaction or take-back whose conversation is known (or a session that never
+    /// seals): ignored only when it is dated after this device first saw that conversation
+    /// sealed. Call with the lock held.
+    private func settle(_ rumor: NostrEvent) {
+        let conv = targetConv(rumor) ?? MailThreads.nostrConv(author: rumor.pubkey, pTags: rumor.tagValues("p"), me: me)
+        let since = sealed?.sealedSince(conv)
+        if since.map({ rumor.createdAt < $0 }) ?? true { reactions.apply(rumor) }
+    }
+
+    /// The waiting ones whose message has come are decided; those older than 30 days are dropped.
+    /// Call with the lock held; true when something changed.
+    private func settleWaiting() -> Bool {
+        guard !waitingReactions.isEmpty else { return false }
+        var changed = false
+        // reactions first: a take-back finds its conversation through the reaction it removes
+        for (id, w) in waitingReactions.sorted(by: { $0.value.at < $1.value.at }) {
+            guard let r = NostrEvent.from(json: w.json) else { waitingReactions[id] = nil; changed = true; continue }
+            if targetConv(r) != nil { settle(r); waitingReactions[id] = nil; changed = true }
+            else if Int.now - w.at > 30 * 86400 { waitingReactions[id] = nil; changed = true }
+        }
+        return changed
+    }
+
     /// Reactions that came with a shared history (their take-backs may remove only these).
     private var sharedReactions = Set<String>()
     public private(set) var bridge: String?
@@ -56,6 +92,7 @@ public final class DirectMessages: @unchecked Sendable {
         bridge = db.get("dm-bridge", as: String.self)
         reactions = db.get("dm-reactions", as: DmReactions.self) ?? DmReactions()
         for (rid, json) in db.get("dm-queued", as: [String: String].self) ?? [:] { if let r = NostrEvent.from(json: json) { queued[rid] = r } }
+        waitingReactions = db.get("dm-waiting-reactions", as: [String: Waiting].self) ?? [:]
         // from the first moment: every queued wrap is looked at before it leaves
         engine.reseal = { [weak self] item in try await self?.reseal(item) }
     }
@@ -64,8 +101,9 @@ public final class DirectMessages: @unchecked Sendable {
 
     private func save() {
         lock.lock()
-        let list = Array(items.values), s = Array(seen), rp = reports, rx = reactions
+        let list = Array(items.values), s = Array(seen), rp = reports, rx = reactions, wr = waitingReactions
         lock.unlock()
+        db.set("dm-waiting-reactions", wr)
         db.set("dm-reactions", rx)
         db.set("dm-items", list)
         db.set("dm-seen", s)
@@ -129,16 +167,14 @@ public final class DirectMessages: @unchecked Sendable {
                         // a reaction or its taking back: under the bubble, never a message. One that
                         // comes the old way into a conversation already sealed here is ignored.
                         if opened.rumor.kind == 7 || opened.rumor.kind == 5 {
-                            // the conversation is the one of the message it points at, as this
-                            // device holds it (not what the rumor says about itself)
-                            // (a take-back: through the reaction it takes back)
-                            let es = opened.rumor.tagValues("e")
-                            let message = opened.rumor.kind == 7 ? es.last : es.compactMap { reactions.reactions[$0]?.target }.first
-                            let target = message.flatMap { items[$0]?.conv }
-                            let conv = target ?? MailThreads.nostrConv(author: opened.rumor.pubkey, pTags: opened.rumor.tagValues("p"), me: me)
-                            // ignored only when it is dated after this device first saw that conversation sealed
-                            let since = sealed?.sealedSince(conv)
-                            if since.map({ opened.rumor.createdAt < $0 }) ?? true { reactions.apply(opened.rumor) }
+                            // decided by the conversation of the message it points at, as this
+                            // device holds it; while that message is not here yet, the opened
+                            // rumor waits (never a second call to the signer)
+                            if sealed != nil, targetConv(opened.rumor) == nil {
+                                waitingReactions[opened.rumor.id] = Waiting(json: Sealed.json(opened.rumor), at: Int.now)
+                            } else {
+                                settle(opened.rumor)
+                            }
                         }
                         let known = items.values.map { (messageId: $0.messageId, conv: $0.conv) }
                         lock.unlock()
@@ -180,6 +216,7 @@ public final class DirectMessages: @unchecked Sendable {
             }
         }
         lock.lock()
+        if settleWaiting() { changed = true }
         let was = lockedWraps
         lockedWraps = locked
         // a rumor kept for an item that is no longer in the outbox (cancelled, discarded): not kept

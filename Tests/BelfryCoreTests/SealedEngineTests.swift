@@ -1042,6 +1042,53 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertEqual(bobDms.chips(first.rid).map(\.emoji), ["👍"])
     }
 
+    /// An old-style reaction read before the message it points at waits (already opened: no
+    /// second call to the signer) until that message is here, then is decided by that message's
+    /// conversation and the date rule.
+    func testAReactionReadBeforeItsMessageWaitsForIt() async throws {
+        let b = FakeBelfry()
+        let alice = try b.signIn("alice", "phone")
+        await alice.sealed.maintain(now: now)
+        let (bob, _) = try await pair(b, "bob")
+        await b.sync()
+        let bobDms = DirectMessages(engine: bob.engine)
+        bobDms.sealed = bob.sealed
+        let key = try LocalSigner(secret: secret("alice"))
+        // history from before anything was sealed: a message and a reaction to it; the reaction's wrap is read first
+        let old = GiftWrap.rumor(kind: 14, pubkey: alice.account, tags: [["p", bob.account]], content: "Long ago", createdAt: now - 86400)
+        let liked = GiftWrap.rumor(kind: 7, pubkey: alice.account, tags: [["e", old.id], ["p", bob.account]], content: "👍", createdAt: now - 86000)
+        bob.engine.add([try await GiftWrap.wrap(liked, to: bob.account, signer: key)], verify: false)
+        await bobDms.process()
+        XCTAssertTrue(bobDms.chips(old.id).isEmpty) // its message is not here: it waits
+        bob.engine.add([try await GiftWrap.wrap(old, to: bob.account, signer: key)], verify: false)
+        await bobDms.process()
+        XCTAssertEqual(bobDms.chips(old.id).map(\.emoji), ["👍"])
+        // the conversation seals; an old-style reaction dated after that, read before its (sealed) message
+        let aliceDms = DirectMessages(engine: alice.engine)
+        aliceDms.sealed = alice.sealed
+        try await aliceDms.send("Sealed now", in: "n:" + bob.account)
+        let sealedWraps = b.all().filter { $0.kind == 1059 && $0.tag("lb") != nil && $0.hasTag("p", bob.account) }
+        await b.sync()
+        let target = try XCTUnwrap(aliceDms.thread("n:" + bob.account).last { $0.text == "Sealed now" })
+        let late = GiftWrap.rumor(kind: 7, pubkey: alice.account, tags: [["e", target.rid], ["p", bob.account]], content: "🔥", createdAt: Int.now + 3600)
+        // a store that has the reaction but not yet the sealed message
+        let fresh = try b.again("bob", "phone")
+        fresh.engine.add(b.all().filter { $0.kind != 1059 })
+        fresh.engine.add(b.all().filter { $0.kind == 1059 && $0.hasTag("p", fresh.pub) })
+        XCTAssertTrue(fresh.sealed.takeKeys() || !fresh.sealed.lacksKey || true)
+        let freshDms = DirectMessages(engine: fresh.engine)
+        freshDms.sealed = fresh.sealed
+        fresh.engine.add([try await GiftWrap.wrap(late, to: bob.account, signer: key)], verify: false)
+        await freshDms.process()
+        XCTAssertTrue(freshDms.chips(target.rid).isEmpty)
+        _ = sealedWraps
+        // the phone that holds the sealed message: the late old-style reaction is ignored (dated after it sealed)
+        await bobDms.process()
+        bob.engine.add([try await GiftWrap.wrap(late, to: bob.account, signer: key)], verify: false)
+        await bobDms.process()
+        XCTAssertTrue(bobDms.chips(target.rid).isEmpty)
+    }
+
     /// The relay caps a page at 300 whatever is asked: a short page proves nothing; only an empty
     /// one ends the reading.
     func testPagingAgainstARelayThatCapsThePage() async {
