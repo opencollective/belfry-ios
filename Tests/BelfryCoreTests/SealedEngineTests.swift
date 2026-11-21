@@ -9,6 +9,15 @@ import XCTest
 
 private func secret(_ name: String) -> Data { Crypto.sha256("sealed-engine-test:" + name) }
 
+/// Everything queued has left (a flush that finds another one running returns at once).
+private func drain(_ engine: SyncEngine) async {
+    for _ in 0..<100 {
+        await engine.flush()
+        if engine.outboxItems().isEmpty { return }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+    }
+}
+
 private final class FakeBelfry: @unchecked Sendable {
     let lock = NSLock()
     var events = [NostrEvent]()
@@ -24,7 +33,7 @@ private final class FakeBelfry: @unchecked Sendable {
     /// answer may be another's question).
     func sync() async {
         for _ in 0..<3 {
-            for d in devices { await d.engine.flush() }
+            for d in devices { await drain(d.engine) }
             let now = all()
             for d in devices { d.engine.add(now); d.sealed.takeKeys(); d.sealed.observe(now.compactMap { $0.kind == 8560 ? $0.tag("p") : $0.pubkey }) }
         }
@@ -205,14 +214,14 @@ final class SealedEngineTests: XCTestCase {
             XCTFail("sent on silence")
         } catch {}
         XCTAssertTrue(dms.thread(conv).isEmpty)
-        await alice.engine.flush()
+        await drain(alice.engine)
         XCTAssertTrue(alice.engine.outboxItems().isEmpty)
         XCTAssertTrue(b.all().isEmpty) // nothing left this device
         // the relay answers, completely: neither has a chain. Now it is known: today's way.
         alice.sealed.askChains = { _ in [] }
         try await dms.send("Hello Bob", in: conv)
         XCTAssertEqual(dms.thread(conv).map(\.text), ["Hello Bob"])
-        await alice.engine.flush()
+        await drain(alice.engine)
         let out = b.all()
         XCTAssertEqual(out.count, 2) // one wrap for Bob, one for me
         XCTAssertTrue(out.allSatisfy { $0.kind == 1059 && $0.tag("lb") == nil })
@@ -559,7 +568,7 @@ final class SealedEngineTests: XCTestCase {
         // Bob removes his Mac; Alice's device has not heard of it (only the relay has)
         let removed = await bob.sealed.remove(bobMac.pub, now: now + 20)
         XCTAssertTrue(removed)
-        await bob.engine.flush()
+        await drain(bob.engine)
         let head = try XCTUnwrap(bob.sealed.chain(bob.account)?.lb)
         XCTAssertNotEqual(old.tag("lb"), head)
         XCTAssertEqual(alice.sealed.chain(bob.account)?.lb, old.tag("lb")) // stale here
@@ -591,13 +600,13 @@ final class SealedEngineTests: XCTestCase {
         lost.engine.add(chainEvents(b))
         XCTAssertEqual(lost.sealed.mine, .inside)
         await lost.sealed.maintain(now: now + 100)
-        await lost.engine.flush()
+        await drain(lost.engine)
         let asked = b.all().filter { $0.kind == 8562 && $0.pubkey == mac.pub && $0.createdAt == now + 100 }
         XCTAssertEqual(asked.count, 1)
         // the phone sees the request of a device that is in the head: no card, the keys go
         await b.sync()
         await phone.sealed.maintain(now: now + 101)
-        await phone.engine.flush()
+        await drain(phone.engine)
         let cards = await phone.sealed.asks()
         XCTAssertTrue(cards.isEmpty)
         let wraps = b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }
@@ -606,7 +615,7 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertTrue(lost.sealed.takeKeys())
         // once per request: a second upkeep sends nothing more
         await phone.sealed.maintain(now: now + 102)
-        await phone.engine.flush()
+        await drain(phone.engine)
         XCTAssertEqual(b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }.count, wraps.count)
         // a later request of that device, once its chat session is gone, gets nothing
         b.lock.lock(); b.sessions[phone.account]?.removeAll { $0.clientPubkey == mac.pub }; b.lock.unlock()
@@ -615,7 +624,7 @@ final class SealedEngineTests: XCTestCase {
         phone.sealed.removalWait = 3600...3600 // the removal that would follow is not this test's
         let task = Task { await phone.sealed.maintain(now: now + 201) }
         try await Task.sleep(nanoseconds: 300_000_000)
-        await phone.engine.flush()
+        await drain(phone.engine)
         XCTAssertEqual(b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }.count, wraps.count)
         task.cancel()
     }
@@ -656,7 +665,7 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertEqual(restarted.sealed.chain(phone.account)?.head.id, chain.head.id) // the unanchored tail, for now
         b.lock.lock(); b.events.removeAll { $0.kind == 30078 && $0.tag("d") == SealedKind.anchorD && $0.id != first.id }; b.lock.unlock()
         await restarted.sealed.maintain(now: now + 500)
-        await restarted.engine.flush()
+        await drain(restarted.engine)
         let newest = b.all().filter { $0.kind == 30078 && $0.tag("d") == SealedKind.anchorD }.max { $0.createdAt < $1.createdAt }
         XCTAssertEqual(newest?.tag("head"), chain.head.id)
         XCTAssertEqual(newest?.tag("root"), chain.root.id)
