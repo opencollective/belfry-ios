@@ -667,7 +667,9 @@ public final class SealedEngine: @unchecked Sendable {
         let (_, rosters) = index()
         lock.lock(); let held = keys; lock.unlock()
         if let pending = (rosters[me] ?? []).compactMap(Roster.init).first(where: { $0.n == 1 && $0.prev == nil && $0.signer == devicePub && $0.devices == [devicePub] && held.secret($0.lb) != nil }) {
-            try? await publishAsAccount(RosterChain.anchor(root: pending.id, head: pending.id, now: now), local: false)
+            // (an anchor is replaceable: always later than the one that stands, never the bare clock)
+            let (anchors, _) = index()
+            try? await publishAsAccount(RosterChain.anchor(root: pending.id, head: pending.id, now: max(now, (anchors[me]?.createdAt ?? 0) + 1)), local: false)
             followUp()
             return
         }

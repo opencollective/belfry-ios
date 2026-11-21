@@ -42,7 +42,19 @@ private final class FakeBelfry: @unchecked Sendable {
         engine.onSent = { [weak self] _, e in if let e { self?.put(e) } }
     }
 
-    func put(_ e: NostrEvent) { lock.lock(); if !events.contains(where: { $0.id == e.id }) { events.append(e) }; lock.unlock() }
+    /// As the relay keeps events: a replaceable one (the anchor, a device's name record: 30078
+    /// by author and `d`) replaces the one that stands only when it is newer, or in the same
+    /// second with a lower id; an older one is discarded.
+    func put(_ e: NostrEvent) {
+        lock.lock(); defer { lock.unlock() }
+        if events.contains(where: { $0.id == e.id }) { return }
+        if e.kind == 30078, let d = e.tag("d"), let i = events.firstIndex(where: { $0.kind == 30078 && $0.pubkey == e.pubkey && $0.tag("d") == d }) {
+            let old = events[i]
+            if old.createdAt > e.createdAt || (old.createdAt == e.createdAt && old.id < e.id) { return }
+            events.remove(at: i)
+        }
+        events.append(e)
+    }
     func all() -> [NostrEvent] { lock.lock(); defer { lock.unlock() }; return events }
     func list(_ account: String) -> [SessionInfo] { lock.lock(); defer { lock.unlock() }; return sessions[account] ?? [] }
 
@@ -1075,6 +1087,45 @@ final class SealedEngineTests: XCTestCase {
         bob.engine.add([try await GiftWrap.wrap(late, to: bob.account, signer: key)], verify: false)
         await bobDms.process()
         XCTAssertTrue(bobDms.chips(target.rid).isEmpty)
+    }
+
+    /// The anchor is replaceable: the relay keeps the newer one, the lower id in the same second,
+    /// and discards an older one. A device whose clock is behind still lands its change (its
+    /// anchor is dated after the one that stands, never by the bare clock).
+    func testAnAnchorIsAlwaysNewerThanTheOneThatStands() async throws {
+        let b = FakeBelfry()
+        let phone = try b.signIn("alice", "phone")
+        await phone.sealed.maintain(now: now)
+        await b.sync()
+        let mac = try b.signIn("alice", "mac")
+        await b.sync()
+        await mac.sealed.maintain(now: now)
+        await b.sync()
+        let standing = try XCTUnwrap(b.all().first(where: isAnchor))
+        // the phone's clock is an hour behind
+        let done = await phone.sealed.allow(mac.pub, now: now - 3600)
+        XCTAssertEqual(done, .done)
+        let anchors = b.all().filter(isAnchor)
+        XCTAssertEqual(anchors.count, 1) // replaced, as a relay does
+        XCTAssertEqual(anchors.first?.createdAt, standing.createdAt + 1)
+        await b.sync()
+        XCTAssertEqual(mac.sealed.mine, .inside)
+        // the relay's own rule: an older anchor is discarded; of two in one second the lower id stays
+        let root = try XCTUnwrap(phone.sealed.chain(phone.account)?.root.id)
+        let head = try XCTUnwrap(phone.sealed.chain(phone.account)?.head.id)
+        let stale = try RosterChain.anchor(root: root, head: root, now: standing.createdAt).event(pubkey: "").signed(with: secret("alice"))
+        b.put(stale)
+        XCTAssertEqual(b.all().filter(isAnchor).first?.tag("head"), head)
+        let at = standing.createdAt + 50
+        let one = try RosterChain.anchor(root: root, head: head, now: at).event(pubkey: "").signed(with: secret("alice"))
+        var two = one
+        // a second one in the same second (another content): only the lower id stays, whatever the order
+        two = try EventTemplate(kind: 30078, content: "x", tags: one.tags, createdAt: at).event(pubkey: "").signed(with: secret("alice"))
+        b.put(one); b.put(two)
+        XCTAssertEqual(b.all().filter(isAnchor).map(\.id), [min(one.id, two.id)])
+        let c = FakeBelfry()
+        c.put(two); c.put(one)
+        XCTAssertEqual(c.all().filter(isAnchor).map(\.id), [min(one.id, two.id)])
     }
 
     /// The relay caps a page at 300 whatever is asked: a short page proves nothing; only an empty
