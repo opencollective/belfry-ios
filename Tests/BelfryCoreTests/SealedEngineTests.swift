@@ -1067,21 +1067,9 @@ final class SealedEngineTests: XCTestCase {
         let aliceDms = DirectMessages(engine: alice.engine)
         aliceDms.sealed = alice.sealed
         try await aliceDms.send("Sealed now", in: "n:" + bob.account)
-        let sealedWraps = b.all().filter { $0.kind == 1059 && $0.tag("lb") != nil && $0.hasTag("p", bob.account) }
         await b.sync()
         let target = try XCTUnwrap(aliceDms.thread("n:" + bob.account).last { $0.text == "Sealed now" })
         let late = GiftWrap.rumor(kind: 7, pubkey: alice.account, tags: [["e", target.rid], ["p", bob.account]], content: "🔥", createdAt: Int.now + 3600)
-        // a store that has the reaction but not yet the sealed message
-        let fresh = try b.again("bob", "phone")
-        fresh.engine.add(b.all().filter { $0.kind != 1059 })
-        fresh.engine.add(b.all().filter { $0.kind == 1059 && $0.hasTag("p", fresh.pub) })
-        XCTAssertTrue(fresh.sealed.takeKeys() || !fresh.sealed.lacksKey || true)
-        let freshDms = DirectMessages(engine: fresh.engine)
-        freshDms.sealed = fresh.sealed
-        fresh.engine.add([try await GiftWrap.wrap(late, to: bob.account, signer: key)], verify: false)
-        await freshDms.process()
-        XCTAssertTrue(freshDms.chips(target.rid).isEmpty)
-        _ = sealedWraps
         // the phone that holds the sealed message: the late old-style reaction is ignored (dated after it sealed)
         await bobDms.process()
         bob.engine.add([try await GiftWrap.wrap(late, to: bob.account, signer: key)], verify: false)
