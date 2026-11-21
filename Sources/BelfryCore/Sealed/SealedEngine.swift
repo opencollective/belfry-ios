@@ -85,6 +85,8 @@ struct SealedMemory: Codable {
     var switchHead: String?
     /// Devices this device allowed by hand after a switch.
     var allowedSince = [String]()
+    /// For each of them, the head when the person allowed it (its place in the chain's order).
+    var allowedAt = [String: String]()
     /// Since when this device is in my head without the key.
     var waitingSince: Int?
     struct Reset: Codable, Hashable { var root: String; var at: Int; var shared: Bool }
@@ -350,7 +352,7 @@ public final class SealedEngine: @unchecked Sendable {
                 let switched = pin == c.root.id && head?.anchored == true && head?.id.map { old in !c.rosters.contains { $0.id == old } } == true
                 remember(rechain: true) { m in
                     if switched {
-                        if a == self.me { m.preSwitch = head?.devices ?? []; m.allowedSince = []; m.switchHead = c.head.id }
+                        if a == self.me { m.preSwitch = head?.devices ?? []; m.allowedSince = []; m.allowedAt = [:]; m.switchHead = c.head.id }
                         else { m.resets[a, default: []].append(.init(root: c.head.id, at: c.head.createdAt, shared: false)) }
                     }
                     m.heads[a] = .init(lb: c.lb, devices: c.devices, id: c.head.id, anchored: anchoredNow)
@@ -788,14 +790,16 @@ public final class SealedEngine: @unchecked Sendable {
     /// After a switch: DEVICE is in my head, but was not in the head held before it, and was let
     /// in neither by one of those devices nor by me since. It gets no key without the Allow card.
     private func unvouched(_ d: String, _ c: RosterChain) -> Bool {
-        lock.lock(); let pre = memory.preSwitch, mine = memory.allowedSince, at = memory.switchHead; lock.unlock()
+        lock.lock(); let pre = memory.preSwitch, mine = memory.allowedSince, when = memory.allowedAt, at = memory.switchHead; lock.unlock()
         // trusted: the devices of the head held before the switch, those the person allowed here
         // since, and those a LATER roster of the followed chain, signed by a trusted device, ADDS.
         // A roster that merely keeps a device vouches for nothing (devices publish rosters on
         // their own: `ready`, a gone session). A device this one had let in and later removed
         // comes back untrusted.
         guard let pre, d != devicePub else { return false }
-        var trusted = Set(pre + mine + [devicePub])
+        // a device allowed by hand counts from the head at which the person allowed it
+        let known = Set(c.rosters.map(\.id))
+        var trusted = Set(pre + [devicePub] + mine.filter { d in when[d].map { $0 == at || !known.contains($0) } ?? true })
         if let at, let i = c.rosters.firstIndex(where: { $0.id == at }), i + 1 < c.rosters.count {
             // only rosters that descend from the switch head, in chain order (never by their dates,
             // which a signer chooses); what is at or before it on the new branch counts for nothing
@@ -804,6 +808,7 @@ public final class SealedEngine: @unchecked Sendable {
                 // whoever leaves the roster leaves trusted (coming back needs a trusted roster again)
                 trusted.subtract(before.devices.filter { !r.devices.contains($0) && $0 != devicePub })
                 if trusted.contains(r.signer) { trusted.formUnion(r.devices.filter { !before.devices.contains($0) }) }
+                trusted.formUnion(mine.filter { when[$0] == r.id })
             }
         }
         return !trusted.contains(d)
@@ -961,7 +966,7 @@ public final class SealedEngine: @unchecked Sendable {
             lock.lock(); let no = denied.contains(newDevice), k = keys; lock.unlock()
             guard !no, !lacksKey, let sessions = await sessions?(), listsMe(sessions),
                   sessions.contains(where: { $0.clientPubkey == newDevice && $0.chat }) else { return .failed }
-            remember { $0.allowedSince.append(newDevice) }
+            remember { $0.allowedSince.append(newDevice); $0.allowedAt[newDevice] = c.head.id }
             hand(newDevice, k, now: now)
             onChange?()
             return .done
