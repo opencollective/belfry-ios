@@ -24,6 +24,23 @@ private final class FakeBelfry: @unchecked Sendable {
     var sessions = [String: [SessionInfo]]() // account → its sessions
     var revoked = [String]()
     var devices = [Device]()
+    /// Per engine: what this relay refuses from it (the reason a relay would give).
+    var refusals = [ObjectIdentifier: (NostrEvent) -> String?]()
+
+    func refuse(_ d: Device, _ rule: ((NostrEvent) -> String?)?) { lock.lock(); refusals[ObjectIdentifier(d.engine)] = rule; lock.unlock() }
+
+    /// The relay's side of a publish: it has the event from the moment it answers OK (before the
+    /// sender's outbox lets go of it), or it refuses.
+    func wire(_ engine: SyncEngine) {
+        engine.localRefuse = { [weak self, weak engine] e in
+            guard let self, let engine else { return nil }
+            self.lock.lock(); let rule = self.refusals[ObjectIdentifier(engine)]; self.lock.unlock()
+            if let why = rule?(e) { return why }
+            self.put(e)
+            return nil
+        }
+        engine.onSent = { [weak self] _, e in if let e { self?.put(e) } }
+    }
 
     func put(_ e: NostrEvent) { lock.lock(); if !events.contains(where: { $0.id == e.id }) { events.append(e) }; lock.unlock() }
     func all() -> [NostrEvent] { lock.lock(); defer { lock.unlock() }; return events }
@@ -65,7 +82,7 @@ private final class FakeBelfry: @unchecked Sendable {
         }
         sealed.myName = { Sealed.DeviceName(name: "iPhone", kind: "phone", added: 1) }
         sealed.setLink(link)
-        engine.onSent = { [weak self] _, e in if let e { self?.put(e) } }
+        wire(engine)
         lock.lock()
         sessions[account.pubkey, default: []].append(SessionInfo(applicationName: "Belfry", device: name, redirectOrigin: "", bunkerPubkey: "bunker-" + pub,
                                                                   createdAt: "2026-11-20T10:00:00Z", lastActivity: nil, clientPubkey: pub, chat: chat))
@@ -92,7 +109,7 @@ private final class FakeBelfry: @unchecked Sendable {
         }
         sealed.sessions = { [weak self] in self?.list(account.pubkey) }
         sealed.myName = { Sealed.DeviceName(name: "iPhone", kind: "phone", added: 1) }
-        engine.onSent = { [weak self] _, e in if let e { self?.put(e) } }
+        wire(engine)
         return Device(account: account.pubkey, pub: try Keys.publicKeyHex(secret: key), engine: engine, sealed: sealed)
     }
 
@@ -664,7 +681,7 @@ final class SealedEngineTests: XCTestCase {
             await mac.sealed.maintain(now: now)
             await b.sync()
             let root = try XCTUnwrap(phone.sealed.chain(phone.account)?.head.id, refused)
-            phone.engine.localRefuse = { e in
+            b.refuse(phone) { e in
                 let roster = e.kind == 8560, anchor = e.kind == 30078 && e.tag("d") == SealedKind.anchorD
                 return (roster && refused != "anchor") || (anchor && refused != "roster") ? "blocked: not today" : nil
             }
@@ -684,7 +701,7 @@ final class SealedEngineTests: XCTestCase {
             XCTAssertNotEqual(mac.sealed.open(try XCTUnwrapWrap(phone)).isRumor, true, refused)
 
             // the relay takes events again
-            phone.engine.localRefuse = nil
+            b.refuse(phone, nil)
             if refused == "anchor" {
                 // the roster went out without its anchor: the next upkeep anchors it; until the
                 // relay shows that, the device is still not "in" and gets no key
@@ -708,14 +725,14 @@ final class SealedEngineTests: XCTestCase {
         let b = FakeBelfry()
         let (phone, mac) = try await pair(b, "alice")
         let before = try XCTUnwrap(phone.sealed.chain(phone.account))
-        phone.engine.localRefuse = { e in e.kind == 8560 ? "blocked: not today" : nil }
+        b.refuse(phone) { e in e.kind == 8560 ? "blocked: not today" : nil }
         let removed = await phone.sealed.remove(mac.pub, now: now + 50)
         XCTAssertFalse(removed)
         await b.sync()
         XCTAssertEqual(phone.sealed.chain(phone.account)?.devices, before.devices)
         XCTAssertEqual(b.revoked, ["bunker-" + mac.pub]) // its session is gone all the same: revoked first
         // the next upkeep drops it (its session is gone), now that the relay answers
-        phone.engine.localRefuse = nil
+        b.refuse(phone, nil)
         await phone.sealed.maintain(now: now + 60)
         await b.sync()
         XCTAssertEqual(phone.sealed.chain(phone.account)?.devices, [phone.pub])
