@@ -80,6 +80,10 @@ struct SealedMemory: Codable {
     /// Since when this device is in my head without the key.
     var waitingSince: Int?
     struct Reset: Codable, Hashable { var root: String; var at: Int; var shared: Bool }
+    /// My account was started fresh by another device while this one was in the head (the
+    /// attacker-after-the-e-mail-code case): shown until the person answers.
+    var foreignFresh: ForeignFresh?
+    struct ForeignFresh: Codable, Hashable { var root: String; var at: Int; var device: String }
 }
 
 public final class SealedEngine: @unchecked Sendable {
@@ -265,6 +269,42 @@ public final class SealedEngine: @unchecked Sendable {
 
     /// In my head, but without the head letterbox's secret (its hand-over has not come): it can't
     /// read what arrives, and says so in place of the composer.
+    /// Another device started my account fresh while this one was in the head: its device key (to
+    /// name it from the session list) and when. Nil once answered.
+    public var foreignFreshStart: (device: String, at: Int)? {
+        lock.lock(); defer { lock.unlock() }
+        return memory.foreignFresh.map { ($0.device, $0.at) }
+    }
+
+    /// "It was me": the notice goes.
+    public func dismissForeignFresh() { remember { $0.foreignFresh = nil } ; onChange?() }
+
+    /// "Sign out every other device": every session of my account but this device's is revoked
+    /// through the belfry, then this device asks to be allowed. The names of the sessions signed
+    /// out when every revoke went through (the notice goes); nil: some session may still be live,
+    /// the notice stays.
+    public func signOutEveryOtherDevice(now: Int = .now) async -> [String]? {
+        await exclusive {
+            guard let sessions = await self.sessions?() else { return nil }
+            var ok = true
+            var names = [String]()
+            for s in sessions where s.clientPubkey != self.devicePub {
+                if await self.revoke?(s.bunkerPubkey) == true {
+                    let n = (s.device ?? "").isEmpty ? (s.applicationName.isEmpty ? "A device" : s.applicationName) : s.device!
+                    if !names.contains(n) { names.append(n) }
+                } else { ok = false }
+            }
+            guard ok else { return nil }
+            self.lock.lock(); let link = self.link; self.lock.unlock()
+            if (try? self.publish(Sealed.request(account: self.me, device: self.devicePub, link: link, now: now))) != nil {
+                self.remember { $0.lastRequest = now }
+            }
+            self.remember { $0.foreignFresh = nil }
+            self.onChange?()
+            return names
+        }
+    }
+
     /// This device is the only one in my head and holds its letterbox's secret: losing it (sign
     /// out) leaves my sealed conversations unreadable until Start fresh (board
     /// messages/encryption-only-device). False with no chain or no letterbox yet.
@@ -350,7 +390,14 @@ public final class SealedEngine: @unchecked Sendable {
                     m.pins[a] = next
                     switch event {
                     case .freshStart:
-                        if a == self.me { if let old = pin?.root { m.oldRoots.append(old) } }
+                        if a == self.me {
+                            if let old = pin?.root { m.oldRoots.append(old) }
+                            // started fresh by ANOTHER device while this one was in the head and is
+                            // still here: "If this wasn't you, sign out every other device"
+                            if let c, c.root.signer != self.devicePub, head?.devices.contains(self.devicePub) == true {
+                                m.foreignFresh = .init(root: c.root.id, at: c.root.createdAt, device: c.root.signer)
+                            }
+                        }
                         else if let c { m.resets[a, default: []].append(.init(root: c.root.id, at: c.root.createdAt, shared: false)) }
                     case .switch:
                         if a != self.me, let c { m.resets[a, default: []].append(.init(root: c.head.id, at: c.head.createdAt, shared: false)) }

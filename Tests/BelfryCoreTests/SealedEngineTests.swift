@@ -585,6 +585,16 @@ final class SealedEngineTests: XCTestCase {
         let wrap = try XCTUnwrap(try alice.sealed.wraps(rumor, to: [pad.account], selfCopy: false).first)
         guard case .rumor(let got) = pad.sealed.open(wrap) else { return XCTFail("the fresh device can't read what is sent after") }
         XCTAssertEqual(got.content, "after")
+        // the OLD phone, still signed in, finds a fresh start it didn't make: it says so, and
+        // "Sign out every other device" revokes every other session and asks to be allowed
+        await bobPhone.sealed.refresh([bobPhone.account], now: now + 40)
+        XCTAssertEqual(bobPhone.sealed.foreignFreshStart?.device, pad.pub)
+        XCTAssertNil(pad.sealed.foreignFreshStart, "the device that started fresh is told nothing")
+        let out = await bobPhone.sealed.signOutEveryOtherDevice(now: now + 50)
+        XCTAssertNotNil(out)
+        XCTAssertEqual(b.revoked, ["bunker-" + pad.pub])
+        XCTAssertNil(bobPhone.sealed.foreignFreshStart)
+        XCTAssertTrue(bobPhone.engine.outboxItems().contains { $0.kind == SealedKind.request }, "it asks to be allowed")
     }
 
     /// Before the sealed engine is attached (the first moments of a launch) nothing goes the old

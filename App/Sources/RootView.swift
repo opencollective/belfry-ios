@@ -104,6 +104,12 @@ struct RootView: View {
         withSheets
             // "Give your new device … access?" over whatever screen is open (board messages/encryption-allow)
             .overlay { if let ask = model.sealed.ask { AllowPrompt(ask: ask) } }
+            // board messages/encryption-fresh-elsewhere: over any screen until a button is tapped
+            .overlay {
+                if model.sealed.freshElsewhere != nil || model.sealed.signedOutOthers != nil || model.launch.screen?.hasPrefix("encelsewhere") == true {
+                    FreshElsewherePrompt()
+                }
+            }
             .fullScreenCover(item: $model.lightbox) { LightboxView(box: $0) }
             .sheet(isPresented: $model.joinAsked) { JoinSheet() }
             .sheet(isPresented: $newChannel) {
@@ -546,7 +552,7 @@ struct RootView: View {
         case "meplace", "typingsetting", "enconlydevice":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { path.append(PlaceRoute.me) }
-        case "feed", "thread", "details", "invite", "invitesearch", "inviteexternal", "actions", "pulldown", "pullfull", "menu", "delete", "edit", "threadscreen", "chsearch", "add", "composer", "composermention", "typing", "typingtwo", "typingmany": selection = .channel(generalId)
+        case "feed", "thread", "details", "invite", "invitesearch", "inviteexternal", "actions", "pulldown", "pullfull", "menu", "delete", "edit", "threadscreen", "chsearch", "add", "composer", "composermention", "encelsewhere", "encelsewheredone", "typing", "typingtwo", "typingmany": selection = .channel(generalId)
         case "drawer", "channels":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }

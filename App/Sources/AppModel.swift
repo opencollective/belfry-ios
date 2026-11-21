@@ -243,6 +243,9 @@ final class AppModel: ObservableObject {
     var sealedTimer: Timer?
     var sealedStore: OwnedKeyStore?
     var sealedSaveToldOnce = false
+    /// The names of devices that started my account fresh elsewhere, from the session list.
+    var freshDeviceNames = [String: String]()
+    var freshNameAsked = Set<String>()
     func adoptSealed(_ se: SealedEngine) { sealedEngine = se }
     private(set) var session: StoredSession?
     /// (model version, the engine's outbox version, snapshot): the outbox's too, so a screen opened

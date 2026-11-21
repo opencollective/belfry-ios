@@ -497,3 +497,95 @@ struct ShareHistorySheet: View {
         .interactiveDismissDisabled(busy)
     }
 }
+
+/// My sealed conversations were started fresh on another device while this one was in the head
+/// (boards messages/encryption-fresh-elsewhere, -done; the attacker-after-the-e-mail-code case).
+/// The alert card over any screen, like the Allow prompt; it comes back at every start until one
+/// button is tapped.
+struct FreshElsewherePrompt: View {
+    @EnvironmentObject var model: AppModel
+    @State private var busy = false
+    @State private var failed = false
+    @State private var how = false
+
+    private var demoDone: Bool { model.launch.screen == "encelsewheredone" }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.4).ignoresSafeArea()
+            VStack(spacing: 12) {
+                if let names = model.sealed.signedOutOthers ?? (demoDone ? ["iPad"] : nil) {
+                    done(names)
+                } else {
+                    ask(model.sealed.freshElsewhere ?? FreshElsewhere(device: "iPad", at: Int.now - 120))
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: 340)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .padding(24)
+        }
+        .sheet(isPresented: $how) { NavigationStack { UnlockHowScreen().toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { how = false } } } } }
+        .accessibilityAddTraits(.isModal)
+    }
+
+    @ViewBuilder private func ask(_ f: FreshElsewhere) -> some View {
+        Image(systemName: "exclamationmark.lock.fill").font(.system(size: 30)).foregroundStyle(.orange)
+            .frame(width: 60, height: 60).background(Color.orange.opacity(0.15), in: Circle())
+            .accessibilityHidden(true)
+        Text("Sealed conversations were started fresh on \u{201C}\(f.device)\u{201D}").font(.headline).multilineTextAlignment(.center)
+        Text(FreshElsewherePrompt.when(f.at)).font(.subheadline).foregroundStyle(.secondary)
+        Text("This device can't read new sealed messages until it's allowed again.").font(.subheadline).multilineTextAlignment(.center)
+        Text("If this wasn't you, sign out every other device.").font(.subheadline.weight(.semibold)).multilineTextAlignment(.center)
+        if failed { Text("Couldn't sign out every device. Try again.").font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center) }
+        BusyButton(role: .destructive) { await signOutOthers() } label: {
+            Text("Sign out every other device").frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent).tint(.red).controlSize(.large)
+        .accessibilityIdentifier("fresh-signout-others")
+        Button { model.sealedEngine?.dismissForeignFresh(); model.refreshSealed() } label: {
+            Text("It was me").frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered).controlSize(.large)
+        .disabled(busy)
+    }
+
+    @ViewBuilder private func done(_ names: [String]) -> some View {
+        Image(systemName: "checkmark.shield.fill").font(.system(size: 30)).foregroundStyle(.green)
+            .frame(width: 60, height: 60).background(Color.green.opacity(0.15), in: Circle())
+            .accessibilityHidden(true)
+        Text("Every other device is signed out").font(.headline).multilineTextAlignment(.center)
+        VStack(alignment: .leading, spacing: 8) {
+            if !names.isEmpty { Text("\(ListFormatter.localizedString(byJoining: names)) can't open your account any more.") }
+            Text("Someone may have signed in with a code sent to your e-mail: change that e-mail's password.")
+            Text("To read sealed conversations here again, start fresh on this device.")
+        }
+        .font(.subheadline)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        Button { how = true } label: { Text("Show how").frame(maxWidth: .infinity) }
+            .buttonStyle(.borderedProminent).controlSize(.large)
+        Button { model.sealed.signedOutOthers = nil } label: { Text("Done").frame(maxWidth: .infinity) }
+            .buttonStyle(.bordered).controlSize(.large)
+    }
+
+    /// Locks and shows progress; every session but this one is revoked, then this device asks
+    /// to be allowed. Some failed: the red button comes back with the error line.
+    private func signOutOthers() async {
+        busy = true
+        failed = false
+        let names = model.isDemo ? ["iPad"] : await model.sealedEngine?.signOutEveryOtherDevice()
+        busy = false
+        if let names { model.sealed.signedOutOthers = names; model.refreshSealed() } else { failed = true }
+    }
+
+    /// "Today at 9:41 PM", "Yesterday at 9:41 PM", "21 Nov at 9:41 PM".
+    static func when(_ at: Int) -> String {
+        let d = Date(timeIntervalSince1970: TimeInterval(at))
+        let t = DateFormatter(); t.timeStyle = .short; t.dateStyle = .none
+        let cal = Calendar.current
+        if cal.isDateInToday(d) { return "Today at " + t.string(from: d) }
+        if cal.isDateInYesterday(d) { return "Yesterday at " + t.string(from: d) }
+        let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("d MMM")
+        return f.string(from: d) + " at " + t.string(from: d)
+    }
+}

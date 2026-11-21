@@ -94,6 +94,16 @@ struct SealedState: Equatable {
     var openDevices = false
     /// Demo: devices removed in Devices.
     var removed: Set<String> = []
+    /// Another device started my sealed conversations fresh while this one was in the head
+    /// (board messages/encryption-fresh-elsewhere): its name (from the session list) and when.
+    var freshElsewhere: FreshElsewhere?
+    /// After "Sign out every other device" went through: the names signed out (the done card).
+    var signedOutOthers: [String]?
+}
+
+struct FreshElsewhere: Equatable {
+    var device: String
+    var at: Int
 }
 
 /// The letterbox secrets of one account on this device: one Keychain item per account slot,
@@ -249,6 +259,21 @@ extension AppModel {
         st.missingKeys = dms.lockedWraps > 0
         st.waitingForKey = se.lacksKey
         st.waitingLong = st.waitingForKey && (se.waitingSince.map { Int.now - $0 > 86400 } ?? false)
+        st.signedOutOthers = sealed.signedOutOthers
+        if let f = se.foreignFreshStart {
+            // named from the belfry's session list (its own name record is sealed to the new letterbox)
+            st.freshElsewhere = FreshElsewhere(device: freshDeviceNames[f.device] ?? "another device", at: f.at)
+            if freshDeviceNames[f.device] == nil, !freshNameAsked.contains(f.device) {
+                freshNameAsked.insert(f.device)
+                Task { @MainActor in
+                    if case .success(let list) = await sessions(),
+                       let s = list.first(where: { $0.clientPubkey == f.device }), let n = s.device ?? (s.applicationName.isEmpty ? nil : s.applicationName), !n.isEmpty {
+                        freshDeviceNames[f.device] = n
+                        refreshSealed()
+                    }
+                }
+            }
+        }
         for t in dms.threads() {
             let conv = t.conv
             if MailThreads.isMail(conv) {
