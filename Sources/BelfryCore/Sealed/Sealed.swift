@@ -64,6 +64,9 @@ public enum Sealed {
         return s
     }
 
+    /// What a person reads when a message is too long to lock (the text stays in the box).
+    public static let tooLong = "Not sent: the message is too long to lock. Shorten it and send again."
+
     /// The most a sealed rumor's JSON may weigh (what NIP-44 carries once sealed and wrapped).
     public static let maxRumorBytes = 40_000
 
@@ -77,7 +80,7 @@ public enum Sealed {
     public static func wrap(_ rumor: NostrEvent, device: Data, to account: String, lb: String, now: Int = .now) throws -> NostrEvent {
         let json = Sealed.json(rumor)
         // a sealed rumor's JSON is at most 40 000 bytes: a sender never seals a larger one
-        guard json.utf8.count <= maxRumorBytes else { throw BelfryError.invalid("This message is too long to send.") }
+        guard json.utf8.count <= maxRumorBytes else { throw BelfryError.invalid(tooLong) }
         let sealContent = try NIP44.encrypt(json, conversationKey: conv(device, lb))
         let seal = try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 13, tags: [], content: sealContent).signed(with: device)
         let one = Keys.generateSecret()
