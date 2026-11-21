@@ -47,7 +47,7 @@ struct MessagesView: View {
             model.messagesOpen = true
             guard !didLaunch else { return }
             didLaunch = true
-            if ["conversation", "mail", "sendstill", "sendnotyet", "dmfiles", "dmfilessending"].contains(model.launch.screen ?? "") {
+            if ["conversation", "mail", "sendstill", "sendnotyet", "dmfiles", "dmfilessending", "typingdm"].contains(model.launch.screen ?? "") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     let list = model.dms?.threads() ?? []
                     let pick = model.launch.screen == "mail" ? list.first { MailThreads.isMail($0.conv) } : list.first { !MailThreads.isMail($0.conv) }
@@ -92,7 +92,13 @@ struct ThreadRow: View {
                     Text(Format.brief(thread.last.at)).font(.caption).foregroundStyle(.secondary)
                 }
                 if mail { Text(model.dms?.threadName(thread.conv) ?? "").font(.subheadline.weight(.medium)).lineLimit(1) }
-                Text((thread.last.mine ? "You: " : "") + lastLine(mail)).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                // one to one: "typing…" with the dots in place of the preview (SPEC 19.66)
+                if !mail, MailThreads.peers(thread.conv).filter({ $0 != model.me }).count == 1, !model.typing.typers(Typing.place(conv: thread.conv)).isEmpty {
+                    HStack(spacing: 6) { TypingDots(); Text("typing…") }.font(.subheadline).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("row-typing")
+                } else {
+                    Text((thread.last.mine ? "You: " : "") + lastLine(mail)).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                }
             }
             if thread.unread > 0 {
                 Circle().fill(Color.brand).frame(width: 10, height: 10).padding(.top, 6).accessibilityLabel("Unread")
@@ -132,6 +138,7 @@ struct ConversationView: View {
     @State private var subject = ""
     @State private var error: String?
     @State private var sending = 0
+    @State private var lastSending = 0
 
     var body: some View {
         let _ = model.version
@@ -175,10 +182,18 @@ struct ConversationView: View {
             }
         }
         .onAppear { model.markConversationRead(conv); model.visibleConversation = conv }
+        .onChange(of: text) { old, t in
+            guard !mail else { return }
+            let place = Typing.place(conv: conv)
+            if t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { if !old.isEmpty, sending == lastSending { model.typing.cleared(place: place) } }
+            else { model.typing.key(place: place, text: t) }
+            lastSending = sending
+        }
         .onDisappear { if model.visibleConversation == conv { model.visibleConversation = nil } }
         .onChange(of: list.count) { _, _ in model.markConversationRead(conv) }
         .bottomBar {
             VStack(spacing: 6) {
+                if !mail { TypingLine(center: model.typing, place: Typing.place(conv: conv)).padding(.top, -22).frame(height: 0, alignment: .bottom) }
                 if let error { Text(error).font(.caption).foregroundStyle(.red) }
                 if MailThreads.isNewMail(conv) {
                     TextField("Subject", text: $subject).font(.body)
@@ -223,8 +238,9 @@ struct ConversationView: View {
             return
         }
         error = nil
-        text = ""
+        model.typing.sent(place: Typing.place(conv: conv))
         sending += 1
+        text = ""
         Task {
             do {
                 if MailThreads.isMail(conv) {

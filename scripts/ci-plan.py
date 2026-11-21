@@ -43,6 +43,7 @@ MAP = [
     (r"App/Sources/(MessagesView|MentionsView)", "messages|conversation|mentions|mail|sendstill|sendnotyet|dmfiles|dmfilessending", ""),
     (r"App/Sources/SendLine", "sendstill|sendnotyet|diagnostics|feed|dmfilessending", ""),
     (r"App/Sources/DmFilesUI", "dmfiles|dmfilessending|conversation", ""),
+    (r"App/Sources/TypingUI", "typing.*", ""),
     (r"App/Sources/(AccountsSheet|AppModel\+Accounts|AboutScreen)", "accounts|about|diagnostics", ""),
     (r"App/Sources/CreateMenu", "create|add", "testAddMenu"),
     (r"App/Sources/AppModel\+Push", "notifications", ""),

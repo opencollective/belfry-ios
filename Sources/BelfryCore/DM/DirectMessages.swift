@@ -104,6 +104,8 @@ public final class DirectMessages: @unchecked Sendable {
                 seen.insert(e.id)
                 done += 1
                 lock.unlock()
+                // their message ends their typing in that conversation (SPEC 19.66)
+                if let d, !d.mine, d.kind == 14 || d.kind == DmFiles.kind { onMessage?(d.conv, d.from) }
                 changed = true
                 // kept as it goes: a restart never asks the signer again for what was opened
                 if done % 20 == 0 { save() }
@@ -213,8 +215,44 @@ public final class DirectMessages: @unchecked Sendable {
         try await deliver(rumor, to: others)
     }
 
+    /// A message of AUTHOR landed in CONV (typing indicators).
+    public var onMessage: ((String, String) -> Void)?
+
     /// Called when this device sends a DM or an e-mail (push: stay quiet for its own echo).
     public var onSend: (() -> Void)?
+
+    // ---- typing (SPEC 19.66) --------------------------------------------------------------------
+
+    /// Tells the other participants of CONV that I type (or STOP): a 20100 rumor sealed by me and
+    /// wrapped in a kind 21059 ephemeral gift wrap (real time) to each of them; no copy to me.
+    /// Dropped when the signer takes over 3 s.
+    public func sendTyping(in conv: String, stop: Bool) async {
+        if engine.localOnly || MailThreads.isMail(conv) { return }
+        let others = MailThreads.peers(conv).filter { $0 != me }
+        guard !others.isEmpty, others.allSatisfy(isHex64) else { return }
+        let now = Int.now
+        let rumor = GiftWrap.rumor(kind: Typing.kind, pubkey: me, tags: Typing.dmTags(others: others, stop: stop), content: "", createdAt: now)
+        let signer = engine.signer
+        for p in others {
+            guard let w = try? await withTimeout(Typing.signerWait, "timeout: typing", {
+                let sealed = try await signer.nip44Encrypt(peer: p, plaintext: rumor.json)
+                let seal = try await signer.sign(EventTemplate(kind: 13, content: sealed, tags: [], createdAt: now))
+                let one = Keys.generateSecret()
+                let content = try NIP44.encrypt(seal.json, conversationKey: NIP44.conversationKey(secret: one, publicKey: Data(hex: p) ?? Data()))
+                return try NostrEvent(pubkey: "", createdAt: now, kind: Typing.wrapKind, tags: [["p", p]], content: content).signed(with: one)
+            }) else { return }
+            await engine.publishTyping(w, to: .main)
+        }
+    }
+
+    /// A 21059 wrap to me: the typing rumor inside and its conversation (nil: not one for me).
+    public func openTyping(_ wrap: NostrEvent) async -> (conv: String, author: String, createdAt: Int, stop: Bool)? {
+        guard wrap.kind == Typing.wrapKind, wrap.hasTag("p", me),
+              let opened = try? await withTimeout(Typing.signerWait, "timeout: typing", { try await GiftWrap.unwrap(wrap, signer: self.engine.signer) }),
+              let o = opened, o.rumor.kind == Typing.kind else { return nil }
+        let r = o.rumor
+        return (MailThreads.nostrConv(author: r.pubkey, pTags: r.tagValues("p"), me: me), r.pubkey, r.createdAt, Typing.isStop(r.tags))
+    }
 
     /// A NIP-17 message in a Nostr conversation. GROUP: the caption of files sent with it.
     public func send(_ text: String, in conv: String, group: String? = nil) async throws {

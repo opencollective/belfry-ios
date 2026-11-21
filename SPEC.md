@@ -2730,3 +2730,36 @@ lanes `OutboxPass.lane`; `SendState` / `SendTrace` in `Outbox/SendTrace.swift`; 
   (tap: the phone's viewer); a recording as play / pause, a waveform, the duration. The list's last
   line: "Picture", "3 pictures", "File: Garden plan 2027.pdf", "Audio recording · 0:42".
   Reactions on a file: as 19.50 with `["k","15"]`.
+
+### 19.66 Typing indicators (iOS, 2026-11-21, Xavier via the lead; collective-belfry `docs/typing.md` @7750419; boards messages/typing-channel, typing-dm, typing-thread, typing-texts, typing-list, typing-setting, canvas v110; `vectors/typing.json`, written here from `tools/vectors/typing.py`: Android and the web copy it)
+
+- **The event**: kind **20100**, empty content, never kept by the relays. In a channel, group,
+  event chat or proposal: signed by the person with `["h", group]`, plus `["e", root]` inside a
+  thread (absent = the conversation itself), on the groups relay; readers ask
+  `{"kinds":[20100],"#h":[group],"since":now-5}` while the conversation is open; a thread shows only
+  events with its root, the conversation only events without `e`. In a direct message: an unsigned
+  20100 rumor tagged `p` for every other participant, sealed (kind 13, NIP-44 to the recipient) and
+  wrapped in a kind **21059** ephemeral gift wrap with the real `created_at`, to each other
+  participant on the community relay, no copy to oneself; readers ask
+  `{"kinds":[21059],"#p":[me],"since":now-5}`. Optional `["status","stop"]`.
+- **Sending**: on a keystroke that leaves the field non-empty, when nothing went out for this place
+  in the last **4 s**; never for a restored draft, an edit or only spaces; a stop when the field is
+  emptied without sending and an event went out in the last **6 s**; sending the message needs no
+  stop. Best effort: never through the outbox, never retried, only on a socket that is up, dropped
+  when the signer takes over **3 s**; a relay that refuses one gets none for **30 s**. Not in
+  archived channels, not from reading guests, not with the setting off.
+- **Showing**: a person types in a place from an event until **6 s** after their latest one, their
+  stop, or a message of theirs (kind 9, 1111, 14 or 15) landing there. Ignore events more than
+  **10 s** in the past or future (relays replay ephemeral events), one's own (any device), and
+  people not in the group. Order: who started first. Texts: "Lina Moreau is typing…", "Lina Moreau
+  and Ben Okafor are typing…", "Several people are typing…" (names as everywhere; "Somebody").
+- **Look**: one line under the last message, above the composer, laid over the feed so it never
+  moves it: 22 pt, 13 pt text in the secondary colour, names semibold, three dots lighting in turn
+  over 1.2 s (still under Reduce Motion), one line ending in "…". A one-to-one conversation's row
+  shows the dots and "typing…" in place of the preview; the time and the unread dot stay. Never a
+  notification, a sound or an unread count. VoiceOver: announced politely, once per change of names.
+- **Setting**: Me → Privacy → "Show others when I'm typing", on by default, per device: "When this
+  is off, this phone doesn't tell anyone you're typing. You still see when others are."
+- (iOS: `Typing`, `TypingSender`, `TypingBoard` in `Typing/Typing.swift`; `TypingCenter`,
+  `TypingLine`, `PrivacyScreen` in `App/Sources/TypingUI.swift`; `SyncEngine.watchTyping /
+  publishTyping / onTyping`; `DirectMessages.sendTyping / openTyping`.)

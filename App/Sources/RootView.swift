@@ -540,10 +540,10 @@ struct RootView: View {
                 let m = model.derive.messages(generalId).last { if case .memberMail = $0.special { return true } else { return false } }
                 if let m, case .memberMail(let subject, let o?) = m.special { model.fullMail = FullMailRef(subject: subject, original: o) }
             }
-        case "meplace":
+        case "meplace", "typingsetting":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { path.append(PlaceRoute.me) }
-        case "feed", "thread", "details", "invite", "invitesearch", "inviteexternal", "actions", "pulldown", "pullfull", "menu", "delete", "edit", "threadscreen", "chsearch", "add", "composer", "composermention": selection = .channel(generalId)
+        case "feed", "thread", "details", "invite", "invitesearch", "inviteexternal", "actions", "pulldown", "pullfull", "menu", "delete", "edit", "threadscreen", "chsearch", "add", "composer", "composermention", "typing", "typingtwo", "typingmany": selection = .channel(generalId)
         case "drawer", "channels":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
@@ -631,7 +631,7 @@ struct RootView: View {
                 model.openEvent = "repair-cafe"
             }
         case "membersinvite": selection = .members
-        case "messages", "conversation", "mail", "sendstill", "sendnotyet", "dmfiles", "dmfilessending": selection = .messages
+        case "messages", "conversation", "mail", "sendstill", "sendnotyet", "dmfiles", "dmfilessending", "typingdm", "typinglist": selection = .messages
         case "mentions": selection = .mentions
         case "requests": selection = .requests
         case "directory", "membersagents", "memberssearch": selection = .members

@@ -26,6 +26,8 @@ final class AppModel: ObservableObject {
 
     @Published var phase: Phase = .signedOut
     @Published var version = 0 { didSet { LoopWatch.tick("model.version") } }
+    /// Who types where (SPEC 19.66): its own object, so a typing event redraws only its lines.
+    let typing = TypingCenter()
     /// A guest link waiting to be used (kept through sign-in; only its domain and token).
     @Published var pendingInvite: PendingInvite? = (UserDefaults.standard.data(forKey: "belfry-invite")).flatMap { try? JSONDecoder().decode(PendingInvite.self, from: $0) } {
         didSet { UserDefaults.standard.set(pendingInvite.flatMap { try? JSONEncoder().encode($0) }, forKey: "belfry-invite") }
@@ -402,8 +404,19 @@ final class AppModel: ObservableObject {
         rs.onChange = { [weak self] r in DispatchQueue.main.async { self?.readChanged(r) } }
         d.readFloor = { [weak rs] conv in rs?.state.readUpTo("d", conv, now: Int.now) ?? 0 }
         readSync = rs
+        let tc = typing
         e.onNewEvents = { [weak d, weak rs] list in
             if list.contains(where: { $0.kind == 1059 || $0.kind == 4 }) { Task { await d?.process() } }
+            // a message landing ends its author's typing there (and in the group's threads)
+            let said = list.filter { [9, 1111].contains($0.kind) }.compactMap { e in e.tag("h").map { (h: $0, author: e.pubkey, root: e.tags.first { $0.count >= 2 && $0[0] == "e" }?[1]) } }
+            if !said.isEmpty {
+                Task { @MainActor in
+                    for s in said {
+                        tc.message(place: Typing.place(group: s.h, root: nil), author: s.author)
+                        if let r = s.root { tc.message(place: Typing.place(group: s.h, root: r), author: s.author) }
+                    }
+                }
+            }
             rs?.offer(list)
         }
         e.onEOSE = { [weak rs, weak self] t in
@@ -412,6 +425,9 @@ final class AppModel: ObservableObject {
             if t == .groups { Task { @MainActor in self?.releaseWayInKey(); await self?.checkGroups() } }
         }
         e.onSent = { [weak d] item, _ in d?.outboxSent(item) }
+        typing.model = self
+        e.onTyping = { ev in tc.receive(ev) }
+        d.onMessage = { conv, author in Task { @MainActor in tc.message(place: Typing.place(conv: conv), author: author) } }
         e.onFailed = { [weak d] item in d?.outboxFailed(item) }
         d.onSend = { Push.markSent() }
         // guest mode: nothing is sent until joining; a refused write opens the Join sheet

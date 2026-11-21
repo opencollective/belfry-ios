@@ -581,13 +581,67 @@ public final class SyncEngine: @unchecked Sendable {
 
     func subscribe(_ t: Target, _ r: Relay) {
         r.subscribe("live-" + t.rawValue, filters: filters(t))
+        // typing in my direct conversations: ephemeral wraps to me, from a few seconds ago on
+        if t == .main { r.subscribe("typing-dm", filters: [["kinds": [Typing.wrapKind], "#p": [me], "since": Int.now - 5]]) }
+        lock.lock(); let g = typingGroup; lock.unlock()
+        if t == .groups, let g { r.subscribe("typing", filters: [["kinds": [Typing.kind], "#h": [g], "since": Int.now - 5]]) }
+    }
+
+    // ---- typing indicators (SPEC 19.66) ------------------------------------------------------------
+
+    /// A typing event (kind 20100 from the groups relay, or a 21059 wrap from the community relay).
+    public var onTyping: ((NostrEvent) -> Void)?
+    private var typingGroup: String?
+    private var typingPausedUntil = [Target: Date]()
+
+    /// The group whose conversation (or thread) is open: its typing events are asked for; nil: none.
+    public func watchTyping(group: String?) {
+        if localOnly { return }
+        lock.lock()
+        let same = typingGroup == group
+        typingGroup = group
+        let r = relays[.groups]
+        lock.unlock()
+        guard !same, let r, r.isUp else { return }
+        if let group { r.subscribe("typing", filters: [["kinds": [Typing.kind], "#h": [group], "since": Int.now - 5]]) }
+        else { r.unsubscribe("typing") }
+    }
+
+    /// Publishes a typing event, best effort: only on a socket that is up, never through the
+    /// outbox, never retried; a refusal pauses that relay for 30 s.
+    public func publishTyping(_ ev: NostrEvent, to t: Target) async {
+        if localOnly { return }
+        lock.lock()
+        let paused = (typingPausedUntil[t] ?? .distantPast) > Date()
+        let r = relays[t]
+        lock.unlock()
+        guard !paused, let r, r.isUp else { return }
+        do { try await r.publish(ev, timeout: 5) } catch let e as BelfryError {
+            if !e.relayMessage.hasPrefix("timeout") {
+                lock.lock(); typingPausedUntil[t] = Date().addingTimeInterval(Typing.refusedPause); lock.unlock()
+            }
+        } catch {}
+    }
+
+    /// Signs a typing event with the person's key, within 3 s or not at all.
+    public func signTyping(_ t: EventTemplate) async -> NostrEvent? {
+        let s = signer
+        return try? await withTimeout(Typing.signerWait, "timeout: typing") { try await s.sign(t) }
     }
 
     /// A relay's events, its ends of stored events and its subscriptions after AUTH (every
     /// connection: a reconnect or the next launch asks again from 0 once AUTH succeeds).
     func wireAnswers(_ r: Relay, _ t: Target) {
         r.authSigner = signer
-        r.onEvent = { [weak self] _, ev in self?.add([ev]) }
+        r.onEvent = { [weak self] _, ev in
+            guard let self else { return }
+            // typing indicators are never kept (SPEC 19.66): handed over, signature checked
+            if ev.kind == Typing.kind || ev.kind == Typing.wrapKind {
+                if ev.isValid { self.onTyping?(ev) }
+                return
+            }
+            self.add([ev])
+        }
         r.onEOSE = { [weak self, weak r] sub in
             guard let self, let r else { return }
             self.eose(t, sub, relay: r)

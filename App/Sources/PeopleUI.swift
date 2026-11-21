@@ -561,12 +561,15 @@ struct AccountSheet: View {
     @State private var confirm = false
     @State private var edit = false
     @State private var copied = false
+    @State private var privacy = false
     /// Pushed from the Town drawer's last row (your face and name): Me as a screen, no Done.
     var pushed = false
 
     var body: some View {
         if pushed {
             content
+                .navigationDestination(isPresented: $privacy) { PrivacyScreen() }
+                .onAppear { if model.launch.screen == "typingsetting" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { privacy = true } } }
         } else {
             NavigationStack { content.toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } } }
         }
@@ -612,6 +615,8 @@ struct AccountSheet: View {
                         ActionRow(icon: "bell", title: "Notifications", detail: model.pushState == .on ? "On" : model.pushState == .denied ? "Off in Settings" : "Turn on")
                     }
                     NavigationLink { DevicesView() } label: { ActionRow(icon: "iphone", title: "Signed-in devices") }
+                    NavigationLink { PrivacyScreen() } label: { ActionRow(icon: "hand.raised", title: "Privacy") }
+                        .accessibilityIdentifier("me-privacy")
                     if !queued.isEmpty {
                         ActionRow(icon: "tray.and.arrow.up", title: "\(queued.count) waiting to be sent",
                                   detail: queued.contains { $0.status == .failed } ? "Some could not be sent: Retry or Discard them where they are" : nil)

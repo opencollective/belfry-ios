@@ -96,6 +96,14 @@ shot 060f-diagnostics diagnostics light
 shot 061-dm-files dmfiles light
 shot 061b-dm-files-dark dmfiles dark
 shot 061c-dm-files-sending dmfilessending light
+# 2026-11-21 typing indicators (boards messages/typing-*)
+shot 062-typing-channel typing light
+shot 062b-typing-channel-dark typing dark
+shot 062c-typing-two typingtwo light
+shot 062d-typing-many typingmany light
+shot 062e-typing-dm typingdm light
+shot 062f-typing-list typinglist light
+shot 062g-typing-setting typingsetting light
 # 2026-11-21: Close on a request card (belfry:request-close) and its question
 shot 150c-request-close reqclose light
 shot 150d-request-close-dark reqclose dark
