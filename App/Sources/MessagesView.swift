@@ -222,7 +222,8 @@ struct ConversationView: View {
         // the conversation was sealed, then the amber block; no composer
         let locked = model.lockedHere(conv)
         let since = model.sealedConv(conv)?.since
-        let list = (model.dms?.thread(conv) ?? []).filter { d in !locked || since.map { d.at < $0 } ?? false }
+        // (my own messages held while locked stay, with the locked line's words: never sent, never lost)
+        let list = (model.dms?.thread(conv) ?? []).filter { d in !locked || (d.mine && d.pending == true) || since.map { d.at < $0 } ?? false }
         let mail = MailThreads.isMail(conv)
         // a sealed conversation has the lock by its name; one that is not sealed has none
         let sealed = model.sealedConv(conv)
@@ -479,8 +480,8 @@ struct Bubble: View {
                     Label("Not sent", systemImage: "exclamationmark.circle").font(.caption2).foregroundStyle(.red).help(f)
                     Button("Retry") { model.dms?.retry(dm) }.font(.caption2.weight(.semibold))
                 } else if dm.pending == true, model.lockedHere(dm.conv) {
-                    // held while this device is out of my head: the locked line's words
-                    Label("Locked on this device", systemImage: "lock.fill").font(.caption2).foregroundStyle(.secondary)
+                    // held while this device is out of my head: the locked line's words (board messages/encryption-locked-thread, v123)
+                    Label("You can write here once this device is allowed.", systemImage: "lock.fill").font(.caption2).foregroundStyle(.secondary)
                 } else if dm.pending == true {
                     SendLineView(id: dm.rid, tries: model.dmTries(dm.rid), font: .caption2, icon: false)
                 } else if dm.unsealed == true {
