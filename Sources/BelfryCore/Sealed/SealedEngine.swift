@@ -378,6 +378,13 @@ public final class SealedEngine: @unchecked Sendable {
 
     /// Whether CONV is sealed: remembered once true; else true as soon as every participant, me
     /// included, has a ready chain (sealed.md 6).
+    /// Some conversation this device knows sealed has ACCOUNT in it (an old-style wrap to them
+    /// whose rumor is lost must not leave: it may be one of them).
+    public func sealedWith(_ account: String) -> Bool {
+        lock.lock(); let convs = Array(memory.sealed.keys); lock.unlock()
+        return convs.contains { MailThreads.peers($0).contains(account) }
+    }
+
     public func isSealed(_ conv: String, now: Int = .now) -> Bool {
         lock.lock(); let known = memory.sealed[conv] != nil; lock.unlock()
         if known { return true }

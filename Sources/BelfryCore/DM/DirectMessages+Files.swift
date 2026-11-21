@@ -146,6 +146,8 @@ extension DirectMessages {
                 d.text = DmFiles.lastLine([q.file])
                 d.pending = local ? nil : true
                 d.failed = nil
+                // the rumor stays with the message: a wrap queued before a restart can be checked again
+                d.rumor = Sealed.json(rumor)
                 items[rumor.id] = d
                 lock.unlock()
                 save()

@@ -319,6 +319,10 @@ public final class DirectMessages: @unchecked Sendable {
     /// CONV: the Nostr conversation it belongs to; MAIL: it goes to the belfry's bridge.
     func deliver(_ rumor: NostrEvent, to: [String], selfCopy: Bool = true, conv: String? = nil, mail: Bool = false) async throws {
         try engine.guestMode.check()
+        // the first moments of a launch: the sealed engine is not attached yet, so nobody can tell
+        // whether this conversation is sealed. Never the old way on silence (sealed.md 6): refused,
+        // the text stays in the box, a file stays queued and is tried again.
+        if sealed == nil, sealedExpected, conv != nil || mail { throw BelfryError.invalid(DirectMessages.cantCheck) }
         // the people's heads as the relay has them now (at most 3 s), then:
         // sealed (docs/sealed.md): made on this device, no signer call, never the old way again
         if let s = sealed, conv != nil || mail {
@@ -402,8 +406,14 @@ public final class DirectMessages: @unchecked Sendable {
             guard await s.refresh([account]) else { throw BelfryError.relay("hold: the lock could not be checked") }
             return rumor.flatMap { s.again($0, for: account, was: lb) }
         }
-        // old-style: only messages, reactions and take-backs between people are ever sealed
-        guard let rumor, [14, DmFiles.kind, 7, 5].contains(rumor.kind) else { return nil }
+        // old-style whose rumor this device no longer has: it can't be checked, so it never leaves
+        // to someone this device has a sealed conversation with (my own copy may go)
+        guard let rumor else {
+            if account != me, s.sealedWith(account) { throw BelfryError.relay("hold: it can't be checked against the lock") }
+            return nil
+        }
+        // old-style: only messages, files, reactions and take-backs between people are ever sealed
+        guard [14, DmFiles.kind, 7, 5].contains(rumor.kind) else { return nil }
         let conv = MailThreads.nostrConv(author: rumor.pubkey, pTags: rumor.tagValues("p"), me: me)
         guard s.isSealed(conv) else { return nil }
         guard await s.refresh([account]) else { throw BelfryError.relay("hold: the lock could not be checked") }

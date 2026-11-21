@@ -554,6 +554,21 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertEqual(Discovery.nip05Read(Data(#"{"names":{"lina":"nonsense"}}"#.utf8), status: 200, name: "lina"), .failed)
     }
 
+    /// Before the sealed engine is attached (the first moments of a launch) nothing goes the old
+    /// way: a send is refused with the text kept, a file stays queued (the independent review's P1).
+    func testNothingLeavesTheOldWayBeforeTheLockIsReady() async throws {
+        let b = FakeBelfry()
+        let alice = try b.signIn("alice", "phone")
+        let bob = try b.signIn("bob", "phone")
+        let dms = DirectMessages(engine: alice.engine)
+        dms.sealedExpected = true // a signed-in member: the engine comes in a moment
+        let conv = "n:" + bob.account
+        do { try await dms.send("too early", in: conv); XCTFail("sent before the lock was ready") }
+        catch { XCTAssertEqual((error as? BelfryError)?.errorDescription, DirectMessages.cantCheck) }
+        XCTAssertTrue(alice.engine.outboxItems().isEmpty, "nothing queued the old way")
+        XCTAssertTrue(dms.thread(conv).isEmpty, "the text goes back to the box, not to the thread")
+    }
+
     /// A file (kind 15) in a sealed conversation is sealed by the device like a kind 14, never sent
     /// the old way; Bob's device opens it as a file. And the only-device rule for signing out.
     func testFilesAreSealedInASealedConversation() async throws {
