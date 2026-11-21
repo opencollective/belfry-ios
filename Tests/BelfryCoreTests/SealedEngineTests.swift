@@ -608,14 +608,16 @@ final class SealedEngineTests: XCTestCase {
         await phone.sealed.maintain(now: now + 102)
         await phone.engine.flush()
         XCTAssertEqual(b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }.count, wraps.count)
-        // a request "from" a head device whose chat session is gone gets nothing
+        // a later request of that device, once its chat session is gone, gets nothing
         b.lock.lock(); b.sessions[phone.account]?.removeAll { $0.clientPubkey == mac.pub }; b.lock.unlock()
         let stale = try Sealed.request(account: phone.account, device: mac.pub, now: now + 200).event(pubkey: "").signed(with: secret("alice/mac"))
         phone.engine.add([stale])
-        let sessions = phone.sealed.sessions
-        phone.sealed.removalWait = 0...0
-        phone.sealed.sessions = sessions
-        _ = mac
+        phone.sealed.removalWait = 3600...3600 // the removal that would follow is not this test's
+        let task = Task { await phone.sealed.maintain(now: now + 201) }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        await phone.engine.flush()
+        XCTAssertEqual(b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }.count, wraps.count)
+        task.cancel()
     }
 
     /// The session list can't be read: nothing rotates (a new letterbox whose secret went to
