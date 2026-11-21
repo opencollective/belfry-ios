@@ -102,7 +102,8 @@ struct SealedState: Equatable {
 }
 
 struct FreshElsewhere: Equatable {
-    var device: String
+    /// Its name from the session list; nil when no session names it ("a new device", no quotes).
+    var device: String?
     var at: Int
 }
 
@@ -262,7 +263,7 @@ extension AppModel {
         st.signedOutOthers = sealed.signedOutOthers
         if let f = se.foreignFreshStart {
             // named from the belfry's session list (its own name record is sealed to the new letterbox)
-            st.freshElsewhere = FreshElsewhere(device: freshDeviceNames[f.device] ?? "another device", at: f.at)
+            st.freshElsewhere = FreshElsewhere(device: freshDeviceNames[f.device], at: f.at)
             if freshDeviceNames[f.device] == nil, !freshNameAsked.contains(f.device) {
                 freshNameAsked.insert(f.device)
                 Task { @MainActor in
