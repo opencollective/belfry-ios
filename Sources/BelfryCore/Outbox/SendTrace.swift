@@ -7,12 +7,14 @@ import Foundation
 public struct SendProgress: Hashable, Sendable {
     public var since: TimeInterval
     public var step: String
+    public init(since: TimeInterval, step: String) { self.since = since; self.step = step }
 }
 
 /// The line under a message that is not out yet; RETRY: show Retry next to it.
 public struct SendLine: Hashable, Sendable {
     public var text: String
     public var retry: Bool = false
+    public init(text: String, retry: Bool = false) { self.text = text; self.retry = retry }
 }
 
 /// "Sending…"; after 5 s "Still sending…" and what it is doing; after 30 s "Not sent yet" with
