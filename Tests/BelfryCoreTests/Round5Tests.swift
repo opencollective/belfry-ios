@@ -105,6 +105,12 @@ final class ButtonsTests: XCTestCase {
         XCTAssertEqual(Buttons.confirmVerb(Buttons.requestClose), "Close")
         XCTAssertEqual(Buttons.busyLabel(Buttons.requestClose), "Closing")
         XCTAssertNil(Buttons.busyLabel(Buttons.websitePublish))
+        // an offer's answer: known, its own question, "Answer"
+        XCTAssertTrue(MessageButton(id: "offer-75", label: "75% off", action: "belfry:offer-decide").known)
+        let o = Buttons.confirmParts(Buttons.confirmText(Buttons.offerDecide, domain: "x.org") ?? "")
+        XCTAssertEqual(o.title, "Answer this offer?")
+        XCTAssertEqual(o.detail, "The answer is public in the thread; the code goes privately to them.")
+        XCTAssertEqual(Buttons.confirmVerb(Buttons.offerDecide), "Answer")
         let one = Buttons.confirmParts(Buttons.confirmText(Buttons.websitePublish, domain: "x.org", paths: ["/a/"]) ?? "")
         XCTAssertEqual(one.title, "Publish this version of /a/ on https://x.org?")
         XCTAssertEqual(one.detail, "Only that part of the website changes.")

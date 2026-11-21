@@ -384,5 +384,5 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   belfry-sh 02afda6, vectors/message-actions.json sha256 31b45437…ecf9): a known action with its
   own question (`Buttons.confirmParts` = title + line), "Closing" while locked; the filled message
   button is `.brand` (borderedProminent was white on white in dark mode). `belfry:offer-decide`
-  is in the vectors but NOT known here (no board for iPhone yet). Demo channel #requests;
+  (ids offer-50 / offer-75 / offer-100 / offer-no) is known since the next commit: its own question, "Answer". Demo channel #requests;
   screens `reqclose`, `reqcloseconfirm`.
