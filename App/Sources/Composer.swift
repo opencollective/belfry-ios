@@ -19,6 +19,8 @@ struct Composer: View {
     var focusTrigger = 0
     /// Where unsent text is kept on this phone (per channel, per thread; web f845d47).
     var draftKey: String?
+    /// The thread this composer answers in (typing indicators, SPEC 19.66); nil: the conversation.
+    var typingRoot: String? = nil
     /// A mode's colour (an e-mail thread: blue for an e-mail, yellow for the team): the field's
     /// border and the Send button; ON TINT = the arrow on it.
     var tint: Color? = nil
@@ -30,6 +32,8 @@ struct Composer: View {
     @State private var photos = [PhotosPickerItem]()
     @State private var attachments = [Attachment]()
     @State private var announce = false
+    @State private var restoring = false
+    @State private var sending = false
     @State private var sent = 0
     @State private var photoPicker = false
     @State private var create: CreateKind?
@@ -148,6 +152,14 @@ struct Composer: View {
         .padding(.bottom, compact ? 0 : 8)
         .composerBackground(compact: compact)
         .sensoryFeedback(.impact(weight: .light), trigger: sent)
+        // who types here: a 22 pt strip kept above the composer, so the line never moves the feed
+        // and never covers a message (SPEC 19.66)
+        .padding(.top, !compact && !group.isEmpty ? 22 : 0)
+        .overlay(alignment: .top) {
+            if !compact, !group.isEmpty {
+                TypingLine(center: model.typing, place: Typing.place(group: group, root: typingRoot))
+            }
+        }
         .onChange(of: model.launchEventForm) { _, on in
             if on, !compact, !threadMode { model.launchEventForm = false; makeEvent = true }
         }
@@ -159,8 +171,10 @@ struct Composer: View {
                 let picks = Drafts.getPicks(k)
                 picked = picks.people
                 refs = picks.refs
+                restoring = true
                 text = saved
             }
+            if !compact, !group.isEmpty { model.engine?.watchTyping(group: group) }
             if autoFocus { focused = true }
             if !compact && !threadMode && model.launchEventForm { model.launchEventForm = false; makeEvent = true }
         }
@@ -183,8 +197,15 @@ struct Composer: View {
         // Create → Message: this channel's composer takes the keyboard
         .onChange(of: model.focusComposer) { _, id in takeFocus(id) }
         .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { takeFocus(model.focusComposer) } }
-        .onChange(of: text) { _, t in
+        .onChange(of: text) { old, t in
             if let k = draftKey { Drafts.set(k, t); Drafts.setPicks(k, text: t, people: picked, refs: refs) }
+            // typing (SPEC 19.66): never for a draft put back
+            if !compact, !group.isEmpty {
+                let place = Typing.place(group: group, root: typingRoot)
+                if restoring { restoring = false }
+                else if t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { if !old.isEmpty, sending == false { model.typing.cleared(place: place) } }
+                else { model.typing.key(place: place, text: t) }
+            }
         }
         .photosPicker(isPresented: $photoPicker, selection: $photos, maxSelectionCount: 6, matching: .images)
         .sheet(item: $create) { k in CreateSheet(kind: k, parent: group) }
@@ -305,8 +326,11 @@ struct Composer: View {
         let typed = text.jsTrim()
         guard !typed.isEmpty || !attachments.isEmpty else { return }
         let t = ChannelRefs.substitute(Mentions.substitute(typed, picked: picked), picked: refs)
+        sending = true
+        model.typing.sent(place: Typing.place(group: group, root: typingRoot))
         onSend(t, attachments, canAnnounce && announce)
         text = ""
+        DispatchQueue.main.async { sending = false }
         if let k = draftKey { Drafts.set(k, ""); Drafts.setPicks(k, text: "", people: [], refs: []) }
         picked = []
         refs = []

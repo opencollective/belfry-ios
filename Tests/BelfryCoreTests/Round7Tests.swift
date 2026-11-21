@@ -733,5 +733,25 @@ final class SealedWordsTests: XCTestCase {
         XCTAssertNil(SealedWords.change(added: true, at: now + 60, now: now, calendar: cal))
         XCTAssertEqual(SealedWords.added(now - 100 * day, calendar: cal), "Added 12 Aug")
         XCTAssertEqual(SealedWords.added(now - 49 * day, from: "iPhone", calendar: cal), "Added 2 Oct · from iPhone")
+// 2026-11-20: the colours a belfry gives per appearance (`branding.colors`): the tint is never
+// the raw primary (a dark brand colour was unreadable on black).
+final class BrandColorsTests: XCTestCase {
+    func testColorsPerMode() {
+        let light: [String: Any] = ["accent": "#2B402E", "on_accent": "#ffffff"]
+        let dark: [String: Any] = ["accent": "#58835e", "on_accent": "#000000"]
+        let b = Branding.clean(["primary": "#2b402e", "colors": ["light": light, "dark": dark]])
+        XCTAssertEqual(b.primary, "#2b402e")
+        XCTAssertEqual(b.colors, Branding.Colors(light: .init(accent: "#2b402e", onAccent: "#ffffff"), dark: .init(accent: "#58835e", onAccent: "#000000")))
+        // an older belfry: no colours; a half or malformed answer counts as none
+        XCTAssertNil(Branding.clean(["primary": "#2b402e"]).colors)
+        XCTAssertNil(Branding.clean(["primary": "#2b402e", "colors": ["light": light]]).colors)
+        let bad: [String: Any] = ["accent": "green", "on_accent": "#000000"]
+        XCTAssertNil(Branding.clean(["primary": "#2b402e", "colors": ["light": light, "dark": bad]]).colors)
+        // stored and read back, and an older stored copy (no `colors` key) still reads
+        let back = try? JSONDecoder().decode(Branding.self, from: JSONEncoder().encode(b))
+        XCTAssertEqual(back, b)
+        let old = try? JSONDecoder().decode(Branding.self, from: Data(##"{"logo":"","cover":"","primary":"#2b402e","secondary":"","description":""}"##.utf8))
+        XCTAssertEqual(old?.primary, "#2b402e")
+        XCTAssertNil(old?.colors)
     }
 }

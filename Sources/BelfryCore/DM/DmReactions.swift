@@ -77,8 +77,9 @@ public struct DmReactions: Codable, Hashable, Sendable {
 
     /// The rumor's tags for adding EMOJI to the message (its id, its author, everyone in the
     /// conversation): `e` with the author, `p` the author, `k` 14, then `p` for the others.
-    public static func addTags(message: String, author: String, participants: [String], me: String) -> [Tag] {
-        [["e", message, "", author], ["p", author], ["k", "14"]] + participants.filter { $0 != author && $0 != me }.map { ["p", $0] }
+    /// KIND: the message's kind (14, or 15 for a file).
+    public static func addTags(message: String, author: String, participants: [String], me: String, kind: Int = 14) -> [Tag] {
+        [["e", message, "", author], ["p", author], ["k", String(kind)]] + participants.filter { $0 != author && $0 != me }.map { ["p", $0] }
     }
 
     /// The rumor's tags for taking reaction REACTION back.

@@ -161,6 +161,29 @@ struct DeleteConfirm: View {
     }
 }
 
+/// The reactions to choose from: the ones I use most on top, then the larger set. The same in a
+/// channel ("More reactions") and in a direct message.
+struct ReactionPicker: View {
+    let pick: (String) -> Void
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                ForEach(EmojiUsage.top(6), id: \.self) { e in
+                    Button { pick(e) } label: { Text(e).font(.title).frame(maxWidth: .infinity, minHeight: 52) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("React with \(e)")
+                }
+            }
+            .padding(.horizontal, 12).padding(.top, 18)
+            Divider().padding(.top, 6)
+            EmojiPicker(pick: pick)
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .solidSheet()
+    }
+}
+
 struct EmojiPicker: View {
     let pick: (String) -> Void
     static let all = ["👍", "❤️", "😂", "🎉", "🙏", "👀", "🔥", "👏", "😍", "🤔", "😮", "😢",

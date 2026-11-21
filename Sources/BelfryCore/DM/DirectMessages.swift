@@ -15,8 +15,8 @@ public struct DmThread: Hashable, Sendable, Identifiable {
 public final class DirectMessages: @unchecked Sendable {
     let engine: SyncEngine
     let db: Database
-    private let lock = NSLock()
-    private var items = [String: Dm]()
+    let lock = NSLock()
+    var items = [String: Dm]()
     private var seen = Set<String>()
     private var read = [String: Int]()
     private var reports = [String: DeliveryReport]()
@@ -99,7 +99,7 @@ public final class DirectMessages: @unchecked Sendable {
 
     var me: String { engine.me }
 
-    private func save() {
+    func save() {
         lock.lock()
         let list = Array(items.values), s = Array(seen), rp = reports, rx = reactions, wr = waitingReactions
         lock.unlock()
@@ -182,7 +182,7 @@ public final class DirectMessages: @unchecked Sendable {
                         // the old way, in a conversation already sealed here: marked "not sealed"
                         // (by its date against the time this device first saw the conversation
                         // sealed, never by when it arrived: history read later is history)
-                        if let x = d, x.kind == 14, let since = sealed?.sealedSince(x.conv), x.at >= since { d?.unsealed = true }
+                        if let x = d, x.kind == 14 || x.kind == DmFiles.kind, let since = sealed?.sealedSince(x.conv), x.at >= since { d?.unsealed = true }
                     }
                 } else if e.pubkey == me || e.hasTag("p", me), let bunker = engine.signer as? BunkerSigner {
                     let peer = e.pubkey == me ? (e.tag("p") ?? me) : e.pubkey
@@ -206,6 +206,8 @@ public final class DirectMessages: @unchecked Sendable {
                 seen.insert(e.id)
                 done += 1
                 lock.unlock()
+                // their message ends their typing in that conversation (SPEC 19.66)
+                if let d, !d.mine, d.kind == 14 || d.kind == DmFiles.kind { onMessage?(d.conv, d.from) }
                 changed = true
                 // kept as it goes: a restart never asks the signer again for what was opened
                 if done % 20 == 0 { save() }
@@ -253,7 +255,7 @@ public final class DirectMessages: @unchecked Sendable {
         let known = items.values.map { (messageId: $0.messageId, conv: $0.conv) }
         guard var d = DmReader.dm(from: rumor, me: me, bridge: bridge, known: known) else { return }
         d.sharedBy = sharedBy
-        if d.kind == 14 { d.rumor = Sealed.json(rumor) }
+        if d.kind == 14 || d.kind == DmFiles.kind { d.rumor = Sealed.json(rumor) }
         if let old = items[d.rid] { d.mine = d.mine || old.mine; d.pending = old.pending; d.failed = old.failed }
         items[d.rid] = d
     }
@@ -346,8 +348,16 @@ public final class DirectMessages: @unchecked Sendable {
         for p in to + (selfCopy ? [me] : []) where !targets.contains(p) { targets.append(p) }
         if sealed != nil, conv != nil { hold(rumor) }
         defer { unhold(rumor.id) } // nothing queued in the end (the signer refused): nothing kept
-        for p in targets {
-            let w = try await GiftWrap.wrap(rumor, to: p, signer: engine.signer)
+        // the seals are signed and encrypted by the signer first (SPEC 19.50: "encrypting")
+        if !engine.localOnly { engine.trace.step(rumor.id, label: "DM", SendState.prepare) }
+        var wraps = [NostrEvent]()
+        do {
+            for p in targets { wraps.append(try await GiftWrap.wrap(rumor, to: p, signer: engine.signer)) }
+        } catch {
+            if !engine.localOnly { engine.trace.end(rumor.id, "not prepared", left: false) }
+            throw error
+        }
+        for (p, w) in zip(targets, wraps) {
             if engine.localOnly, p == me { engine.add([w], verify: false) }
             engine.enqueueSigned(w, target: .main, dm: rumor.id)
         }
@@ -393,7 +403,7 @@ public final class DirectMessages: @unchecked Sendable {
             return rumor.flatMap { s.again($0, for: account, was: lb) }
         }
         // old-style: only messages, reactions and take-backs between people are ever sealed
-        guard let rumor, [14, 7, 5].contains(rumor.kind) else { return nil }
+        guard let rumor, [14, DmFiles.kind, 7, 5].contains(rumor.kind) else { return nil }
         let conv = MailThreads.nostrConv(author: rumor.pubkey, pTags: rumor.tagValues("p"), me: me)
         guard s.isSealed(conv) else { return nil }
         guard await s.refresh([account]) else { throw BelfryError.relay("hold: the lock could not be checked") }
@@ -416,7 +426,7 @@ public final class DirectMessages: @unchecked Sendable {
     /// Shown at once; wrapped to every participant and to me. Never on e-mail.
     public func react(_ emoji: String, on d: Dm) async throws {
         try engine.guestMode.check()
-        guard d.kind == 14, d.pending != true else { return }
+        guard d.kind == 14 || d.kind == DmFiles.kind, d.pending != true else { return }
         let others = MailThreads.peers(d.conv).filter { $0 != me }
         guard !others.isEmpty, others.allSatisfy(isHex64) else { return }
         lock.lock()
@@ -426,7 +436,7 @@ public final class DirectMessages: @unchecked Sendable {
         if let mine {
             rumor = GiftWrap.rumor(kind: 5, pubkey: me, tags: DmReactions.removeTags(reaction: mine, participants: others, me: me), content: "")
         } else {
-            rumor = GiftWrap.rumor(kind: 7, pubkey: me, tags: DmReactions.addTags(message: d.rid, author: d.from, participants: others + [me], me: me), content: emoji)
+            rumor = GiftWrap.rumor(kind: 7, pubkey: me, tags: DmReactions.addTags(message: d.rid, author: d.from, participants: others + [me], me: me, kind: d.kind), content: emoji)
         }
         // shown once it is on its way: a send that is refused leaves nothing behind
         try await deliver(rumor, to: others, conv: d.conv)
@@ -434,17 +444,60 @@ public final class DirectMessages: @unchecked Sendable {
         save()
     }
 
+    /// A message of AUTHOR landed in CONV (typing indicators).
+    public var onMessage: ((String, String) -> Void)?
+
     /// Called when this device sends a DM or an e-mail (push: stay quiet for its own echo).
     public var onSend: (() -> Void)?
 
-    /// A NIP-17 message in a Nostr conversation.
-    public func send(_ text: String, in conv: String) async throws {
+    // ---- typing (SPEC 19.66) --------------------------------------------------------------------
+
+    /// Tells the other participants of CONV that I type (or STOP): a 20100 rumor sealed by me and
+    /// wrapped in a kind 21059 ephemeral gift wrap (real time) to each of them; no copy to me.
+    /// Dropped when the signer takes over 3 s.
+    public func sendTyping(in conv: String, stop: Bool) async {
+        if engine.localOnly || MailThreads.isMail(conv) { return }
+        // never in a sealed conversation (the lead, 2026-11-21: docs/typing.md, not sealed yet)
+        if sealed?.isSealed(conv) == true { return }
+        let others = MailThreads.peers(conv).filter { $0 != me }
+        guard !others.isEmpty, others.allSatisfy(isHex64) else { return }
+        let now = Int.now
+        let rumor = GiftWrap.rumor(kind: Typing.kind, pubkey: me, tags: Typing.dmTags(others: others, stop: stop), content: "", createdAt: now)
+        let signer = engine.signer
+        for p in others {
+            guard let w = try? await withTimeout(Typing.signerWait, "timeout: typing", {
+                let sealed = try await signer.nip44Encrypt(peer: p, plaintext: rumor.json)
+                let seal = try await signer.sign(EventTemplate(kind: 13, content: sealed, tags: [], createdAt: now))
+                let one = Keys.generateSecret()
+                let content = try NIP44.encrypt(seal.json, conversationKey: NIP44.conversationKey(secret: one, publicKey: Data(hex: p) ?? Data()))
+                return try NostrEvent(pubkey: "", createdAt: now, kind: Typing.wrapKind, tags: [["p", p]], content: content).signed(with: one)
+            }) else { return }
+            await engine.publishTyping(w, to: .main)
+        }
+    }
+
+    /// A 21059 wrap to me: the typing rumor inside and its conversation (nil: not one for me).
+    public func openTyping(_ wrap: NostrEvent) async -> (conv: String, author: String, createdAt: Int, stop: Bool)? {
+        guard wrap.kind == Typing.wrapKind, wrap.hasTag("p", me),
+              let o = try? await withTimeout(Typing.signerWait, "timeout: typing", { try await GiftWrap.unwrap(wrap, signer: self.engine.signer) }),
+              o.rumor.kind == Typing.kind else { return nil }
+        let r = o.rumor
+        let conv = MailThreads.nostrConv(author: r.pubkey, pTags: r.tagValues("p"), me: me)
+        // a sealed conversation shows no typing
+        if sealed?.isSealed(conv) == true { return nil }
+        return (conv, r.pubkey, r.createdAt, Typing.isStop(r.tags))
+    }
+
+    /// A NIP-17 message in a Nostr conversation. GROUP: the caption of files sent with it.
+    public func send(_ text: String, in conv: String, group: String? = nil) async throws {
         try engine.guestMode.check()
         onSend?()
         let to = MailThreads.peers(conv).filter { $0 != me }
         guard to.allSatisfy(isHex64) else { throw BelfryError.invalid("This is not a valid Nostr key.") }
-        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: to.map { ["p", $0] }, content: text)
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: to.map { ["p", $0] } + (group.map { [["group", $0]] } ?? []), content: text,
+                                   createdAt: group == nil ? .now : engine.nextCreatedAt())
         var d = Dm(rid: rumor.id, conv: conv, from: me, mine: true, at: rumor.createdAt, kind: 14, text: text)
+        d.group = group
         d.pending = engine.localOnly ? nil : true
         if sealed?.isSealed(conv) == true { d.rumor = Sealed.json(rumor) }
         lock.lock(); items[rumor.id] = d; lock.unlock()
@@ -576,6 +629,7 @@ public final class DirectMessages: @unchecked Sendable {
     }
 
     public func retry(_ d: Dm) {
+        if d.kind == DmFiles.kind { retryFile(d) }
         for o in engine.outboxItems() where o.dm == d.rid { engine.retry(o.localId) }
         lock.lock()
         items[d.rid]?.failed = nil
@@ -646,6 +700,15 @@ public final class DirectMessages: @unchecked Sendable {
         let rumor = GiftWrap.rumor(kind: 1301, pubkey: bridgeSigner.pubkey, tags: [["email-id", UUID().uuidString], ["mail-from", MIME.address(sender).address], ["p", me], ["subject", subject], ["belfry-auth", "pass"]], content: raw, createdAt: at)
         let w = try await GiftWrap.wrap(rumor, to: me, signer: bridgeSigner)
         engine.add([w], verify: false)
+    }
+
+    /// Demo mode: a message of mine in CONV that is not out yet (the send line's screenshots).
+    public func demoPending(conv: String, text: String, at: Int) {
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: [["p", String(conv.dropFirst(2))]], content: text, createdAt: at)
+        var d = Dm(rid: rumor.id, conv: conv, from: me, mine: true, at: at, kind: 14, text: text)
+        d.pending = true
+        lock.lock(); items[rumor.id] = d; lock.unlock()
+        save()
     }
 
     /// Demo mode: a NIP-17 message from FROM.

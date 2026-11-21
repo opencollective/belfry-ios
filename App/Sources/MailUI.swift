@@ -217,7 +217,10 @@ struct MailTeamRow: View {
                     MailTagView(tag: .team)
                     Text(Format.time(r.ev.createdAt)).font(.caption).foregroundStyle(.secondary)
                     if r.edited != nil { Text("edited").font(.caption2).foregroundStyle(.secondary) }
-                    if let p = model.pending(r.id) { Text(p.stateText).font(.caption2).foregroundStyle(p.status == .failed ? .red : .secondary) }
+                    if let p = model.pending(r.id) {
+                        if p.status == .failed { Text(p.stateText).font(.caption2).foregroundStyle(.red) }
+                        else { SendLineView(id: p.localId, tries: p.tries, font: .caption2, icon: false) }
+                    }
                     Spacer(minLength: 0)
                 }
                 if !r.text.isEmpty { MarkdownText(text: r.text) }

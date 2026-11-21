@@ -265,6 +265,15 @@ public final class SealedEngine: @unchecked Sendable {
 
     /// In my head, but without the head letterbox's secret (its hand-over has not come): it can't
     /// read what arrives, and says so in place of the composer.
+    /// This device is the only one in my head and holds its letterbox's secret: losing it (sign
+    /// out) leaves my sealed conversations unreadable until Start fresh (board
+    /// messages/encryption-only-device). False with no chain or no letterbox yet.
+    public var onlyDevice: Bool {
+        guard let c = chain(me), c.devices == [devicePub] else { return false }
+        lock.lock(); defer { lock.unlock() }
+        return keys.secret(c.lb) != nil
+    }
+
     public var lacksKey: Bool {
         guard let c = chain(me), c.devices.contains(devicePub) else { return false }
         lock.lock(); defer { lock.unlock() }
@@ -497,7 +506,7 @@ public final class SealedEngine: @unchecked Sendable {
                 return .shared(Sealed.sharedTaken(rumor, receiver: me), by: rumor.pubkey)
             }
             // a sealed rumor accepted: its conversation is sealed from now on, on this device too
-            if [14, 7, 5].contains(rumor.kind) {
+            if [14, 15, 7, 5].contains(rumor.kind) {
                 let conv = MailThreads.nostrConv(author: rumor.pubkey, pTags: rumor.tagValues("p"), me: me)
                 lock.lock(); let known = memory.sealed[conv] != nil; lock.unlock()
                 if !known { remember { $0.sealed[conv] = min(Int.now, rumor.createdAt) } }

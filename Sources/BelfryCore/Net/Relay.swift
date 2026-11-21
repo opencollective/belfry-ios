@@ -176,27 +176,51 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
     public var quietFor: TimeInterval { lock.lock(); defer { lock.unlock() }; return Date().timeIntervalSince(lastHeard) }
     private func heard() { lock.lock(); lastHeard = Date(); lock.unlock() }
 
-    /// Asks for a pong. No pong within TIMEOUT (or an error): the socket is dead; it is dropped,
-    /// and `onDisconnect` lets the owner connect again.
-    public func ping(timeout: TimeInterval = 8) {
-        lock.lock(); let t = task; lock.unlock()
-        guard let t else { return }
-        let pong = PongBox()
-        let fail: () -> Void = { [weak self] in
-            guard let self else { return }
-            self.lock.lock(); let same = self.task === t; self.lock.unlock()
-            guard same else { return }
-            t.cancel(with: .goingAway, reason: nil)
-            self.dropped()
-        }
-        t.sendPing { [weak self] error in
-            pong.set()
-            if error != nil { fail() } else { self?.heard() }
-        }
-        expire(after: timeout) { if !pong.isSet { fail() } }
+    /// SPEC 19.50: how long a socket may stay silent before a send asks it first, and how long it
+    /// has to answer a ping.
+    public static let probeTimeout: TimeInterval = 5
+    public static let quietBeforeSend: TimeInterval = 10
+
+    /// Asks for a pong without waiting for it (the watchdog, a wake-up).
+    public func ping(timeout: TimeInterval = Relay.probeTimeout) {
+        Task { _ = await probe(timeout: timeout) }
     }
 
-    /// Publishes EVENT and waits for OK (15 s). Throws the relay's reason ("restricted: …").
+    /// Asks for a pong and waits for it: true when it came. No pong within TIMEOUT (or an error):
+    /// the socket is dead; it is dropped, and `onDisconnect` lets the owner connect again.
+    public func probe(timeout: TimeInterval = Relay.probeTimeout) async -> Bool {
+        lock.lock(); let t = task; let sink = testSink; lock.unlock()
+        if sink != nil { return true }
+        guard let t else { return false }
+        let once = OnceFlag()
+        return await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+            t.sendPing { [weak self] error in
+                guard once.claim() else { return }
+                if error != nil { self?.dropSocket(t) } else { self?.heard() }
+                c.resume(returning: error == nil)
+            }
+            expire(after: timeout) { [weak self] in
+                guard once.claim() else { return }
+                self?.dropSocket(t)
+                c.resume(returning: false)
+            }
+        }
+    }
+
+    /// The socket T is dead (no pong, no OK in time): closed, and its owner told (it reconnects).
+    /// Nothing is sent on it again.
+    func dropSocket(_ t: URLSessionWebSocketTask? = nil) {
+        lock.lock()
+        let cur = task
+        let same = cur != nil && (t == nil || cur === t)
+        lock.unlock()
+        guard same else { return }
+        cur?.cancel(with: .goingAway, reason: nil)
+        dropped()
+    }
+
+    /// Publishes EVENT and waits for OK (15 s). Throws the relay's reason ("restricted: …"). No
+    /// OK in time drops the socket (SPEC 19.50): the next try goes on a fresh one.
     public func publish(_ event: NostrEvent, timeout: TimeInterval = 15) async throws {
         do {
             try await publishOnce(event, timeout: timeout)
@@ -212,8 +236,8 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
     }
 
     private func publishOnce(_ event: NostrEvent, timeout: TimeInterval) async throws {
-        lock.lock(); let connected = task != nil; lock.unlock()
-        guard connected else { throw BelfryError.relay("timeout: no connection to the relay") }
+        lock.lock(); let t = task; let sink = testSink; lock.unlock()
+        guard t != nil || sink != nil else { throw BelfryError.relay("timeout: no connection to the relay") }
         try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
             self.lock.lock()
             if let old = self.pendingOK[event.id] { old.resume(throwing: BelfryError.relay("timeout: replaced")) }
@@ -222,7 +246,10 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
             self.sendRaw("[\"EVENT\",\(event.json)]")
             self.expire(after: timeout) {
                 self.lock.lock(); let w = self.pendingOK.removeValue(forKey: event.id); self.lock.unlock()
-                w?.resume(throwing: BelfryError.relay("timeout: the relay did not answer"))
+                guard let w else { return }
+                w.resume(throwing: BelfryError.relay("timeout: the relay did not answer"))
+                // a socket that took an EVENT and said nothing is not trusted with the next one
+                if let t { self.dropSocket(t) }
             }
         }
     }
@@ -356,11 +383,11 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
     }
 }
 
-final class PongBox: @unchecked Sendable {
+/// True for the first caller only (a continuation resumed once).
+final class OnceFlag: @unchecked Sendable {
     private let lock = NSLock()
-    private var answered = false
-    func set() { lock.lock(); answered = true; lock.unlock() }
-    var isSet: Bool { lock.lock(); defer { lock.unlock() }; return answered }
+    private var done = false
+    func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
 }
 
 final class QueryBox: @unchecked Sendable {

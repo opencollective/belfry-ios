@@ -336,7 +336,7 @@ struct RootView: View {
                 switch model.tab {
                 case .home:
                     // Home's ☰ opens the same Town drawer (2026-11-17)
-                    DrawerContainer(open: $drawer, edgeSwipe: homePath.isEmpty) {
+                    DrawerContainer(open: $drawer, edgeSwipe: homePath.isEmpty && model.pushedOverRoot == 0) {
                         drawerList(inDrawer: true)
                     } main: {
                         NavigationStack(path: $homePath) { HomeView().tabBarInset().placeDestinations() }
@@ -344,21 +344,21 @@ struct RootView: View {
                     }
                 case .calendar:
                     // Calendar and Groups have the same ☰ and drawer as Home (2026-11-17)
-                    DrawerContainer(open: $drawer, edgeSwipe: calendarPath.isEmpty) {
+                    DrawerContainer(open: $drawer, edgeSwipe: calendarPath.isEmpty && model.pushedOverRoot == 0) {
                         drawerList(inDrawer: true)
                     } main: {
                         NavigationStack(path: $calendarPath) { CalendarView().tabBarInset().placeDestinations() }
                             .environment(\.openDrawer) { openDrawer() }
                     }
                 case .groups:
-                    DrawerContainer(open: $drawer, edgeSwipe: groupsPath.isEmpty) {
+                    DrawerContainer(open: $drawer, edgeSwipe: groupsPath.isEmpty && model.pushedOverRoot == 0) {
                         drawerList(inDrawer: true)
                     } main: {
                         NavigationStack(path: $groupsPath) { GroupsView().tabBarInset().placeDestinations() }
                             .environment(\.openDrawer) { openDrawer() }
                     }
                 case .town:
-                    DrawerContainer(open: $drawer, edgeSwipe: path.isEmpty) {
+                    DrawerContainer(open: $drawer, edgeSwipe: path.isEmpty && model.pushedOverRoot == 0) {
                         drawerList(inDrawer: true)
                     } main: {
                         detail.environment(\.openDrawer) { openDrawer() }
@@ -543,13 +543,18 @@ struct RootView: View {
                 let m = model.derive.messages(generalId).last { if case .memberMail = $0.special { return true } else { return false } }
                 if let m, case .memberMail(let subject, let o?) = m.special { model.fullMail = FullMailRef(subject: subject, original: o) }
             }
-        case "meplace":
+        case "meplace", "typingsetting", "enconlydevice":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { path.append(PlaceRoute.me) }
-        case "feed", "thread", "details", "invite", "invitesearch", "inviteexternal", "actions", "pulldown", "pullfull", "menu", "delete", "edit", "threadscreen", "chsearch", "add", "composer", "composermention": selection = .channel(generalId)
+        case "feed", "thread", "details", "invite", "invitesearch", "inviteexternal", "actions", "pulldown", "pullfull", "menu", "delete", "edit", "threadscreen", "chsearch", "add", "composer", "composermention", "typing", "typingtwo", "typingmany": selection = .channel(generalId)
         case "drawer", "channels":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
+        // a branded belfry: the channel (title, +, a mention), the New channel sheet (Cancel, Create off)
+        case "brandfeed": selection = .channel(generalId)
+        case "brandnewchannel":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { newChannel = true }
         case "pod": selection = .channel("pod-seed-swap-5e1d")
         case "linkboxes": selection = .channel("garden-3f2a")
         case "pullempty", "pullemptyclosed": selection = .channel("kitchen-7d10")
@@ -582,14 +587,15 @@ struct RootView: View {
         case "notifications":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { notifications = true }
-        case "accounts", "about":
+        case "accounts", "about", "diagnostics":
             selection = .channel(generalId)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { openAccounts(); if model.launch.screen == "about" && phone { push(PlaceRoute.about) } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { openAccounts(); if (model.launch.screen == "about" || model.launch.screen == "diagnostics") && phone { push(PlaceRoute.about) } }
         case "editprofile", "me":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { account = true }
         case "members", "todos", "todo", "todoassign", "files", "log", "chsettings", "pinned", "membersinvitech": selection = .channel(generalId)
         case "website", "websitethread", "notify", "chvisibility", "chpublic": selection = .channel("website")
+        case "reqclose", "reqcloseconfirm": selection = .channel("requests")
         case "closedask", "closedpending", "closedrequests": selection = .channel("board-5d1e")
         case "settingsfailed", "settingsfailedalert": selection = .channel("garden-3f2a")
         case "homedrawer":
@@ -615,7 +621,7 @@ struct RootView: View {
         case "eventform":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.launchEventForm = true }
-        case "event", "eventup", "eventfull", "eventphotos", "eventpeople", "ticket", "checkin", "eventrole":
+        case "event", "eventup", "eventfull", "eventaddress", "eventphotos", "eventpeople", "ticket", "checkin", "eventrole":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openEvent = "repair-cafe" }
         case "checkincard":
@@ -628,7 +634,7 @@ struct RootView: View {
                 model.openEvent = "repair-cafe"
             }
         case "membersinvite": selection = .members
-        case "messages", "conversation", "mail": selection = .messages
+        case "messages", "conversation", "mail", "sendstill", "sendnotyet", "dmfiles", "dmfilessending", "typingdm", "typinglist": selection = .messages
         // boards messages/encryption-*: MessagesView and ConversationView open the rest
         case "encthread", "encdevices", "encgroup", "encmail", "encmaildevices", "encnewdevice", "enchow", "encallow", "encallowfull", "encallowwaiting", "encwaiting", "encheld", "encshare", "enclocked", "encshared", "encsharedwhy": selection = .messages
         case "encremove":
@@ -639,7 +645,7 @@ struct RootView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { push(PlaceRoute.linked) }
         case "mentions": selection = .mentions
         case "requests": selection = .requests
-        case "directory": selection = .members
+        case "directory", "membersagents", "memberssearch": selection = .members
         case "settings":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
@@ -1175,7 +1181,9 @@ struct NewChannelSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        // full height: at half height, over the open drawer and with the keyboard up, the drawer
+        // showed through above it (Xavier, 2026-11-20)
+        .presentationDetents([.large])
         .solidSheet()
     }
 }

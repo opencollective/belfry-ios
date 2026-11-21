@@ -18,11 +18,12 @@ SMOKE = "home|feed|drawer|pulldown|event|charter|members|composer"
 SMOKE_TESTS = "testKeyboardComposer testMessageMenu"
 # file (regex on its path) → screens (regex on the screenshot script's screen names), UI tests
 MAP = [
+    (r"App/Sources/Theme", "brand.*|feed|home", ""),
     (r"App/Sources/(InviteSheet|AgentUI)", "invite.*|membersinvite.*|addagent|myprofile", ""),
     (r"App/Sources/(CharterUI|AppModel\+Charter)", "charter|whoagreed|agreement|welcomecharter|guest-apply|home", ""),
     (r"App/Sources/WelcomeUI", "welcome.*", ""),
     (r"App/Sources/(Composer|MessageField)", "composer.*|feed|thread|mailreply", "testKeyboardComposer testAddMenu testEventChatTyping"),
-    (r"App/Sources/(ChannelView|MessageRow|MarkdownText|MessageButtons|RefBox)", "feed|thread|threadscreen|website|composer|mailfeed|town|linkboxes", "testMessageMenu testKeyboardComposer"),
+    (r"App/Sources/(ChannelView|MessageRow|MarkdownText|MessageButtons|RefBox)", "feed|thread|threadscreen|website|reqclose|reqcloseconfirm|composer|mailfeed|town|linkboxes", "testMessageMenu testKeyboardComposer"),
     (r"App/Sources/MessageActions", "menu|delete|edit|feed|thread|threadscreen", "testMessageMenu"),
     (r"App/Sources/ThreadView", "thread|threadscreen|mentions", ""),
     (r"App/Sources/(PullDown|ChannelPlaces|ChannelDetails|NotifySheet)", "pull.*|member-pulldown|pinned|chsettings|chvisibility|chpublic|notify|members|membersinvitech|todos|files|log|closedrequests", ""),
@@ -35,13 +36,16 @@ MAP = [
     (r"App/Sources/(MeetingUI|AppModel\+Meetings)", "meeting.*", ""),
     (r"App/Sources/(GuestUI|JoinUI|AppModel\+Guest|AppModel\+MemberLink|AppModel\+Apply)", "guest-.*|join-member", "testMemberLinkSignUp"),
     (r"App/Sources/(SignInView|AppModel\+SignIn|NoLinkUI|WayInUI|AppModel\+WayIn)", "signin.*", ""),
-    (r"App/Sources/(PeopleUI|MembersDirectory|RequestsView|AppModel\+People)", "profile|guestprofile|guestagentprofile|editprofile|me|meplace|mycard|myprofile|members|directory|requests|rolepicker|eventrole|encremove", ""),
+    (r"App/Sources/(PeopleUI|MembersDirectory|RequestsView|AppModel\+People)", "profile|guestprofile|guestagentprofile|editprofile|me|meplace|enconlydevice|mycard|myprofile|members.*|directory|requests|rolepicker|eventrole", ""),
     (r"App/Sources/(BelfrySettings|RolesSettings|ChannelEnd)", "settings.*|channelend.*|channelarchive|rolepicker", "testDeleteEmptyChannel"),
     (r"App/Sources/MailUI", "mail.*|fullmail", ""),
     (r"App/Sources/ProposalScreen", "proposal.*", ""),
-    (r"App/Sources/(MessagesView|MentionsView)", "messages|conversation|mentions|mail|enc.*", ""),
+    (r"App/Sources/(MessagesView|MentionsView)", "messages|conversation|mentions|mail|enc.*|sendstill|sendnotyet|dmfiles|dmfilessending", ""),
+    (r"App/Sources/SendLine", "sendstill|sendnotyet|diagnostics|feed|dmfilessending", ""),
+    (r"App/Sources/DmFilesUI", "dmfiles|dmfilessending|conversation", ""),
+    (r"App/Sources/TypingUI", "typing.*", ""),
+    (r"App/Sources/(AccountsSheet|AppModel\+Accounts|AboutScreen)", "accounts|about|diagnostics|enclinked", ""),
     (r"App/Sources/(Sealed|EncryptionUI)", "enc.*|messages|conversation", ""),
-    (r"App/Sources/(AccountsSheet|AppModel\+Accounts|AboutScreen)", "accounts|about|enclinked", ""),
     (r"App/Sources/CreateMenu", "create|add", "testAddMenu"),
     (r"App/Sources/AppModel\+Push", "notifications", ""),
 ]

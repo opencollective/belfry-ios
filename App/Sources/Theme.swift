@@ -16,22 +16,28 @@ enum Theme {
     private static let ink = UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.96, alpha: 1) : UIColor(red: 0.035, green: 0.035, blue: 0.043, alpha: 1) }
     private static let paper = UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0.035, green: 0.035, blue: 0.043, alpha: 1) : .white }
 
-    /// The tint: the belfry's primary colour, else ink.
+    /// The tint (text buttons, icons, links, mentions, selection): the belfry's accent for the
+    /// appearance on screen, else ink. Never the raw primary: a dark brand colour was unreadable
+    /// on black (Xavier, 2026-11-20). It follows a change of appearance live.
     static var accent: Color { colors.0 }
-    /// Text and icons on the tint.
+    /// Text and icons on a button filled with the tint.
     static var onAccent: Color { colors.1 }
-    /// Switches: the primary colour, else the system green (ink would hide the knob in dark mode).
-    static var toggle: Color {
-        if let p = branding?.primary, let (r, g, b) = Branding.rgb(p) { return Color(red: r, green: g, blue: b) }
-        return .green
+    /// Switches: the accent, else the system green (ink would hide the knob in dark mode).
+    static var toggle: Color { branding?.colors == nil ? .green : colors.0 }
+
+    private static func color(_ hex: String, else other: UIColor) -> UIColor {
+        guard let (r, g, b) = Branding.rgb(hex) else { return other }
+        return UIColor(red: r, green: g, blue: b, alpha: 1)
     }
 
     private static var colors: (Color, Color) {
         if let c = cache { return c }
         var c = (Color(uiColor: ink), Color(uiColor: paper))
-        if let p = branding?.primary, let (r, g, b) = Branding.rgb(p) {
-            let dark = Branding.darkText(on: p)
-            c = (Color(red: r, green: g, blue: b), dark ? Color(red: 0.035, green: 0.035, blue: 0.043) : .white)
+        if let m = branding?.colors {
+            let la = color(m.light.accent, else: ink), da = color(m.dark.accent, else: ink)
+            let lo = color(m.light.onAccent, else: paper), dk = color(m.dark.onAccent, else: paper)
+            c = (Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? da : la }),
+                 Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? dk : lo }))
         }
         cache = c
         return c

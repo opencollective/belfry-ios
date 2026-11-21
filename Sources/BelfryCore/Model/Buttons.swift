@@ -63,7 +63,13 @@ public enum Buttons {
     public static let answerWait = 20
     public static let websitePublish = "belfry:website-publish"
     /// The `belfry:` actions this app knows (docs/actions.md section 4).
-    public static let knownActions: Set<String> = [websitePublish]
+    /// Close on a request card of the requests channel (docs/actions.md section 4; closing is for
+    /// the belfry's admins: the belfry answers anybody else with its own error line).
+    public static let requestClose = "belfry:request-close"
+    /// An admin's answer to an offer in kind, on the offer's own card: the button's id says how
+    /// much (offer-50 / offer-75 / offer-100) or no (offer-no); the belfry does the rest.
+    public static let offerDecide = "belfry:offer-decide"
+    public static let knownActions: Set<String> = [websitePublish, requestClose, offerDecide]
 
     /// Fixed sentences (vectors `fixed_text`): by error code, "" = an unknown code.
     public static let fixed: [String: String] = [
@@ -107,13 +113,32 @@ public enum Buttons {
         case websitePublish where !paths.isEmpty:
             return "Publish this version of \(paths.joined(separator: ", ")) on https://\(domain)? Only that part of the website changes."
         case websitePublish: return "Publish this version as the website? Everyone will see it at https://\(domain)."
+        case requestClose: return "Close this request? It stays readable, and people can still comment."
+        case offerDecide: return "Answer this offer? The answer is public in the thread; the code goes privately to them."
         default: return nil
         }
     }
 
+    /// The question in two parts where the dialog has a title and a line under it: the first
+    /// sentence, then the rest ("" when it is one sentence).
+    public static func confirmParts(_ text: String) -> (title: String, detail: String) {
+        guard let r = text.range(of: "? ") else { return (text, "") }
+        return (String(text[..<r.lowerBound]) + "?", String(text[r.upperBound...]))
+    }
+
     /// The confirming button of that question.
     public static func confirmVerb(_ action: String) -> String {
-        action == websitePublish ? "Publish" : "Continue"
+        switch action {
+        case websitePublish: return "Publish"
+        case requestClose: return "Close"
+        case offerDecide: return "Answer"
+        default: return "Continue"
+        }
+    }
+
+    /// What the button reads while it is locked, where the action has its own word.
+    public static func busyLabel(_ action: String) -> String? {
+        action == requestClose ? "Closing" : nil
     }
 
     /// The sentence for an error answer: its content, else the fixed text of its code.

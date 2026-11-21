@@ -73,6 +73,9 @@ final class ButtonsTests: XCTestCase {
             case "unknown_belfry_action": XCTAssertEqual(Buttons.unknownActionText, v as? String)
             case let c where c.hasPrefix("confirm:"):
                 let action = String(c.dropFirst("confirm:".count))
+                // an action this app does not know yet (its button is disabled, "Update the app
+                // to use this.") has no question here
+                guard Buttons.knownActions.contains(action) else { XCTAssertNil(Buttons.confirmText(action, domain: "<domain>")); continue }
                 XCTAssertEqual(Buttons.confirmText(action, domain: "<domain>"), v as? String)
             default: XCTAssertEqual(Buttons.fixed[k], v as? String, k)
             }
@@ -94,6 +97,23 @@ final class ButtonsTests: XCTestCase {
     func testUnknownBelfryActionAndDerive() {
         XCTAssertFalse(MessageButton(id: "x", label: "X", action: "belfry:launch-rockets").known)
         XCTAssertTrue(MessageButton(id: "x", label: "X", action: Buttons.websitePublish).known)
+        // Close on a request card: known, asked with the app's own two lines, "Closing" while locked
+        XCTAssertTrue(MessageButton(id: "close", label: "Close", action: "belfry:request-close").known)
+        let q = Buttons.confirmParts(Buttons.confirmText(Buttons.requestClose, domain: "x.org") ?? "")
+        XCTAssertEqual(q.title, "Close this request?")
+        XCTAssertEqual(q.detail, "It stays readable, and people can still comment.")
+        XCTAssertEqual(Buttons.confirmVerb(Buttons.requestClose), "Close")
+        XCTAssertEqual(Buttons.busyLabel(Buttons.requestClose), "Closing")
+        XCTAssertNil(Buttons.busyLabel(Buttons.websitePublish))
+        // an offer's answer: known, its own question, "Answer"
+        XCTAssertTrue(MessageButton(id: "offer-75", label: "75% off", action: "belfry:offer-decide").known)
+        let o = Buttons.confirmParts(Buttons.confirmText(Buttons.offerDecide, domain: "x.org") ?? "")
+        XCTAssertEqual(o.title, "Answer this offer?")
+        XCTAssertEqual(o.detail, "The answer is public in the thread; the code goes privately to them.")
+        XCTAssertEqual(Buttons.confirmVerb(Buttons.offerDecide), "Answer")
+        let one = Buttons.confirmParts(Buttons.confirmText(Buttons.websitePublish, domain: "x.org", paths: ["/a/"]) ?? "")
+        XCTAssertEqual(one.title, "Publish this version of /a/ on https://x.org?")
+        XCTAssertEqual(one.detail, "Only that part of the website changes.")
         XCTAssertTrue(MessageButton(id: "x", label: "X").known)
         // through Derive: the groups key's closing answer shows for everyone, after a restart too
         let me = String(repeating: "a", count: 64), agent = String(repeating: "c", count: 64), gk = String(repeating: "e", count: 64)

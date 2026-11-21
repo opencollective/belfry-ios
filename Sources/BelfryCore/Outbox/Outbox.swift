@@ -148,17 +148,53 @@ public struct PassResult: Sendable {
     public var sent: [(item: OutboxItem, event: NostrEvent?)] = []
     public var failed: [OutboxItem] = []
     public var items: [OutboxItem] = []
+    /// Relays with an item left to try again (it failed for now, or waited behind one that did):
+    /// when not empty, run again soon (1, 2, 4… s), not at once.
+    public var stalled: Set<Target> = []
 }
 
 public enum OutboxPass {
-    /// One flush pass over ITEMS. SEND publishes one item; the result says what was attempted,
-    /// what went out, what failed for good, and the items left.
+    /// Which items keep their order among themselves (SPEC 19.50): a direct message's wraps by
+    /// whom they go to, a group's events and API calls by the group (`h`), anything else by its
+    /// kind (and `d`). A retrying item holds back only its own lane, so a message never waits
+    /// behind a read marker or a settings call.
+    public static func lane(_ item: OutboxItem) -> String {
+        if let dm = item.dm { return "dm:" + (item.signed?.tag("p") ?? dm) }
+        if let h = item.tags.first(where: { $0.count >= 2 && $0[0] == "h" })?[1] { return "h:" + h }
+        let d = item.tags.first(where: { $0.count >= 2 && $0[0] == "d" })?[1]
+        return "k:\(item.kind)" + (d.map { ":" + $0 } ?? "")
+    }
+
+    /// After this many transient failures an item holds back only its own lane, never its whole relay.
+    public static let stallsRelayUntil = 3
+
+    /// The signer did not answer: nothing else that needs a signature goes in this pass.
+    public static func signerDown(_ message: String) -> Bool { message.hasPrefix("timeout: the signer") }
+
+    /// The relay (or the API) did not answer or is not reachable: its other items would wait the same.
+    public static func connectionDown(_ message: String) -> Bool { message.hasPrefix("timeout:") || message == "connection closed" }
+
+    /// One flush pass over ITEMS. SEND signs (unless pre-signed), uploads and publishes one item.
+    /// Items are walked by created_at; failed ones are skipped. After a retryable error (SPEC 5, 19.50):
+    /// - the item's lane waits for the rest of the pass (order kept within it);
+    /// - a signer that did not answer holds back every item that still needs signing;
+    /// - a relay that did not answer holds back its other items, unless the item failed
+    ///   `stallsRelayUntil` times already, and never a direct message for another item's sake.
     public static func run(_ items: [OutboxItem], send: (OutboxItem) async -> SendOutcome) async -> PassResult {
         var box = items
         var r = PassResult()
-        var stalled = Set<Target>()
+        var lanes = Set<String>()
+        var relayDown = Set<Target>()          // by a direct message: holds back everything on that relay
+        var relayDownForOthers = Set<Target>() // by anything else: direct messages still go
+        var signerOut = false
+        func replace(_ next: OutboxItem) { box = box.map { $0.localId == next.localId ? next : $0 } }
         for item in items.sorted(by: { $0.createdAt != $1.createdAt ? $0.createdAt < $1.createdAt : $0.localId < $1.localId }) {
-            if item.status == .failed || stalled.contains(item.target) { continue }
+            if item.status == .failed { continue }
+            let lane = item.target.rawValue + "/" + lane(item)
+            let isDm = item.dm != nil
+            let held = lanes.contains(lane) || relayDown.contains(item.target) || (!isDm && relayDownForOthers.contains(item.target))
+                || (signerOut && item.signed == nil)
+            if held { r.stalled.insert(item.target); continue }
             r.attempted.append(item.localId)
             switch await send(item) {
             case .ok(let ev):
@@ -181,14 +217,19 @@ public enum OutboxPass {
                     next.tries += 1
                     next.status = .failed
                     next.error = msg
-                    box = box.map { $0.localId == item.localId ? next : $0 }
+                    replace(next)
                     r.failed.append(next)
                 case .retry:
                     var next = item
                     next.tries += 1
                     next.error = msg
-                    box = box.map { $0.localId == item.localId ? next : $0 }
-                    stalled.insert(item.target)
+                    replace(next)
+                    r.stalled.insert(item.target)
+                    lanes.insert(lane)
+                    if signerDown(msg) { signerOut = true }
+                    else if connectionDown(msg) && item.tries < stallsRelayUntil {
+                        if isDm { relayDown.insert(item.target) } else { relayDownForOthers.insert(item.target) }
+                    }
                 }
             }
         }

@@ -328,10 +328,10 @@ enum Demo {
         evs.append(ev(you, 30078, now - 15 * day + 5, Actions.setInbox(inbox, on: true).tags, "{\"on\":true}"))
         // SPEC 19.34: Sam (an admin of the belfry) sorted the channels into categories; the repair
         // café sits in a category of its own
-        let layout: [String: Any] = ["order": ["general", "garden-3f2a", "kitchen-7d10", inbox, "repair-cafe-91bc", "proposals", "website", "board-5d1e"],
+        let layout: [String: Any] = ["order": ["general", "garden-3f2a", "kitchen-7d10", inbox, "repair-cafe-91bc", "proposals", "website", "requests", "board-5d1e"],
                                      "categories": [["id": "life", "channels": ["garden-3f2a", "kitchen-7d10", inbox]],
                                                     ["id": "making-4b1c", "name": "Making & mending", "channels": ["repair-cafe-91bc"]],
-                                                    ["id": "building", "channels": ["proposals", "website", "board-5d1e"]]]]
+                                                    ["id": "building", "channels": ["proposals", "website", "requests", "board-5d1e"]]]]
         evs.append(ev(you, 30078, now - 14 * day, [["d", Derive.orderD]], JSON.encode(layout)))
         // the same by Ana, who is the belfry's admin in the `-member` demo
         evs.append(ev(ps["ana"]!, 30078, now - 14 * day, [["d", Derive.orderD]], JSON.encode(layout)))
@@ -379,6 +379,23 @@ enum Demo {
         evs.append(p2)
         evs.append(ev(groupsKey, 1985, now - day + 604, [["L", Buttons.resultNS], ["l", "error", Buttons.resultNS], ["e", v2.id], ["press", p2.id], ["p", p2.pubkey], ["h", "website"], ["code", "failed"]],
                       "Couldn't publish: the preview has no front page."))
+        // request cards (docs/actions.md section 4): one closed by Ana, one open with its Close button
+        channel("requests", "requests", "Requests from the website's form", admins: [me, ps["ana"]!.pubkey], members: all, at: now - 10 * day)
+        let closeButton: Tag = ["button", "close", "Close", "primary", Buttons.requestClose]
+        let r1 = ev(ps["chloe"]!, 9, now - 4 * day, [["h", "requests"], closeButton],
+                    "**Repair café talk**\n*Talk or workshop*\nCould I give a short talk on fixing bikes at the next repair café?")
+        let r2 = ev(ps["dev"]!, 9, now - 5400, [["h", "requests"], closeButton],
+                    "**Sponsoring the summer fair**\n*Sponsoring*\nOur bakery would like to sponsor the summer fair. Who can we talk to?")
+        let r3 = ev(signer("guest"), 9, now - 1800, [["h", "requests"], closeButton],
+                    "**Room for a choir rehearsal**\n*General enquiry*\nIs the hall free on Thursday evenings for a small choir?")
+        let rp2 = ev(ps["emma"]!, 1985, now - 1700, Buttons.press(messageId: r3.id, author: r3.pubkey, group: "requests", button: "close").tags)
+        evs += [r1, r2, r3, rp2]
+        evs.append(ev(groupsKey, 1985, now - 1697, [["L", Buttons.resultNS], ["l", "ok", Buttons.resultNS], ["e", r3.id], ["press", rp2.id], ["p", rp2.pubkey], ["h", "requests"], ["closed", "1"]],
+                      "Closed by Emma Lind."))
+        let rp = ev(ps["ana"]!, 1985, now - 3 * day, Buttons.press(messageId: r1.id, author: r1.pubkey, group: "requests", button: "close").tags)
+        evs.append(rp)
+        evs.append(ev(groupsKey, 1985, now - 3 * day + 3, [["L", Buttons.resultNS], ["l", "ok", Buttons.resultNS], ["e", r1.id], ["press", rp.id], ["p", rp.pubkey], ["h", "requests"], ["closed", "1"]],
+                      "Closed by Ana Silva."))
         // guest mode: two people opened a guest link of #general and only read ("2 guests are reading")
         for k in ["reader-1", "reader-2"] {
             evs.append(ev(groupsKey, 9000, now - 900, [["h", "general"], ["p", signer(k).pubkey, "member"], ["guest", "2026-12-12"], ["invited-by", ps["ana"]!.pubkey], ["unsaved", "1"], ["reading", "1"]]))
@@ -411,5 +428,25 @@ enum Demo {
         dms.demoShared(conv: "n:" + ps["dev"]!.pubkey, by: ps["dev"]!.pubkey)
         // board messages/encryption-thread: one message that came without the lock ("Not sealed")
         dms.demoUnsealed(conv: "n:" + lina.pubkey, text: "Thanks! The key is under the blue pot.")
+        // the screenshots of a send that is not out yet (SPEC 19.50): my last message to Ana waits
+        let args = ProcessInfo.processInfo.arguments
+        // pictures, files and a recording in the conversation with Ana (boards messages/attach-*)
+        if let i = args.firstIndex(of: "-screen"), i + 1 < args.count, args[i + 1].hasPrefix("dmfiles") {
+            let ana = "n:" + ps["ana"]!.pubkey
+            func jpeg(_ n: Int) -> Data { DemoPictures.draw(n, wide: false).jpegData(compressionQuality: 0.7) ?? Data() }
+            dms.demoFile(jpeg(1), mime: "image/jpeg", name: nil, dim: "900x900", in: ana, from: ps["ana"]!.pubkey, at: now - 5000)
+            let g = "5f0c3a9e1b7d2c48"
+            for (k, n) in [2, 3, 4].enumerated() {
+                dms.demoFile(jpeg(n), mime: "image/jpeg", name: nil, dim: "900x900", group: g, in: ana, from: me, at: now - 3000 + k)
+            }
+            dms.demoText("The seedlings came up!", group: g, in: ana, from: me, at: now - 2996)
+            var pdf = Data("%PDF-1.4 demo".utf8); pdf.append(Data(count: 1_200_000))
+            dms.demoFile(pdf, mime: "application/pdf", name: "Garden plan 2027.pdf", in: ana, from: ps["ana"]!.pubkey, at: now - 2000)
+            dms.demoFile(Data(count: 60_000), mime: "audio/mp4", name: nil, duration: 42, in: ana, from: me, at: now - 1000)
+            if args[i + 1] == "dmfilessending" { dms.demoPendingFiles(in: ana) }
+        }
+        if let i = args.firstIndex(of: "-screen"), i + 1 < args.count, ["sendstill", "sendnotyet"].contains(args[i + 1]) {
+            dms.demoPending(conv: "n:" + ps["ana"]!.pubkey, text: "Yes, I'll be there at 9 with the keys.", at: now - 40)
+        }
     }
 }

@@ -28,7 +28,7 @@ struct AgentSection: View {
             }
             if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) }
         } header: {
-            Text(mine.isEmpty ? "Agent" : "Your agent")
+            Text("Agents")
         } footer: {
             if mine.isEmpty {
                 Text("An agent is an AI (ChatGPT, Claude or Grok) that can follow conversations for you and post as your agent. Everyone always sees it is not you. Ask it to post something in the right place, or for a summary of what was shared.")

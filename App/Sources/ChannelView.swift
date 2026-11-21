@@ -266,9 +266,9 @@ struct ChannelView: View {
         } message: {
             Text(failedSettings.map(SettingsQueue.message).first ?? "")
         }
-        .navigationDestination(item: $thread) { r in ThreadView(group: r.group, rootId: r.root, focusReply: r.reply, focusId: r.focus) }
+        .navigationDestination(item: $thread) { r in ThreadView(group: r.group, rootId: r.root, focusReply: r.reply, focusId: r.focus).overRoot() }
         .navigationDestination(item: $place) { p in
-            ChannelPlaceView(id: id, place: p, go: { g in back(to: g) }, filter: { t in place = nil; withAnimation { topic = t } })
+            ChannelPlaceView(id: id, place: p, go: { g in back(to: g) }, filter: { t in place = nil; withAnimation { topic = t } }).overRoot()
         }
         .environment(\.messageMenu, MessageMenuHandlers(
             reply: { m in thread = ThreadRoute(group: id, root: Derive.rootOf(m.ev) ?? m.id, reply: true) },

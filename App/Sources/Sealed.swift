@@ -388,3 +388,13 @@ extension Demo {
         MailThreads.nostrConv(author: signer("emma").pubkey, pTags: ["ana", "ben", "lina"].map { signer($0).pubkey }, me: me)
     }
 }
+
+extension AppModel {
+    /// Signing out here would lose my sealed conversations until Start fresh: this is the only
+    /// device in my roster and it holds the letterbox (not for guests, not in a demo without one).
+    var onlySealedDevice: Bool {
+        if launch.screen == "enconlydevice" { return true }
+        guard !derive.amGuest, !guestReading, let se = sealedEngine else { return false }
+        return se.onlyDevice
+    }
+}

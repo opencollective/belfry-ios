@@ -58,13 +58,14 @@ struct MessagesView: View {
             guard !didLaunch else { return }
             didLaunch = true
             let screen = model.launch.screen ?? ""
-            if ["conversation", "mail", "encmail", "encmaildevices"].contains(screen) {
+            if ["conversation", "mail", "encmail", "encmaildevices", "sendstill", "sendnotyet", "dmfiles", "dmfilessending", "typingdm"].contains(screen) {
                 // the demo's e-mail may still be on its way in: look a few times
                 Task { @MainActor in
                     for _ in 0..<6 {
                         try? await Task.sleep(nanoseconds: 700_000_000)
                         let list = model.dms?.threads() ?? []
-                        let pick = screen == "conversation" ? list.first { !MailThreads.isMail($0.conv) } : list.first { MailThreads.isMail($0.conv) }
+                        let wantsMail = ["mail", "encmail", "encmaildevices"].contains(screen)
+                        let pick = wantsMail ? list.first { MailThreads.isMail($0.conv) } : list.first { !MailThreads.isMail($0.conv) }
                         if let pick { navigate(pick.conv); return }
                     }
                 }
@@ -121,8 +122,12 @@ struct ThreadRow: View {
                         Text("Locked on this device").font(.subheadline)
                     }
                     .foregroundStyle(.secondary)
+                } else if !mail, model.sealedConv(thread.conv) == nil, MailThreads.peers(thread.conv).filter({ $0 != model.me }).count == 1, !model.typing.typers(Typing.place(conv: thread.conv)).isEmpty {
+                    // one to one: "typing…" with the dots in place of the preview (SPEC 19.66); never in a sealed conversation
+                    HStack(spacing: 6) { TypingDots(); Text("typing…") }.font(.subheadline).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("row-typing")
                 } else {
-                    Text((thread.last.mine ? "You: " : "") + (mail ? thread.last.text : model.derive.plainRefs(thread.last.text))).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                    Text((thread.last.mine ? "You: " : "") + lastLine(mail)).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
             if thread.unread > 0 {
@@ -133,6 +138,18 @@ struct ThreadRow: View {
     }
 
     var title: String { convName(model, thread.conv) }
+
+    /// "Picture", "3 pictures", "File: Garden plan 2027.pdf", "Audio recording · 0:42"; else the text.
+    private func lastLine(_ mail: Bool) -> String {
+        let last = thread.last
+        if mail { return last.text }
+        if let g = last.group, last.kind == DmFiles.kind || last.kind == 14 {
+            let files = (model.dms?.thread(thread.conv) ?? []).filter { $0.group == g && $0.from == last.from }.compactMap(\.file)
+            if last.kind == 14 { return model.derive.plainRefs(last.text) }
+            return DmFiles.lastLine(files)
+        }
+        return last.kind == DmFiles.kind ? last.text : model.derive.plainRefs(last.text)
+    }
 }
 
 @MainActor func convName(_ model: AppModel, _ conv: String) -> String {
@@ -159,9 +176,21 @@ struct ConversationView: View {
 
     /// Messages and device lines, in the order they happened.
     private enum Row: Identifiable {
-        case dm(Dm), notice(DeviceNotice)
-        var id: String { switch self { case .dm(let d): return d.rid; case .notice(let n): return "notice:" + n.id } }
-        var at: Int { switch self { case .dm(let d): return d.at; case .notice(let n): return n.at } }
+        case dm(Dm), files([Dm]), notice(DeviceNotice)
+        var id: String {
+            switch self {
+            case .dm(let d): return d.rid
+            case .files(let f): return "files:" + (f.first?.rid ?? "")
+            case .notice(let n): return "notice:" + n.id
+            }
+        }
+        var at: Int {
+            switch self {
+            case .dm(let d): return d.at
+            case .files(let f): return f.first?.at ?? 0
+            case .notice(let n): return n.at
+            }
+        }
     }
 
     /// The first message of each block of shared history (a block = one sharer's run of messages).
@@ -175,10 +204,17 @@ struct ConversationView: View {
         return out
     }
 
+    /// Files sent together are one row (vectors/dm-files.json "bubbles"), their caption the next.
     private func rows(_ list: [Dm], _ sealed: SealedConv?) -> [Row] {
-        guard let sealed, !sealed.notices.isEmpty else { return list.map { .dm($0) } }
-        return (list.map { Row.dm($0) } + sealed.notices.map { Row.notice($0) }).sorted { $0.at < $1.at }
+        var out = [Row]()
+        for b in DmBlocks.of(list) {
+            if !b.files.isEmpty { out.append(.files(b.files)) }
+            if let c = b.caption { out.append(.dm(c)) }
+        }
+        guard let sealed, !sealed.notices.isEmpty else { return out }
+        return (out + sealed.notices.map { Row.notice($0) }).sorted { $0.at < $1.at }
     }
+    @State private var lastSending = 0
 
     var body: some View {
         let _ = model.version
@@ -191,6 +227,7 @@ struct ConversationView: View {
         // a sealed conversation has the lock by its name; one that is not sealed has none
         let sealed = model.sealedConv(conv)
         let firstShared = ConversationView.blockStarts(list)
+        ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
                 if list.isEmpty, !locked {
@@ -210,6 +247,8 @@ struct ConversationView: View {
                         } else {
                             Bubble(dm: d)
                         }
+                    case .files(let f):
+                        DmFilesBlock(files: f)
                     case .notice(let n):
                         // the amber line opens the sheet; every other line the Encryption screen
                         DeviceNoticeLine(notice: n) { hideKeyboard(); if n.what == .locked { sharing = n } else { encryption = true } }
@@ -218,8 +257,14 @@ struct ConversationView: View {
                 if locked { LockedThreadBlock(since: since) { how = true } }
             }
             .padding()
+            // the end, outside the lazy stack: what arrives after the screen opened (files, my
+            // own send) still ends the conversation above the composer
+            Color.clear.frame(height: 1).id("conv-end")
         }
         .defaultScrollAnchor(.bottom)
+        .onChange(of: list.count) { _, _ in DispatchQueue.main.async { withAnimation(.snappy) { proxy.scrollTo("conv-end", anchor: .bottom) } } }
+        .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { proxy.scrollTo("conv-end", anchor: .bottom) } }
+        }
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle(mail && !MailThreads.isNewMail(conv) ? (model.dms?.threadName(conv) ?? "") : convName(model, conv))
         .navigationBarTitleDisplayMode(.inline)
@@ -277,6 +322,13 @@ struct ConversationView: View {
         .onAppear { model.markConversationRead(conv); model.visibleConversation = conv }
         // a sealed conversation opened: its people's device lists as the relay has them now
         .task { if sealed != nil, let se = model.sealedEngine { await se.refresh(MailThreads.peers(conv)); model.refreshSealed() } }
+        .onChange(of: text) { old, t in
+            guard !mail else { return }
+            let place = Typing.place(conv: conv)
+            if t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { if !old.isEmpty, sending == lastSending { model.typing.cleared(place: place) } }
+            else { model.typing.key(place: place, text: t) }
+            lastSending = sending
+        }
         .onDisappear { if model.visibleConversation == conv { model.visibleConversation = nil } }
         .onChange(of: list.count) { _, _ in model.markConversationRead(conv) }
         .bottomBar {
@@ -299,6 +351,7 @@ struct ConversationView: View {
                     .composerBackground(compact: false)
             } else {
             VStack(spacing: 6) {
+                if !mail, model.sealedConv(conv) == nil { TypingLine(center: model.typing, place: Typing.place(conv: conv)).padding(.horizontal, -12) }
                 // a refusal to send unlocked is a quiet grey line, the text stays in the box; a failure is red
                 if let error { Text(error).font(.caption).foregroundStyle([DirectMessages.cantCheck, Sealed.tooLong].contains(error) ? Color.secondary : Color.red).multilineTextAlignment(.center) }
                 if MailThreads.isNewMail(conv) {
@@ -308,6 +361,8 @@ struct ConversationView: View {
                 }
                 // the channel composer's shape: a capsule field with Send inside it
                 let can = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                HStack(alignment: .bottom, spacing: 8) {
+                if !mail { DmAddMenu(conv: conv, error: $error) }
                 HStack(alignment: .bottom, spacing: 0) {
                     TextField(mail ? (MailThreads.isNewMail(conv) ? "Write an e-mail" : "Reply by e-mail") : "Message", text: $text, axis: .vertical)
                         .font(.body)
@@ -326,6 +381,7 @@ struct ConversationView: View {
                     .accessibilityLabel("Send")
                 }
                 .composerField()
+                }
             }
             .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
             .composerBackground(compact: false)
@@ -342,8 +398,9 @@ struct ConversationView: View {
             return
         }
         error = nil
-        text = ""
+        model.typing.sent(place: Typing.place(conv: conv))
         sending += 1
+        text = ""
         Task {
             do {
                 if MailThreads.isMail(conv) {
@@ -363,6 +420,7 @@ struct Bubble: View {
     @EnvironmentObject var model: AppModel
     let dm: Dm
     @State private var notSealed = false
+    @State private var moreEmoji = false
 
     /// A direct message that went out or came in (never an e-mail, never one still sending).
     private var canReact: Bool { dm.kind == 14 && dm.pending != true && dm.failed == nil && !model.guestReading }
@@ -393,10 +451,12 @@ struct Bubble: View {
                 .contextMenu {
                     // the reactions row, then the menu (board home/conversation); not on e-mails
                     if canReact {
+                        // as on a channel's message: the four I use most, then the larger choice
                         ControlGroup {
-                            ForEach(EmojiUsage.top(5), id: \.self) { e in
+                            ForEach(EmojiUsage.top(4), id: \.self) { e in
                                 Button { react(e) } label: { Text(e) }.accessibilityLabel("React with \(e)")
                             }
+                            Button { moreEmoji = true } label: { Label("More reactions", systemImage: "face.smiling") }
                         }
                         .controlGroupStyle(.compactMenu)
                     }
@@ -419,7 +479,7 @@ struct Bubble: View {
                     Label("Not sent", systemImage: "exclamationmark.circle").font(.caption2).foregroundStyle(.red).help(f)
                     Button("Retry") { model.dms?.retry(dm) }.font(.caption2.weight(.semibold))
                 } else if dm.pending == true {
-                    Text("Sending…").font(.caption2).foregroundStyle(.secondary)
+                    SendLineView(id: dm.rid, tries: model.dmTries(dm.rid), font: .caption2, icon: false)
                 } else if dm.unsealed == true {
                     // it came the old way after the conversation was sealed (board messages/encryption-thread)
                     Button { notSealed = true } label: {
@@ -448,6 +508,12 @@ struct Bubble: View {
         }
         .frame(maxWidth: .infinity, alignment: dm.mine ? .trailing : .leading)
         .accessibilityElement(children: .combine)
+        .sheet(isPresented: $moreEmoji) {
+            ReactionPicker { e in
+                moreEmoji = false
+                react(e)
+            }
+        }
     }
 }
 

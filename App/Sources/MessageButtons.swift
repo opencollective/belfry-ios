@@ -53,10 +53,18 @@ struct MessageButtonsView: View {
                 try? await Task.sleep(nanoseconds: UInt64(left) * 1_000_000_000 + 200_000_000)
                 waited += 1
             }
-            .confirmationDialog(asking.map { question($0) } ?? "", isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }),
+            .confirmationDialog(asking.map { Buttons.confirmParts(question($0)).title } ?? "", isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }),
                                 titleVisibility: .visible, presenting: asking) { b in
                 Button(verb(b), role: b.style == .danger ? .destructive : nil) { press(b) }
                 Button("Cancel", role: .cancel) {}
+            } message: { b in
+                Text(Buttons.confirmParts(question(b)).detail)
+            }
+            .onAppear {
+                // the screenshot job: the question of the one open request card
+                if model.launch.screen == "reqcloseconfirm", !st.closed, let b = buttons.first(where: { $0.action == Buttons.requestClose }) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { asking = b }
+                }
             }
         }
     }
@@ -65,12 +73,14 @@ struct MessageButtonsView: View {
     func button(_ b: MessageButton, st: ButtonState, locked: Bool, now: Int) -> some View {
         let spinning = sending == b.id || (st.locked(now: now) && st.mine?.button == b.id)
         let label = HStack(spacing: 6) {
-            Text(b.label).lineLimit(1)
+            Text(spinning ? (Buttons.busyLabel(b.action) ?? b.label) : b.label).lineLimit(1)
             if spinning { ProgressView().controlSize(.mini) }
         }
         SwiftUI.Group {
             if b.style == .primary {
-                Button(role: nil) { tap(b) } label: { label }.buttonStyle(.borderedProminent)
+                // the app's own filled button: its text reads on the tint in dark mode too
+                // (borderedProminent drew white on white there)
+                Button(role: nil) { tap(b) } label: { label }.buttonStyle(.brand)
             } else {
                 Button(role: b.style == .danger ? .destructive : nil) { tap(b) } label: { label }.buttonStyle(.bordered)
             }
@@ -137,9 +147,10 @@ extension AppModel {
         else if let k = (Demo.people.map { $0.0 } + ["helper"]).first(where: { Demo.signer($0).pubkey == m.ev.pubkey }) { who = Demo.signer(k) }
         else { return }
         let publish = b.action == Buttons.websitePublish
+        let close = b.action == Buttons.requestClose
         var tags: [Tag] = [["L", Buttons.resultNS], ["l", "ok", Buttons.resultNS], ["e", m.ev.id], ["press", press.id], ["p", press.pubkey], ["h", group]]
-        if publish { tags.append(["closed", "1"]) }
-        let text = publish ? "Published by \(realNameOrKey(me))." : "Noted."
+        if publish || close { tags.append(["closed", "1"]) }
+        let text = publish ? "Published by \(realNameOrKey(me))." : close ? "Closed by \(realNameOrKey(me))." : "Noted."
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
             guard let self, let e = try? who.signNow(EventTemplate(kind: 1985, content: text, tags: tags, createdAt: Int.now)) else { return }
             self.engine?.add([e], verify: false)

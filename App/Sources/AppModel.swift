@@ -26,6 +26,8 @@ final class AppModel: ObservableObject {
 
     @Published var phase: Phase = .signedOut
     @Published var version = 0 { didSet { LoopWatch.tick("model.version") } }
+    /// Who types where (SPEC 19.66): its own object, so a typing event redraws only its lines.
+    let typing = TypingCenter()
     /// A guest link waiting to be used (kept through sign-in; only its domain and token).
     @Published var pendingInvite: PendingInvite? = (UserDefaults.standard.data(forKey: "belfry-invite")).flatMap { try? JSONDecoder().decode(PendingInvite.self, from: $0) } {
         didSet { UserDefaults.standard.set(pendingInvite.flatMap { try? JSONEncoder().encode($0) }, forKey: "belfry-invite") }
@@ -90,6 +92,10 @@ final class AppModel: ObservableObject {
     /// End-to-end encrypted conversations: what their screens show (Sealed.swift; demo data only
     /// until the lead's contract).
     @Published var sealed = SealedState()
+    /// Screens pushed over a place's root by a view's own destination (a thread, a channel's
+    /// screen…): they are not in the place's path, and while one is up the drawer's edge strip
+    /// must give way to the system's swipe back (`overRoot()`).
+    @Published var pushedOverRoot = 0
     /// iPhone: the bottom bar's place (Home · Calendar · Groups · Town; Create is a sheet).
     @Published var tab: AppTab = .home
     /// The Create sheet (the bar's ＋).
@@ -196,7 +202,10 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.set(mentionsSeenAt, forKey: AppModel.perAccount("belfry-mentions-seen"))
     }
     /// Redraws everything when the belfry's colour changes (Theme).
-    var brandKey: String { config.branding?.primary ?? "" }
+    var brandKey: String {
+        guard let b = config.branding else { return "" }
+        return b.primary + (b.colors.map { $0.light.accent + $0.dark.accent + $0.light.onAccent + $0.dark.onAccent } ?? "")
+    }
     @Published var signInError: String?
     /// The native sign-in waiting for its code (SPEC 19.20): screen 2. Kept in the Keychain by
     /// `nativeFlow`, so it is back after the app was killed while the person read the e-mail.
@@ -410,8 +419,19 @@ final class AppModel: ObservableObject {
         rs.onChange = { [weak self] r in DispatchQueue.main.async { self?.readChanged(r) } }
         d.readFloor = { [weak rs] conv in rs?.state.readUpTo("d", conv, now: Int.now) ?? 0 }
         readSync = rs
+        let tc = typing
         e.onNewEvents = { [weak d, weak rs] list in
             if list.contains(where: { $0.kind == 1059 || $0.kind == 4 }) { Task { await d?.process() } }
+            // a message landing ends its author's typing there (and in the group's threads)
+            let said = list.filter { [9, 1111].contains($0.kind) }.compactMap { e in e.tag("h").map { (h: $0, author: e.pubkey, root: e.tags.first { $0.count >= 2 && $0[0] == "e" }?[1]) } }
+            if !said.isEmpty {
+                Task { @MainActor in
+                    for s in said {
+                        tc.message(place: Typing.place(group: s.h, root: nil), author: s.author)
+                        if let r = s.root { tc.message(place: Typing.place(group: s.h, root: r), author: s.author) }
+                    }
+                }
+            }
             rs?.offer(list)
         }
         e.onEOSE = { [weak rs, weak self] t in
@@ -436,6 +456,9 @@ final class AppModel: ObservableObject {
             }
         }
         e.onSent = { [weak d] item, _ in d?.outboxSent(item) }
+        typing.model = self
+        e.onTyping = { ev in tc.receive(ev) }
+        d.onMessage = { conv, author in Task { @MainActor in tc.message(place: Typing.place(conv: conv), author: author) } }
         e.onFailed = { [weak d] item in d?.outboxFailed(item) }
         d.onSend = { Push.markSent() }
         // guest mode: nothing is sent until joining; a refused write opens the Join sheet
@@ -477,6 +500,8 @@ final class AppModel: ObservableObject {
                 self.updateAddress()
                 self.describeAccount()
                 await d.process()
+                // files of direct messages that were not out when the app last stopped
+                d.resumeFiles()
             }
         }
         // a store that never had a member's view (it was a guest's, or older than round 7): the
@@ -671,6 +696,15 @@ final class AppModel: ObservableObject {
         // Sam administers the demo belfry (settings, roles, requests, the charter show); the reader is a guest
         // `-member`: the same demo as a plain member (no Belfry settings, no dragging)
         cfg.admins = launch.member ? [Demo.signer("ana").pubkey] : [(try! LocalSigner(secret: Demo.meSecret)).pubkey]
+        // screenshots `members…`: the helper agent is Sam's own (it folds into Sam's row in Members)
+        if ["membersagents", "memberssearch"].contains(launch.screen ?? "") {
+            cfg.agentsMap = [Demo.signer("helper").pubkey: (try! LocalSigner(secret: Demo.meSecret)).pubkey]
+        }
+        // screenshots `brand…`: a belfry with a dark brand colour (the colours it serves per appearance)
+        if launch.screen?.hasPrefix("brand") == true {
+            cfg.branding = Branding(primary: "#2b402e", secondary: "#ad6e21",
+                                    colors: .init(light: .init(accent: "#2b402e", onAccent: "#ffffff"), dark: .init(accent: "#608f67", onAccent: "#111111")))
+        }
         open(s, config: cfg)
         groupsKey = Demo.signer("groups").pubkey
         groupsAbsent = [Demo.deletedGroup: 0] // what the relay's answer would leave (SPEC 19.30)

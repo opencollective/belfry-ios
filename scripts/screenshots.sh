@@ -87,6 +87,27 @@ shot 166-proposal-full proposalfull light
 # the channel settings (Save + Archive link) and a refused settings change (the mark, its alert)
 shot 150-website-buttons website light
 shot 150b-website-buttons-dark website dark
+# 2026-11-21 SPEC 19.50: a direct message not out yet (after 5 s, after 30 s) and About → Diagnostics
+shot 060c-send-still sendstill light
+shot 060d-send-not-yet sendnotyet light
+shot 060e-send-not-yet-dark sendnotyet dark
+shot 060f-diagnostics diagnostics light
+# 2026-11-21 pictures, files and a recording in a direct message (boards messages/attach-thread, attach-sending)
+shot 061-dm-files dmfiles light
+shot 061b-dm-files-dark dmfiles dark
+shot 061c-dm-files-sending dmfilessending light
+# 2026-11-21 typing indicators (boards messages/typing-*)
+shot 062-typing-channel typing light
+shot 062b-typing-channel-dark typing dark
+shot 062c-typing-two typingtwo light
+shot 062d-typing-many typingmany light
+shot 062e-typing-dm typingdm light
+shot 062f-typing-list typinglist light
+shot 062g-typing-setting typingsetting light
+# 2026-11-21: Close on a request card (belfry:request-close) and its question
+shot 150c-request-close reqclose light
+shot 150d-request-close-dark reqclose dark
+shot 150e-request-close-confirm reqcloseconfirm light
 shot 151-settings-failed settingsfailed light
 shot 152-settings-failed-alert settingsfailedalert light
 shot 152b-settings-failed-alert-dark settingsfailedalert dark
@@ -152,6 +173,10 @@ shot 56-log log light
 shot 57-settings settings light
 shot 58-members directory light
 shot 58b-members-dark directory dark
+# 2026-11-21: a member's agents folded into the member's row; a search by an agent's name
+shot 58c-members-agents membersagents light
+shot 58d-members-agents-dark membersagents dark
+shot 58e-members-search-agent memberssearch light
 shot 59-my-card mycard light
 shot 59b-role-picker rolepicker light
 shot 59c-profile-dark profile dark
@@ -168,6 +193,7 @@ shot 63-event-dark event dark
 shot 64-event-up eventup light
 shot 65-event-full eventfull light
 shot 65b-event-full-dark eventfull dark
+shot 65c-event-address eventaddress light
 shot 66-event-photos eventphotos light
 shot 67-event-people eventpeople light
 shot 67b-event-people-dark eventpeople dark
@@ -207,6 +233,13 @@ shot 190-enc-remove encremove light
 shot 191-enc-shared encshared light
 shot 191b-enc-shared-dark encshared dark
 shot 192-enc-shared-why encsharedwhy light
+shot 193-enc-only-device enconlydevice light
+shot 193b-enc-only-device-dark enconlydevice dark
+# 2026-11-20: a belfry with a dark brand colour: the tint per appearance (never the raw primary)
+shot 179-brand-feed brandfeed light
+shot 179b-brand-feed-dark brandfeed dark
+shot 179c-brand-new-channel brandnewchannel light
+shot 179d-brand-new-channel-dark brandnewchannel dark
 shot 73-group-cards groupcards light
 shot 73b-group-cards-dark groupcards dark
 shot 74-group-deleted groupdeleted light

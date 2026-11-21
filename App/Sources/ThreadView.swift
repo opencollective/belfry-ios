@@ -86,7 +86,7 @@ struct ThreadView: View {
             } else if model.locked(group) {
                 ArchivedFooter()
             } else if let root {
-                Composer(group: group, placeholder: replies.isEmpty ? "Reply (starts a thread)" : "Reply in the thread", autoFocus: focusReply, threadMode: true, focusTrigger: focusBox, draftKey: "t:\(group):\(rootId)") { text, _, _ in
+                Composer(group: group, placeholder: replies.isEmpty ? "Reply (starts a thread)" : "Reply in the thread", autoFocus: focusReply, threadMode: true, focusTrigger: focusBox, draftKey: "t:\(group):\(rootId)", typingRoot: rootId) { text, _, _ in
                     model.reply(text, in: group, to: root)
                 }
             }

@@ -30,7 +30,7 @@ struct ProfileStack: ViewModifier {
     @State private var shown: ProfileKey?
     func body(content: Content) -> some View {
         content
-            .navigationDestination(item: $shown) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group) }
+            .navigationDestination(item: $shown) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group).overRoot() }
             .environment(\.showProfile) { pk in hideKeyboard(); shown = ProfileKey(pubkey: pk) }
     }
 }
@@ -248,7 +248,7 @@ struct RoleSection: View {
         Section("Role") {
             roleRows(d)
         }
-        .navigationDestination(isPresented: $picking) { RoleChoiceList(pubkey: pubkey, report: report) }
+        .navigationDestination(isPresented: $picking) { RoleChoiceList(pubkey: pubkey, report: report).overRoot() }
         .onAppear { if model.launch.screen == "rolepicker", d.isCommunityAdmin { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { picking = true } } }
     }
 
@@ -561,12 +561,17 @@ struct AccountSheet: View {
     @State private var confirm = false
     @State private var edit = false
     @State private var copied = false
+    @State private var privacy = false
+    @State private var onlyDevice = false
+    @State private var linkDevice = false
     /// Pushed from the Town drawer's last row (your face and name): Me as a screen, no Done.
     var pushed = false
 
     var body: some View {
         if pushed {
             content
+                .navigationDestination(isPresented: $privacy) { PrivacyScreen() }
+                .onAppear { if model.launch.screen == "typingsetting" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { privacy = true } } }
         } else {
             NavigationStack { content.toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } } }
         }
@@ -612,13 +617,19 @@ struct AccountSheet: View {
                         ActionRow(icon: "bell", title: "Notifications", detail: model.pushState == .on ? "On" : model.pushState == .denied ? "Off in Settings" : "Turn on")
                     }
                     NavigationLink { DevicesView() } label: { ActionRow(icon: "iphone", title: "Devices", detail: "Where you're signed in") }
+                    NavigationLink { PrivacyScreen() } label: { ActionRow(icon: "hand.raised", title: "Privacy") }
+                        .accessibilityIdentifier("me-privacy")
                     if !queued.isEmpty {
                         ActionRow(icon: "tray.and.arrow.up", title: "\(queued.count) waiting to be sent",
                                   detail: queued.contains { $0.status == .failed } ? "Some could not be sent: Retry or Discard them where they are" : nil)
                     }
                 }
                 Section {
-                    Button(model.isDemo ? "Leave the demo" : "Sign out", role: .destructive) { confirm = true }
+                    Button(model.isDemo ? "Leave the demo" : "Sign out", role: .destructive) {
+                        // the only device for sealed conversations: asked first (board messages/encryption-only-device)
+                        if model.onlySealedDevice { onlyDevice = true } else { confirm = true }
+                    }
+                    .accessibilityIdentifier("me-signout")
                 } footer: {
                     Text("Signing out ends this phone's session and removes this belfry's messages from it. Your key stays on the belfry.")
                 }
@@ -628,6 +639,15 @@ struct AccountSheet: View {
             .confirmationDialog("Sign out of \(model.config.name)?", isPresented: $confirm, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) { dismiss(); Task { await model.signOutEverywhere() } }
             }
+            .alert("This is your only device for sealed conversations", isPresented: $onlyDevice) {
+                if model.linkAddress != nil { Button("Link a device") { linkDevice = true } }
+                Button("Sign out anyway", role: .destructive) { dismiss(); Task { await model.signOutEverywhere() } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("If you sign out, your sealed messages can't be opened again, here or on a new device. Only what the people you write with share again comes back.\n\nTo keep them, link another device first.")
+            }
+            .navigationDestination(isPresented: $linkDevice) { if let a = model.linkAddress { LinkDeviceScreen(address: a) } }
+            .onAppear { if model.launch.screen == "enconlydevice" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { onlyDevice = true } } }
             .sheet(isPresented: $edit) { EditProfileView() }
             .onAppear { if model.launch.screen == "editprofile" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { edit = true } } }
         }
