@@ -613,6 +613,10 @@ final class AppModel: ObservableObject {
         // Sam administers the demo belfry (settings, roles, requests, the charter show); the reader is a guest
         // `-member`: the same demo as a plain member (no Belfry settings, no dragging)
         cfg.admins = launch.member ? [Demo.signer("ana").pubkey] : [(try! LocalSigner(secret: Demo.meSecret)).pubkey]
+        // screenshots `members…`: the helper agent is Sam's own (it folds into Sam's row in Members)
+        if ["membersagents", "memberssearch"].contains(launch.screen ?? "") {
+            cfg.agentsMap = [Demo.signer("helper").pubkey: (try! LocalSigner(secret: Demo.meSecret)).pubkey]
+        }
         // screenshots `brand…`: a belfry with a dark brand colour (the colours it serves per appearance)
         if launch.screen?.hasPrefix("brand") == true {
             cfg.branding = Branding(primary: "#2b402e", secondary: "#ad6e21",
