@@ -766,8 +766,7 @@ public final class SealedEngine: @unchecked Sendable {
         guard !gone.isEmpty else { return }
         try? await Task.sleep(nanoseconds: UInt64.random(in: removalWait) * 1_000_000_000)
         await exclusive {
-            guard let sessions = await self.sessions?(), self.listsMe(sessions), let c = self.chain(self.me), c.devices.contains(self.devicePub),
-                  !self.someUnvouched(c) else { return }
+            guard let sessions = await self.sessions?(), self.listsMe(sessions), let c = self.chain(self.me), c.devices.contains(self.devicePub) else { return }
             let live = Set(sessions.compactMap(\.clientPubkey))
             let still = c.devices.filter { $0 != self.devicePub && !live.contains($0) }
             if !still.isEmpty { _ = await self.drop(Set(still), from: c, live: live, now: now) }
@@ -791,20 +790,19 @@ public final class SealedEngine: @unchecked Sendable {
     private func unvouched(_ d: String, _ c: RosterChain) -> Bool {
         lock.lock(); let pre = memory.preSwitch, mine = memory.allowedSince, at = memory.switchHead; lock.unlock()
         // trusted: the devices of the head held before the switch, those the person allowed here
-        // since, and those a LATER roster of the followed chain, signed by a trusted device, adds
-        // or keeps. A device this one had let in and later removed comes back untrusted.
+        // since, and those a LATER roster of the followed chain, signed by a trusted device, ADDS.
+        // A roster that merely keeps a device vouches for nothing (devices publish rosters on
+        // their own: `ready`, a gone session). A device this one had let in and later removed
+        // comes back untrusted.
         guard let pre, d != devicePub else { return false }
         var trusted = Set(pre + mine + [devicePub])
         if let at, let i = c.rosters.firstIndex(where: { $0.id == at }), i + 1 < c.rosters.count {
-            for r in c.rosters[(i + 1)...] where trusted.contains(r.signer) { trusted.formUnion(r.devices) }
+            for j in (i + 1)..<c.rosters.count where trusted.contains(c.rosters[j].signer) {
+                trusted.formUnion(c.rosters[j].devices.filter { !c.rosters[j - 1].devices.contains($0) })
+            }
         }
         return !trusted.contains(d)
     }
-
-    /// While a device nobody vouched for sits in my head, this device changes the roster only by
-    /// the person's own word (Allow, Not me, Remove): a roster it signed by itself would vouch for
-    /// that device in everybody's eyes.
-    private func someUnvouched(_ c: RosterChain) -> Bool { c.devices.contains { unvouched($0, c) } }
 
     /// A well-formed session list that has this device's own chat session: without it nothing is
     /// concluded (an empty or odd answer removes nobody).
@@ -903,7 +901,7 @@ public final class SealedEngine: @unchecked Sendable {
             _ = await admit(r.event.pubkey, now: now)
             return []
         }
-        if !c.ready, !someUnvouched(c), SealedEngine.mayCarryReady(sessions, devices: c.devices, now: now) {
+        if !c.ready, SealedEngine.mayCarryReady(sessions, devices: c.devices, now: now) {
             await publishRoster(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: c.lb, devices: c.devices, ready: true, now: now), root: c.root.id, now: now)
             onChange?()
         }

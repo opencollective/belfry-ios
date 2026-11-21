@@ -961,6 +961,22 @@ final class SealedEngineTests: XCTestCase {
         let refused = await phone.sealed.deny(evilPub)
         XCTAssertTrue(refused)
         XCTAssertEqual(b.all().filter { $0.kind == 1059 && $0.hasTag("p", evilPub) }.count, before)
+        // its session gone, the phone's upkeep drops it by itself (a roster that removes vouches
+        // for nobody): the Mac, kept by that roster, is still not trusted and still gets no key
+        await phone.sealed.maintain(now: now + 500)
+        await b.sync()
+        let after = try XCTUnwrap(phone.sealed.chain(phone.account))
+        XCTAssertEqual(Set(after.devices), [phone.pub, mac.pub])
+        b.put(try Sealed.request(account: phone.account, device: mac.pub, now: now + 600).event(pubkey: "").signed(with: secret("alice/mac")))
+        await b.sync()
+        await phone.sealed.maintain(now: now + 601)
+        await drain(phone.engine)
+        XCTAssertEqual(b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }.count, macBefore)
+        // the person allows the Mac on this device: now it is trusted, and gets the keys
+        let allowed = await phone.sealed.allow(mac.pub, now: now + 602)
+        XCTAssertEqual(allowed, .done)
+        await drain(phone.engine)
+        XCTAssertGreaterThan(b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }.count, macBefore)
     }
 
     /// The first flush of a launch: the sealed engine is not attached yet, and a queued wrap must
