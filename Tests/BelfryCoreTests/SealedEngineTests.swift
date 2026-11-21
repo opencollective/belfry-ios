@@ -606,7 +606,8 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertNotNil(out)
         XCTAssertEqual(b.revoked, ["bunker-" + pad.pub])
         XCTAssertNil(bobPhone.sealed.foreignFreshStart)
-        XCTAssertTrue(bobPhone.engine.outboxItems().contains { $0.kind == SealedKind.request }, "it asks to be allowed")
+        await b.sync()
+        XCTAssertTrue(b.all().contains { $0.kind == SealedKind.request && $0.createdAt == now + 50 }, "it asks to be allowed")
     }
 
     /// After a fresh start, the old phone asks, the fresh device allows it, and the phone hands its
