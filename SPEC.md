@@ -2651,3 +2651,48 @@ the drawer's next-event line, the public list a guest sees. Before: an event sta
 until midnight of the day it ended (compared with the start of today), and an event with no end
 counted as over at its start (no answering once it began). Check-in's days (`onEventDays`) read
 an all-day end date as the last day too. Test: `EventsOverTests` (fixed clock, Europe/Brussels).
+
+### 19.64 One owner for every socket; a send never waits on a dead one (= Android SPEC 19.50, copied verbatim from belfry-android main 8a63232 on 2026-11-21; Android's heading: "One owner for every socket; a send never waits on a dead one (2026-11-21; Xavier via the lead, after DMs stuck on "Sending…" on iOS; the same on Android; first written here, belfry-ios told)")
+
+What was wrong (both apps): the NIP-46 signer's socket lived on its own, was never asked whether
+it lived, and after a sleep looked open and was dead: each signer request waited its whole
+timeout (a direct message = 4 requests: two seals signed, two encryptions). The outbox stalled a
+whole relay behind its oldest retrying item, so a stuck read marker held back direct messages.
+Android also did nothing when the phone changed network while online (Wi-Fi to mobile).
+
+- **One manager** (`core/net/Connections.kt`) holds the session's sockets: groups, main AND the
+  signer's (`BunkerSigner.relay`, made once and opened again as needed). Nothing else opens a
+  socket for a session (sign-in flows before a session have their own signer, closed after).
+  Signer requests queue while its socket (re)connects.
+- **Foreground and every network change** (also a new network while online): every open socket is
+  asked at once (a tiny REQ; any frame counts as an answer); no answer within **5 s** = dead:
+  dropped and opened again now (backoff forgotten); then the signer is said hello to ahead of the
+  next send. In the foreground, a socket quiet for **25 s** is asked the same way. Before a send
+  (a publish, a signer request), a socket quiet for more than **10 s** is asked first.
+- A publish with no `OK` in time, or a signer request with no answer, **drops its socket** (the
+  next try goes on a fresh one; the signer's request is asked once more on it).
+- Reconnects and transient retries: **1 s, 2 s, 4 s, 8 s, 16 s, then every 30 s**.
+- **Lanes** (`Outbox.lane`): a direct message's wraps by recipient, a group's events and API calls
+  by `h`, anything else by kind (+ `d`); per relay. A transient error holds back its own lane for
+  the pass. A signer that did not answer holds back every item still to sign (pre-signed wraps
+  go). A relay that did not answer (`timeout:`, `connection closed`) holds back that relay's other
+  items, except: never a direct message for a non-DM item's sake, and not once the item failed
+  transiently **3** times (then only its lane). Order within a lane is kept. `vectors/outbox.json`
+  passes unchanged.
+- **The line under a message not out yet** (the same words on the three apps, the lead
+  2026-11-21; belfry-ios writes them in its SPEC): "Sending…"; after **5 s** "Still sending… ·
+  connecting" / "· encrypting" / "· uploading 2.2 of 4.8 MB" / "· waiting for the server" (a
+  signer's or a relay's answer pending: never say signer or relay to people); after **30 s** "Not
+  sent yet · Retry" (Retry: every socket asked now, the backoff forgotten, a fresh 30 s, a pass at
+  once). Offline: "Waiting for the connection…" (the three apps; the web "Saved · waiting for the connection"). Refused: "Not sent: <reason> · Retry" as before.
+  `SendState.shown` maps the trace's exact steps to these words; `rememberSendLine` (app).
+- **Send trace** (`SendTrace`): per attempt `HH:mm:ss <kind> · <step> 0.3s · … → OK|retry (<class>)|refused 1.2s`,
+  plus a line for a signer request of 1 s or more and for a socket dropped after a publish timeout;
+  the last 20, never any content, name or key. About Belfry → Diagnostics shows them under each
+  socket's state and quiet time, with Copy.
+- Later (server, not yet): the signer will listen on the community relay too; then the signer's
+  relay is taken from the bunker URL and the manager can share that socket.
+
+(iOS: the one manager is `SyncEngine` with the signer's socket `BunkerSigner.relay`, made once;
+lanes `OutboxPass.lane`; `SendState` / `SendTrace` in `Outbox/SendTrace.swift`; the line is
+`SendLineView`, Diagnostics is `DiagnosticsScreen`.)
