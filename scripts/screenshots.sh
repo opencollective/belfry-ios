@@ -185,6 +185,7 @@ shot 63-event-dark event dark
 shot 64-event-up eventup light
 shot 65-event-full eventfull light
 shot 65b-event-full-dark eventfull dark
+shot 65c-event-address eventaddress light
 shot 66-event-photos eventphotos light
 shot 67-event-people eventpeople light
 shot 67b-event-people-dark eventpeople dark

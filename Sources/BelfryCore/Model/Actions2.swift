@@ -291,8 +291,8 @@ public extension Actions {
     // ---- my profile ----
 
     /// My tags and place (kind 30078, d = belfry:profile, on the community relay).
-    static func saveExtras(tags: [String], share: Share, place: Place?) -> Draft {
-        Draft(.main, kind: 30078, content: People.extrasContent(tags: tags, share: share, place: place), tags: [["d", Derive.profileD]])
+    static func saveExtras(tags: [String], share: Share, place: Place?, current: String? = nil) -> Draft {
+        Draft(.main, kind: 30078, content: People.extrasContent(tags: tags, share: share, place: place, current: current), tags: [["d", Derive.profileD]])
     }
 
     /// Name and about in my kind 0, the rest of it (CURRENT) kept.
