@@ -554,6 +554,39 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertEqual(Discovery.nip05Read(Data(#"{"names":{"lina":"nonsense"}}"#.utf8), status: 200, name: "lina"), .failed)
     }
 
+    /// A file (kind 15) in a sealed conversation is sealed by the device like a kind 14, never sent
+    /// the old way; Bob's device opens it as a file. And the only-device rule for signing out.
+    func testFilesAreSealedInASealedConversation() async throws {
+        let b = FakeBelfry()
+        let alice = try b.signIn("alice", "phone")
+        await alice.sealed.maintain(now: now)
+        XCTAssertTrue(alice.sealed.onlyDevice, "one device holding its letterbox: signing out would lose the sealed conversations")
+        let (bob, bobMac) = try await pair(b, "bob")
+        XCTAssertFalse(bob.sealed.onlyDevice, "another device is in Bob's roster")
+        _ = bobMac
+        await b.sync()
+        let conv = "n:" + bob.account
+        let aliceDms = DirectMessages(engine: alice.engine)
+        aliceDms.sealed = alice.sealed
+        let bobDms = DirectMessages(engine: bob.engine)
+        bobDms.sealed = bob.sealed
+        try await aliceDms.send("Hello Bob", in: conv)
+        await b.sync()
+        XCTAssertTrue(alice.sealed.isSealed(conv))
+        let before = Set(b.all().map(\.id))
+        try await aliceDms.sendFiles([OutgoingFile(data: Data("a picture".utf8), mime: "image/jpeg", name: nil, dim: "10x10")], in: conv)
+        for _ in 0..<50 where aliceDms.thread(conv).contains(where: { $0.kind == DmFiles.kind && $0.rid.hasPrefix("local-") }) {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        await b.sync()
+        let new = b.all().filter { !before.contains($0.id) && $0.kind == 1059 && $0.hasTag("p", bob.account) }
+        XCTAssertEqual(new.count, 1)
+        XCTAssertNotNil(new.first?.tag("lb"), "sealed by the device, never the old way")
+        await bobDms.process()
+        let file = bobDms.thread("n:" + alice.account).first { $0.kind == DmFiles.kind }
+        XCTAssertEqual(file?.file?.mime, "image/jpeg")
+    }
+
     func testMessagesOpenOnTheDeviceAndOnlyMyOwnLockedWrapsCount() async throws {
         let b = FakeBelfry()
         let alice = try b.signIn("alice", "phone")
