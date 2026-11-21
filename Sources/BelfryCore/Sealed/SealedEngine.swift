@@ -116,6 +116,16 @@ public final class SealedEngine: @unchecked Sendable {
     private var given = Set<String>()
     /// The connection on which the relay last answered completely about my own anchor and rosters.
     private var mineSeenOn: String?
+    /// The reads of my own chain: how many were begun, and the number of the last one that the
+    /// relay answered completely. A wrap to a letterbox this device does not know is judged only
+    /// against a read begun AFTER the wrap was first seen here (never an older one).
+    private var mineReadsBegun = 0
+    private var mineReadDone = 0
+    private var unknownSeen = [String: Int]()
+    private var rereadAt = 0
+    private var rereadPending = false
+    /// My own chain was read again while wraps to an unknown letterbox were kept: open them again.
+    public var onMineRead: (() -> Void)?
     /// Rosters and anchors were paged from the start on this connection.
     private var pagedOn: String?
     /// The shared-history wraps and other sealed rumors a sender wants kept while they are queued.
@@ -438,20 +448,36 @@ public final class SealedEngine: @unchecked Sendable {
 
     public func open(_ wrap: NostrEvent) -> Outcome {
         lock.lock(); let k = keys; lock.unlock()
-        // a wrap is back-dated by up to 2 days: 32 = the 30 days a kept wrap may wait
+        // a wrap is back-dated by up to 2 days: 32 = the 30 days a wrap may wait for its AUTHOR's
+        // chain (only that: a wrap this device has no secret for never gives up by age)
         let old = Int.now - wrap.createdAt > 32 * 86400
         switch Sealed.open(wrap, keys: k) {
         case .invalid: return .drop
         case .locked:
-            // no secret here. Kept only when it is sealed to a letterbox of my own chain (then the
-            // banner shows); while my chain is not loaded yet nobody can tell, for 30 days; a wrap
-            // naming any other letterbox is dropped: anyone can write one
+            // no secret here. Sealed to a letterbox of my own chain: kept without limit (the
+            // banner shows), never dropped, never marked seen: a device allowed after months gets
+            // every key in the hand-over and must still find its history
             guard let lb = Sealed.lb(of: wrap) else { return .drop }
-            if myLetterboxes().contains(lb) { return old ? .drop : .keep }
+            if myLetterboxes().contains(lb) {
+                lock.lock(); unknownSeen[wrap.id] = nil; lock.unlock()
+                return .keep
+            }
             // a letterbox this device does not know: it may be my newest one, whose roster has not
-            // arrived yet (the wrap can come first). Nobody's only once my chain is current on this
-            // connection; until then it is kept, never marked seen
-            return mineCurrent || old ? .drop : .keep
+            // arrived yet (the wrap can come first), or an old one while my chain is not loaded.
+            // Nobody's (anyone can write one) only by a complete read of my chain, on this
+            // connection, BEGUN AFTER this wrap was first seen here; a read that is older, skipped
+            // or throttled decides nothing: the wrap is kept, at any age, and never marked seen
+            lock.lock()
+            let first = unknownSeen[wrap.id]
+            if first == nil { unknownSeen[wrap.id] = mineReadsBegun }
+            let judged = first.map { mineReadDone > $0 } ?? false
+            lock.unlock()
+            if judged, mineCurrent {
+                lock.lock(); unknownSeen[wrap.id] = nil; lock.unlock()
+                return .drop
+            }
+            rereadMine()
+            return .keep
         case .opened(let rumor, let seal):
             // a mail from the belfry: kind 1301, author and seal's signer both the belfry's key
             let b = belfryKey
@@ -477,6 +503,24 @@ public final class SealedEngine: @unchecked Sendable {
                 if !known { remember { $0.sealed[conv] = min(Int.now, rumor.createdAt) } }
             }
             return .rumor(rumor)
+        }
+    }
+
+    /// A wrap to an unknown letterbox is kept: my own chain is read again, at most once a minute
+    /// (one more read is owed when that minute is over). Tests ask by hand.
+    private func rereadMine() {
+        guard askChains == nil else { return }
+        let now = Int.now
+        lock.lock()
+        let wait = max(0, rereadAt + 60 - now)
+        if rereadPending { lock.unlock(); return }
+        rereadPending = true
+        lock.unlock()
+        Task { [weak self] in
+            if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait) * 1_000_000_000) }
+            guard let self else { return }
+            self.lock.lock(); self.rereadAt = Int.now; self.rereadPending = false; self.lock.unlock()
+            await self.refresh([self.me])
         }
     }
 
@@ -622,6 +666,7 @@ public final class SealedEngine: @unchecked Sendable {
     public func refresh(_ accounts: [String], now: Int = .now) async -> Bool {
         let who = Array(Set(accounts + [me])).filter(isHex64)
         guard !who.isEmpty else { return false }
+        lock.lock(); mineReadsBegun += 1; let read = mineReadsBegun; lock.unlock()
         let found: [NostrEvent]?
         if let askChains { found = await askChains(who) }
         else {
@@ -633,9 +678,11 @@ public final class SealedEngine: @unchecked Sendable {
         let conn = askChains != nil ? "test" : engine.connection(.main).map { "\($0)" }
         lock.lock()
         for a in who { answered[a] = now }
-        if who.contains(me) { mineSeenOn = conn }
+        if who.contains(me) { mineSeenOn = conn; mineReadDone = max(mineReadDone, read) }
+        let kept = !unknownSeen.isEmpty
         lock.unlock()
         observe(who, now: now)
+        if kept { onMineRead?() }
         return true
     }
 
@@ -865,8 +912,10 @@ public final class SealedEngine: @unchecked Sendable {
             // live chat session, a request strictly newer than the roster that added the device
             // and than my last hand-over to it
             guard !done, SealedFollow.answerWithoutPrompt(chain: c, pin: pin, device: e.pubkey, liveChatDevices: liveChat, requestAt: e.createdAt, lastHandoverAt: last) else { continue }
+            // remembered only once the keys are on their way: a request met while something
+            // passes (no session list, no row yet, no key here) is looked at again next time
+            guard hand(e.pubkey, k, now: now) else { continue }
             remember { m in m.answeredRequests = Array((m.answeredRequests + [e.id]).suffix(300)) }
-            hand(e.pubkey, k, now: now)
         }
         // a request with the proof of a code this device showed is allowed at once (5.2)
         lock.lock(); let secrets = shownLinks.filter { now - $0.at < 900 }.map(\.secret); lock.unlock()
@@ -973,10 +1022,12 @@ public final class SealedEngine: @unchecked Sendable {
     }
 
     /// The whole key chain to device D, and when (so its older requests are not answered again).
-    private func hand(_ d: String, _ k: KeyChain, now: Int) {
-        guard let ws = try? Sealed.keysWraps(k, account: me, device: device, to: d) else { return }
+    @discardableResult
+    private func hand(_ d: String, _ k: KeyChain, now: Int) -> Bool {
+        guard let ws = try? Sealed.keysWraps(k, account: me, device: device, to: d), !ws.isEmpty else { return false }
         for w in ws { engine.enqueueSigned(w, target: .main, dm: nil) }
         remember { $0.handed[d] = now }
+        return true
     }
 
     /// Not me: that session is revoked. No roster change. False when the belfry could not be

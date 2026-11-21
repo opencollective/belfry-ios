@@ -181,6 +181,8 @@ extension AppModel {
             }
         }
         se.onChange = { [weak self] in Task { @MainActor in self?.refreshSealed() } }
+        // my chain was read again: the wraps kept for a letterbox this device did not know are judged now
+        se.onMineRead = { [weak d] in Task { await d?.process() } }
         d.sealed = se
         if let l = pendingLinkSecret { se.setLink(l); pendingLinkSecret = nil }
     }

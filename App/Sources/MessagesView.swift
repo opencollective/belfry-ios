@@ -492,7 +492,12 @@ struct NewConversation: View {
     func go() {
         let people = model.profiles.map { (pubkey: $0.key, name: $0.value.name ?? "", nip05: $0.value.nip05) }
         Task {
-            if let c = await model.dms?.conv(for: to, people: people) { open(c) } else { error = "That's not a member nor an e-mail address." }
+            do {
+                if let c = try await model.dms?.conv(for: to, people: people) { open(c) } else { error = "That's not a member nor an e-mail address." }
+            } catch {
+                // a name at this belfry whose lookup failed: never opened as e-mail; what was typed stays
+                self.error = DirectMessages.cantLookUp
+            }
         }
     }
 

@@ -615,13 +615,26 @@ public final class DirectMessages: @unchecked Sendable {
     }
 
     /// Where a new conversation goes: a member (name, nip05, hex key) or an e-mail address.
-    public func conv(for input: String, people: [(pubkey: String, name: String, nip05: String?)]) async -> String? {
+    /// A name at this belfry's own domain is a member until the belfry itself says there is no
+    /// such name: while that lookup fails (offline, an error), nothing is opened as e-mail (it
+    /// would leave unsealed, through the bridge, to somebody who has a letterbox): it throws,
+    /// and the text typed stays.
+    public static let cantLookUp = "This address could not be checked just now. Try again."
+    var lookUp: (String, String) async -> Discovery.Nip05Answer = { await Discovery.nip05Answer(name: $0, domain: $1) }
+
+    public func conv(for input: String, people: [(pubkey: String, name: String, nip05: String?)]) async throws -> String? {
         let v = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if let hit = people.first(where: { $0.nip05?.lowercased() == v || $0.name.lowercased() == v }) { return "n:" + hit.pubkey }
         if isHex64(v) { return "n:" + v }
         if let pk = Bech32.pubkey(npub: v) { return "n:" + pk }
         guard let m = Rx("^([^@\\s]+)@([^@\\s]+\\.[^@\\s]+)$").first(v), let name = m[1], let domain = m[2] else { return nil }
-        if domain == engine.config.domain, !engine.localOnly, let pk = await Discovery.nip05(name: name, domain: domain) { return "n:" + pk }
+        if domain == engine.config.domain.lowercased(), !engine.localOnly {
+            switch await lookUp(name, domain) {
+            case .key(let pk): return "n:" + pk
+            case .failed: throw BelfryError.invalid(DirectMessages.cantLookUp)
+            case .none: break
+            }
+        }
         return "m:" + v
     }
 

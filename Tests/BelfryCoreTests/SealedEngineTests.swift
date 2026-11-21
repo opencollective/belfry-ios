@@ -358,6 +358,9 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertEqual(got.content, "Hello Bob")
         guard case .rumor = mac.sealed.open(wraps[1]) else { return XCTFail("my other device does not open my copy") }
         // my copy is sealed to my letterbox, which is none of Bob's: on his device it is dropped
+        // not Bob's letterbox: nobody's, once Bob's chain was read after the wrap was seen
+        _ = bob.sealed.open(wraps[1])
+        await bob.sealed.refresh([bob.account])
         guard case .drop = bob.sealed.open(wraps[1]) else { return XCTFail("Bob kept or opened my copy") }
 
         // the Mac's session is gone: the phone drops it, with a new letterbox the Mac never gets
@@ -525,6 +528,32 @@ final class SealedEngineTests: XCTestCase {
         guard case .rumor = late.sealed.open(wrap) else { return XCTFail("the keys were not taken") }
     }
 
+    /// name@<this belfry's domain>: a member unless the belfry itself says there is no such name.
+    /// A lookup that fails never opens an e-mail conversation.
+    func testOwnDomainAddressNeverBecomesMailOnAFailedLookup() async throws {
+        let account = try LocalSigner(secret: secret("lookup-account"))
+        let engine = SyncEngine(config: .defaults(domain: "example.org"), db: try .memory(), signer: account, localOnly: false,
+                                attachmentsDir: FileManager.default.temporaryDirectory)
+        let dms = DirectMessages(engine: engine)
+        let lina = try Keys.publicKeyHex(secret: secret("lina"))
+        dms.lookUp = { _, _ in .failed }
+        do { _ = try await dms.conv(for: "Lina@Example.org", people: []); XCTFail("left as e-mail on a failed lookup") }
+        catch { XCTAssertEqual((error as? BelfryError)?.errorDescription, DirectMessages.cantLookUp) }
+        dms.lookUp = { name, domain in name == "lina" && domain == "example.org" ? .key(lina) : .none }
+        let member = try await dms.conv(for: "Lina@Example.org", people: [])
+        XCTAssertEqual(member, "n:" + lina)
+        let alias = try await dms.conv(for: "hello@example.org", people: [])
+        XCTAssertEqual(alias, "m:hello@example.org") // the belfry answered: no such member
+        let outside = try await dms.conv(for: "ana@elsewhere.org", people: [])
+        XCTAssertEqual(outside, "m:ana@elsewhere.org")
+        // only a 200 with a names object is an answer
+        XCTAssertEqual(Discovery.nip05Read(Data(#"{"names":{}}"#.utf8), status: 200, name: "lina"), .none)
+        XCTAssertEqual(Discovery.nip05Read(Data(#"{"names":{"lina":"\#(lina)"}}"#.utf8), status: 200, name: "lina"), .key(lina))
+        XCTAssertEqual(Discovery.nip05Read(Data(#"{"names":{}}"#.utf8), status: 502, name: "lina"), .failed)
+        XCTAssertEqual(Discovery.nip05Read(Data("<html>".utf8), status: 200, name: "lina"), .failed)
+        XCTAssertEqual(Discovery.nip05Read(Data(#"{"names":{"lina":"nonsense"}}"#.utf8), status: 200, name: "lina"), .failed)
+    }
+
     func testMessagesOpenOnTheDeviceAndOnlyMyOwnLockedWrapsCount() async throws {
         let b = FakeBelfry()
         let alice = try b.signIn("alice", "phone")
@@ -558,6 +587,20 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertTrue(padDms.thread("n:" + alice.account).isEmpty)
         XCTAssertEqual(padDms.lockedWraps, 1)
 
+        // a wrap to Bob's letterbox from three months ago: a device without the secret keeps it
+        // without limit (allowed later, it gets every key and must still find its history)
+        let bobLb = try XCTUnwrap(bob.sealed.chain(bob.account)?.lb)
+        let ancient = try Sealed.wrap(GiftWrap.rumor(kind: 14, pubkey: alice.account, tags: [["p", bob.account]], content: "long ago", createdAt: Int.now - 90 * 86400),
+                                      device: secret("mallory"), to: bob.account, lb: bobLb, now: Int.now - 90 * 86400)
+        guard case .keep = pad.sealed.open(ancient) else { return XCTFail("an old wrap to my own letterbox was given up") }
+        XCTAssertTrue(pad.sealed.isLocked(ancient))
+        // and one that old to a letterbox this device does not know: kept until a read of Bob's
+        // chain begun after it was seen, whatever its age
+        let ancientUnknown = try Sealed.wrap(GiftWrap.rumor(kind: 14, pubkey: alice.account, tags: [["p", bob.account]], content: "long ago", createdAt: Int.now - 90 * 86400),
+                                             device: secret("mallory"), to: bob.account, lb: try Keys.publicKeyHex(secret: secret("not-yet-known")), now: Int.now - 90 * 86400)
+        guard case .keep = pad.sealed.open(ancientUnknown) else { return XCTFail("an old wrap to an unknown letterbox was judged without a fresh read") }
+        guard case .keep = pad.sealed.open(ancientUnknown) else { return XCTFail("judged against the older read") }
+
         // a wrap anybody made for Bob with a letterbox that is nobody's: dropped, never a lock
         let junk = try Sealed.wrap(GiftWrap.rumor(kind: 14, pubkey: alice.account, tags: [["p", bob.account]], content: "junk", createdAt: now),
                                    device: secret("mallory"), to: bob.account, lb: try Keys.publicKeyHex(secret: secret("nobody")))
@@ -565,6 +608,9 @@ final class SealedEngineTests: XCTestCase {
         await bobDms.process(); await padDms.process()
         XCTAssertEqual(bobDms.lockedWraps, 0)
         XCTAssertEqual(padDms.lockedWraps, 1)
+        // judged only by a read of Bob's chain begun after the wrap was seen: kept until then
+        guard case .keep = bob.sealed.open(junk) else { return XCTFail("a wrap to an unknown letterbox was judged against an older read") }
+        await bob.sealed.refresh([bob.account])
         guard case .drop = bob.sealed.open(junk) else { return XCTFail("a wrap to nobody's letterbox was kept") }
 
         // the old way, with a sealed message's id claimed inside: it never takes that message's place
@@ -808,6 +854,8 @@ final class SealedEngineTests: XCTestCase {
                                    device: secret("mallory"), to: bob.account, lb: fake)
         bob.engine.add([planted, junk])
         XCTAssertFalse(bob.sealed.isLocked(junk))
+        guard case .keep = bob.sealed.open(junk) else { return XCTFail("judged against an older read") }
+        await bob.sealed.refresh([bob.account])
         guard case .drop = bob.sealed.open(junk) else { return XCTFail("a planted roster made a letterbox mine") }
     }
 

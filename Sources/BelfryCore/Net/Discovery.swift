@@ -175,6 +175,27 @@ public enum Discovery {
     }
 
     /// NIP-05: the key behind NAME@DOMAIN, or nil.
+    public enum Nip05Answer: Sendable, Equatable { case key(String), none, failed }
+
+    /// The same question, telling "no such name" (the belfry answered) from "no answer".
+    public static func nip05Answer(name: String, domain: String, session: URLSession = .shared) async -> Nip05Answer {
+        var comps = URLComponents()
+        comps.scheme = "https"
+        comps.host = domain
+        comps.path = "/.well-known/nostr.json"
+        comps.queryItems = [URLQueryItem(name: "name", value: name)]
+        guard let url = comps.url, let (data, resp) = try? await session.data(from: url) else { return .failed }
+        return nip05Read(data, status: (resp as? HTTPURLResponse)?.statusCode ?? 0, name: name)
+    }
+
+    /// Only a 200 with a `names` object is an answer; anything else is no answer.
+    public static func nip05Read(_ data: Data, status: Int, name: String) -> Nip05Answer {
+        guard status == 200, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let names = obj["names"] as? [String: Any] else { return .failed }
+        guard let k = names[name] as? String else { return .none }
+        return isHex64(k) ? .key(k) : .failed
+    }
+
     public static func nip05(name: String, domain: String, session: URLSession = .shared) async -> String? {
         var comps = URLComponents()
         comps.scheme = "https"
