@@ -137,6 +137,7 @@ struct ConversationView: View {
         let _ = model.version
         let list = model.dms?.thread(conv) ?? []
         let mail = MailThreads.isMail(conv)
+        ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
                 if list.isEmpty {
@@ -150,8 +151,14 @@ struct ConversationView: View {
                 }
             }
             .padding()
+            // the end, outside the lazy stack: what arrives after the screen opened (files, my
+            // own send) still ends the conversation above the composer
+            Color.clear.frame(height: 1).id("conv-end")
         }
         .defaultScrollAnchor(.bottom)
+        .onChange(of: list.count) { _, _ in DispatchQueue.main.async { withAnimation(.snappy) { proxy.scrollTo("conv-end", anchor: .bottom) } } }
+        .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { proxy.scrollTo("conv-end", anchor: .bottom) } }
+        }
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle(mail && !MailThreads.isNewMail(conv) ? (model.dms?.threadName(conv) ?? "") : convName(model, conv))
         .navigationBarTitleDisplayMode(.inline)
