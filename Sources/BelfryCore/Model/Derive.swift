@@ -1541,6 +1541,11 @@ public final class Derive {
         return out
     }()
 
+    /// My latest `belfry:profile` content as written (newest created_at, my key): what a save keeps.
+    public var myExtrasContent: String? {
+        ofKind(30078).filter { $0.pubkey == ctx.me && $0.hasTag("d", Derive.profileD) }.max { $0.createdAt < $1.createdAt }?.content
+    }
+
     /// Tags any member uses, most used first (ties alphabetical): the suggestions when you add yours.
     public lazy var allTags: [(tag: String, count: Int)] = {
         var n = [String: Int]()

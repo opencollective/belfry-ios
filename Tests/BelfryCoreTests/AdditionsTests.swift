@@ -284,6 +284,27 @@ final class LineAndLinksTests: XCTestCase {
         XCTAssertNil(People.parseExtras("{\"share\":\"none\",\"place\":{\"country\":\"BE\"}}", at: 1)?.place)
     }
 
+    /// Saving my tags keeps every key the app doesn't own (the website's headline and links).
+    func testProfileExtrasKeepOthersKeys() throws {
+        let current = #"{"tags":["old"],"share":"city","place":{"country":"BE","name":"Ghent"},"headline":"Fixes bikes","links":[{"url":"https://x.org","label":"Shop"}],"future":{"a":1}}"#
+        let saved = try XCTUnwrap(JSON.parse(People.extrasContent(tags: ["bikes"], share: .none, place: nil, current: current)) as? [String: Any])
+        XCTAssertEqual(saved["headline"] as? String, "Fixes bikes")
+        XCTAssertEqual((saved["links"] as? [[String: Any]])?.first?["label"] as? String, "Shop")
+        XCTAssertEqual((saved["future"] as? [String: Any])?["a"] as? Int, 1)
+        XCTAssertEqual(saved["tags"] as? [String], ["bikes"])
+        XCTAssertEqual(saved["share"] as? String, "none")
+        XCTAssertNil(saved["place"]) // not shared: removed
+        // only my own latest belfry:profile counts as the start
+        let me = try LocalSigner(secret: Data(repeating: 7, count: 32))
+        let other = try LocalSigner(secret: Data(repeating: 8, count: 32))
+        let mine1 = try me.signNow(EventTemplate(kind: 30078, content: #"{"headline":"old"}"#, tags: [["d", Derive.profileD]], createdAt: 10))
+        let mine2 = try me.signNow(EventTemplate(kind: 30078, content: #"{"headline":"new"}"#, tags: [["d", Derive.profileD]], createdAt: 20))
+        let theirs = try other.signNow(EventTemplate(kind: 30078, content: #"{"headline":"theirs"}"#, tags: [["d", Derive.profileD]], createdAt: 30))
+        let otherD = try me.signNow(EventTemplate(kind: 30078, content: #"{"headline":"elsewhere"}"#, tags: [["d", "belfry:read"]], createdAt: 40))
+        let d = Derive(events: [mine1, mine2, theirs, otherD], me: me.pubkey)
+        XCTAssertEqual(d.myExtrasContent, #"{"headline":"new"}"#)
+    }
+
     func testRefusedUploadsArePermanent() {
         XCTAssertEqual(Outbox.classify("upload failed (413)"), .failed)
         XCTAssertEqual(Outbox.classify("upload failed (429)"), .retry)

@@ -423,6 +423,32 @@ struct LinkBlock: View {
     }
 }
 
+/// Two buttons side by side under a link (Copy link · Share…): equal widths, the system's
+/// bordered style at its large size (at least 44 pt tall). Xavier 2026-11-21: they were short and
+/// uneven (the label alone took the bordered capsule's width).
+struct LinkButtons: View {
+    let url: String
+    var copyTitle = "Copy link"
+    var subject = ""
+    var message = ""
+    var body: some View {
+        HStack(spacing: 10) {
+            CopyRow(text: url, title: copyTitle, wide: true)
+                .disabled(url.isEmpty)
+            if let u = URL(string: url), !url.isEmpty {
+                ShareLink(item: u, subject: Text(subject), message: Text(message)) {
+                    Label("Share…", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity, minHeight: 34)
+                }
+            } else {
+                Button {} label: { Label("Share…", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity, minHeight: 34) }
+                    .disabled(true)
+            }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+    }
+}
+
 /// A QR code on white (scannable in dark mode too) and its text.
 struct QRRow: View {
     let url: String
@@ -447,6 +473,8 @@ struct QRRow: View {
 struct CopyRow: View {
     let text: String
     var title = "Copy"
+    /// Side by side with another button: as wide as it can be (the pair gets equal widths).
+    var wide = false
     @State private var copied = false
     var body: some View {
         Button {
@@ -457,6 +485,7 @@ struct CopyRow: View {
         } label: {
             Label(copied ? "Copied" : title, systemImage: copied ? "checkmark" : "doc.on.doc")
                 .contentTransition(.symbolEffect(.replace))
+                .frame(maxWidth: wide ? .infinity : nil, minHeight: wide ? 34 : nil)
         }
         .sensoryFeedback(.success, trigger: copied) { _, new in new }
         .accessibilityLabel(copied ? "Copied" : title)

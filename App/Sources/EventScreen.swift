@@ -693,14 +693,8 @@ struct EventFullPart: View {
             PDHeader(text: "Address")
             Text(url).font(.footnote.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
                 .padding(.horizontal, 16)
-            HStack(spacing: 10) {
-                CopyRow(text: url, title: "Copy link").buttonStyle(.bordered)
-                if let u = URL(string: url) {
-                    ShareLink(item: u, subject: Text(e.title), message: Text(e.title)) { Label("Share…", systemImage: "square.and.arrow.up") }
-                        .buttonStyle(.bordered)
-                }
-            }
-            .padding(.horizontal, 16)
+            LinkButtons(url: url, subject: e.title, message: e.title)
+                .padding(.horizontal, 16)
         }
     }
 

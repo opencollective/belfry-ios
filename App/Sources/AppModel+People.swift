@@ -204,7 +204,7 @@ extension AppModel {
     }
 
     func saveExtras(tags: [String], share: Share, place: Place?) {
-        engine?.enqueue(Actions.saveExtras(tags: tags, share: share, place: place))
+        engine?.enqueue(Actions.saveExtras(tags: tags, share: share, place: place, current: derive.myExtrasContent))
     }
 
     func searchPlaces(_ q: String) async -> [Place] {
