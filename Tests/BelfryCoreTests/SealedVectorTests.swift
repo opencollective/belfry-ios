@@ -222,9 +222,10 @@ final class SealedVectorTests: XCTestCase {
             XCTAssertEqual(event.rawValue, exp["event"] as? String, at)
             XCTAssertEqual(p, try pin(exp["pin"]), at)
             let ec = dict(exp["chain"])
-            XCTAssertEqual(got?.rosters.map(\.id), ec["valid_ids"] as? [String], at)
+            // no chain: the lists are empty, the rest null
+            XCTAssertEqual(got?.rosters.map(\.id) ?? [], ec["valid_ids"] as? [String] ?? [], at)
             XCTAssertEqual(got?.head.id, ec["head"] as? String, at)
-            XCTAssertEqual(got?.devices, ec["devices"] as? [String], at)
+            XCTAssertEqual(got?.devices ?? [], ec["devices"] as? [String] ?? [], at)
             XCTAssertEqual(got?.lb, ec["lb"] as? String, at)
             if got != nil { XCTAssertEqual(got?.ready, ec["ready"] as? Bool, at) }
         }

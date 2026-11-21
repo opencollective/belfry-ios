@@ -1001,7 +1001,9 @@ public final class SealedEngine: @unchecked Sendable {
         // the new secret goes out only once the relay holds the roster that uses it (a device
         // that misses it asks, and is answered: the lost hand-over path)
         guard await settled(r, now: now) else { return false }
-        for d in stay where d != devicePub && live.contains(d) { hand(d, k, now: now) }
+        // (after a switch, never to a device nobody vouched for: it asks, through the Allow card)
+        let after = chain(me) ?? c
+        for d in stay where d != devicePub && live.contains(d) && !unvouched(d, after) { hand(d, k, now: now) }
         if let next = chain(me) { await writeNames(next) }
         return true
     }
