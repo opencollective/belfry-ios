@@ -386,3 +386,15 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   button is `.brand` (borderedProminent was white on white in dark mode). `belfry:offer-decide`
   (ids offer-50 / offer-75 / offer-100 / offer-no) is known since the next commit: its own question, "Answer". Demo channel #requests;
   screens `reqclose`, `reqcloseconfirm`.
+
+- 2026-11-21 release 0.7.4 (MARKETING_VERSION follows Android's number since 0.7.1, the lead):
+  the connection manager (SPEC 19.64 = Android 19.50: `BunkerSigner.relay` is the one signer
+  socket, owned by `SyncEngine` with groups/main; 5 s probe, 25 s quiet ping, pre-send ping after
+  10 s, a timeout drops its socket, 1/2/4/8/16/30 s, outbox lanes `OutboxPass.lane`, the send line
+  `SendLineView` + `SendState`, `SendTrace` → About → Diagnostics); pictures, files and audio in
+  DMs (SPEC 19.65, kind 15, AES-256-GCM, `DmFiles` + `DirectMessages+Files`, `DmFilesUI`,
+  vectors/dm-files.json = Android's); the inbox switch per channel (`belfry:inbox:<group>`);
+  Copy link · Share… as `LinkButtons`. A full suite for a patch version: dispatch `-f full=true`
+  on a release branch at the same commit, then fast-forward main (a dispatch on main would upload
+  a second build). Screens `sendstill`, `sendnotyet`, `diagnostics`, `dmfiles`, `dmfilessending`,
+  `eventaddress`.

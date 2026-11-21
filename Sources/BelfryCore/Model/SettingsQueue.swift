@@ -11,7 +11,7 @@ public enum SettingsQueue {
     /// Which part of a channel's settings ITEM changes, or nil when it is something else.
     public static func part(_ item: OutboxItem) -> Part? {
         if item.kind == 9002 { return .meta }
-        if item.kind == 30078, item.tags.contains(where: { $0.count >= 2 && $0[0] == "d" && $0[1] == Derive.inboxD }) { return .inbox }
+        if item.kind == 30078, item.tags.contains(where: { $0.count >= 2 && $0[0] == "d" && ($0[1] == Derive.inboxD || $0[1].hasPrefix(Derive.inboxD + ":")) }) { return .inbox }
         if item.kind == 30078, item.tags.contains(where: { $0.count >= 2 && $0[0] == "d" && $0[1].hasPrefix(Derive.webD) }) { return .visibility }
         return nil
     }

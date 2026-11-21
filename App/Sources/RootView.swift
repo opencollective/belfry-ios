@@ -618,7 +618,7 @@ struct RootView: View {
         case "eventform":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.launchEventForm = true }
-        case "event", "eventup", "eventfull", "eventphotos", "eventpeople", "ticket", "checkin", "eventrole":
+        case "event", "eventup", "eventfull", "eventaddress", "eventphotos", "eventpeople", "ticket", "checkin", "eventrole":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openEvent = "repair-cafe" }
         case "checkincard":

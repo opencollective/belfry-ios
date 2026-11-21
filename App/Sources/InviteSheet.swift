@@ -194,27 +194,26 @@ struct InviteSheet: View {
         Section {
             HStack(spacing: 10) {
                 let text = who == .agent ? agentPrompt : link?.url
-                CopyRow(text: text ?? "", title: who == .agent ? "Copy" : "Copy link")
-                    .frame(maxWidth: .infinity)
-                    .buttonStyle(.bordered)
+                CopyRow(text: text ?? "", title: who == .agent ? "Copy" : "Copy link", wide: true)
                     .disabled(text == nil)
                 if let text, let u = URL(string: link?.url ?? "") {
                     SwiftUI.Group {
                         if who == .agent {
-                            ShareLink(item: text) { Label("Share…", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity) }
+                            ShareLink(item: text) { Label("Share…", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity, minHeight: 34) }
                         } else {
                             ShareLink(item: u, subject: Text(label), message: Text("Join \(label) on \(model.config.name)")) {
-                                Label("Share…", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity)
+                                Label("Share…", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity, minHeight: 34)
                             }
                         }
                     }
-                    .buttonStyle(.bordered)
                 } else {
-                    Button {} label: { Label("Share…", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity) }
-                        .buttonStyle(.bordered)
+                    Button {} label: { Label("Share…", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity, minHeight: 34) }
                         .disabled(true)
                 }
             }
+            // equal widths, at least 44 pt tall, the system's bordered style (Xavier 2026-11-21)
+            .buttonStyle(.bordered)
+            .controlSize(.large)
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
         }

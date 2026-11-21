@@ -97,11 +97,18 @@ public enum People {
     }
 
     /// The content of the event that saves my tags and place.
-    public static func extrasContent(tags: [String], share: Share, place: Place?) -> String {
+    /// The keys of `belfry:profile` this app writes; every other key (the website's `headline`,
+    /// `links`, anything newer) is kept as it is (SPEC 19.5, the lead 2026-11-21).
+    public static let ownKeys: Set<String> = ["tags", "share", "place"]
+
+    /// CURRENT: my latest `belfry:profile` content (nil or unreadable: an empty object).
+    public static func extrasContent(tags: [String], share: Share, place: Place?, current: String? = nil) -> String {
         var kept: Place?
         if share != .none, let place { kept = share == .country ? Place(country: place.country) : place }
-        var o: [String: Any] = ["tags": cleanTags(tags), "share": share.rawValue]
-        if let kept { o["place"] = placeJSON(kept) }
+        var o = current.flatMap { JSON.parse($0) as? [String: Any] } ?? [:]
+        o["tags"] = cleanTags(tags)
+        o["share"] = share.rawValue
+        if let kept { o["place"] = placeJSON(kept) } else { o.removeValue(forKey: "place") }
         return JSON.encode(o)
     }
 
