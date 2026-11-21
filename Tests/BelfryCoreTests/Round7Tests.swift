@@ -733,6 +733,9 @@ final class SealedWordsTests: XCTestCase {
         XCTAssertNil(SealedWords.change(added: true, at: now + 60, now: now, calendar: cal))
         XCTAssertEqual(SealedWords.added(now - 100 * day, calendar: cal), "Added 12 Aug")
         XCTAssertEqual(SealedWords.added(now - 49 * day, from: "iPhone", calendar: cal), "Added 2 Oct · from iPhone")
+    }
+}
+
 // 2026-11-20: the colours a belfry gives per appearance (`branding.colors`): the tint is never
 // the raw primary (a dark brand colour was unreadable on black).
 final class BrandColorsTests: XCTestCase {
