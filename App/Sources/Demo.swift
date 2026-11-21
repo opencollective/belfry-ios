@@ -328,10 +328,10 @@ enum Demo {
         evs.append(ev(you, 30078, now - 15 * day + 5, Actions.setInbox(inbox, on: true).tags, "{\"on\":true}"))
         // SPEC 19.34: Sam (an admin of the belfry) sorted the channels into categories; the repair
         // café sits in a category of its own
-        let layout: [String: Any] = ["order": ["general", "garden-3f2a", "kitchen-7d10", inbox, "repair-cafe-91bc", "proposals", "website", "board-5d1e"],
+        let layout: [String: Any] = ["order": ["general", "garden-3f2a", "kitchen-7d10", inbox, "repair-cafe-91bc", "proposals", "website", "requests", "board-5d1e"],
                                      "categories": [["id": "life", "channels": ["garden-3f2a", "kitchen-7d10", inbox]],
                                                     ["id": "making-4b1c", "name": "Making & mending", "channels": ["repair-cafe-91bc"]],
-                                                    ["id": "building", "channels": ["proposals", "website", "board-5d1e"]]]]
+                                                    ["id": "building", "channels": ["proposals", "website", "requests", "board-5d1e"]]]]
         evs.append(ev(you, 30078, now - 14 * day, [["d", Derive.orderD]], JSON.encode(layout)))
         // the same by Ana, who is the belfry's admin in the `-member` demo
         evs.append(ev(ps["ana"]!, 30078, now - 14 * day, [["d", Derive.orderD]], JSON.encode(layout)))
@@ -379,6 +379,23 @@ enum Demo {
         evs.append(p2)
         evs.append(ev(groupsKey, 1985, now - day + 604, [["L", Buttons.resultNS], ["l", "error", Buttons.resultNS], ["e", v2.id], ["press", p2.id], ["p", p2.pubkey], ["h", "website"], ["code", "failed"]],
                       "Couldn't publish: the preview has no front page."))
+        // request cards (docs/actions.md section 4): one closed by Ana, one open with its Close button
+        channel("requests", "requests", "Requests from the website's form", admins: [me, ps["ana"]!.pubkey], members: all, at: now - 10 * day)
+        let closeButton: Tag = ["button", "close", "Close", "primary", Buttons.requestClose]
+        let r1 = ev(ps["chloe"]!, 9, now - 4 * day, [["h", "requests"], closeButton],
+                    "**Repair café talk**\n*Talk or workshop*\nCould I give a short talk on fixing bikes at the next repair café?")
+        let r2 = ev(ps["dev"]!, 9, now - 5400, [["h", "requests"], closeButton],
+                    "**Sponsoring the summer fair**\n*Sponsoring*\nOur bakery would like to sponsor the summer fair. Who can we talk to?")
+        let r3 = ev(signer("guest"), 9, now - 1800, [["h", "requests"], closeButton],
+                    "**Room for a choir rehearsal**\n*General enquiry*\nIs the hall free on Thursday evenings for a small choir?")
+        let rp2 = ev(ps["emma"]!, 1985, now - 1700, Buttons.press(messageId: r3.id, author: r3.pubkey, group: "requests", button: "close").tags)
+        evs += [r1, r2, r3, rp2]
+        evs.append(ev(groupsKey, 1985, now - 1697, [["L", Buttons.resultNS], ["l", "ok", Buttons.resultNS], ["e", r3.id], ["press", rp2.id], ["p", rp2.pubkey], ["h", "requests"], ["closed", "1"]],
+                      "Closed by Emma Lind."))
+        let rp = ev(ps["ana"]!, 1985, now - 3 * day, Buttons.press(messageId: r1.id, author: r1.pubkey, group: "requests", button: "close").tags)
+        evs.append(rp)
+        evs.append(ev(groupsKey, 1985, now - 3 * day + 3, [["L", Buttons.resultNS], ["l", "ok", Buttons.resultNS], ["e", r1.id], ["press", rp.id], ["p", rp.pubkey], ["h", "requests"], ["closed", "1"]],
+                      "Closed by Ana Silva."))
         // guest mode: two people opened a guest link of #general and only read ("2 guests are reading")
         for k in ["reader-1", "reader-2"] {
             evs.append(ev(groupsKey, 9000, now - 900, [["h", "general"], ["p", signer(k).pubkey, "member"], ["guest", "2026-12-12"], ["invited-by", ps["ana"]!.pubkey], ["unsaved", "1"], ["reading", "1"]]))

@@ -94,6 +94,17 @@ final class ButtonsTests: XCTestCase {
     func testUnknownBelfryActionAndDerive() {
         XCTAssertFalse(MessageButton(id: "x", label: "X", action: "belfry:launch-rockets").known)
         XCTAssertTrue(MessageButton(id: "x", label: "X", action: Buttons.websitePublish).known)
+        // Close on a request card: known, asked with the app's own two lines, "Closing" while locked
+        XCTAssertTrue(MessageButton(id: "close", label: "Close", action: "belfry:request-close").known)
+        let q = Buttons.confirmParts(Buttons.confirmText(Buttons.requestClose, domain: "x.org") ?? "")
+        XCTAssertEqual(q.title, "Close this request?")
+        XCTAssertEqual(q.detail, "It stays readable, and people can still comment.")
+        XCTAssertEqual(Buttons.confirmVerb(Buttons.requestClose), "Close")
+        XCTAssertEqual(Buttons.busyLabel(Buttons.requestClose), "Closing")
+        XCTAssertNil(Buttons.busyLabel(Buttons.websitePublish))
+        let one = Buttons.confirmParts(Buttons.confirmText(Buttons.websitePublish, domain: "x.org", paths: ["/a/"]) ?? "")
+        XCTAssertEqual(one.title, "Publish this version of /a/ on https://x.org?")
+        XCTAssertEqual(one.detail, "Only that part of the website changes.")
         XCTAssertTrue(MessageButton(id: "x", label: "X").known)
         // through Derive: the groups key's closing answer shows for everyone, after a restart too
         let me = String(repeating: "a", count: 64), agent = String(repeating: "c", count: 64), gk = String(repeating: "e", count: 64)

@@ -87,6 +87,10 @@ shot 166-proposal-full proposalfull light
 # the channel settings (Save + Archive link) and a refused settings change (the mark, its alert)
 shot 150-website-buttons website light
 shot 150b-website-buttons-dark website dark
+# 2026-11-21: Close on a request card (belfry:request-close) and its question
+shot 150c-request-close reqclose light
+shot 150d-request-close-dark reqclose dark
+shot 150e-request-close-confirm reqcloseconfirm light
 shot 151-settings-failed settingsfailed light
 shot 152-settings-failed-alert settingsfailedalert light
 shot 152b-settings-failed-alert-dark settingsfailedalert dark
