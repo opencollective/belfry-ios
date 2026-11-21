@@ -75,7 +75,16 @@ struct SealedMemory: Codable {
     /// Per device: when this device last handed it the key chain.
     var handed = [String: Int]()
 
-    struct Head: Codable { var lb: String; var devices: [String]; var id: String? }
+    /// `anchored`: this head was seen named by the person's anchor.
+    struct Head: Codable { var lb: String; var devices: [String]; var id: String?; var anchored: Bool? }
+    /// My own account, after an anchor left a head this device had seen anchored (a switch): the
+    /// devices of the head held before. A device of the new head that is not one of them, nor let
+    /// in by one of them or by me since, is never answered without a prompt.
+    var preSwitch: [String]?
+    /// Devices this device allowed by hand after a switch.
+    var allowedSince = [String]()
+    /// Since when this device is in my head without the key.
+    var waitingSince: Int?
     struct Reset: Codable, Hashable { var root: String; var at: Int; var shared: Bool }
 }
 
@@ -253,6 +262,9 @@ public final class SealedEngine: @unchecked Sendable {
         return keys.secret(c.lb) == nil
     }
 
+    /// Since when this device waits for its key (nil: it has it, or is not in my head).
+    public var waitingSince: Int? { lock.lock(); defer { lock.unlock() }; return memory.waitingSince }
+
     public var mine: Mine {
         guard let c = chain(me) else { return .none }
         return c.devices.contains(devicePub) ? .inside : .waiting
@@ -325,9 +337,25 @@ public final class SealedEngine: @unchecked Sendable {
                 }
                 changed = true
             }
+            let (anchors, _) = index()
+            let heads = anchors[a]?.tags.filter { $0.first == "head" } ?? []
+            let named = heads.count == 1 && heads[0].count >= 2 ? heads[0][1] : c.root.id
+            let anchoredNow = named == c.head.id
             if head?.id != c.head.id || head?.lb != c.lb || head?.devices != c.devices {
-                remember(rechain: true) { $0.heads[a] = .init(lb: c.lb, devices: c.devices, id: c.head.id) }
+                // a SWITCH (sealed.md 3.3): same root, the head this device held had been seen
+                // anchored, and the new chain does not pass through it. Followed, but shown like a
+                // fresh start: the key that signs anchors is the server's to use.
+                let switched = pin == c.root.id && head?.anchored == true && head?.id.map { old in !c.rosters.contains { $0.id == old } } == true
+                remember(rechain: true) { m in
+                    if switched {
+                        if a == self.me { m.preSwitch = head?.devices ?? []; m.allowedSince = [] }
+                        else { m.resets[a, default: []].append(.init(root: c.head.id, at: c.head.createdAt, shared: false)) }
+                    }
+                    m.heads[a] = .init(lb: c.lb, devices: c.devices, id: c.head.id, anchored: anchoredNow)
+                }
                 changed = true
+            } else if anchoredNow, head?.anchored != true {
+                remember { $0.heads[a]?.anchored = true }
             }
         }
         if changed { onChange?() }
@@ -755,6 +783,15 @@ public final class SealedEngine: @unchecked Sendable {
         try? await publishAsAccount(RosterChain.anchor(root: c.root.id, head: c.head.id, now: max(now, a.createdAt + 1)), local: false)
     }
 
+    /// After a switch: DEVICE is in my head, but was not in the head held before it, and was let
+    /// in neither by one of those devices nor by me since. It gets no key without the Allow card.
+    private func unvouched(_ d: String, _ c: RosterChain) -> Bool {
+        lock.lock(); let pre = memory.preSwitch, mine = memory.allowedSince; lock.unlock()
+        guard let pre, d != devicePub, !pre.contains(d), !mine.contains(d) else { return false }
+        if let from = c.joined(d)?.from, pre.contains(from) || mine.contains(from) || from == devicePub { return false }
+        return true
+    }
+
     /// A well-formed session list that has this device's own chat session: without it nothing is
     /// concluded (an empty or odd answer removes nobody).
     private func listsMe(_ sessions: [SessionInfo]) -> Bool {
@@ -807,12 +844,16 @@ public final class SealedEngine: @unchecked Sendable {
         // device asks like a new one; a head device that holds the secret answers with the keys
         lock.lock(); let lacks = keys.secret(c.lb) == nil, last = memory.lastRequest, link = self.link; lock.unlock()
         if lacks {
+            lock.lock(); let since = memory.waitingSince; lock.unlock()
+            if since == nil { remember { $0.waitingSince = now } }
             if now - last >= 3600, (try? publish(Sealed.request(account: me, device: devicePub, link: link, now: now))) != nil {
                 remember { $0.lastRequest = now }
             }
             onChange?()
             return []
         }
+        lock.lock(); let waited = memory.waitingSince != nil; lock.unlock()
+        if waited { remember { $0.waitingSince = nil } }
         let gone = c.devices.filter { $0 != devicePub && !live.contains($0) }
         if !gone.isEmpty { return gone }
         // a device I let in whose Allow did not finish here (the relay was slow): its keys now,
@@ -834,6 +875,8 @@ public final class SealedEngine: @unchecked Sendable {
             let fresh = !memory.answeredRequests.contains(e.id) && e.createdAt > (memory.handed[e.pubkey] ?? 0)
             let k = keys
             lock.unlock()
+            // after a switch, a device nobody this device trusts let in asks through the Allow card
+            if unvouched(e.pubkey, c) { continue }
             // (the head is the one this device holds: an older anchor never brings a removed device
             // back.) A request newer than the roster that added the device, a live chat session
             guard fresh, e.createdAt > (c.joined(e.pubkey)?.at ?? Int.max), sessions.contains(where: { $0.clientPubkey == e.pubkey && $0.chat }) else { continue }
@@ -858,7 +901,7 @@ public final class SealedEngine: @unchecked Sendable {
         lock.lock(); let no = denied; lock.unlock()
         var seen = Set<String>()
         return engine.snapshot().filter { $0.kind == SealedKind.request && $0.hasTag("p", me) }.sorted { $0.createdAt > $1.createdAt }.compactMap { e -> (event: NostrEvent, session: SessionInfo)? in
-            guard !c.devices.contains(e.pubkey), !no.contains(e.pubkey), seen.insert(e.pubkey).inserted,
+            guard !c.devices.contains(e.pubkey) || unvouched(e.pubkey, c), !no.contains(e.pubkey), seen.insert(e.pubkey).inserted,
                   let s = sessions.first(where: { $0.clientPubkey == e.pubkey && $0.chat }) else { return nil }
             return (e, s)
         }
@@ -896,6 +939,16 @@ public final class SealedEngine: @unchecked Sendable {
         // decided on what the relay holds now, not on what this device last saw
         guard await refresh([me], now: now), let c = chain(me), c.devices.contains(devicePub) else { return .failed }
         // already in (another device answered first, or my own roster went through after all)
+        if c.devices.contains(newDevice), unvouched(newDevice, c) {
+            // after a switch: in the head by somebody else's roster; the person said Allow here
+            lock.lock(); let no = denied.contains(newDevice), k = keys; lock.unlock()
+            guard !no, !lacksKey, let sessions = await sessions?(), listsMe(sessions),
+                  sessions.contains(where: { $0.clientPubkey == newDevice && $0.chat }) else { return .failed }
+            remember { $0.allowedSince.append(newDevice) }
+            hand(newDevice, k, now: now)
+            onChange?()
+            return .done
+        }
         if c.devices.contains(newDevice) {
             // keys only to a device of the ANCHORED head: a roster still past the anchored end is
             // anchored first, and the answer is "not done yet"

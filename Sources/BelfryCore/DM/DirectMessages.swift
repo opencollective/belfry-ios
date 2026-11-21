@@ -179,7 +179,13 @@ public final class DirectMessages: @unchecked Sendable {
         lock.lock()
         let was = lockedWraps
         lockedWraps = locked
+        // a rumor kept for an item that is no longer in the outbox (cancelled, discarded): not kept
+        // any longer (two minutes of grace: a send holds its rumor just before it queues its wraps)
+        let stale = queued.filter { rid, r in r.createdAt < Int.now - 120 && !engine.outboxItems().contains { $0.dm == rid } }.map(\.key)
+        for rid in stale { queued[rid] = nil }
+        let left = queued.mapValues(Sealed.json)
         lock.unlock()
+        if !stale.isEmpty { db.set("dm-queued", left) }
         if changed { save() } else if was != locked { onChange?() }
     }
 
@@ -353,7 +359,11 @@ public final class DirectMessages: @unchecked Sendable {
         guard await s.refresh([account]) else { throw BelfryError.relay("hold: the lock could not be checked") }
         // it can't be sealed just now (this device is not in my head, the person has no letterbox):
         // it waits by itself, never the old way, and never in the way of the items after it
-        do { return try s.wrapOne(rumor, to: account) } catch { throw BelfryError.relay("hold: it can't be locked yet") }
+        do { return try s.wrapOne(rumor, to: account) } catch {
+            // one that can never be locked (over the ceiling) fails with its reason; any other waits
+            if (error as? BelfryError)?.relayMessage == Sealed.tooLong { throw BelfryError.relay("invalid: " + Sealed.tooLong) }
+            throw BelfryError.relay("hold: it can't be locked yet")
+        }
     }
 
     /// The chips under a direct message, for me.

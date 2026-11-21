@@ -901,6 +901,60 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertEqual(cards.map(\.device), [mac.pub])
     }
 
+    /// A SWITCH: the anchor leaves a head that had been seen anchored for another branch of the
+    /// same root (the server holds the key that signs anchors, and here uses a removed device's
+    /// sibling roster). It is followed, but shown like a fresh start to the people who write to
+    /// that person, and on the person's own device a newcomer of that branch gets no key without
+    /// the Allow card.
+    func testASwitchOfAnchorIsShownAndAnswersNobodyWithoutAsking() async throws {
+        let b = FakeBelfry()
+        let (phone, mac) = try await pair(b, "alice")
+        let bob = try b.signIn("bob", "phone")
+        await bob.sealed.maintain(now: now)
+        await b.sync()
+        let conv = "n:" + phone.account
+        XCTAssertTrue(bob.sealed.isSealed(conv, now: now + 6))
+        let r2 = try XCTUnwrap(phone.sealed.chain(phone.account)?.head)
+        // the phone removes the Mac: r3, anchored; everybody has seen it anchored
+        let removed = await phone.sealed.remove(mac.pub, now: now + 50)
+        XCTAssertTrue(removed)
+        await b.sync()
+        let r3 = try XCTUnwrap(bob.sealed.chain(phone.account)?.head)
+        XCTAssertEqual(r3.devices, [phone.pub])
+        XCTAssertTrue(bob.sealed.notices(conv).allSatisfy { !$0.fresh })
+        // a sibling of r3, signed with the removed Mac's key on r2: the phone stays, the Mac stays,
+        // a new device comes in; and an anchor for it, signed with the account's key
+        let evil = secret("alice/evil")
+        let evilPub = try Keys.publicKeyHex(secret: evil)
+        let sibling = try RosterChain.template(account: phone.account, n: r2.n + 1, prev: r2.id, lb: r2.lb, devices: [phone.pub, mac.pub, evilPub], ready: false, now: now + 400)
+            .event(pubkey: "").signed(with: secret("alice/mac"))
+        b.put(sibling)
+        b.put(try RosterChain.anchor(root: try XCTUnwrap(phone.sealed.chain(phone.account)?.root.id), head: sibling.id, now: now + 401).event(pubkey: "").signed(with: secret("alice")))
+        b.lock.lock()
+        for (d, name) in [(mac.pub, "Mac"), (evilPub, "New")] {
+            b.sessions[phone.account]?.append(SessionInfo(applicationName: "Belfry", device: name, redirectOrigin: "", bunkerPubkey: "bunker-x-" + d,
+                                                          createdAt: "2026-11-20T10:00:00Z", lastActivity: nil, clientPubkey: d, chat: true))
+        }
+        b.lock.unlock()
+        b.put(try Sealed.request(account: phone.account, device: evilPub, now: now + 402).event(pubkey: "").signed(with: evil))
+        await b.sync()
+        // Bob follows the anchor, and it reads as a fresh start in his conversation with Alice
+        XCTAssertEqual(bob.sealed.chain(phone.account)?.head.id, sibling.id)
+        XCTAssertEqual(bob.sealed.notices(conv).filter(\.fresh).count, 1)
+        // Alice's phone follows too; the newcomer asks for the keys: no key without the card
+        let before = b.all().filter { $0.kind == 1059 && $0.hasTag("p", evilPub) }.count
+        await phone.sealed.maintain(now: now + 403)
+        await drain(phone.engine)
+        XCTAssertEqual(phone.sealed.chain(phone.account)?.head.id, sibling.id)
+        XCTAssertEqual(b.all().filter { $0.kind == 1059 && $0.hasTag("p", evilPub) }.count, before)
+        let cards = await phone.sealed.asks()
+        XCTAssertTrue(cards.map(\.device).contains(evilPub))
+        // Not me: its session is revoked, and it still has nothing
+        let refused = await phone.sealed.deny(evilPub)
+        XCTAssertTrue(refused)
+        XCTAssertEqual(b.all().filter { $0.kind == 1059 && $0.hasTag("p", evilPub) }.count, before)
+    }
+
     /// The first flush of a launch: the sealed engine is not attached yet, and a queued wrap must
     /// not leave unchecked. The hook is there from the moment Messages exists.
     func testNoQueuedWrapLeavesBeforeTheEngineIsAttached() async throws {

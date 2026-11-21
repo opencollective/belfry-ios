@@ -85,6 +85,8 @@ struct SealedState: Equatable {
     /// In my head, the key not here yet: sealed conversations show "Waiting for another of your
     /// devices" in place of the composer.
     var waitingForKey = false
+    /// It has waited more than a day: "None of your other devices has answered."
+    var waitingLong = false
     var ask: AllowAsk?
     /// Asks the user closed without an answer (20 devices already): not shown again in this run.
     var dismissed: Set<String> = []
@@ -244,6 +246,7 @@ extension AppModel {
         st.notAllowed = se.mine == .waiting
         st.missingKeys = dms.lockedWraps > 0
         st.waitingForKey = se.lacksKey
+        st.waitingLong = st.waitingForKey && (se.waitingSince.map { Int.now - $0 > 86400 } ?? false)
         for t in dms.threads() {
             let conv = t.conv
             if MailThreads.isMail(conv) {

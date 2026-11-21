@@ -283,10 +283,16 @@ struct ConversationView: View {
             if locked || (sealed != nil && model.sealed.waitingForKey) {
                 // not allowed yet: a plain grey line. Allowed, the key not here yet: the same line
                 // with a small spinner (board messages/encryption-waiting); it clears by itself
-                HStack(spacing: 8) {
-                    if !locked { ProgressView().controlSize(.small) }
-                    Text(locked ? "You can write here once this device is allowed." : "Waiting for another of your devices…")
-                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                VStack(spacing: 4) {
+                    HStack(spacing: 8) {
+                        if !locked { ProgressView().controlSize(.small) }
+                        Text(locked ? "You can write here once this device is allowed." : "Waiting for another of your devices…")
+                            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    }
+                    // after a day without an answer (the way out, starting fresh, is not built yet)
+                    if !locked, model.sealed.waitingLong {
+                        Text("None of your other devices has answered.").font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 16).padding(.vertical, 14)
