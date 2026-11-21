@@ -423,6 +423,8 @@ final class AppModel: ObservableObject {
             // the relay is asked for the sealed kinds from the first connection; the engine itself
             // starts once the account's key is known (`ensureSealed`)
             e.sealedDevice = dev
+            // before the engine starts: no queued wrap leaves until the sealed engine can check it
+            d.sealedExpected = true
             e.onNewEvents = { [weak d, weak rs, weak self] list in
                 if list.contains(where: { $0.kind == 1059 || $0.kind == 4 }) { Task { await d?.process() } }
                 rs?.offer(list)

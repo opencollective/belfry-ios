@@ -278,8 +278,8 @@ struct ConversationView: View {
         .onDisappear { if model.visibleConversation == conv { model.visibleConversation = nil } }
         .onChange(of: list.count) { _, _ in model.markConversationRead(conv) }
         .bottomBar {
-            if locked {
-                Text("You can write here once this device is allowed.")
+            if locked || (sealed != nil && model.sealed.waitingForKey) {
+                Text(locked ? "You can write here once this device is allowed." : "Waiting for another of your devices.")
                     .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 16).padding(.vertical, 14)

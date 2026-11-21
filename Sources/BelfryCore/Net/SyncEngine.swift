@@ -383,7 +383,7 @@ public final class SyncEngine: @unchecked Sendable {
             if same { self.retryLater(t) }
         }
         try await r.connect()
-        lock.lock(); relays[t] = r; attempts[t] = 0; lock.unlock()
+        lock.lock(); relays[t] = r; attempts[t] = 0; connNumber[t, default: 0] += 1; lock.unlock()
         return r
     }
 
@@ -480,37 +480,51 @@ public final class SyncEngine: @unchecked Sendable {
         ]
     }
 
-    /// Sealed conversations (docs/sealed.md): the anchors and rosters of everybody, the requests
-    /// for my account, the key hand-overs to this device, my device names. Always whole (no `since`).
-    public var sealedDevice: String?
-    /// Tests: a local-only engine's "relay" refuses an event (the reason, as a relay would give it).
-    var localRefuse: ((NostrEvent) -> String?)?
-
-    /// The socket open now for T (to tell one connection from the next).
-    public func connection(_ t: Target) -> ObjectIdentifier? {
+    /// The connection open now for T, when it is authenticated: a number that changes with every
+    /// new socket (never an object's identity, which a later socket could reuse).
+    public func connection(_ t: Target) -> Int? {
         lock.lock(); defer { lock.unlock() }
-        return relays[t].flatMap { $0.authed ? ObjectIdentifier($0) : nil }
+        guard let r = relays[t], r.authed else { return nil }
+        return connNumber[t]
     }
+    private var connNumber = [Target: Int]()
 
-    /// Everything a filter matches, from the start, in pages (an authenticated, complete answer
-    /// per page). False when a page did not come: the caller knows nothing for sure.
-    public func fetchAll(_ base: [String: Any], page: Int = 500) async -> Bool {
-        if localOnly { return false }
-        var until = Int.now + 3 * 86400
-        for _ in 0..<200 {
-            var f = base
-            f["until"] = until
-            f["limit"] = page
-            guard let got = await queryAuthed(.main, [f], timeout: 15) else { return false }
-            add(got)
-            guard got.count >= page, let oldest = got.map(\.createdAt).min(), oldest < until else { return true }
-            until = oldest
+    /// Everything a question matches, from the start, in pages. ASK answers one page (the newest
+    /// events not after `until`, at most `limit`), or nil when it could not answer. A relay may
+    /// cap `limit` below what was asked (ours gives 300 at most), so a short page proves nothing:
+    /// only an EMPTY page, or one that brings nothing new at a time already asked, ends it.
+    /// False when a page did not come: the caller knows nothing for sure.
+    static func pageAll(limit: Int = 300, from: Int, ask: (_ until: Int, _ limit: Int) async -> [NostrEvent]?, take: ([NostrEvent]) -> Int) async -> Bool {
+        var until = from
+        for _ in 0..<2000 {
+            guard let got = await ask(until, limit) else { return false }
+            if got.isEmpty { return true }
+            let fresh = take(got)
+            guard let oldest = got.map(\.createdAt).min() else { return true }
+            // the same second again with nothing new: step over it
+            until = oldest < until ? oldest : (fresh == 0 ? oldest - 1 : oldest)
         }
         return true
     }
+
+    public func fetchAll(_ base: [String: Any]) async -> Bool {
+        if localOnly { return false }
+        return await SyncEngine.pageAll(from: Int.now + 3 * 86400, ask: { until, limit in
+            var f = base
+            f["until"] = until
+            f["limit"] = limit
+            return await self.queryAuthed(.main, [f], timeout: 15)
+        }, take: { self.add($0).count })
+    }
+
+    /// Sealed conversations (docs/sealed.md): the anchors and rosters of everybody, the requests
+    /// for my account, the key hand-overs to this device, my device names. Always whole (no `since`).
+    public var sealedDevice: String?
     /// A queued sealed wrap, made again for the head its letterbox moved to; nil = send it as it is.
     /// Throws to keep the item for a later try (its people's heads could not be checked just now).
     public var reseal: ((OutboxItem) async throws -> NostrEvent?)?
+    /// Tests: a local-only engine's "relay" refuses an event (the reason, as a relay would give it).
+    var localRefuse: ((NostrEvent) -> String?)?
     var sealedFilters: [[String: Any]] {
         guard let d = sealedDevice else { return [] }
         return [
@@ -565,28 +579,18 @@ public final class SyncEngine: @unchecked Sendable {
         }
     }
 
-    /// Every gift wrap addressed to me, from the start, in pages (after a device was given keys:
-    /// what it could not read before is asked again, sealed.md 5.5).
-    public func fetchAllWraps() async {
-        if localOnly { return }
-        var until = Int.now + 3 * 86400
-        for _ in 0..<40 {
-            guard let page = await queryAuthed(.main, [["kinds": [1059], "#p": [me], "until": until, "limit": 500]], timeout: 15), !page.isEmpty else { return }
-            add(page)
-            guard let oldest = page.map(\.createdAt).min(), oldest < until else { return }
-            until = oldest
-            if page.count < 500 { return }
-        }
-    }
+    /// Every gift wrap addressed to me, from the start (after a device was given keys: what it
+    /// could not read before is asked again, sealed.md 5.5).
+    public func fetchAllWraps() async { _ = await fetchAll(["kinds": [1059], "#p": [me]]) }
 
     /// Whether T's live subscription was answered after AUTH on the connection that is open now
     /// (a question asked before that, or on an earlier connection, proves nothing).
     public func answeredAfterAuth(_ t: Target) -> Bool {
         lock.lock(); defer { lock.unlock() }
         guard let r = relays[t], r.authed else { return false }
-        return liveAnswer[t] == ObjectIdentifier(r)
+        return liveAnswer[t] == connNumber[t]
     }
-    private var liveAnswer = [Target: ObjectIdentifier]()
+    private var liveAnswer = [Target: Int]()
 
     /// A one-off question whose answer counts as knowledge: asked on an authenticated socket,
     /// complete to EOSE, the socket still the same and still authenticated at the end. Nil otherwise.
@@ -622,7 +626,7 @@ public final class SyncEngine: @unchecked Sendable {
             }
             return
         }
-        if sub.hasPrefix("live-"), r.authed { lock.lock(); authedAnswer.insert(t); liveAnswer[t] = ObjectIdentifier(r); lock.unlock() }
+        if sub.hasPrefix("live-"), r.authed { lock.lock(); authedAnswer.insert(t); if relays[t] === r { liveAnswer[t] = connNumber[t] }; lock.unlock() }
         eose(t, sub)
     }
     static var authGrace: TimeInterval = 5

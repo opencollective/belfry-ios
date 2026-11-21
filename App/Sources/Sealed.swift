@@ -82,6 +82,9 @@ struct SealedState: Equatable {
     var notAllowed = false
     /// It holds a wrap for one of my own letterboxes that it has no key for: the banner, nothing else.
     var missingKeys = false
+    /// In my head, the key not here yet: sealed conversations show "Waiting for another of your
+    /// devices" in place of the composer.
+    var waitingForKey = false
     var ask: AllowAsk?
     /// Asks the user closed without an answer (20 devices already): not shown again in this run.
     var dismissed: Set<String> = []
@@ -240,6 +243,7 @@ extension AppModel {
         }
         st.notAllowed = se.mine == .waiting
         st.missingKeys = dms.lockedWraps > 0
+        st.waitingForKey = se.lacksKey
         for t in dms.threads() {
             let conv = t.conv
             if MailThreads.isMail(conv) {

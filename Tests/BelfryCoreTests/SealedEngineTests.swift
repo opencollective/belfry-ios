@@ -64,6 +64,7 @@ private final class FakeBelfry: @unchecked Sendable {
                                 attachmentsDir: FileManager.default.temporaryDirectory)
         let sealed = try XCTUnwrap(SealedEngine(engine: engine, deviceSecret: key, store: MemoryKeyStore()))
         sealed.runsLocally = true
+        sealed.followUps = []
         sealed.mayStart = true
         sealed.removalWait = 0...0
         sealed.askAnchor = { [weak self] in self?.all().filter { $0.kind == 30078 && $0.pubkey == account.pubkey && $0.tag("d") == SealedKind.anchorD } }
@@ -101,6 +102,7 @@ private final class FakeBelfry: @unchecked Sendable {
                                 attachmentsDir: FileManager.default.temporaryDirectory)
         let sealed = try XCTUnwrap(SealedEngine(engine: engine, deviceSecret: key, store: MemoryKeyStore()))
         sealed.runsLocally = true
+        sealed.followUps = []
         sealed.mayStart = true
         sealed.removalWait = 0...0
         sealed.askAnchor = { [weak self] in self?.all().filter { $0.kind == 30078 && $0.pubkey == account.pubkey && $0.tag("d") == SealedKind.anchorD } }
@@ -867,6 +869,129 @@ final class SealedEngineTests: XCTestCase {
         // another account in the same slot never gets this chain
         owner = try Keys.publicKeyHex(secret: secret("bob"))
         XCTAssertTrue(store.load().isEmpty)
+    }
+
+    /// An older anchor published again (by the server, say) never makes a removed device
+    /// "already allowed": the head this device holds stands, and no key goes to that device.
+    func testAnOlderAnchorDoesNotBringARemovedDeviceBack() async throws {
+        let b = FakeBelfry()
+        let (phone, mac) = try await pair(b, "alice")
+        let withMac = try XCTUnwrap(phone.sealed.chain(phone.account))
+        let removed = await phone.sealed.remove(mac.pub, now: now + 50)
+        XCTAssertTrue(removed)
+        await b.sync()
+        let head = try XCTUnwrap(phone.sealed.chain(phone.account))
+        XCTAssertEqual(head.devices, [phone.pub])
+        let before = b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }.count
+        // the anchor that named the roster with the Mac, again, newer; the Mac's session back; it asks
+        let old = try RosterChain.anchor(root: withMac.root.id, head: withMac.head.id, now: now + 500).event(pubkey: "").signed(with: secret("alice"))
+        b.put(old)
+        b.lock.lock()
+        b.sessions[phone.account]?.append(SessionInfo(applicationName: "Belfry", device: "Mac", redirectOrigin: "", bunkerPubkey: "bunker-again",
+                                                      createdAt: "2026-11-20T10:00:00Z", lastActivity: nil, clientPubkey: mac.pub, chat: true))
+        b.lock.unlock()
+        b.put(try Sealed.request(account: phone.account, device: mac.pub, now: now + 501).event(pubkey: "").signed(with: secret("alice/mac")))
+        await b.sync()
+        await phone.sealed.maintain(now: now + 502)
+        await drain(phone.engine)
+        // the head it holds stands; the request is one to ask about (a card), never answered by itself
+        XCTAssertEqual(phone.sealed.chain(phone.account)?.head.id, head.head.id)
+        XCTAssertEqual(b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }.count, before)
+        let cards = await phone.sealed.asks()
+        XCTAssertEqual(cards.map(\.device), [mac.pub])
+    }
+
+    /// The first flush of a launch: the sealed engine is not attached yet, and a queued wrap must
+    /// not leave unchecked. The hook is there from the moment Messages exists.
+    func testNoQueuedWrapLeavesBeforeTheEngineIsAttached() async throws {
+        let b = FakeBelfry()
+        let alice = try b.signIn("alice", "phone")
+        alice.engine.reseal = nil
+        let dms = DirectMessages(engine: alice.engine)
+        dms.sealedExpected = true
+        let hook = try XCTUnwrap(alice.engine.reseal) // installed by Messages itself, before any start
+        let wrap = try Sealed.wrap(GiftWrap.rumor(kind: 14, pubkey: alice.account, tags: [["p", alice.account]], content: "x", createdAt: now),
+                                   device: secret("alice/phone"), to: alice.account, lb: try Keys.publicKeyHex(secret: secret("lb")))
+        let item = OutboxItem(target: .main, kind: 1059, content: wrap.content, tags: wrap.tags, createdAt: wrap.createdAt, signed: wrap, dm: "rumor-id")
+        do { _ = try await hook(item); XCTFail("a wrap left before the lock could be checked") } catch let e as BelfryError {
+            XCTAssertTrue(e.relayMessage.hasPrefix("hold:"))
+        }
+        // a session that never seals (the demo, a guest reading): as before
+        dms.sealedExpected = false
+        let free = try await hook(item)
+        XCTAssertNil(free)
+        // attached: checked like any other
+        dms.sealedExpected = true
+        dms.sealed = alice.sealed
+        await alice.sealed.maintain(now: now)
+        _ = try await hook(item)
+    }
+
+    /// "Not sealed" goes by the message's date against the time this device first saw the
+    /// conversation sealed, never by when it arrived: history read later is history.
+    func testOldStyleHistoryIsNotMarkedByArrival() async throws {
+        let b = FakeBelfry()
+        let alice = try b.signIn("alice", "phone")
+        await alice.sealed.maintain(now: now)
+        let (bob, _) = try await pair(b, "bob")
+        await b.sync()
+        let aliceDms = DirectMessages(engine: alice.engine)
+        aliceDms.sealed = alice.sealed
+        let bobDms = DirectMessages(engine: bob.engine)
+        bobDms.sealed = bob.sealed
+        try await aliceDms.send("Sealed now", in: "n:" + bob.account)
+        await b.sync()
+        await bobDms.process()
+        let conv = "n:" + alice.account
+        let since = try XCTUnwrap(bob.sealed.sealedSince(conv))
+        let first = try XCTUnwrap(bobDms.thread(conv).first)
+        // history from before the conversation sealed arrives only now: a message and a reaction
+        let key = try LocalSigner(secret: secret("alice"))
+        let before = GiftWrap.rumor(kind: 14, pubkey: alice.account, tags: [["p", bob.account]], content: "Long ago", createdAt: since - 86400)
+        let liked = GiftWrap.rumor(kind: 7, pubkey: alice.account, tags: [["e", first.rid], ["p", bob.account]], content: "👍", createdAt: since - 10)
+        // and two dated after it sealed
+        let after = GiftWrap.rumor(kind: 14, pubkey: alice.account, tags: [["p", bob.account]], content: "Old app", createdAt: since + 60)
+        let late = GiftWrap.rumor(kind: 7, pubkey: alice.account, tags: [["e", first.rid], ["p", bob.account]], content: "🔥", createdAt: since + 61)
+        for r in [before, liked, after, late] { bob.engine.add([try await GiftWrap.wrap(r, to: bob.account, signer: key)], verify: false) }
+        await bobDms.process()
+        let thread = bobDms.thread(conv)
+        XCTAssertNil(thread.first { $0.text == "Long ago" }?.unsealed)
+        XCTAssertEqual(thread.first { $0.text == "Old app" }?.unsealed, true)
+        XCTAssertEqual(bobDms.chips(first.rid).map(\.emoji), ["👍"])
+    }
+
+    /// The relay caps a page at 300 whatever is asked: a short page proves nothing; only an empty
+    /// one ends the reading.
+    func testPagingAgainstARelayThatCapsThePage() async {
+        let all = (0..<1000).map { i in NostrEvent(id: "e\(i)", pubkey: "", createdAt: 5000 - i / 3, kind: 1, tags: [], content: "") } // three per second
+        var got = [String: NostrEvent]()
+        var asked = 0
+        let ok = await SyncEngine.pageAll(limit: 500, from: 9999, ask: { until, limit in
+            asked += 1
+            return Array(all.filter { $0.createdAt <= until }.prefix(min(limit, 300)))
+        }, take: { page in
+            let fresh = page.filter { got[$0.id] == nil }
+            for e in page { got[e.id] = e }
+            return fresh.count
+        })
+        XCTAssertTrue(ok)
+        XCTAssertEqual(got.count, 1000)
+        XCTAssertGreaterThan(asked, 3)
+        // a page that does not come: nothing is known for sure
+        let failed = await SyncEngine.pageAll(from: 9999, ask: { _, _ in nil }, take: { $0.count })
+        XCTAssertFalse(failed)
+        // many events in one second (more than a page): stepped over, never a loop
+        let same = (0..<700).map { i in NostrEvent(id: "s\(i)", pubkey: "", createdAt: 100, kind: 1, tags: [], content: "") }
+        var seen = Set<String>()
+        var rounds = 0
+        _ = await SyncEngine.pageAll(from: 9999, ask: { until, limit in
+            rounds += 1
+            return Array(same.filter { $0.createdAt <= until }.prefix(min(limit, 300)))
+        }, take: { page in
+            let n = page.filter { seen.insert($0.id).inserted }.count
+            return n
+        })
+        XCTAssertLessThan(rounds, 10)
     }
 }
 

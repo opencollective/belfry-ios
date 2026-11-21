@@ -139,6 +139,11 @@ public final class SealedEngine: @unchecked Sendable {
     var askAnchor: (() async -> [NostrEvent]?)?
     var removalWait: ClosedRange<UInt64> = 0...60
     var askChains: (([String]) async -> [NostrEvent]?)?
+    /// After a change that ended "not done": the upkeep is run again after these seconds (a roster
+    /// the relay took late is anchored, the hand-over it owed is made) instead of at the next
+    /// event, which may be hours away on a quiet socket.
+    var followUps: [UInt64] = [10, 60, 300]
+    private var following = false
     /// Per person: when the relay last gave a complete answer about their anchor and rosters.
     private var answered = [String: Int]()
 
@@ -238,6 +243,14 @@ public final class SealedEngine: @unchecked Sendable {
         // kept only for the snapshot it was read from (a newer one may have come meanwhile)
         lock.lock(); if chains?.version == v { chains?.cache[account] = .some(c) }; lock.unlock()
         return c
+    }
+
+    /// In my head, but without the head letterbox's secret (its hand-over has not come): it can't
+    /// read what arrives, and says so in place of the composer.
+    public var lacksKey: Bool {
+        guard let c = chain(me), c.devices.contains(devicePub) else { return false }
+        lock.lock(); defer { lock.unlock() }
+        return keys.secret(c.lb) == nil
     }
 
     public var mine: Mine {
@@ -634,6 +647,15 @@ public final class SealedEngine: @unchecked Sendable {
 
     /// The first device (5.1): a new letterbox, a root with this device, the anchor.
     private func startChain(_ sessions: [SessionInfo], now: Int) async {
+        // a root of mine the relay took whose anchor did not follow: that one is anchored, never a
+        // second root made beside it
+        let (_, rosters) = index()
+        lock.lock(); let held = keys; lock.unlock()
+        if let pending = (rosters[me] ?? []).compactMap(Roster.init).first(where: { $0.n == 1 && $0.prev == nil && $0.signer == devicePub && $0.devices == [devicePub] && held.secret($0.lb) != nil }) {
+            try? await publishAsAccount(RosterChain.anchor(root: pending.id, head: pending.id, now: now), local: false)
+            followUp()
+            return
+        }
         lock.lock()
         var k = keys
         guard !closed, let lb = try? k.make() else { lock.unlock(); return }
@@ -665,8 +687,28 @@ public final class SealedEngine: @unchecked Sendable {
         let left = mine()
         for item in left { engine.cancel(item.localId) }
         // read back from the relay, authenticated and complete: on the anchored path, or not done
-        guard await refresh([me], now: now), left.isEmpty, let c = chain(me), c.rosters.contains(where: { $0.id == roster.id }) else { return false }
-        return anchoredPath(c).contains(roster.id)
+        guard await refresh([me], now: now), left.isEmpty, let c = chain(me), c.rosters.contains(where: { $0.id == roster.id }),
+              anchoredPath(c).contains(roster.id) else {
+            followUp() // not done now: looked at again soon
+            return false
+        }
+        return true
+    }
+
+    private func followUp() {
+        lock.lock()
+        if following || closed || followUps.isEmpty { lock.unlock(); return }
+        following = true
+        let delays = followUps
+        lock.unlock()
+        Task { [weak self] in
+            for d in delays {
+                try? await Task.sleep(nanoseconds: d * 1_000_000_000)
+                await self?.maintain()
+            }
+            guard let self else { return }
+            self.lock.lock(); self.following = false; self.lock.unlock()
+        }
     }
 
     /// The ids of the rosters from the root to the head the relay's anchor names.
@@ -775,7 +817,14 @@ public final class SealedEngine: @unchecked Sendable {
         if !gone.isEmpty { return gone }
         // a device I let in whose Allow did not finish here (the relay was slow): its keys now,
         // once its roster is on the anchored path
-        if anchoredPath(c).last == c.head.id { for d in c.devices { give(d, c, now: now) } }
+        if anchoredPath(c).last == c.head.id {
+            for d in c.devices { give(d, c, now: now) }
+            // a removal of mine that the relay took late: the new secret it owed to the devices that stay
+            if c.head.signer == devicePub, c.rosters.count > 1, c.rosters[c.rosters.count - 2].lb != c.lb {
+                lock.lock(); let handed = memory.handed, k = keys; lock.unlock()
+                for d in c.devices where d != devicePub && live.contains(d) && (handed[d] ?? 0) < c.head.createdAt { hand(d, k, now: max(now, c.head.createdAt)) }
+            }
+        }
         // a head device that asks (it lost its hand-over): the keys at once, no prompt, when its
         // chat session is live; once per request; only for a head that is anchored
         for e in engine.snapshot() where e.kind == SealedKind.request && e.hasTag("p", me) && e.pubkey != devicePub && c.devices.contains(e.pubkey)
@@ -785,7 +834,9 @@ public final class SealedEngine: @unchecked Sendable {
             let fresh = !memory.answeredRequests.contains(e.id) && e.createdAt > (memory.handed[e.pubkey] ?? 0)
             let k = keys
             lock.unlock()
-            guard fresh, sessions.contains(where: { $0.clientPubkey == e.pubkey && $0.chat }) else { continue }
+            // (the head is the one this device holds: an older anchor never brings a removed device
+            // back.) A request newer than the roster that added the device, a live chat session
+            guard fresh, e.createdAt > (c.joined(e.pubkey)?.at ?? Int.max), sessions.contains(where: { $0.clientPubkey == e.pubkey && $0.chat }) else { continue }
             remember { m in m.answeredRequests = Array((m.answeredRequests + [e.id]).suffix(300)) }
             hand(e.pubkey, k, now: now)
         }
@@ -860,7 +911,7 @@ public final class SealedEngine: @unchecked Sendable {
         let ready = SealedEngine.mayCarryReady(sessions, devices: devices, now: now)
         // the roster first (signed and anchored, or nothing at all), then the keys: a device never
         // holds keys while it is in no roster
-        guard let r = await publishRoster(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: c.lb, devices: devices, ready: ready, now: now), root: c.root.id, now: now) else { return .failed }
+        guard let r = await publishRoster(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: c.lb, devices: devices, ready: ready, now: now), root: c.root.id, now: now) else { followUp(); return .failed }
         guard await settled(r, now: now) else { onChange?(); return .failed }
         if let after = chain(me) { give(newDevice, after, now: now) }
         onChange?()

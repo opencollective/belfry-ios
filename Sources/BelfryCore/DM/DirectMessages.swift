@@ -27,21 +27,18 @@ public final class DirectMessages: @unchecked Sendable {
     /// Sealed conversations (docs/sealed.md): set by the app for a member's session. From that
     /// moment every queued wrap is checked before it leaves (also the ones a restart found queued).
     public var sealed: SealedEngine? {
-        didSet {
-            guard let s = sealed else { return }
-            engine.reseal = { [weak self] item in try await self?.reseal(item) }
-            s.holdRumor = { [weak self] r in self?.hold(r) }
-        }
+        didSet { sealed?.holdRumor = { [weak self] r in self?.hold(r) } }
     }
+    /// This session can seal (a member's own, not the demo, not a guest reading): set by the app
+    /// when the session opens, BEFORE the engine starts. Until the sealed engine is attached, no
+    /// queued gift wrap leaves: the first flush of a launch must not send one unchecked.
+    public var sealedExpected = false
     /// Wraps kept because this device has no secret for their letterbox (the banner).
     public private(set) var lockedWraps = 0
     /// The rumors of sealed wraps still in the outbox (to seal them again if a head changes).
     private var queued = [String: NostrEvent]()
     /// Reactions that came with a shared history (their take-backs may remove only these).
     private var sharedReactions = Set<String>()
-    /// The first pass over a store that holds no message yet (a new device reading its history):
-    /// old-style messages from before a conversation sealed are history, not "not sealed".
-    private var catchingUp = false
     public private(set) var bridge: String?
     public var onChange: (() -> Void)?
 
@@ -55,6 +52,8 @@ public final class DirectMessages: @unchecked Sendable {
         bridge = db.get("dm-bridge", as: String.self)
         reactions = db.get("dm-reactions", as: DmReactions.self) ?? DmReactions()
         for (rid, json) in db.get("dm-queued", as: [String: String].self) ?? [:] { if let r = NostrEvent.from(json: json) { queued[rid] = r } }
+        // from the first moment: every queued wrap is looked at before it leaves
+        engine.reseal = { [weak self] item in try await self?.reseal(item) }
     }
 
     var me: String { engine.me }
@@ -98,7 +97,6 @@ public final class DirectMessages: @unchecked Sendable {
         var changed = false
         var done = 0
         var locked = 0
-        lock.lock(); catchingUp = items.isEmpty; lock.unlock()
         for e in todo {
             // a sealed wrap opens on this device, never through the signer; one that can't be
             // opened yet (no key here, its author's chain not loaded) is kept and tried again
@@ -131,16 +129,17 @@ public final class DirectMessages: @unchecked Sendable {
                             // device holds it (not what the rumor says about itself)
                             let target = opened.rumor.tagValues("e").last.flatMap { items[$0]?.conv }
                             let conv = target ?? MailThreads.nostrConv(author: opened.rumor.pubkey, pTags: opened.rumor.tagValues("p"), me: me)
-                            if sealed?.sealedSince(conv) == nil || catchingUp { reactions.apply(opened.rumor) }
+                            // ignored only when it is dated after this device first saw that conversation sealed
+                            let since = sealed?.sealedSince(conv)
+                            if since.map({ opened.rumor.createdAt < $0 }) ?? true { reactions.apply(opened.rumor) }
                         }
                         let known = items.values.map { (messageId: $0.messageId, conv: $0.conv) }
                         lock.unlock()
                         d = DmReader.dm(from: opened.rumor, me: me, bridge: bridge, known: known)
                         // the old way, in a conversation already sealed here: marked "not sealed"
-                        // (a conversation sealed on this device: an old-style message new to it is
-                        // marked whatever date it claims, unless this device held it before)
-                        lock.lock(); let held = d.map { items[$0.rid] != nil } ?? false, history = catchingUp; lock.unlock()
-                        if let x = d, x.kind == 14, sealed?.sealedSince(x.conv) != nil, !held, !history { d?.unsealed = true }
+                        // (by its date against the time this device first saw the conversation
+                        // sealed, never by when it arrived: history read later is history)
+                        if let x = d, x.kind == 14, let since = sealed?.sealedSince(x.conv), x.at >= since { d?.unsealed = true }
                     }
                 } else if e.pubkey == me || e.hasTag("p", me), let bunker = engine.signer as? BunkerSigner {
                     let peer = e.pubkey == me ? (e.tag("p") ?? me) : e.pubkey
@@ -278,19 +277,25 @@ public final class DirectMessages: @unchecked Sendable {
         }
         if let s = sealed, let conv, s.isSealed(conv) {
             hold(rumor)
-            for w in try s.wraps(rumor, to: to, selfCopy: selfCopy) { engine.enqueueSigned(w, target: .main, dm: rumor.id) }
+            do {
+                for w in try s.wraps(rumor, to: to, selfCopy: selfCopy) { engine.enqueueSigned(w, target: .main, dm: rumor.id) }
+            } catch { unhold(rumor.id); throw error }
             return
         }
         if let s = sealed, mail, s.mailSealed, let b = to.first {
             guard s.mine == .inside else { throw BelfryError.invalid("You can write here once this device is allowed.") }
             var list = [try s.mailWrap(rumor, bridge: b)]
-            if selfCopy { hold(rumor); list += try s.wraps(rumor, to: [], selfCopy: true) }
+            if selfCopy {
+                hold(rumor)
+                do { list += try s.wraps(rumor, to: [], selfCopy: true) } catch { unhold(rumor.id); throw error }
+            }
             for w in list { engine.enqueueSigned(w, target: .main, dm: rumor.id) }
             return
         }
         var targets = [String]()
         for p in to + (selfCopy ? [me] : []) where !targets.contains(p) { targets.append(p) }
         if sealed != nil, conv != nil { hold(rumor) }
+        defer { unhold(rumor.id) } // nothing queued in the end (the signer refused): nothing kept
         for p in targets {
             let w = try await GiftWrap.wrap(rumor, to: p, signer: engine.signer)
             if engine.localOnly, p == me { engine.add([w], verify: false) }
@@ -307,12 +312,28 @@ public final class DirectMessages: @unchecked Sendable {
         db.set("dm-queued", all)
     }
 
+    /// Nothing of RID is queued (making its wraps failed): its rumor is not kept either.
+    private func unhold(_ rid: String) {
+        guard !engine.outboxItems().contains(where: { $0.dm == rid }) else { return }
+        lock.lock()
+        guard queued[rid] != nil else { lock.unlock(); return }
+        queued[rid] = nil
+        let all = queued.mapValues(Sealed.json)
+        lock.unlock()
+        db.set("dm-queued", all)
+    }
+
     /// A queued wrap, just before it leaves (sealed.md 9). A sealed one: its account's head is
     /// asked from the relay first (no complete answer: it waits for the next try), and it is
     /// sealed again when its letterbox is no longer that head. An old-style one whose conversation
     /// became sealed while it waited is sealed now instead: never the old way once sealed.
     func reseal(_ item: OutboxItem) async throws -> NostrEvent? {
-        guard let s = sealed, let w = item.signed, w.kind == 1059, let account = w.tag("p"), let rid = item.dm else { return nil }
+        guard let w = item.signed, w.kind == 1059, let account = w.tag("p"), let rid = item.dm else { return nil }
+        // the sealed engine is not attached yet (the first moments of a launch): the wrap waits
+        guard let s = sealed else {
+            if sealedExpected { throw BelfryError.relay("hold: the lock is not ready yet") }
+            return nil
+        }
         lock.lock()
         let rumor = queued[rid] ?? items[rid]?.rumor.flatMap(NostrEvent.from(json:))
         lock.unlock()
@@ -326,7 +347,9 @@ public final class DirectMessages: @unchecked Sendable {
         let conv = MailThreads.nostrConv(author: rumor.pubkey, pTags: rumor.tagValues("p"), me: me)
         guard s.isSealed(conv) else { return nil }
         guard await s.refresh([account]) else { throw BelfryError.relay("hold: the lock could not be checked") }
-        return try s.wrapOne(rumor, to: account)
+        // it can't be sealed just now (this device is not in my head, the person has no letterbox):
+        // it waits by itself, never the old way, and never in the way of the items after it
+        do { return try s.wrapOne(rumor, to: account) } catch { throw BelfryError.relay("hold: it can't be locked yet") }
     }
 
     /// The chips under a direct message, for me.
