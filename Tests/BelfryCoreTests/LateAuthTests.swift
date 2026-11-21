@@ -115,6 +115,29 @@ final class LateAuthTests: XCTestCase {
         let r2 = Relay(url: "wss://groups-relay.example.org")
         e.wireAnswers(r2, .groups)
         XCTAssertEqual(r2.refilter?("live-groups")?[0]["since"] as? Int, 1_800_000_000 - 3600)
+        // the replacement socket (a probe failed, a timeout, a network change, SPEC 19.64) follows the
+        // same late-AUTH rule: its pre-AUTH answer counts for nothing, the REQ is sent again after
+        // AUTH with the metadata and the charter whole (no since), and only that EOSE is an answer
+        let frames2 = Frames()
+        r2.testSink = { frames2.add($0) }
+        e.subscribe(.groups, r2)
+        r2.receiveForTest(#"["EOSE","live-groups"]"#)
+        r2.receiveForTest(#"["AUTH","challenge-4"]"#)
+        XCTAssertEqual(answers, 1, "a reconnect's public-only answer is not the relay's")
+        var auth2: String?
+        for _ in 0..<100 where auth2 == nil {
+            if let f = frames2.all.first(where: { $0.hasPrefix("[\"AUTH\"") }),
+               let arr = JSON.parse(f) as? [Any], let ev = arr.last as? [String: Any] { auth2 = ev["id"] as? String }
+            else { try await Task.sleep(nanoseconds: 20_000_000) }
+        }
+        r2.receiveForTest("[\"OK\",\"\(try XCTUnwrap(auth2))\",true,\"\"]")
+        let reqs2 = frames2.all.filter { $0.hasPrefix("[\"REQ\",\"live-groups\"") }
+        XCTAssertEqual(reqs2.count, 2, "sent again after AUTH")
+        let after = try XCTUnwrap(JSON.parse(reqs2[1]) as? [Any]).dropFirst(2).compactMap { $0 as? [String: Any] }
+        XCTAssertTrue(after.contains { ($0["kinds"] as? [Int]) == [39000, 39001, 39002, 39003] && $0["since"] == nil }, "metadata whole")
+        XCTAssertTrue(after.contains { ($0["kinds"] as? [Int]) == [2100] && $0["since"] == nil }, "the charter whole")
+        r2.receiveForTest(#"["EOSE","live-groups"]"#)
+        XCTAssertEqual(answers, 2, "the reconnect's answer after AUTH is the relay's")
     }
 
     /// A group first learned of asks its own history from 0, by its id.
