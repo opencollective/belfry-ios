@@ -84,6 +84,9 @@ struct SealedMemory: Codable {
     /// attacker-after-the-e-mail-code case): shown until the person answers.
     var foreignFresh: ForeignFresh?
     struct ForeignFresh: Codable, Hashable { var root: String; var at: Int; var device: String }
+    /// The roots whose head this device, coming back from an older root, already gave its old key
+    /// chain to (the device that allowed it back; sealed.md 5.4), once each.
+    var handedBack: [String]?
 }
 
 public final class SealedEngine: @unchecked Sendable {
@@ -986,6 +989,12 @@ public final class SealedEngine: @unchecked Sendable {
         // once its roster is on the anchored path
         if anchoredPath(c).last == c.head.id {
             for d in c.devices { give(d, c, now: now) }
+            // a device of an older root of mine, allowed back in after a fresh start: its whole key
+            // chain (the old letterboxes too) goes once to the device that let it in (sealed.md 5.4)
+            lock.lock(); let olds = memory.oldRoots, back = memory.handedBack ?? [], k0 = keys; lock.unlock()
+            if !olds.isEmpty, !back.contains(c.root.id), let j = c.joined(devicePub), let from = j.from, from != devicePub, c.devices.contains(from) {
+                if hand(from, k0, now: now) { remember { m in m.handedBack = (m.handedBack ?? []) + [c.root.id] } }
+            }
             // a removal of mine that the relay took late: the new secret it owed to the devices that stay
             if c.head.signer == devicePub, c.rosters.count > 1, c.rosters[c.rosters.count - 2].lb != c.lb {
                 lock.lock(); let handed = memory.handed, k = keys; lock.unlock()

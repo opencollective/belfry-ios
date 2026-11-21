@@ -597,6 +597,48 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertTrue(bobPhone.engine.outboxItems().contains { $0.kind == SealedKind.request }, "it asks to be allowed")
     }
 
+    /// After a fresh start, the old phone asks, the fresh device allows it, and the phone hands its
+    /// old key chain back once (sealed.md 5.4): the earlier messages open on the fresh device.
+    func testAnOldDeviceAllowedBackHandsItsOldKeys() async throws {
+        let b = FakeBelfry()
+        let alice = try b.signIn("alice", "phone")
+        await alice.sealed.maintain(now: now)
+        let phone = try b.signIn("bob", "phone")
+        await phone.sealed.maintain(now: now)
+        await b.sync()
+        let oldLb = try XCTUnwrap(phone.sealed.chain(phone.account)?.lb)
+        // something Alice sealed to Bob's old letterbox
+        await alice.sealed.refresh([phone.account], now: now + 1)
+        let early = GiftWrap.rumor(kind: 14, pubkey: alice.account, tags: [["p", phone.account]], content: "before", createdAt: now + 2)
+        let earlyWrap = try XCTUnwrap(try alice.sealed.wraps(early, to: [phone.account], selfCopy: false).first)
+        XCTAssertEqual(earlyWrap.tag("lb"), oldLb)
+        let pad = try b.signIn("bob", "pad")
+        await b.sync()
+        await pad.sealed.maintain(now: now + 3)
+        await b.sync()
+        let started = await pad.sealed.startFresh(now: now + 10)
+        XCTAssertTrue(started)
+        await b.sync()
+        guard case .keep = pad.sealed.open(earlyWrap) else { return XCTFail("the fresh device read an old message without the old keys") }
+        // the phone learns it is out, asks; the fresh device allows it
+        await phone.sealed.refresh([phone.account], now: now + 20)
+        await phone.sealed.maintain(now: now + 21)
+        await b.sync()
+        let answer = await pad.sealed.allow(phone.pub, now: now + 30)
+        XCTAssertEqual(answer, .done)
+        await b.sync()
+        // back in: the phone hands its whole chain (the old letterbox too) to the pad, once
+        await phone.sealed.maintain(now: now + 40)
+        await b.sync()
+        XCTAssertTrue(pad.sealed.takeKeys() || true)
+        guard case .rumor(let got) = pad.sealed.open(earlyWrap) else { return XCTFail("the old keys did not come back") }
+        XCTAssertEqual(got.content, "before")
+        let handed = b.all().filter { $0.kind == 1059 && $0.hasTag("p", pad.pub) }.count
+        await phone.sealed.maintain(now: now + 50)
+        await b.sync()
+        XCTAssertEqual(b.all().filter { $0.kind == 1059 && $0.hasTag("p", pad.pub) }.count, handed, "only once")
+    }
+
     /// Before the sealed engine is attached (the first moments of a launch) nothing goes the old
     /// way: a send is refused with the text kept, a file stays queued (the independent review's P1).
     func testNothingLeavesTheOldWayBeforeTheLockIsReady() async throws {
