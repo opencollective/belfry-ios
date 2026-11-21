@@ -787,8 +787,9 @@ public final class SealedEngine: @unchecked Sendable {
     /// in neither by one of those devices nor by me since. It gets no key without the Allow card.
     private func unvouched(_ d: String, _ c: RosterChain) -> Bool {
         lock.lock(); let pre = memory.preSwitch, mine = memory.allowedSince; lock.unlock()
+        // only the devices of the head held before the switch, and those allowed by hand since,
+        // are vouched for: a device this one had let in and later removed comes back unvouched
         guard let pre, d != devicePub, !pre.contains(d), !mine.contains(d) else { return false }
-        if let from = c.joined(d)?.from, pre.contains(from) || mine.contains(from) || from == devicePub { return false }
         return true
     }
 
@@ -863,7 +864,7 @@ public final class SealedEngine: @unchecked Sendable {
             // a removal of mine that the relay took late: the new secret it owed to the devices that stay
             if c.head.signer == devicePub, c.rosters.count > 1, c.rosters[c.rosters.count - 2].lb != c.lb {
                 lock.lock(); let handed = memory.handed, k = keys; lock.unlock()
-                for d in c.devices where d != devicePub && live.contains(d) && (handed[d] ?? 0) < c.head.createdAt { hand(d, k, now: max(now, c.head.createdAt)) }
+                for d in c.devices where d != devicePub && live.contains(d) && !unvouched(d, c) && (handed[d] ?? 0) < c.head.createdAt { hand(d, k, now: max(now, c.head.createdAt)) }
             }
         }
         // a head device that asks (it lost its hand-over): the keys at once, no prompt, when its
@@ -979,7 +980,7 @@ public final class SealedEngine: @unchecked Sendable {
     /// The key chain to a device of my head that this device let in: once per run (a second
     /// hand-over costs nothing; a device in a roster without keys reads nothing).
     private func give(_ d: String, _ c: RosterChain, now: Int) {
-        guard d != devicePub, c.devices.contains(d), let j = c.joined(d), j.from == devicePub, now - j.at < 86400 else { return }
+        guard d != devicePub, c.devices.contains(d), !unvouched(d, c), let j = c.joined(d), j.from == devicePub, now - j.at < 86400 else { return }
         lock.lock()
         let first = given.insert(d).inserted && (memory.handed[d] ?? 0) < j.at
         let k = keys

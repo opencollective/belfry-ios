@@ -947,8 +947,16 @@ final class SealedEngineTests: XCTestCase {
         await drain(phone.engine)
         XCTAssertEqual(phone.sealed.chain(phone.account)?.head.id, sibling.id)
         XCTAssertEqual(b.all().filter { $0.kind == 1059 && $0.hasTag("p", evilPub) }.count, before)
+        // nor does the Mac the phone had removed get the key chain back by asking again
+        let macBefore = b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }.count
+        b.put(try Sealed.request(account: phone.account, device: mac.pub, now: now + 404).event(pubkey: "").signed(with: secret("alice/mac")))
+        await b.sync()
+        await phone.sealed.maintain(now: now + 405)
+        await drain(phone.engine)
+        XCTAssertEqual(b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }.count, macBefore)
         let cards = await phone.sealed.asks()
         XCTAssertTrue(cards.map(\.device).contains(evilPub))
+        XCTAssertTrue(cards.map(\.device).contains(mac.pub))
         // Not me: its session is revoked, and it still has nothing
         let refused = await phone.sealed.deny(evilPub)
         XCTAssertTrue(refused)
