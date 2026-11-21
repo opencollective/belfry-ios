@@ -554,6 +554,37 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertEqual(Discovery.nip05Read(Data(#"{"names":{"lina":"nonsense"}}"#.utf8), status: 200, name: "lina"), .failed)
     }
 
+    /// "I don't have another device" (sealed.md 5.4): a device nobody allowed starts fresh: a new
+    /// root with only it, the anchor replaced; it reads what is sent after; the old root is kept.
+    func testStartFresh() async throws {
+        let b = FakeBelfry()
+        let alice = try b.signIn("alice", "phone")
+        await alice.sealed.maintain(now: now)
+        let bobPhone = try b.signIn("bob", "phone")
+        await bobPhone.sealed.maintain(now: now)
+        await b.sync()
+        let oldRoot = try XCTUnwrap(bobPhone.sealed.chain(bobPhone.account)?.root.id)
+        let pad = try b.signIn("bob", "pad")
+        await b.sync()
+        await pad.sealed.maintain(now: now)
+        await b.sync()
+        XCTAssertEqual(pad.sealed.mine, .waiting, "nobody allowed it")
+        XCTAssertFalse(await bobPhone.sealed.startFresh(now: now + 5), "a device in the head has nothing to start")
+        XCTAssertTrue(await pad.sealed.startFresh(now: now + 10))
+        await b.sync()
+        let chain = try XCTUnwrap(pad.sealed.chain(pad.account))
+        XCTAssertNotEqual(chain.root.id, oldRoot)
+        XCTAssertEqual(chain.devices, [pad.pub])
+        XCTAssertEqual(pad.sealed.mine, .inside)
+        // Alice follows the fresh start and seals to the new letterbox: the pad reads it
+        await alice.sealed.refresh([pad.account], now: now + 20)
+        XCTAssertEqual(alice.sealed.chain(pad.account)?.root.id, chain.root.id)
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: alice.account, tags: [["p", pad.account]], content: "after", createdAt: now + 30)
+        let wrap = try XCTUnwrap(try alice.sealed.wraps(rumor, to: [pad.account], selfCopy: false).first)
+        guard case .rumor(let got) = pad.sealed.open(wrap) else { return XCTFail("the fresh device can't read what is sent after") }
+        XCTAssertEqual(got.content, "after")
+    }
+
     /// Before the sealed engine is attached (the first moments of a launch) nothing goes the old
     /// way: a send is refused with the text kept, a file stays queued (the independent review's P1).
     func testNothingLeavesTheOldWayBeforeTheLockIsReady() async throws {

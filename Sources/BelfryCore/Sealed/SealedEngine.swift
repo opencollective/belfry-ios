@@ -724,6 +724,35 @@ public final class SealedEngine: @unchecked Sendable {
     }
 
     /// The first device (5.1): a new letterbox, a root with this device, the anchor.
+    /// "I don't have another device" (sealed.md 5.4; boards messages/encryption-start-fresh +
+    /// -confirm): this device is not in my head; on what the relay answers now (after AUTH, complete
+    /// to EOSE, on this connection, for my anchor and my rosters), a new letterbox, a new root
+    /// (n = 1, this device) and the anchor replaced. The old root is kept: its devices may come back
+    /// and hand their keys over (5.5). True when the relay holds the new root and its anchor and the
+    /// chain read back has it.
+    public func startFresh(now: Int = .now) async -> Bool {
+        await exclusive {
+            guard await self.refresh([self.me], now: now), self.mineCurrent else { return false }
+            // only from outside the head: a device in it has nothing to start
+            guard let old = self.chain(self.me), !old.devices.contains(self.devicePub) else { return false }
+            guard let sessions = await self.sessions?(), self.listsMe(sessions) else { return false }
+            self.remember { m in if !m.oldRoots.contains(old.root.id) { m.oldRoots.append(old.root.id) } }
+            self.lock.lock()
+            var k = self.keys
+            guard !self.closed, let lb = try? k.make() else { self.lock.unlock(); return false }
+            self.keys = k
+            self.lock.unlock()
+            self.saveKeys(k)
+            let ready = SealedEngine.mayCarryReady(sessions, devices: [self.devicePub], now: now)
+            guard let r = await self.publishRoster(RosterChain.template(account: self.me, n: 1, prev: nil, lb: lb, devices: [self.devicePub], ready: ready, now: now),
+                                                  root: nil, now: now) else { return false }
+            guard await self.settled(r, now: now) else { self.onChange?(); return false }
+            if let c = self.chain(self.me) { await self.writeNames(c) }
+            self.onChange?()
+            return true
+        }
+    }
+
     private func startChain(_ sessions: [SessionInfo], now: Int) async {
         // a root of mine the relay took whose anchor did not follow: that one is anchored, never a
         // second root made beside it

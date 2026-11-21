@@ -77,7 +77,7 @@ struct MessagesView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate("n:" + Demo.signer("lina").pubkey) }
             }
             if screen == "encgroup" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate(Demo.groupConv(me: model.me)) } }
-            if screen == "enchow" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { how = true } }
+            if ["enchow", "encfresh", "encfreshconfirm"].contains(screen) { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { how = true } }
         }
     }
 

@@ -290,6 +290,10 @@ struct SharedByLine: View {
 
 /// "Show how": the three steps, a pushed screen.
 struct UnlockHowScreen: View {
+    @EnvironmentObject var model: AppModel
+    @State private var asking = false
+    @State private var starting = false
+    @State private var failed = false
     private let steps = [
         "Open Belfry on a phone, tablet or computer where you're already signed in.",
         "It asks whether to give this device access: tap Allow.",
@@ -306,12 +310,55 @@ struct UnlockHowScreen: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("\(i + 1). \(s)")
                 }
+            } header: {
+                Text("With another device")
             } footer: {
                 Text("No other device? The people you write to can share a conversation's history with this device.")
             }
+            // board messages/encryption-start-fresh: the last row; it asks first
+            if model.sealed.notAllowed || model.launch.screen?.hasPrefix("encfresh") == true {
+                Section {
+                    Button { asking = true } label: {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("I don't have another device").foregroundStyle(.primary)
+                                Text("Start fresh on this device").font(.footnote).foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 4)
+                            if starting { ProgressView() } else { Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary) }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(starting)
+                    .accessibilityIdentifier("start-fresh")
+                } footer: {
+                    if failed { Text("It didn't go through. Check the connection and try again.").foregroundStyle(.red) }
+                }
+            }
         }
-        .navigationTitle("Unlock with another device")
+        .navigationTitle("Unlock this device")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Start fresh on this device?", isPresented: $asking) {
+            Button("Start fresh", role: .destructive) { start() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Earlier sealed messages stay locked here unless someone shares them with you or an old device comes back.\n\nThe people you write with will see that you started on a new device.")
+        }
+        .onAppear { if model.launch.screen == "encfreshconfirm" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { asking = true } } }
+    }
+
+    /// Start fresh locks and shows progress until the relay holds the new chain.
+    private func start() {
+        guard !starting else { return }
+        starting = true
+        failed = false
+        Task { @MainActor in
+            let ok = model.isDemo ? true : (await model.sealedEngine?.startFresh() ?? false)
+            starting = false
+            failed = !ok
+            if ok { model.refreshSealed() }
+        }
     }
 }
 

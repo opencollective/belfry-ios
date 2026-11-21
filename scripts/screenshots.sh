@@ -234,6 +234,9 @@ shot 191-enc-shared encshared light
 shot 191b-enc-shared-dark encshared dark
 shot 192-enc-shared-why encsharedwhy light
 shot 193-enc-only-device enconlydevice light
+shot 194-enc-start-fresh encfresh light
+shot 194b-enc-start-fresh-dark encfresh dark
+shot 195-enc-start-fresh-confirm encfreshconfirm light
 shot 193b-enc-only-device-dark enconlydevice dark
 # 2026-11-20: a belfry with a dark brand colour: the tint per appearance (never the raw primary)
 shot 179-brand-feed brandfeed light
