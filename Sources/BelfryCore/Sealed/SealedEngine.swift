@@ -81,6 +81,8 @@ struct SealedMemory: Codable {
     /// devices of the head held before. A device of the new head that is not one of them, nor let
     /// in by one of them or by me since, is never answered without a prompt.
     var preSwitch: [String]?
+    /// The head the switch led to: rosters after it on the followed chain can vouch for devices.
+    var switchHead: String?
     /// Devices this device allowed by hand after a switch.
     var allowedSince = [String]()
     /// Since when this device is in my head without the key.
@@ -348,7 +350,7 @@ public final class SealedEngine: @unchecked Sendable {
                 let switched = pin == c.root.id && head?.anchored == true && head?.id.map { old in !c.rosters.contains { $0.id == old } } == true
                 remember(rechain: true) { m in
                     if switched {
-                        if a == self.me { m.preSwitch = head?.devices ?? []; m.allowedSince = [] }
+                        if a == self.me { m.preSwitch = head?.devices ?? []; m.allowedSince = []; m.switchHead = c.head.id }
                         else { m.resets[a, default: []].append(.init(root: c.head.id, at: c.head.createdAt, shared: false)) }
                     }
                     m.heads[a] = .init(lb: c.lb, devices: c.devices, id: c.head.id, anchored: anchoredNow)
@@ -764,7 +766,8 @@ public final class SealedEngine: @unchecked Sendable {
         guard !gone.isEmpty else { return }
         try? await Task.sleep(nanoseconds: UInt64.random(in: removalWait) * 1_000_000_000)
         await exclusive {
-            guard let sessions = await self.sessions?(), self.listsMe(sessions), let c = self.chain(self.me), c.devices.contains(self.devicePub) else { return }
+            guard let sessions = await self.sessions?(), self.listsMe(sessions), let c = self.chain(self.me), c.devices.contains(self.devicePub),
+                  !self.someUnvouched(c) else { return }
             let live = Set(sessions.compactMap(\.clientPubkey))
             let still = c.devices.filter { $0 != self.devicePub && !live.contains($0) }
             if !still.isEmpty { _ = await self.drop(Set(still), from: c, live: live, now: now) }
@@ -786,12 +789,22 @@ public final class SealedEngine: @unchecked Sendable {
     /// After a switch: DEVICE is in my head, but was not in the head held before it, and was let
     /// in neither by one of those devices nor by me since. It gets no key without the Allow card.
     private func unvouched(_ d: String, _ c: RosterChain) -> Bool {
-        lock.lock(); let pre = memory.preSwitch, mine = memory.allowedSince; lock.unlock()
-        // only the devices of the head held before the switch, and those allowed by hand since,
-        // are vouched for: a device this one had let in and later removed comes back unvouched
-        guard let pre, d != devicePub, !pre.contains(d), !mine.contains(d) else { return false }
-        return true
+        lock.lock(); let pre = memory.preSwitch, mine = memory.allowedSince, at = memory.switchHead; lock.unlock()
+        // trusted: the devices of the head held before the switch, those the person allowed here
+        // since, and those a LATER roster of the followed chain, signed by a trusted device, adds
+        // or keeps. A device this one had let in and later removed comes back untrusted.
+        guard let pre, d != devicePub else { return false }
+        var trusted = Set(pre + mine + [devicePub])
+        if let at, let i = c.rosters.firstIndex(where: { $0.id == at }), i + 1 < c.rosters.count {
+            for r in c.rosters[(i + 1)...] where trusted.contains(r.signer) { trusted.formUnion(r.devices) }
+        }
+        return !trusted.contains(d)
     }
+
+    /// While a device nobody vouched for sits in my head, this device changes the roster only by
+    /// the person's own word (Allow, Not me, Remove): a roster it signed by itself would vouch for
+    /// that device in everybody's eyes.
+    private func someUnvouched(_ c: RosterChain) -> Bool { c.devices.contains { unvouched($0, c) } }
 
     /// A well-formed session list that has this device's own chat session: without it nothing is
     /// concluded (an empty or odd answer removes nobody).
@@ -890,7 +903,7 @@ public final class SealedEngine: @unchecked Sendable {
             _ = await admit(r.event.pubkey, now: now)
             return []
         }
-        if !c.ready, SealedEngine.mayCarryReady(sessions, devices: c.devices, now: now) {
+        if !c.ready, !someUnvouched(c), SealedEngine.mayCarryReady(sessions, devices: c.devices, now: now) {
             await publishRoster(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: c.lb, devices: c.devices, ready: true, now: now), root: c.root.id, now: now)
             onChange?()
         }
