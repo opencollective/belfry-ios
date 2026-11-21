@@ -72,7 +72,7 @@ struct MessagesView: View {
             // boards messages/encryption-*: Lina's conversation, the group's, the three steps
             if screen == "encshared" || screen == "encsharedwhy" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("dev").pubkey) } }
             if screen == "enclocked" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("ana").pubkey) } }
-            if ["encthread", "encdevices", "encshare", "encwaiting"].contains(screen) {
+            if ["encthread", "encdevices", "encshare", "encwaiting", "encheld"].contains(screen) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate("n:" + Demo.signer("lina").pubkey) }
             }
             if screen == "encgroup" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate(Demo.groupConv(me: model.me)) } }
@@ -268,6 +268,8 @@ struct ConversationView: View {
         .task {
             // screenshots (boards messages/encryption-*)
             let screen = model.launch.screen ?? ""
+            // a send that was refused (board messages/encryption-held): the text kept, the grey line
+            if screen == "encheld" { text = "I'll bring the ladder at 8:30."; error = DirectMessages.cantCheck }
             guard ["encdevices", "encgroup", "encmaildevices", "encshare"].contains(screen) else { return }
             try? await Task.sleep(nanoseconds: 700_000_000) // after the push: the picture is taken 6 s after launch
             if screen == "encshare" { sharing = sealed?.notices.first { $0.what == .locked } } else { encryption = true }

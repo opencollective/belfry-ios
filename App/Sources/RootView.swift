@@ -630,7 +630,7 @@ struct RootView: View {
         case "membersinvite": selection = .members
         case "messages", "conversation", "mail": selection = .messages
         // boards messages/encryption-*: MessagesView and ConversationView open the rest
-        case "encthread", "encdevices", "encgroup", "encmail", "encmaildevices", "encnewdevice", "enchow", "encallow", "encallowfull", "encallowwaiting", "encwaiting", "encshare", "enclocked", "encshared", "encsharedwhy": selection = .messages
+        case "encthread", "encdevices", "encgroup", "encmail", "encmaildevices", "encnewdevice", "enchow", "encallow", "encallowfull", "encallowwaiting", "encwaiting", "encheld", "encshare", "enclocked", "encshared", "encsharedwhy": selection = .messages
         case "encremove":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { push(PlaceRoute.devices) }
