@@ -40,8 +40,9 @@ MAP = [
     (r"App/Sources/(BelfrySettings|RolesSettings|ChannelEnd)", "settings.*|channelend.*|channelarchive|rolepicker", "testDeleteEmptyChannel"),
     (r"App/Sources/MailUI", "mail.*|fullmail", ""),
     (r"App/Sources/ProposalScreen", "proposal.*", ""),
-    (r"App/Sources/(MessagesView|MentionsView)", "messages|conversation|mentions|mail", ""),
-    (r"App/Sources/(AccountsSheet|AppModel\+Accounts|AboutScreen)", "accounts|about", ""),
+    (r"App/Sources/(MessagesView|MentionsView)", "messages|conversation|mentions|mail|sendstill|sendnotyet", ""),
+    (r"App/Sources/SendLine", "sendstill|sendnotyet|diagnostics|feed", ""),
+    (r"App/Sources/(AccountsSheet|AppModel\+Accounts|AboutScreen)", "accounts|about|diagnostics", ""),
     (r"App/Sources/CreateMenu", "create|add", "testAddMenu"),
     (r"App/Sources/AppModel\+Push", "notifications", ""),
 ]

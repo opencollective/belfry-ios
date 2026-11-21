@@ -1,8 +1,10 @@
 import Foundation
 import Network
 
-// The sync engine (SPEC 4-5): two relays (groups, main), subscriptions with overlapping `since`,
-// the outbox flushed in order per relay, wake-ups (network back, foreground, 15 s watchdog).
+// The sync engine (SPEC 4-5, 19.50): the one owner of every socket of the session (groups, main and
+// the signer's), subscriptions with overlapping `since`, the outbox flushed in lanes per relay,
+// wake-ups (network back or changed, foreground, 15 s watchdog), each socket asked for a pong when
+// quiet, a dead one dropped and opened again (1, 2, 4, 8, 16, then 30 s).
 // In local-only (demo) mode nothing leaves the device and the engine plays the relay's part.
 
 public enum AccessState: String, Sendable { case unknown, ok, denied }
@@ -33,6 +35,12 @@ public final class SyncEngine: @unchecked Sendable {
     private var firstChannelTried = false
     private var watchdog: Timer?
     private let monitor = NWPathMonitor()
+    private var pathKey = ""
+    private var opening = [Target: Task<Relay, Error>]()
+    private var retryStep = 0
+    private var retryPending = false
+    /// Each send's steps and timing (SPEC 19.50): the line under a message, About → Diagnostics.
+    public let trace = SendTrace()
     public private(set) var online = true
     public private(set) var access: AccessState = .unknown
     public private(set) var relayStates = [String: Relay.State]()
@@ -60,7 +68,13 @@ public final class SyncEngine: @unchecked Sendable {
         for e in db.allEvents() { events[e.id] = e; if e.kind == 39000, let d = e.tag("d") { knownGroups.insert(d) } }
         for o in db.outbox() { outbox[o.localId] = o }
         lastCreatedAt = events.values.filter { $0.pubkey == signer.pubkey }.map(\.createdAt).max() ?? 0
+        if let b = signer as? BunkerSigner {
+            b.onRequest = { [weak self] m, secs in if secs >= 1 { self?.trace.note("signer \(m) \(SendTrace.secs(secs))") } }
+        }
     }
+
+    /// The signer's socket, when the signer is the belfry's (NIP-46): owned here with the others.
+    var bunker: BunkerSigner? { signer as? BunkerSigner }
 
     public var me: String { signer.pubkey }
 
@@ -208,7 +222,12 @@ public final class SyncEngine: @unchecked Sendable {
     }
 
     func drop(_ localId: String) {
-        lock.lock(); outbox[localId] = nil; outboxVersion += 1; lock.unlock()
+        lock.lock()
+        let gone = outbox.removeValue(forKey: localId)
+        outboxVersion += 1
+        let others = gone?.dm.map { dm in outbox.values.contains { $0.dm == dm } } ?? false
+        lock.unlock()
+        if let gone, !others { trace.forget(gone.dm ?? gone.localId) }
         db.dropOutbox(localId)
         changed()
     }
@@ -228,6 +247,32 @@ public final class SyncEngine: @unchecked Sendable {
 
     public func flushSoon() { Task { await self.flush() } }
 
+    /// "Not sent yet · Retry": every socket asked now, the backoff forgotten, a fresh 30 s, a pass at once.
+    public func retryNow() {
+        lock.lock(); attempts = [:]; retryStep = 0; lock.unlock()
+        trace.restart()
+        wake()
+    }
+
+    /// SPEC 19.50: 1 s, 2 s, 4 s, 8 s, 16 s, then every 30 s.
+    public static let steps: [TimeInterval] = [1, 2, 4, 8, 16, 30]
+    static func step(_ n: Int) -> TimeInterval { steps[min(max(n, 0), steps.count - 1)] }
+
+    /// A pass left items to try again: the next one after 1, 2, 4… s (not the 15 s watchdog).
+    private func retrySoon() {
+        lock.lock()
+        if retryPending { lock.unlock(); return }
+        retryPending = true
+        let delay = SyncEngine.step(retryStep)
+        retryStep += 1
+        lock.unlock()
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self else { return }
+            self.lock.lock(); self.retryPending = false; self.lock.unlock()
+            self.flushSoon()
+        }
+    }
+
     public func flush() async {
         lock.lock()
         if flushing { flushAgain = true; lock.unlock(); return }
@@ -237,7 +282,15 @@ public final class SyncEngine: @unchecked Sendable {
         let items = outboxItems()
         let result = await OutboxPass.run(items) { item in
             if !self.localOnly && !self.online { return .error("timeout: offline") }
-            do { return .ok(try await self.send(item)) } catch let e as BelfryError { return .error(e.relayMessage) } catch { return .error("timeout: \(error.localizedDescription)") }
+            let id = item.dm ?? item.localId
+            let label = SendTrace.label(item)
+            let outcome: SendOutcome
+            let local = self.localOnly
+            do { outcome = .ok(try await self.send(item) { if !local { self.trace.step(id, label: label, $0) } }) }
+            catch let e as BelfryError { outcome = .error(e.relayMessage) }
+            catch { outcome = .error("timeout: \(error.localizedDescription)") }
+            if !self.localOnly { self.traceEnd(item, id, outcome) }
+            return outcome
         }
         for (item, ev) in result.sent {
             if let ev, item.signed == nil {
@@ -253,14 +306,37 @@ public final class SyncEngine: @unchecked Sendable {
         }
         for f in result.failed { onFailed?(f) }
         lock.lock()
+        if !result.sent.isEmpty { retryStep = 0 }
+        lock.unlock()
+        if !result.stalled.isEmpty && !localOnly { retrySoon() }
+        lock.lock()
         flushing = false
         let again = flushAgain && result.items.allSatisfy { $0.status == .failed || $0.tries == 0 }
         lock.unlock()
         if again { await flush() }
     }
 
-    private func send(_ item: OutboxItem) async throws -> NostrEvent? {
+    /// The trace's end of one attempt: "OK", "refused" or "retry (<class>)"; a direct message
+    /// whose other wraps still wait goes on.
+    private func traceEnd(_ item: OutboxItem, _ id: String, _ outcome: SendOutcome) {
+        var said = "OK"
+        var retry = false
+        if case .error(let m) = outcome {
+            switch Outbox.classify(m) {
+            case .duplicate: said = "OK"
+            case .failed: said = "refused"
+            case .retry: said = "retry (" + String(String(m.split(separator: ":").first ?? "").prefix(24)) + ")"; retry = true
+            }
+        }
+        lock.lock()
+        let others = item.dm.map { dm in outbox.values.contains { $0.dm == dm && $0.localId != item.localId && $0.status == .queued } } ?? false
+        lock.unlock()
+        trace.end(id, said, left: retry || others)
+    }
+
+    private func send(_ item: OutboxItem, step: @escaping (String) -> Void = { _ in }) async throws -> NostrEvent? {
         if let call = item.http {
+            step(SendState.sign)
             // signed now, not when queued; a 4xx that isn't 401 / 408 / 429 fails for good
             // the demo (local only, no transport): nothing leaves the device
             let (data, status) = localOnly && transport == nil ? (Data("{}".utf8), 200) : try await signedRequest(call.url, method: call.method, json: call.json)
@@ -273,7 +349,7 @@ public final class SyncEngine: @unchecked Sendable {
         }
         if let signed = item.signed {
             if localOnly { return signed }
-            try await publish(item.target, signed)
+            try await publish(item.target, signed, step: step)
             return signed
         }
         var content = item.content
@@ -287,7 +363,8 @@ public final class SyncEngine: @unchecked Sendable {
             } else {
                 guard let data = try? Data(contentsOf: file) else { continue }
                 x = Crypto.sha256(data).hex
-                url = try await upload(data, name: a.name, mime: a.mime, sha: x!)
+                step(SendState.uploading(0, Int64(data.count)))
+                url = try await upload(data, name: a.name, mime: a.mime, sha: x!) { sent, total in step(SendState.uploading(sent, total)) }
             }
             var imeta: Tag = ["imeta", "url \(url)", "m \(a.mime)", "size \(a.size)"]
             if let x { imeta.append("x \(x)") }
@@ -296,12 +373,13 @@ public final class SyncEngine: @unchecked Sendable {
             tags.append(imeta)
             content = content.isEmpty ? url : content + "\n" + url
         }
+        step(SendState.sign)
         let ev = try await signer.sign(EventTemplate(kind: item.kind, content: content, tags: tags, createdAt: item.createdAt))
         if localOnly {
             synthesizeRelayEvents(ev)
             return ev
         }
-        try await publish(item.target, ev)
+        try await publish(item.target, ev, step: step)
         return ev
     }
 
@@ -321,7 +399,7 @@ public final class SyncEngine: @unchecked Sendable {
 
     // ---- Blossom, NIP-98 -------------------------------------------------------------------------
 
-    public func upload(_ data: Data, name: String, mime: String, sha: String) async throws -> String {
+    public func upload(_ data: Data, name: String, mime: String, sha: String, progress: ((Int64, Int64) -> Void)? = nil) async throws -> String {
         try guestMode.check()
         let auth = try await signer.sign(Actions.blossomAuth(sha256: sha, name: name))
         guard let url = URL(string: config.blossom + "/upload") else { throw BelfryError.network("upload failed (no file server)") }
@@ -329,7 +407,7 @@ public final class SyncEngine: @unchecked Sendable {
         req.httpMethod = "PUT"
         req.setValue("Nostr " + Data(auth.json.utf8).base64EncodedString(), forHTTPHeaderField: "Authorization")
         req.setValue(mime, forHTTPHeaderField: "Content-Type")
-        let (body, resp) = try await URLSession.shared.upload(for: req, from: data)
+        let (body, resp) = try await URLSession.shared.upload(for: req, from: data, delegate: progress.map { UploadProgress($0) })
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 || status == 201, let obj = try? JSONSerialization.jsonObject(with: body) as? [String: Any], let u = obj["url"] as? String else {
             throw BelfryError.network("upload failed (\(status))")
@@ -356,10 +434,20 @@ public final class SyncEngine: @unchecked Sendable {
 
     func url(_ t: Target) -> String { t == .groups ? config.groupsRelay : config.mainRelay }
 
+    /// T's socket, open (connected now if needed; callers at the same time share one connect).
+    /// A new socket gets the live subscription at once.
     func relay(_ t: Target) async throws -> Relay {
         lock.lock()
         if let r = relays[t], r.isUp { lock.unlock(); return r }
+        if let o = opening[t] { lock.unlock(); return try await o.value }
+        let o = Task { try await self.open(t) }
+        opening[t] = o
         lock.unlock()
+        defer { lock.lock(); opening[t] = nil; lock.unlock() }
+        return try await o.value
+    }
+
+    private func open(_ t: Target) async throws -> Relay {
         let r = Relay(url: url(t))
         wireAnswers(r, t)
         r.onClosed = { [weak self] sub, reason in self?.closed(t, sub, reason) }
@@ -378,14 +466,15 @@ public final class SyncEngine: @unchecked Sendable {
         }
         try await r.connect()
         lock.lock(); relays[t] = r; attempts[t] = 0; lock.unlock()
+        subscribe(t, r)
         return r
     }
 
     func backoff(_ t: Target) -> TimeInterval {
         lock.lock(); defer { lock.unlock() }
-        let n = (attempts[t] ?? 0) + 1
-        attempts[t] = n
-        return min(30, 0.8 * pow(2, Double(n)))
+        let n = attempts[t] ?? 0
+        attempts[t] = n + 1
+        return SyncEngine.step(n)
     }
 
     func retryLater(_ t: Target) {
@@ -395,9 +484,26 @@ public final class SyncEngine: @unchecked Sendable {
         }
     }
 
-    func publish(_ t: Target, _ ev: NostrEvent) async throws {
-        let r = try await relay(t)
-        try await r.publish(ev)
+    /// Publishes EV on T's socket: a socket quiet for more than 10 s is asked first, a dead one is
+    /// replaced before the EVENT goes; no OK in time drops it (Relay).
+    func publish(_ t: Target, _ ev: NostrEvent, step: (String) -> Void = { _ in }) async throws {
+        lock.lock(); let up = relays[t]?.isUp == true; lock.unlock()
+        if !up { step(SendState.connecting) }
+        var r = try await relay(t)
+        if r.quietFor > Relay.quietBeforeSend {
+            step(SendState.checking)
+            if !(await r.probe()) {
+                step(SendState.connecting)
+                r = try await relay(t)
+            }
+        }
+        step(SendState.relayWait)
+        do {
+            try await r.publish(ev)
+        } catch let e as BelfryError where e.relayMessage == "timeout: the relay did not answer" {
+            trace.note("\(t.rawValue): no answer in 15s, socket dropped")
+            throw e
+        }
     }
 
     /// One-off query that counts only when answered to EOSE (nil: no answer).
@@ -521,8 +627,21 @@ public final class SyncEngine: @unchecked Sendable {
     /// for a pong; a socket that doesn't answer is dropped and connected again (a phone back from
     /// sleep, or a network that changed, can hold a dead socket that still looks up: no live events).
     public func checkSockets(idle: TimeInterval = 25) {
-        lock.lock(); let rs = Array(relays.values); lock.unlock()
+        lock.lock(); var rs = Array(relays.values); lock.unlock()
+        if let b = bunker, b.relay.isUp { rs.append(b.relay) }
         for r in rs where r.isUp && r.quietFor >= idle { r.ping() }
+    }
+
+    /// Each socket of the session, for About → Diagnostics: its name, state and seconds of quiet.
+    public func socketStates() -> [(name: String, state: String, quiet: Int?)] {
+        lock.lock(); let rs = relays; lock.unlock()
+        var out = [(name: String, state: String, quiet: Int?)]()
+        for t in [Target.groups, .main] {
+            let r = rs[t]
+            out.append((t == .groups ? "Groups relay" : "Community relay", r?.state.rawValue ?? "down", r?.isUp == true ? Int(r!.quietFor) : nil))
+        }
+        if let b = bunker { out.append(("Signer", b.relay.state.rawValue, b.relay.isUp ? Int(b.relay.quietFor) : nil)) }
+        return out
     }
 
     /// An end of stored events from relay R. Before AUTH the answer holds only public events: it
@@ -588,8 +707,7 @@ public final class SyncEngine: @unchecked Sendable {
         lock.unlock()
         defer { lock.lock(); connecting.remove(t); lock.unlock() }
         do {
-            let r = try await relay(t)
-            subscribe(t, r)
+            _ = try await relay(t)
             await flush()
         } catch {
             retryLater(t)
@@ -607,10 +725,15 @@ public final class SyncEngine: @unchecked Sendable {
             guard let self else { return }
             let up = path.status == .satisfied
             let was = self.online
+            // a new network while online (Wi-Fi to mobile) counts as a change too: every socket asked
+            let key = path.availableInterfaces.map { "\($0.type)" }.joined(separator: ",") + (path.isExpensive ? "+e" : "")
+            self.lock.lock(); let moved = !self.pathKey.isEmpty && self.pathKey != key; self.pathKey = key; self.lock.unlock()
             self.online = up
             if up != was {
                 self.changed()
-                if up { self.wake() } else { self.dropSockets() }
+                if up { self.trace.restart(); self.wake() } else { self.dropSockets() }
+            } else if up && moved {
+                self.wake()
             }
         }
         monitor.start(queue: DispatchQueue.global())
@@ -623,13 +746,18 @@ public final class SyncEngine: @unchecked Sendable {
 
     /// Network back, app in the foreground, pull to refresh: reconnect, catch up, send.
     public func wake() {
+        if localOnly { return }
         lock.lock(); attempts = [:]; lock.unlock()
-        // a socket that looks up may have died while the app slept: ask each one now
+        // a socket that looks up may have died while the app slept: ask each one now (5 s)
         checkSockets(idle: 0)
         Task {
-            await connect(.groups)
-            await connect(.main)
-            await flush()
+            await withTaskGroup(of: Void.self) { g in
+                g.addTask { await self.connect(.groups) }
+                g.addTask { await self.connect(.main) }
+                // the signer said hello to ahead of the next send (a dead socket is found and replaced)
+                if let b = self.bunker { g.addTask { await b.warm() } }
+            }
+            await self.flush()
         }
     }
 
@@ -637,7 +765,8 @@ public final class SyncEngine: @unchecked Sendable {
     public func refresh() async {
         if localOnly { return }
         for t in [Target.groups, .main] {
-            if let r = try? await relay(t) { subscribe(t, r) }
+            lock.lock(); let had = relays[t]?.isUp == true; lock.unlock()
+            if let r = try? await relay(t), had { subscribe(t, r) }
         }
         await flush()
     }
@@ -667,5 +796,14 @@ public final class SyncEngine: @unchecked Sendable {
         if localOnly { return true }
         lock.lock(); defer { lock.unlock() }
         return relays[.groups]?.isUp == true
+    }
+}
+
+/// An upload's progress (bytes sent, total), for "uploading 2.2 of 4.8 MB".
+final class UploadProgress: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    let report: (Int64, Int64) -> Void
+    init(_ report: @escaping (Int64, Int64) -> Void) { self.report = report }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
+        report(totalBytesSent, totalBytesExpectedToSend)
     }
 }

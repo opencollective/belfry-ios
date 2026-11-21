@@ -14,6 +14,7 @@ struct AboutScreen: View {
     @State private var home: BelfryConfig?
     @State private var sent = false
     @State private var error: String?
+    @State private var diagnostics = false
 
     static let homeDomain = "belfry.sh"
     static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "" }
@@ -76,8 +77,19 @@ struct AboutScreen: View {
                     Text("Belfry is open source software a community runs on its own server.")
                 }
             }
+            if !model.isDemo || model.launch.screen == "diagnostics" {
+                Section {
+                    Button { diagnostics = true } label: {
+                        row("stethoscope", "Diagnostics", "Connections and how long sends took")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("about-diagnostics")
+                }
+            }
         }
         .navigationTitle("About Belfry")
+        .navigationDestination(isPresented: $diagnostics) { DiagnosticsScreen() }
+        .onAppear { if model.launch.screen == "diagnostics" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { diagnostics = true } } }
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $home) { c in
             ScrollView {

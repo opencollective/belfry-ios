@@ -584,9 +584,9 @@ struct RootView: View {
         case "notifications":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { notifications = true }
-        case "accounts", "about":
+        case "accounts", "about", "diagnostics":
             selection = .channel(generalId)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { openAccounts(); if model.launch.screen == "about" && phone { push(PlaceRoute.about) } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { openAccounts(); if (model.launch.screen == "about" || model.launch.screen == "diagnostics") && phone { push(PlaceRoute.about) } }
         case "editprofile", "me":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { account = true }
@@ -631,7 +631,7 @@ struct RootView: View {
                 model.openEvent = "repair-cafe"
             }
         case "membersinvite": selection = .members
-        case "messages", "conversation", "mail": selection = .messages
+        case "messages", "conversation", "mail", "sendstill", "sendnotyet": selection = .messages
         case "mentions": selection = .mentions
         case "requests": selection = .requests
         case "directory", "membersagents", "memberssearch": selection = .members

@@ -47,7 +47,7 @@ struct MessagesView: View {
             model.messagesOpen = true
             guard !didLaunch else { return }
             didLaunch = true
-            if model.launch.screen == "conversation" || model.launch.screen == "mail" {
+            if ["conversation", "mail", "sendstill", "sendnotyet"].contains(model.launch.screen ?? "") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     let list = model.dms?.threads() ?? []
                     let pick = model.launch.screen == "mail" ? list.first { MailThreads.isMail($0.conv) } : list.first { !MailThreads.isMail($0.conv) }
@@ -284,7 +284,7 @@ struct Bubble: View {
                     Label("Not sent", systemImage: "exclamationmark.circle").font(.caption2).foregroundStyle(.red).help(f)
                     Button("Retry") { model.dms?.retry(dm) }.font(.caption2.weight(.semibold))
                 } else if dm.pending == true {
-                    Text("Sending…").font(.caption2).foregroundStyle(.secondary)
+                    SendLineView(id: dm.rid, tries: model.dmTries(dm.rid), font: .caption2, icon: false)
                 } else if dm.mine, let r = report {
                     Text(r.details).font(.caption2).foregroundStyle(r.status == "failed" ? .red : .secondary)
                 }

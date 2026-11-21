@@ -99,7 +99,7 @@ struct MessageRow: View {
                             BusyButton("Discard", role: .destructive) { model.discard(p.localId) }.font(.caption.weight(.semibold))
                         }.font(.caption)
                     } else {
-                        Label(p.stateText, systemImage: "clock").font(.caption).foregroundStyle(.secondary)
+                        SendLineView(id: p.localId, tries: p.tries)
                     }
                 }
             }
@@ -378,7 +378,10 @@ struct ReplyRow: View {
                     AgentTag(pubkey: r.ev.pubkey)
                     Text(Format.time(r.ev.createdAt)).font(.caption).foregroundStyle(.secondary)
                     if r.edited != nil { Text("edited").font(.caption2).foregroundStyle(.secondary) }
-                    if let p = model.pending(r.id) { Text(p.stateText).font(.caption2).foregroundStyle(p.status == .failed ? .red : .secondary) }
+                    if let p = model.pending(r.id) {
+                        if p.status == .failed { Text(p.stateText).font(.caption2).foregroundStyle(.red) }
+                        else { SendLineView(id: p.localId, tries: p.tries, font: .caption2, icon: false) }
+                    }
                 }
                 if !r.text.isEmpty { MessageText(text: r.text, shownEvents: r.eventRefs) }
                 MessageButtonsView(m: r, group: group.isEmpty ? (r.ev.tag("h") ?? "") : group)

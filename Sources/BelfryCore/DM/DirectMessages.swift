@@ -171,8 +171,16 @@ public final class DirectMessages: @unchecked Sendable {
         try engine.guestMode.check()
         var targets = [String]()
         for p in to + (selfCopy ? [me] : []) where !targets.contains(p) { targets.append(p) }
-        for p in targets {
-            let w = try await GiftWrap.wrap(rumor, to: p, signer: engine.signer)
+        // the seals are signed and encrypted by the signer first (SPEC 19.50: "encrypting")
+        if !engine.localOnly { engine.trace.step(rumor.id, label: "DM", SendState.prepare) }
+        var wraps = [NostrEvent]()
+        do {
+            for p in targets { wraps.append(try await GiftWrap.wrap(rumor, to: p, signer: engine.signer)) }
+        } catch {
+            if !engine.localOnly { engine.trace.end(rumor.id, "not prepared", left: false) }
+            throw error
+        }
+        for (p, w) in zip(targets, wraps) {
             if engine.localOnly, p == me { engine.add([w], verify: false) }
             engine.enqueueSigned(w, target: .main, dm: rumor.id)
         }
@@ -392,6 +400,15 @@ public final class DirectMessages: @unchecked Sendable {
         let rumor = GiftWrap.rumor(kind: 1301, pubkey: bridgeSigner.pubkey, tags: [["email-id", UUID().uuidString], ["mail-from", MIME.address(sender).address], ["p", me], ["subject", subject], ["belfry-auth", "pass"]], content: raw, createdAt: at)
         let w = try await GiftWrap.wrap(rumor, to: me, signer: bridgeSigner)
         engine.add([w], verify: false)
+    }
+
+    /// Demo mode: a message of mine in CONV that is not out yet (the send line's screenshots).
+    public func demoPending(conv: String, text: String, at: Int) {
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: [["p", String(conv.dropFirst(2))]], content: text, createdAt: at)
+        var d = Dm(rid: rumor.id, conv: conv, from: me, mine: true, at: at, kind: 14, text: text)
+        d.pending = true
+        lock.lock(); items[rumor.id] = d; lock.unlock()
+        save()
     }
 
     /// Demo mode: a NIP-17 message from FROM.

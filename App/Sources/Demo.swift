@@ -414,5 +414,10 @@ enum Demo {
         try? await dms.demoMail(bridgeSecret: secret("bridge"), sender: "\"Town Hall\" <events@townhall.example>", subject: "Street party permit",
                                 text: "Hello,\n\nYour request for the street party on 14 June is approved.\n\nKind regards,\nTown Hall", at: now - 5 * 3600)
         await dms.process()
+        // the screenshots of a send that is not out yet (SPEC 19.50): my last message to Ana waits
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-screen"), i + 1 < args.count, ["sendstill", "sendnotyet"].contains(args[i + 1]) {
+            dms.demoPending(conv: "n:" + ps["ana"]!.pubkey, text: "Yes, I'll be there at 9 with the keys.", at: now - 40)
+        }
     }
 }
