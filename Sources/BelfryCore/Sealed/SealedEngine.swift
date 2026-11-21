@@ -797,8 +797,13 @@ public final class SealedEngine: @unchecked Sendable {
         guard let pre, d != devicePub else { return false }
         var trusted = Set(pre + mine + [devicePub])
         if let at, let i = c.rosters.firstIndex(where: { $0.id == at }), i + 1 < c.rosters.count {
-            for j in (i + 1)..<c.rosters.count where trusted.contains(c.rosters[j].signer) {
-                trusted.formUnion(c.rosters[j].devices.filter { !c.rosters[j - 1].devices.contains($0) })
+            // only rosters that descend from the switch head, in chain order (never by their dates,
+            // which a signer chooses); what is at or before it on the new branch counts for nothing
+            for j in (i + 1)..<c.rosters.count {
+                let r = c.rosters[j], before = c.rosters[j - 1]
+                // whoever leaves the roster leaves trusted (coming back needs a trusted roster again)
+                trusted.subtract(before.devices.filter { !r.devices.contains($0) && $0 != devicePub })
+                if trusted.contains(r.signer) { trusted.formUnion(r.devices.filter { !before.devices.contains($0) }) }
             }
         }
         return !trusted.contains(d)
