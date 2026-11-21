@@ -78,7 +78,9 @@ struct MessageButtonsView: View {
         }
         SwiftUI.Group {
             if b.style == .primary {
-                Button(role: nil) { tap(b) } label: { label }.buttonStyle(.borderedProminent)
+                // the app's own filled button: its text reads on the tint in dark mode too
+                // (borderedProminent drew white on white there)
+                Button(role: nil) { tap(b) } label: { label }.buttonStyle(.brand)
             } else {
                 Button(role: b.style == .danger ? .destructive : nil) { tap(b) } label: { label }.buttonStyle(.bordered)
             }
