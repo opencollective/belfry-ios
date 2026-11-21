@@ -255,7 +255,11 @@ struct EventScreenBody: View {
             .scrollDisabled(access && level != .full)
             .scrollBounceBehavior(.basedOnSize)
             .noTopEdgeEffect()
-            .onChange(of: level) { _, l in if l != .full { withAnimation(.snappy) { proxy.scrollTo("event-top", anchor: .top) } } }
+            .onChange(of: level) { _, l in
+                if l != .full { withAnimation(.snappy) { proxy.scrollTo("event-top", anchor: .top) } }
+                // screenshots: the address and its buttons, at the bottom of the full level
+                else if model.launch.screen == "eventaddress" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { proxy.scrollTo("event-address", anchor: .bottom) } }
+            }
         }
         .opacity(access ? min(1, max(0, (h - hs.up) / 60)) : 1)
         // width and height both fixed: the stacks around never measure the header's content
@@ -404,7 +408,7 @@ struct EventScreenBody: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
             switch s {
             case "eventup": withAnimation { level = .up }
-            case "eventfull": withAnimation { level = .full }
+            case "eventfull", "eventaddress": withAnimation { level = .full }
             case "eventphotos": tab = .photos
             case "eventpeople", "meetingpeople": tab = .people
             case "ticket": showTicket = true
@@ -661,7 +665,7 @@ struct EventFullPart: View {
                 PDHeader(text: "About")
                 MarkdownText(text: e.description).padding(.horizontal, 16)
             }
-            if e.isNew { address(d) }
+            if e.isNew { address(d).id("event-address") }
             if host { hostTools() }
             if let error {
                 Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red).font(.subheadline).padding(16)
