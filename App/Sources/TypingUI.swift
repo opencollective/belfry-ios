@@ -141,8 +141,8 @@ struct TypingLine: View {
         .foregroundStyle(.secondary)
         .frame(height: 22)
         .padding(.horizontal, 16)
-        // over the end of the feed: the page's own colour under it, so a message behind never shows through
-        .background(LinearGradient(colors: [Color(.systemBackground).opacity(0), Color(.systemBackground)], startPoint: .top, endPoint: .init(x: 0.5, y: 0.35)))
+        // the page's own colour under it: a message scrolled behind never shows through
+        .background(Color(.systemBackground))
         .opacity(names.isEmpty ? 0 : 1)
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)

@@ -152,10 +152,12 @@ struct Composer: View {
         .padding(.bottom, compact ? 0 : 8)
         .composerBackground(compact: compact)
         .sensoryFeedback(.impact(weight: .light), trigger: sent)
-        // who types here: laid over the end of the feed, so it never moves it (SPEC 19.66)
+        // who types here: a 22 pt strip kept above the composer, so the line never moves the feed
+        // and never covers a message (SPEC 19.66)
+        .padding(.top, !compact && !group.isEmpty ? 22 : 0)
         .overlay(alignment: .top) {
             if !compact, !group.isEmpty {
-                TypingLine(center: model.typing, place: Typing.place(group: group, root: typingRoot)).offset(y: -22)
+                TypingLine(center: model.typing, place: Typing.place(group: group, root: typingRoot))
             }
         }
         .onChange(of: model.launchEventForm) { _, on in

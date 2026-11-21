@@ -200,7 +200,7 @@ struct ConversationView: View {
         .onChange(of: list.count) { _, _ in model.markConversationRead(conv) }
         .bottomBar {
             VStack(spacing: 6) {
-                if !mail { TypingLine(center: model.typing, place: Typing.place(conv: conv)).padding(.top, -22).frame(height: 0, alignment: .bottom) }
+                if !mail { TypingLine(center: model.typing, place: Typing.place(conv: conv)).padding(.horizontal, -12) }
                 if let error { Text(error).font(.caption).foregroundStyle(.red) }
                 if MailThreads.isNewMail(conv) {
                     TextField("Subject", text: $subject).font(.body)
