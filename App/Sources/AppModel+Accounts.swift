@@ -48,7 +48,9 @@ extension AppModel {
     func store(_ s: StoredSession) {
         let got = accounts.adopt(domain: s.domain, pubkey: s.pubkey)
         if got.isNew {
-            try? FileManager.default.removeItem(at: AppModel.dbURL(s.domain, slot: got.slot))
+            // with its write-ahead files (they hold what the main file does)
+            let stale = AppModel.dbURL(s.domain, slot: got.slot)
+            for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: stale.path + suffix) }
         }
         Keychain.slot = got.slot
         Keychain.save(s, slot: got.slot)

@@ -2683,6 +2683,13 @@ Android; this section only says where the iPhone app implements it. Vectors: `ve
   after AUTH on the open connection; the database is excluded from backups and protected until the
   first unlock; the link secret is never stored; letterbox keys are in the app's own Keychain group
   with their owner.
-- Not done: the live subscription still asks rosters and anchors with a limit (5000) instead of
-  paging; a queued reaction or e-mail copy is sealed again only while the app runs.
+- Second review (2026-11-21): a wrap to a letterbox this device does not know is kept until my
+  chain is current on the open connection (it may be my newest); my letterboxes come from valid
+  chains only; my own roster and anchor are never put in the local store before the relay took
+  them (the roster first, then its anchor), and a change is done only when read back on the
+  anchored path; every queued wrap is checked before it leaves, also after a restart (the
+  rumors are kept in `dm-queued`), and one that must wait does not hold the others (`hold:`);
+  the key chain is stored with its owner and never touched before the account's key is known
+  (`OwnedKeyStore`); the session item moves to the app's own Keychain group; rosters and anchors
+  are paged once per connection; answered requests are remembered.
 - Not done: "I don't have another device" (the user's own fresh start) waits for the owner.

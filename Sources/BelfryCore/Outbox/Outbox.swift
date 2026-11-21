@@ -164,6 +164,13 @@ public enum OutboxPass {
             case .ok(let ev):
                 box.removeAll { $0.localId == item.localId }
                 r.sent.append((item, ev))
+            case .error(let msg) where msg.hasPrefix("hold:"):
+                // this item waits for something of its own (a sealed wrap whose head could not be
+                // checked): tried again next time, and the items after it still go
+                var next = item
+                next.tries += 1
+                next.error = msg
+                box = box.map { $0.localId == item.localId ? next : $0 }
             case .error(let msg):
                 switch Outbox.classify(msg) {
                 case .duplicate:

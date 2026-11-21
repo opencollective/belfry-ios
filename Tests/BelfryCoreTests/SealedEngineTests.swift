@@ -649,26 +649,216 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertEqual(b.all().filter { $0.kind == 8560 }.count, rosters)
     }
 
-    /// A roster of mine past the anchored end (its anchor was lost): anchored at the next upkeep.
-    func testARosterOfMinePastTheAnchoredEndIsAnchored() async throws {
-        let b = FakeBelfry()
-        let (phone, _) = try await pair(b, "alice")
-        let chain = try XCTUnwrap(phone.sealed.chain(phone.account))
-        XCTAssertEqual(chain.rosters.count, 2)
-        // the relay as if the second anchor never arrived: the root's anchor only
-        let anchors = b.all().filter { $0.kind == 30078 && $0.tag("d") == SealedKind.anchorD }.sorted { $0.createdAt < $1.createdAt }
-        XCTAssertEqual(anchors.last?.tag("head"), chain.head.id)
-        let first = try XCTUnwrap(anchors.first)
-        XCTAssertEqual(first.tag("head"), chain.root.id)
-        let restarted = try b.again("alice", "phone")
-        restarted.engine.add(b.all().filter { $0.kind == 8560 } + [first])
-        XCTAssertEqual(restarted.sealed.chain(phone.account)?.head.id, chain.head.id) // the unanchored tail, for now
-        b.lock.lock(); b.events.removeAll { $0.kind == 30078 && $0.tag("d") == SealedKind.anchorD && $0.id != first.id }; b.lock.unlock()
-        await restarted.sealed.maintain(now: now + 500)
-        await drain(restarted.engine)
-        let newest = b.all().filter { $0.kind == 30078 && $0.tag("d") == SealedKind.anchorD }.max { $0.createdAt < $1.createdAt }
-        XCTAssertEqual(newest?.tag("head"), chain.head.id)
-        XCTAssertEqual(newest?.tag("root"), chain.root.id)
-        XCTAssertGreaterThan(newest?.createdAt ?? 0, first.createdAt)
+    private func isAnchor(_ e: NostrEvent) -> Bool { e.kind == 30078 && e.tag("d") == SealedKind.anchorD }
+
+    /// The relay refuses the roster, the anchor, or both: Allow is not done, no key leaves, the
+    /// device's own chain stays what the relay holds, and a later try starts clean.
+    func testARefusedRosterOrAnchorIsNotDoneAndHandsNoKeyOver() async throws {
+        for refused in ["both", "anchor", "roster"] {
+            let b = FakeBelfry()
+            let phone = try b.signIn("alice", "phone")
+            await phone.sealed.maintain(now: now)
+            await b.sync()
+            let mac = try b.signIn("alice", "mac")
+            await b.sync()
+            await mac.sealed.maintain(now: now)
+            await b.sync()
+            let root = try XCTUnwrap(phone.sealed.chain(phone.account)?.head.id, refused)
+            phone.engine.localRefuse = { e in
+                let roster = e.kind == 8560, anchor = e.kind == 30078 && e.tag("d") == SealedKind.anchorD
+                return (roster && refused != "anchor") || (anchor && refused != "roster") ? "blocked: not today" : nil
+            }
+            let first = await phone.sealed.allow(mac.pub, now: now + 5)
+            XCTAssertEqual(first, .failed, refused)
+            await drain(phone.engine)
+            // no key was handed over, and nothing of the change is left waiting to go out later
+            XCTAssertTrue(b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }.isEmpty, refused)
+            XCTAssertTrue(phone.engine.outboxItems().filter { $0.kind == 8560 || $0.kind == 30078 }.isEmpty, refused)
+            // the device's own chain is what the relay holds
+            let onRelay = b.all().filter { $0.kind == 8560 }.count
+            XCTAssertEqual(onRelay, refused == "anchor" ? 2 : 1, refused)
+            XCTAssertEqual(phone.sealed.chain(phone.account)?.rosters.count, onRelay, refused)
+            // the anchor on the relay still names the head that stands (never a roster the relay refused)
+            XCTAssertEqual(b.all().filter(isAnchor).max { $0.createdAt < $1.createdAt }?.tag("head"), root, refused)
+            await b.sync()
+            XCTAssertNotEqual(mac.sealed.open(try XCTUnwrapWrap(phone)).isRumor, true, refused)
+
+            // the relay takes events again
+            phone.engine.localRefuse = nil
+            if refused == "anchor" {
+                // the roster went out without its anchor: the next upkeep anchors it; until the
+                // relay shows that, the device is still not "in" and gets no key
+                await phone.sealed.maintain(now: now + 6)
+                await drain(phone.engine)
+                XCTAssertEqual(b.all().filter(isAnchor).max { $0.createdAt < $1.createdAt }?.tag("head"), b.all().filter { $0.kind == 8560 && $0.tag("n") == "2" }.first?.id)
+            }
+            let second = await phone.sealed.allow(mac.pub, now: now + 7)
+            XCTAssertEqual(second, .done, refused)
+            await b.sync()
+            XCTAssertEqual(mac.sealed.mine, .inside, refused)
+            XCTAssertFalse(b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }.isEmpty, refused)
+            let chain = try XCTUnwrap(mac.sealed.chain(mac.account), refused)
+            XCTAssertEqual(chain.devices, [phone.pub, mac.pub], refused)
+            XCTAssertEqual(b.all().filter(isAnchor).max { $0.createdAt < $1.createdAt }?.tag("head"), chain.head.id, refused)
+        }
     }
+
+    /// A removal the relay refuses is not reported as done, and the device is still there.
+    func testARefusedRemovalIsNotDone() async throws {
+        let b = FakeBelfry()
+        let (phone, mac) = try await pair(b, "alice")
+        let before = try XCTUnwrap(phone.sealed.chain(phone.account))
+        phone.engine.localRefuse = { e in e.kind == 8560 ? "blocked: not today" : nil }
+        let removed = await phone.sealed.remove(mac.pub, now: now + 50)
+        XCTAssertFalse(removed)
+        await b.sync()
+        XCTAssertEqual(phone.sealed.chain(phone.account)?.devices, before.devices)
+        XCTAssertEqual(b.revoked, ["bunker-" + mac.pub]) // its session is gone all the same: revoked first
+        // the next upkeep drops it (its session is gone), now that the relay answers
+        phone.engine.localRefuse = nil
+        await phone.sealed.maintain(now: now + 60)
+        await b.sync()
+        XCTAssertEqual(phone.sealed.chain(phone.account)?.devices, [phone.pub])
+    }
+
+    /// A message sealed to my newest letterbox arrives before the roster that announces it: kept,
+    /// never marked seen, and read once the roster and the key are here. A roster that merely
+    /// names me (anyone can publish one) makes no letterbox mine.
+    func testAWrapThatArrivesBeforeItsRosterIsKept() async throws {
+        let b = FakeBelfry()
+        let alice = try b.signIn("alice", "phone")
+        await alice.sealed.maintain(now: now)
+        let (bob, bobMac) = try await pair(b, "bob")
+        let pad = try b.signIn("bob", "pad")
+        await b.sync()
+        await pad.sealed.maintain(now: now + 6)
+        await b.sync()
+        let let3 = await bob.sealed.allow(pad.pub, now: now + 7)
+        XCTAssertEqual(let3, .done)
+        await b.sync()
+        // the Mac as it was at this point: three devices, the first letterbox, its key
+        let late = try b.again("bob", "mac")
+        late.engine.add(b.all())
+        XCTAssertTrue(late.sealed.takeKeys())
+        let lateDms = DirectMessages(engine: late.engine)
+        lateDms.sealed = late.sealed
+        // the phone removes the pad: a new letterbox; Alice writes to it
+        let removed = await bob.sealed.remove(pad.pub, now: now + 20)
+        XCTAssertTrue(removed)
+        await b.sync()
+        let head = try XCTUnwrap(bob.sealed.chain(bob.account)?.lb)
+        let aliceDms = DirectMessages(engine: alice.engine)
+        aliceDms.sealed = alice.sealed
+        try await aliceDms.send("After the change", in: "n:" + bob.account)
+        await b.sync()
+        let wrap = try XCTUnwrap(b.all().first { $0.kind == 1059 && $0.tag("lb") == head && $0.hasTag("p", bob.account) })
+        // the wrap reaches the late Mac before the roster: kept, not seen
+        late.engine.add([wrap])
+        guard case .keep = late.sealed.open(wrap) else { return XCTFail("a wrap to my newest letterbox was dropped before its roster came") }
+        await lateDms.process()
+        XCTAssertTrue(lateDms.thread("n:" + alice.account).isEmpty)
+        // the roster and the hand-over arrive: it is read
+        late.engine.add(b.all())
+        XCTAssertTrue(late.sealed.takeKeys())
+        await lateDms.process()
+        XCTAssertEqual(lateDms.thread("n:" + alice.account).map(\.text), ["After the change"])
+        _ = bobMac
+
+        // somebody publishes a roster "for" Bob with a letterbox of their own, and a wrap to it:
+        // not Bob's letterbox, so no banner, and (Bob's chain being current) the wrap is dropped
+        let fake = try Keys.publicKeyHex(secret: secret("planted-lb"))
+        let planted = try RosterChain.template(account: bob.account, n: 1, prev: nil, lb: fake, devices: [try Keys.publicKeyHex(secret: secret("mallory"))], ready: false, now: now)
+            .event(pubkey: "").signed(with: secret("mallory"))
+        let junk = try Sealed.wrap(GiftWrap.rumor(kind: 14, pubkey: alice.account, tags: [["p", bob.account]], content: "junk", createdAt: now),
+                                   device: secret("mallory"), to: bob.account, lb: fake)
+        bob.engine.add([planted, junk])
+        XCTAssertFalse(bob.sealed.isLocked(junk))
+        guard case .drop = bob.sealed.open(junk) else { return XCTFail("a planted roster made a letterbox mine") }
+    }
+
+    /// After a restart the wraps still queued are checked before they leave: the hook is there
+    /// from the start, and the rumors were kept.
+    func testQueuedWrapsAreCheckedAfterARestart() async throws {
+        let b = FakeBelfry()
+        let alice = try b.signIn("alice", "phone")
+        await alice.sealed.maintain(now: now)
+        let (bob, bobMac) = try await pair(b, "bob")
+        await b.sync()
+        let conv = "n:" + bob.account
+        XCTAssertTrue(alice.sealed.isSealed(conv, now: now + 6))
+        let dms = DirectMessages(engine: alice.engine)
+        dms.sealed = alice.sealed
+        let rumor = GiftWrap.rumor(kind: 7, pubkey: alice.account, tags: [["e", String(repeating: "a", count: 64)], ["p", bob.account]], content: "👍", createdAt: now + 7)
+        let old = try XCTUnwrap(try alice.sealed.wraps(rumor, to: [bob.account]).first)
+        dms.hold(rumor)
+        let item = OutboxItem(target: .main, kind: 1059, content: old.content, tags: old.tags, createdAt: old.createdAt, signed: old, dm: rumor.id)
+        // "restart": a new DirectMessages on the same store; nothing was sent through it yet
+        alice.engine.reseal = nil
+        let again = DirectMessages(engine: alice.engine)
+        again.sealed = alice.sealed
+        let hook = try XCTUnwrap(alice.engine.reseal) // installed at start, not at the first send
+        let removed = await bob.sealed.remove(bobMac.pub, now: now + 20)
+        XCTAssertTrue(removed)
+        await drain(bob.engine)
+        let head = try XCTUnwrap(bob.sealed.chain(bob.account)?.lb)
+        let made = try await hook(item)
+        XCTAssertEqual(made?.tag("lb"), head) // a reaction too: its rumor was kept across the restart
+        // a wrap that can't check its head waits by itself: the outbox goes on with the rest
+        alice.sealed.askChains = { _ in nil }
+        let other = OutboxItem(target: .main, kind: 1, content: "", tags: [], createdAt: old.createdAt + 1, signed: try NostrEvent(pubkey: "", createdAt: 1, kind: 1, tags: [], content: "x").signed(with: secret("x")), dm: nil)
+        var sent = [String]()
+        let pass = await OutboxPass.run([item, other]) { i in
+            if i.localId == item.localId { do { _ = try await hook(i) } catch let e as BelfryError { return .error(e.relayMessage) } catch { return .error("timeout") } }
+            sent.append(i.localId)
+            return .ok(i.signed)
+        }
+        XCTAssertEqual(sent, [other.localId])
+        XCTAssertEqual(pass.items.map(\.localId), [item.localId])
+    }
+
+    /// The key chain is neither read nor written before the account's key is known, and a chain
+    /// stored for another account is never used.
+    func testTheKeyStoreWaitsForItsOwner() throws {
+        final class Raw: RawSecretStore, @unchecked Sendable {
+            var data: Data?
+            var writes = 0
+            func read() -> Data? { data }
+            func write(_ d: Data) -> Bool { data = d; writes += 1; return true }
+            func delete() { data = nil }
+        }
+        let raw = Raw()
+        var owner = ""
+        let store = OwnedKeyStore(raw: raw, owner: { owner })
+        var chain = KeyChain()
+        let lb = try chain.make()
+        // the account is not known yet: nothing is written, nothing is read
+        store.save(chain)
+        XCTAssertEqual(raw.writes, 0)
+        XCTAssertTrue(store.load().isEmpty)
+        // known: saved with its owner, read back
+        owner = try Keys.publicKeyHex(secret: secret("alice"))
+        store.save(chain)
+        XCTAssertEqual(raw.writes, 1)
+        XCTAssertEqual(store.load().secret(lb), chain.secret(lb))
+        // a start where the key is not known yet does not lose it: no load, no save over it
+        owner = ""
+        XCTAssertTrue(store.load().isEmpty)
+        store.save(KeyChain())
+        XCTAssertEqual(raw.writes, 1)
+        owner = try Keys.publicKeyHex(secret: secret("alice"))
+        XCTAssertEqual(store.load().secret(lb), chain.secret(lb))
+        // another account in the same slot never gets this chain
+        owner = try Keys.publicKeyHex(secret: secret("bob"))
+        XCTAssertTrue(store.load().isEmpty)
+    }
+}
+
+private extension SealedEngine.Outcome {
+    var isRumor: Bool { if case .rumor = self { return true }; return false }
+}
+
+/// A sealed note to self of DEVICE's account (to try on another of its devices).
+private func XCTUnwrapWrap(_ d: FakeBelfry.Device) throws -> NostrEvent {
+    let rumor = GiftWrap.rumor(kind: 14, pubkey: d.account, tags: [["p", d.account]], content: "note", createdAt: 1795176000)
+    return try XCTUnwrap(try d.sealed.wraps(rumor, to: []).first)
 }

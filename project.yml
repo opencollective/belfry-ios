@@ -31,9 +31,10 @@ targets:
         # push (docs/push.md): APNs, the App Group and the keychain group shared with the extension
         aps-environment: $(APS_ENVIRONMENT)
         com.apple.security.application-groups: [group.sh.belfry.app]
-        # the shared group (push key, read by the notification extension), and the app's own
-        # (letterbox keys: never readable by the extension)
-        keychain-access-groups: [$(AppIdentifierPrefix)sh.belfry.app.shared, $(AppIdentifierPrefix)sh.belfry.app]
+        # the app's own group (the session, letterbox keys: never readable by the notification
+        # extension) and the shared one (the push key, named explicitly by the code that uses it)
+        # the app's own group FIRST: it is the default for what the app stores (the session, sign-in keys)
+        keychain-access-groups: [$(AppIdentifierPrefix)sh.belfry.app, $(AppIdentifierPrefix)sh.belfry.app.shared]
         # guest links https://chat.<domain>/join/<token> and event addresses /events/<link> open
         # in the app once each chat host serves apple-app-site-association (SERVER-NEEDS.md 5)
         com.apple.developer.associated-domains:

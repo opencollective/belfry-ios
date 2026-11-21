@@ -93,57 +93,58 @@ struct SealedState: Equatable {
 
 /// The letterbox secrets of one account on this device: one Keychain item per account slot,
 /// this device only, never synchronised, in the app's own access group (not the one shared with
-/// the notification extension); never in the database, never logged; gone on sign-out. The item
-/// carries its owner: a stale one (a reinstall, another account in the same slot) is never used.
-final class KeychainKeyStore: SealedKeyStore, @unchecked Sendable {
-    private struct Stored: Codable { var account: String; var keys: [String: String] }
+/// the notification extension); never in the database, never logged; gone on sign-out. The owner
+/// check is `OwnedKeyStore`'s (core, tested).
+final class KeychainSecret: RawSecretStore, @unchecked Sendable {
     private let name: String
-    private let owner: String
-
-    init(slot: String, account: String) {
-        name = slot.isEmpty ? "sealed-keys" : "sealed-keys@" + slot
-        owner = account
-    }
+    init(slot: String) { name = slot.isEmpty ? "sealed-keys" : "sealed-keys@" + slot }
 
     /// The app's own group ($(AppIdentifierPrefix)sh.belfry.app); nil on an unsigned build.
-    private static let group: String? = (Bundle.main.object(forInfoDictionaryKey: "BelfryPrivateKeychainGroup") as? String).flatMap { $0.isEmpty || $0.hasPrefix("sh.") ? nil : $0 }
+    static let group: String? = (Bundle.main.object(forInfoDictionaryKey: "BelfryPrivateKeychainGroup") as? String).flatMap { $0.isEmpty || $0.hasPrefix("sh.") ? nil : $0 }
 
     private var base: [String: Any] {
         var q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: Keychain.service + ".sealed",
                                 kSecAttrAccount as String: name, kSecAttrSynchronizable as String: false]
-        if let g = KeychainKeyStore.group { q[kSecAttrAccessGroup as String] = g }
+        if let g = KeychainSecret.group { q[kSecAttrAccessGroup as String] = g }
         return q
     }
 
-    func load() -> KeyChain {
+    func read() -> Data? {
         var q = base
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data,
-              let s = try? JSONDecoder().decode(Stored.self, from: data), s.account == owner else { return KeyChain() }
-        return KeyChain(keys: s.keys)
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess else { return nil }
+        return out as? Data
     }
 
-    func save(_ chain: KeyChain) {
-        guard let data = try? JSONEncoder().encode(Stored(account: owner, keys: chain.keys)) else { return }
+    func write(_ data: Data) -> Bool {
         // updated in place when it exists (a delete that worked followed by an add that failed would lose every key)
-        let change: [String: Any] = [kSecValueData as String: data]
-        let status = SecItemUpdate(base as CFDictionary, change as CFDictionary)
-        if status == errSecItemNotFound {
-            var q = base
-            q[kSecValueData as String] = data
-            q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            if SecItemAdd(q as CFDictionary, nil) != errSecSuccess { failed = true }
-        } else if status != errSecSuccess {
-            failed = true
-        }
+        let status = SecItemUpdate(base as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if status == errSecSuccess { return true }
+        guard status == errSecItemNotFound else { return false }
+        var q = base
+        q[kSecValueData as String] = data
+        q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        return SecItemAdd(q as CFDictionary, nil) == errSecSuccess
     }
 
-    /// The Keychain refused a write: the keys live only in memory until the next one works.
-    private(set) var failed = false
+    func delete() { SecItemDelete(base as CFDictionary) }
+}
 
-    func wipe() { SecItemDelete(base as CFDictionary) }
+extension Keychain {
+    /// The session (this device's key, which opens key hand-overs) leaves the access group the
+    /// notification extension can read for the app's own: the item is moved in place, never
+    /// deleted and added again. Once per account slot; nothing on an unsigned build.
+    static func moveSessionToPrivateGroup() {
+        guard let group = KeychainSecret.group else { return }
+        let flag = AccountList.defaultsKey("belfry-session-private", slot: slot)
+        guard !UserDefaults.standard.bool(forKey: flag) else { return }
+        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                kSecAttrAccount as String: AccountList.sessionKey(slot)]
+        let status = SecItemUpdate(q as CFDictionary, [kSecAttrAccessGroup as String: group] as CFDictionary)
+        if status == errSecSuccess || status == errSecItemNotFound || status == errSecDuplicateItem { UserDefaults.standard.set(true, forKey: flag) }
+    }
 }
 
 @MainActor
@@ -179,10 +180,25 @@ extension AppModel {
         if let l = pendingLinkSecret { se.setLink(l); pendingLinkSecret = nil }
     }
 
+    /// The sealed engine, once this account's key is known (a signer may learn it after the session
+    /// opened: nothing is read from or written to the Keychain before).
+    func ensureSealed() {
+        guard sealedEngine == nil, !isDemo, let s = session, s.reading != true, let e = engine, let d = dms, isHex64(e.me),
+              let secret = Data(hex: s.clientSecret) else { return }
+        Keychain.moveSessionToPrivateGroup()
+        let store = OwnedKeyStore(raw: KeychainSecret(slot: Keychain.slot), owner: { [weak e] in e?.me ?? "" })
+        guard let se = SealedEngine(engine: e, deviceSecret: secret, store: store) else { return }
+        sealedStore = store
+        wireSealed(se, dms: d)
+        adoptSealed(se)
+        startSealedUpkeep()
+        sealedNews([])
+    }
+
     /// Rosters, anchors, requests or keys arrived (or the relay answered): this device's upkeep,
     /// then the question a new device may be waiting with.
     func sealedNews(_ list: [NostrEvent]) {
-        guard let se = sealedEngine else { return }
+        guard let se = sealedEngine else { ensureSealed(); return }
         se.observe(list.filter { $0.kind == SealedKind.roster }.compactMap { $0.tag("p") } + list.filter { $0.kind == 30078 }.map(\.pubkey))
         // only what touches my own account costs a look at my sessions
         let mine = list.isEmpty || list.contains { $0.pubkey == me || $0.hasTag("p", me) || $0.hasTag("p", se.devicePub) }
@@ -203,7 +219,13 @@ extension AppModel {
 
     /// What the screens show, from the chains as they are now.
     func refreshSealed() {
+        ensureSealed()
         guard let se = sealedEngine, let dms, !isDemo else { return }
+        // the Keychain refused to keep the keys: said once (they live in memory until a write works)
+        if sealedStore?.failed == true, !sealedSaveToldOnce {
+            sealedSaveToldOnce = true
+            showToast("This phone could not save its message keys. Keep the app open and try again later.")
+        }
         var st = SealedState()
         st.ask = sealed.ask
         st.dismissed = sealed.dismissed

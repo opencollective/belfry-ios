@@ -232,6 +232,9 @@ final class AppModel: ObservableObject {
     /// The secret of the login link being used to sign in (`#l=`), until the session opens.
     var pendingLinkSecret: String?
     var sealedTimer: Timer?
+    var sealedStore: OwnedKeyStore?
+    var sealedSaveToldOnce = false
+    func adoptSealed(_ se: SealedEngine) { sealedEngine = se }
     private(set) var session: StoredSession?
     /// (model version, the engine's outbox version, snapshot): the outbox's too, so a screen opened
     /// right after my own action (a group I just made, a saved setting) sees it in the same frame
@@ -381,6 +384,7 @@ final class AppModel: ObservableObject {
             db = (try? .memory())!
         } else {
             let file = AppModel.dbURL(s.domain, slot: Keychain.slot)
+            AppModel.keepOutOfBackups()
             db = (try? Database(path: file.path)) ?? (try! .memory())
             AppModel.protect(file)
         }
@@ -415,15 +419,13 @@ final class AppModel: ObservableObject {
             // the groups relay answered: does it still have the groups this device knows?
             if t == .groups { Task { @MainActor in self?.releaseWayInKey(); await self?.checkGroups() } }
         }
-        if !s.demo, s.reading != true, let secret = Data(hex: s.clientSecret),
-           let se = SealedEngine(engine: e, deviceSecret: secret, store: KeychainKeyStore(slot: Keychain.slot, account: signer.pubkey)) {
-            wireSealed(se, dms: d)
-            sealedEngine = se
-            startSealedUpkeep()
+        if !s.demo, s.reading != true, let secret = Data(hex: s.clientSecret), let dev = try? Keys.publicKeyHex(secret: secret) {
+            // the relay is asked for the sealed kinds from the first connection; the engine itself
+            // starts once the account's key is known (`ensureSealed`)
+            e.sealedDevice = dev
             e.onNewEvents = { [weak d, weak rs, weak self] list in
                 if list.contains(where: { $0.kind == 1059 || $0.kind == 4 }) { Task { await d?.process() } }
                 rs?.offer(list)
-                let dev = se.devicePub
                 if list.contains(where: { SealedEngine.concerns($0) || ($0.kind == 1059 && $0.hasTag("p", dev)) }) { Task { @MainActor in self?.sealedNews(list) } }
             }
             e.onEOSE = { [weak rs, weak self] t in
@@ -562,7 +564,7 @@ final class AppModel: ObservableObject {
             // signing out wipes this device's letterbox keys (sealed.md 5.6); whatever the engine
             // still had under way saves and publishes nothing more
             sealedEngine?.wipe()
-            KeychainKeyStore(slot: slot, account: "").wipe()
+            KeychainSecret(slot: slot).delete()
         }
         nativeFlow.cancel()
         pendingCode = nil
@@ -600,7 +602,11 @@ final class AppModel: ObservableObject {
         readSync = nil
         engine = nil
         dms = nil
+        // an account switched away from: whatever its engine had under way saves and publishes nothing more
+        sealedEngine?.close()
         sealedEngine = nil
+        sealedStore = nil
+        sealedSaveToldOnce = false
         sealedTimer?.invalidate()
         sealedTimer = nil
         sealed = SealedState()
@@ -623,16 +629,23 @@ final class AppModel: ObservableObject {
         return u
     }
 
-    /// The database holds what was read (messages opened on this device): unreadable until the
-    /// phone was unlocked once after a restart, and never in a backup.
+    /// The folder of the databases (and of files waiting to be sent) is never in a backup:
+    /// whatever is created in it later (a write-ahead file) is excluded with it.
+    static func keepOutOfBackups() {
+        var dir = supportDir
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var v = URLResourceValues()
+        v.isExcludedFromBackup = true
+        try? dir.setResourceValues(v)
+        // new files in it are unreadable until the phone was unlocked once after a restart
+        try? FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: dir.path)
+    }
+
+    /// The database holds what was read (messages opened on this device): protected until the
+    /// first unlock, file by file for the ones that exist already.
     static func protect(_ file: URL) {
-        for suffix in ["", "-wal", "-shm"] {
-            var u = URL(fileURLWithPath: file.path + suffix)
-            guard FileManager.default.fileExists(atPath: u.path) else { continue }
-            try? FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: u.path)
-            var v = URLResourceValues()
-            v.isExcludedFromBackup = true
-            try? u.setResourceValues(v)
+        for suffix in ["", "-wal", "-shm"] where FileManager.default.fileExists(atPath: file.path + suffix) {
+            try? FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: file.path + suffix)
         }
     }
 

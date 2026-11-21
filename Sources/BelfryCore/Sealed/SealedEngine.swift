@@ -11,6 +11,44 @@ public protocol SealedKeyStore: AnyObject, Sendable {
     func wipe()
 }
 
+/// Where the bytes of one account's key chain are kept (the Keychain in the app).
+public protocol RawSecretStore: AnyObject, Sendable {
+    func read() -> Data?
+    /// False when the store refused the write.
+    func write(_ data: Data) -> Bool
+    func delete()
+}
+
+/// A key chain that belongs to an account: stored with its owner, and neither read nor written
+/// before the account's key is known. (A signer that learns its key late starts with ""; a chain
+/// saved under "" would be thrown away by the next start, and then overwritten: every secret lost.)
+public final class OwnedKeyStore: SealedKeyStore, @unchecked Sendable {
+    private struct Stored: Codable { var account: String; var keys: [String: String] }
+    private let raw: RawSecretStore
+    private let owner: () -> String
+    private let lock = NSLock()
+    /// The store refused a write: the keys live only in memory until one works.
+    public private(set) var failed = false
+
+    public init(raw: RawSecretStore, owner: @escaping () -> String) { self.raw = raw; self.owner = owner }
+
+    public func load() -> KeyChain {
+        let me = owner()
+        guard isHex64(me), let data = raw.read(), let s = try? JSONDecoder().decode(Stored.self, from: data), s.account == me else { return KeyChain() }
+        return KeyChain(keys: s.keys)
+    }
+
+    public func save(_ chain: KeyChain) {
+        let me = owner()
+        // never before the account is known; never over another account's chain with less
+        guard isHex64(me), let data = try? JSONEncoder().encode(Stored(account: me, keys: chain.keys)) else { return }
+        let ok = raw.write(data)
+        lock.lock(); failed = !ok; lock.unlock()
+    }
+
+    public func wipe() { raw.delete() }
+}
+
 public final class MemoryKeyStore: SealedKeyStore, @unchecked Sendable {
     private var chain = KeyChain()
     public init() {}
@@ -32,6 +70,10 @@ struct SealedMemory: Codable {
     /// My account's roots before the pinned one (their devices may still hand keys over).
     var oldRoots = [String]()
     var lastRequest = 0
+    /// Requests of head devices already answered with the keys (kept: a restart answers none twice).
+    var answeredRequests = [String]()
+    /// Per device: when this device last handed it the key chain.
+    var handed = [String: Int]()
 
     struct Head: Codable { var lb: String; var devices: [String]; var id: String? }
     struct Reset: Codable, Hashable { var root: String; var at: Int; var shared: Bool }
@@ -69,8 +111,12 @@ public final class SealedEngine: @unchecked Sendable {
     private var waiting = [String: String]()
     /// Devices this run handed the key chain to.
     private var given = Set<String>()
-    /// Requests of head devices already answered with the keys.
-    private var answeredRequests = Set<String>()
+    /// The connection on which the relay last answered completely about my own anchor and rosters.
+    private var mineSeenOn: String?
+    /// Rosters and anchors were paged from the start on this connection.
+    private var pagedOn: String?
+    /// The shared-history wraps and other sealed rumors a sender wants kept while they are queued.
+    public var holdRumor: ((NostrEvent) -> Void)?
     private var handled = Set<String>()
     /// The belfry's own key, from belfry.json: the one seal signer that is not a device, for a
     /// mail (kind 1301) only (sealed.md 7). Never a name looked up at the time.
@@ -97,7 +143,8 @@ public final class SealedEngine: @unchecked Sendable {
     private var answered = [String: Int]()
 
     public init?(engine: SyncEngine, deviceSecret: Data, store: SealedKeyStore) {
-        guard let pub = try? Keys.publicKeyHex(secret: deviceSecret) else { return nil }
+        // only once the account's key is known (a signer may learn it after it starts)
+        guard isHex64(engine.me), let pub = try? Keys.publicKeyHex(secret: deviceSecret) else { return nil }
         self.engine = engine
         device = deviceSecret
         devicePub = pub
@@ -116,15 +163,20 @@ public final class SealedEngine: @unchecked Sendable {
             || (e.kind == 30078 && (e.tag("d") == SealedKind.anchorD || (e.tag("d") ?? "").hasPrefix(SealedKind.deviceD)))
     }
 
-    private func remember(_ change: (inout SealedMemory) -> Void) {
+    /// RECHAIN: the change touches what a chain resolves to (a pinned head).
+    private func remember(rechain: Bool = false, _ change: (inout SealedMemory) -> Void) {
         // changed and stored under the same lock: two writers never store an older copy last
         lock.lock()
         defer { lock.unlock() }
         if closed { return }
         change(&memory)
         engine.db.set("sealed-state", memory)
-        chains = nil // pins are part of what a chain resolves to
+        if rechain { chains?.cache = [:] }
     }
+
+    /// This engine's account was switched away from, or signed out: nothing more is saved or
+    /// published by whatever it still had under way.
+    public func close() { lock.lock(); closed = true; lock.unlock() }
 
     public func setLink(_ secret: String?) { lock.lock(); link = secret; lock.unlock() }
 
@@ -211,13 +263,33 @@ public final class SealedEngine: @unchecked Sendable {
         return out
     }
 
-    /// Every letterbox my account ever had in a roster this device knows (the current chain and
-    /// the roots before it).
+    /// Every letterbox of my account's VALID chains: the current one, the ones pinned before it,
+    /// and the last head this device accepted. Never a roster that merely names me: anyone can
+    /// publish one.
     private func myLetterboxes() -> Set<String> {
+        var out = Set(chain(me)?.rosters.map(\.lb) ?? [])
+        lock.lock(); let old = memory.oldRoots; if let h = memory.heads[me] { out.insert(h.lb) }; lock.unlock()
+        guard !old.isEmpty else { return out }
         let (_, rosters) = index()
-        var out = Set((rosters[me] ?? []).compactMap { Roster($0)?.lb })
-        lock.lock(); if let h = memory.heads[me] { out.insert(h.lb) }; lock.unlock()
+        let mineAll = (rosters[me] ?? []).compactMap(Roster.init)
+        for root in old {
+            var cur = mineAll.first { $0.id == root && $0.n == 1 && $0.devices.contains($0.signer) }
+            while let c = cur {
+                out.insert(c.lb)
+                cur = mineAll.filter { $0.prev == c.id && $0.n == c.n + 1 && c.devices.contains($0.signer) }.min { $0.id.lowercased() < $1.id.lowercased() }
+            }
+        }
         return out
+    }
+
+    /// Whether my own chain is current: my anchor and rosters were answered by the relay, after
+    /// AUTH and to EOSE, on the connection that is open now. Only then can a wrap to a letterbox
+    /// this device does not know be called nobody's.
+    private var mineCurrent: Bool {
+        lock.lock(); let seen = mineSeenOn; lock.unlock()
+        guard let seen else { return false }
+        if askChains != nil { return true } // tests: the fake relay has one connection
+        return engine.connection(.main).map { "\($0)" } == seen
     }
 
     /// Pins, last heads and fresh starts, from the chains as they are now. Call when rosters or
@@ -241,7 +313,7 @@ public final class SealedEngine: @unchecked Sendable {
                 changed = true
             }
             if head?.id != c.head.id || head?.lb != c.lb || head?.devices != c.devices {
-                remember { $0.heads[a] = .init(lb: c.lb, devices: c.devices, id: c.head.id) }
+                remember(rechain: true) { $0.heads[a] = .init(lb: c.lb, devices: c.devices, id: c.head.id) }
                 changed = true
             }
         }
@@ -348,7 +420,10 @@ public final class SealedEngine: @unchecked Sendable {
             // naming any other letterbox is dropped: anyone can write one
             guard let lb = Sealed.lb(of: wrap) else { return .drop }
             if myLetterboxes().contains(lb) { return old ? .drop : .keep }
-            return chain(me) == nil && !old ? .keep : .drop
+            // a letterbox this device does not know: it may be my newest one, whose roster has not
+            // arrived yet (the wrap can come first). Nobody's only once my chain is current on this
+            // connection; until then it is kept, never marked seen
+            return mineCurrent || old ? .drop : .keep
         case .opened(let rumor, let seal):
             // a mail from the belfry: kind 1301, author and seal's signer both the belfry's key
             let b = belfryKey
@@ -447,17 +522,27 @@ public final class SealedEngine: @unchecked Sendable {
         guard let a = try? await engine.signer.sign(RosterChain.anchor(root: root ?? r.id, head: r.id, now: at)) else { return nil }
         lock.lock(); let gone = closed; lock.unlock()
         if gone { return nil }
-        engine.add([r, a], verify: false)
-        engine.enqueueSigned(r, target: .main, dm: nil)
+        // NOT added to the local store: this device's own chain is what the relay holds, read
+        // back from it (`settled`), never what it meant to publish.
+        // The roster first; its anchor only once the relay took it (an anchor that names a roster
+        // the relay refused would un-anchor the head that stands)
+        let id = engine.enqueueSigned(r, target: .main, dm: nil)
+        for _ in 0..<10 {
+            await engine.flush()
+            guard let item = engine.outboxItems().first(where: { $0.localId == id }), item.status != .failed else { break }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+        if engine.outboxItems().contains(where: { $0.localId == id }) { engine.cancel(id); return nil }
         engine.enqueueSigned(a, target: .main, dm: nil)
         return r
     }
 
-    private func publishAsAccount(_ t: EventTemplate) async throws {
+    /// LOCAL: also kept here at once (never for an anchor: my chain is what the relay holds).
+    private func publishAsAccount(_ t: EventTemplate, local: Bool = true) async throws {
         let e = try await engine.signer.sign(t)
         lock.lock(); let gone = closed; lock.unlock()
         if gone { return }
-        engine.add([e], verify: false)
+        if local { engine.add([e], verify: false) }
         engine.enqueueSigned(e, target: .main, dm: nil)
     }
 
@@ -517,7 +602,11 @@ public final class SealedEngine: @unchecked Sendable {
         }
         guard let found else { return false }
         engine.add(found)
-        lock.lock(); for a in who { answered[a] = now }; lock.unlock()
+        let conn = askChains != nil ? "test" : engine.connection(.main).map { "\($0)" }
+        lock.lock()
+        for a in who { answered[a] = now }
+        if who.contains(me) { mineSeenOn = conn }
+        lock.unlock()
         observe(who, now: now)
         return true
     }
@@ -552,8 +641,8 @@ public final class SealedEngine: @unchecked Sendable {
         lock.unlock()
         saveKeys(k)
         let ready = SealedEngine.mayCarryReady(sessions, devices: [devicePub], now: now)
-        guard await publishRoster(RosterChain.template(account: me, n: 1, prev: nil, lb: lb, devices: [devicePub], ready: ready, now: now), root: nil, now: now) != nil else { return }
-        if let c = chain(me) { await writeNames(c) }
+        guard let r = await publishRoster(RosterChain.template(account: me, n: 1, prev: nil, lb: lb, devices: [devicePub], ready: ready, now: now), root: nil, now: now) else { return }
+        if await settled(r, now: now), let c = chain(me) { await writeNames(c) }
     }
 
     /// A roster change is done only when the relay took BOTH the roster and its anchor and the
@@ -561,18 +650,30 @@ public final class SealedEngine: @unchecked Sendable {
     /// event was refused or is still waiting, or another branch was anchored; the caller's change
     /// is not done (the upkeep does it again on the head that won).
     private func settled(_ roster: NostrEvent, now: Int) async -> Bool {
-        func waits() -> Bool {
-            engine.outboxItems().contains { $0.signed?.id == roster.id || ($0.kind == 30078 && $0.signed?.tag("head") == roster.id) }
+        func mine() -> [OutboxItem] {
+            engine.outboxItems().filter { $0.signed?.id == roster.id || ($0.kind == 30078 && $0.signed?.tag("head") == roster.id) }
         }
         // a few seconds for the relay to take both
         for _ in 0..<10 {
             await engine.flush()
-            if !waits() { break }
+            let left = mine()
+            if left.isEmpty || left.contains(where: { $0.status == .failed }) { break }
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
-        if waits() { return false }
-        guard await refresh([me], now: now) else { return false }
-        return chain(me)?.rosters.contains { $0.id == roster.id } ?? false
+        // refused, or still waiting: what did not leave is withdrawn, so a later try starts clean
+        // (a roster that did leave without its anchor is anchored by the next upkeep)
+        let left = mine()
+        for item in left { engine.cancel(item.localId) }
+        // read back from the relay, authenticated and complete: on the anchored path, or not done
+        guard await refresh([me], now: now), left.isEmpty, let c = chain(me), c.rosters.contains(where: { $0.id == roster.id }) else { return false }
+        return anchoredPath(c).contains(roster.id)
+    }
+
+    /// The ids of the rosters from the root to the head the relay's anchor names.
+    private func anchoredPath(_ c: RosterChain) -> [String] {
+        let (anchors, _) = index()
+        guard let head = anchors[me]?.tag("head"), let i = c.rosters.firstIndex(where: { $0.id == head }) else { return [c.root.id] }
+        return c.rosters[...i].map(\.id)
     }
 
     /// The upkeep of my account's chain. Call when the main relay answered on this connection (an
@@ -609,7 +710,7 @@ public final class SealedEngine: @unchecked Sendable {
         let heads = a.tags.filter { $0.first == "head" }
         let named = heads.count == 1 && heads[0].count >= 2 ? heads[0][1] : c.root.id
         guard named != c.head.id else { return }
-        try? await publishAsAccount(RosterChain.anchor(root: c.root.id, head: c.head.id, now: max(now, a.createdAt + 1)))
+        try? await publishAsAccount(RosterChain.anchor(root: c.root.id, head: c.head.id, now: max(now, a.createdAt + 1)), local: false)
     }
 
     /// A well-formed session list that has this device's own chat session: without it nothing is
@@ -620,6 +721,16 @@ public final class SealedEngine: @unchecked Sendable {
 
     /// One pass. Returns the head's devices whose session is gone (to drop after the wait).
     private func upkeep(now: Int) async -> [String] {
+        // every anchor and roster, paged from the start, once per connection (the live
+        // subscription's limit would hide some on a large belfry), then my own, read back
+        if askChains == nil {
+            let conn = engine.connection(.main).map { "\($0)" }
+            lock.lock(); let done = pagedOn != nil && pagedOn == conn; lock.unlock()
+            if !done, await engine.fetchAll(["kinds": [SealedKind.roster]]), await engine.fetchAll(["kinds": [30078], "#d": [SealedKind.anchorD]]) {
+                lock.lock(); pagedOn = conn; lock.unlock()
+            }
+        }
+        guard await refresh([me], now: now) else { return [] }
         takeKeys()
         observe([me], now: now)
         guard let sessions = await sessions?() else { return [] }
@@ -662,15 +773,21 @@ public final class SealedEngine: @unchecked Sendable {
         }
         let gone = c.devices.filter { $0 != devicePub && !live.contains($0) }
         if !gone.isEmpty { return gone }
-        // a device I let in whose Allow did not finish here (the relay was slow): its keys now
-        for d in c.devices { give(d, c, now: now) }
+        // a device I let in whose Allow did not finish here (the relay was slow): its keys now,
+        // once its roster is on the anchored path
+        if anchoredPath(c).last == c.head.id { for d in c.devices { give(d, c, now: now) } }
         // a head device that asks (it lost its hand-over): the keys at once, no prompt, when its
-        // chat session is live; once per request
-        for e in engine.snapshot() where e.kind == SealedKind.request && e.hasTag("p", me) && e.pubkey != devicePub && c.devices.contains(e.pubkey) {
-            lock.lock(); let fresh = answeredRequests.insert(e.id).inserted, k = keys; lock.unlock()
-            guard fresh, sessions.contains(where: { $0.clientPubkey == e.pubkey && $0.chat }),
-                  let ws = try? Sealed.keysWraps(k, account: me, device: device, to: e.pubkey) else { continue }
-            for w in ws { engine.enqueueSigned(w, target: .main, dm: nil) }
+        // chat session is live; once per request; only for a head that is anchored
+        for e in engine.snapshot() where e.kind == SealedKind.request && e.hasTag("p", me) && e.pubkey != devicePub && c.devices.contains(e.pubkey)
+            && anchoredPath(c).last == c.head.id {
+            // once per request, remembered across restarts; never one older than my last hand-over to it
+            lock.lock()
+            let fresh = !memory.answeredRequests.contains(e.id) && e.createdAt > (memory.handed[e.pubkey] ?? 0)
+            let k = keys
+            lock.unlock()
+            guard fresh, sessions.contains(where: { $0.clientPubkey == e.pubkey && $0.chat }) else { continue }
+            remember { m in m.answeredRequests = Array((m.answeredRequests + [e.id]).suffix(300)) }
+            hand(e.pubkey, k, now: now)
         }
         // a request with the proof of a code this device showed is allowed at once (5.2)
         lock.lock(); let secrets = shownLinks.filter { now - $0.at < 900 }.map(\.secret); lock.unlock()
@@ -722,9 +839,16 @@ public final class SealedEngine: @unchecked Sendable {
     }
 
     private func admit(_ newDevice: String, now: Int) async -> Answer {
-        guard let c = chain(me), c.devices.contains(devicePub) else { return .failed }
+        // decided on what the relay holds now, not on what this device last saw
+        guard await refresh([me], now: now), let c = chain(me), c.devices.contains(devicePub) else { return .failed }
         // already in (another device answered first, or my own roster went through after all)
-        if c.devices.contains(newDevice) { give(newDevice, c, now: now); return .done }
+        if c.devices.contains(newDevice) {
+            // keys only to a device of the ANCHORED head: a roster still past the anchored end is
+            // anchored first, and the answer is "not done yet"
+            guard anchoredPath(c).last == c.head.id else { await anchorMine(c, now: now); return .failed }
+            give(newDevice, c, now: now)
+            return .done
+        }
         // 20 devices already: refused before any key is handed over
         guard c.devices.count < SealedKind.maxDevices else { return .full }
         // its session must still be live and a chat client NOW (a card left open after another
@@ -748,11 +872,17 @@ public final class SealedEngine: @unchecked Sendable {
     private func give(_ d: String, _ c: RosterChain, now: Int) {
         guard d != devicePub, c.devices.contains(d), let j = c.joined(d), j.from == devicePub, now - j.at < 86400 else { return }
         lock.lock()
-        let first = given.insert(d).inserted
+        let first = given.insert(d).inserted && (memory.handed[d] ?? 0) < j.at
         let k = keys
         lock.unlock()
-        guard first, let ws = try? Sealed.keysWraps(k, account: me, device: device, to: d) else { return }
+        if first { hand(d, k, now: now) }
+    }
+
+    /// The whole key chain to device D, and when (so its older requests are not answered again).
+    private func hand(_ d: String, _ k: KeyChain, now: Int) {
+        guard let ws = try? Sealed.keysWraps(k, account: me, device: device, to: d) else { return }
         for w in ws { engine.enqueueSigned(w, target: .main, dm: nil) }
+        remember { $0.handed[d] = now }
     }
 
     /// Not me: that session is revoked. No roster change. False when the belfry could not be
@@ -779,10 +909,10 @@ public final class SealedEngine: @unchecked Sendable {
         lock.unlock()
         saveKeys(k)
         guard let r = await publishRoster(RosterChain.template(account: me, n: c.head.n + 1, prev: c.head.id, lb: lb, devices: stay, ready: false, now: now), root: c.root.id, now: now) else { return false }
-        for d in stay where d != devicePub && live.contains(d) {
-            for w in (try? Sealed.keysWraps(k, account: me, device: device, to: d)) ?? [] { engine.enqueueSigned(w, target: .main, dm: nil) }
-        }
+        // the new secret goes out only once the relay holds the roster that uses it (a device
+        // that misses it asks, and is answered: the lost hand-over path)
         guard await settled(r, now: now) else { return false }
+        for d in stay where d != devicePub && live.contains(d) { hand(d, k, now: now) }
         if let next = chain(me) { await writeNames(next) }
         return true
     }
@@ -854,7 +984,9 @@ public final class SealedEngine: @unchecked Sendable {
     public func share(_ rumors: [NostrEvent], with person: String, notice: String) throws {
         guard mine == .inside, let lb = letterbox(person) else { throw BelfryError.invalid("It can't be shared just now. Try again.") }
         for part in Sealed.history(rumors, sharer: me, person: person) {
-            engine.enqueueSigned(try Sealed.wrap(part, device: device, to: person, lb: lb), target: .main, dm: nil)
+            // kept while queued: its head is checked again before it leaves, like any sealed wrap
+            holdRumor?(part)
+            engine.enqueueSigned(try Sealed.wrap(part, device: device, to: person, lb: lb), target: .main, dm: part.id)
         }
         remember { m in
             m.resets[person] = (m.resets[person] ?? []).map { r in

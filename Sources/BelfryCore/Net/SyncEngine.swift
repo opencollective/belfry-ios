@@ -272,7 +272,11 @@ public final class SyncEngine: @unchecked Sendable {
             return nil
         }
         if let made = item.signed {
-            if localOnly { return made }
+            if localOnly {
+                // tests: the relay refuses this one
+                if let why = localRefuse?(made) { throw BelfryError.relay(why) }
+                return made
+            }
             // a sealed wrap whose letterbox changed while it waited is sealed again (sealed.md 9)
             let signed = try await reseal?(item) ?? made
             try await publish(item.target, signed)
@@ -479,6 +483,31 @@ public final class SyncEngine: @unchecked Sendable {
     /// Sealed conversations (docs/sealed.md): the anchors and rosters of everybody, the requests
     /// for my account, the key hand-overs to this device, my device names. Always whole (no `since`).
     public var sealedDevice: String?
+    /// Tests: a local-only engine's "relay" refuses an event (the reason, as a relay would give it).
+    var localRefuse: ((NostrEvent) -> String?)?
+
+    /// The socket open now for T (to tell one connection from the next).
+    public func connection(_ t: Target) -> ObjectIdentifier? {
+        lock.lock(); defer { lock.unlock() }
+        return relays[t].flatMap { $0.authed ? ObjectIdentifier($0) : nil }
+    }
+
+    /// Everything a filter matches, from the start, in pages (an authenticated, complete answer
+    /// per page). False when a page did not come: the caller knows nothing for sure.
+    public func fetchAll(_ base: [String: Any], page: Int = 500) async -> Bool {
+        if localOnly { return false }
+        var until = Int.now + 3 * 86400
+        for _ in 0..<200 {
+            var f = base
+            f["until"] = until
+            f["limit"] = page
+            guard let got = await queryAuthed(.main, [f], timeout: 15) else { return false }
+            add(got)
+            guard got.count >= page, let oldest = got.map(\.createdAt).min(), oldest < until else { return true }
+            until = oldest
+        }
+        return true
+    }
     /// A queued sealed wrap, made again for the head its letterbox moved to; nil = send it as it is.
     /// Throws to keep the item for a later try (its people's heads could not be checked just now).
     public var reseal: ((OutboxItem) async throws -> NostrEvent?)?
@@ -489,6 +518,7 @@ public final class SyncEngine: @unchecked Sendable {
             ["kinds": [SealedKind.roster], "limit": 5000],
             ["kinds": [SealedKind.request], "#p": [me], "limit": 200],
             ["kinds": [1059], "#p": [d], "limit": 200],
+            // (anchors and rosters beyond these limits are paged by the sealed engine, once per connection)
             // my device names (`belfry:device:<key>`): by author, the `d` prefix matched here
             ["kinds": [30078], "authors": [me], "limit": 200],
         ]
