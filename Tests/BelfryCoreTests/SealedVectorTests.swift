@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import BelfryCore
 
-// vectors/sealed.json = collective-belfry docs/sealed-vectors.json (sha256 a1daadbd…5286), byte
+// vectors/sealed.json = collective-belfry docs/sealed-vectors.json (sha256 32f97764…b09a), byte
 // for byte: the roster chain, opening and acceptance, the ceiling and the packing of a shared
 // history, the key hand-over, the link proof, shared history, `ready`. Not reproduced here:
 // making the same wrap byte for byte (it needs fixed one-time keys, nonces and Schnorr auxiliary).
@@ -259,5 +259,34 @@ final class SealedVectorTests: XCTestCase {
             }
         }
         XCTAssertEqual(asks, 27)
+    }
+
+    func testReports() throws {
+        let v = try vector("sealed")
+        let section = dict(v["reports"])
+        let belfry = section["belfry"] as? String
+        let cases = list(section["cases"])
+        XCTAssertEqual(cases.count, 4)
+        for c in cases {
+            let name = c["name"] as? String ?? ""
+            let exp = dict(c["expected"])
+            // what the device holds, as given (a pair may be wrong on purpose)
+            let held = Dictionary(list(c["key_chain"]).map { ($0["lb"] as? String ?? "", $0["secret"] as? String ?? "") }, uniquingKeysWith: { a, _ in a })
+            let got = Sealed.report(try event(c["report"]), belfry: belfry) { held[$0].flatMap { Data(hex: $0) } }
+            switch (got, exp["state"] as? String) {
+            case (.opened(let text), "opened"?):
+                let body = try XCTUnwrap(JSON.parse(text) as? NSDictionary, name)
+                XCTAssertEqual(body, dict(exp["body"]) as NSDictionary, name)
+            case (.error, "error"?), (.signer, "signer"?), (.locked, "locked"?): break
+            default: XCTFail("\(name): \(got) is not \(exp["state"] as? String ?? "?")")
+            }
+        }
+        // not the belfry's, or changed since it was signed: refused
+        let report = try event(cases[0]["report"])
+        XCTAssertEqual(Sealed.report(report, belfry: key(v, "mallory").pub) { _ in nil }, .refused)
+        var changed = report
+        changed.tags.append(["lb", key(v, "bob_lb1").pub])
+        XCTAssertEqual(Sealed.report(changed, belfry: belfry, verify: false) { _ in nil }, .refused) // two lb
+        XCTAssertEqual(Sealed.report(changed, belfry: belfry) { _ in nil }, .refused) // and its signature no longer holds
     }
 }

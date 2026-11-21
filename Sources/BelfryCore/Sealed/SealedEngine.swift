@@ -495,12 +495,12 @@ public final class SealedEngine: @unchecked Sendable {
         return "\(anchors.count):\(rosters.values.reduce(0) { $0 + $1.count }):\(anchors.values.map(\.createdAt).max() ?? 0)"
     }
 
-    /// A delivery report sealed to my letterbox (7679 with `lb`): its text.
+    /// A delivery report sealed to my letterbox (7679 with `lb`): its text, when the belfry signed
+    /// it and this device holds that letterbox's secret.
     public func openReport(_ e: NostrEvent) -> String? {
-        guard let lb = e.tag("lb"), let eph = e.tag("ephemeral-pubkey"), let p = Data(hex: eph) else { return nil }
-        lock.lock(); let s = keys.secret(lb); lock.unlock()
-        guard let s, let k = try? NIP44.conversationKey(secret: s, publicKey: p) else { return nil }
-        return try? NIP44.decrypt(e.content, conversationKey: k)
+        lock.lock(); let k = keys; lock.unlock()
+        if case .opened(let text) = Sealed.report(e, belfry: belfryKey, verify: false, secret: { k.secret($0) }) { return text }
+        return nil
     }
 
     /// Key hand-overs addressed to this device (sealed.md 5.5). True when new keys came.

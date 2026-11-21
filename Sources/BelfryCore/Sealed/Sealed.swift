@@ -137,6 +137,36 @@ public enum Sealed {
         return sharedRumors(history).filter { [14, 7, 5].contains($0.kind) && inIt($0, sharer) && inIt($0, receiver) }
     }
 
+    // ---- delivery reports (sealed.md 7) -------------------------------------------------------------
+
+    public enum ReportState: Sendable, Equatable {
+        /// Its body (a JSON object as text).
+        case opened(String)
+        /// It names a letterbox this device holds, and does not open with its secret.
+        case error
+        /// No `lb`: the old kind, the signer's to open; never tried with a letterbox.
+        case signer
+        /// Its letterbox is not in the key chain: kept, not opened.
+        case locked
+        /// Not a report of the belfry (another signer, no valid ephemeral key, more than one `lb`).
+        case refused
+    }
+
+    /// A delivery report (7679) of a mail I sent. With an `lb` tag its content is NIP-44 with
+    /// conv(that letterbox's secret, the key in `ephemeral-pubkey`). SECRET: the letterbox secrets
+    /// this device holds. BELFRY: the belfry's key, which must have signed it. VERIFY: check the
+    /// signature here (events from the local log were checked when stored).
+    public static func report(_ e: NostrEvent, belfry: String?, verify: Bool = true, secret: (String) -> Data?) -> ReportState {
+        let ephs = e.tags.filter { $0.first == "ephemeral-pubkey" }, lbs = e.tags.filter { $0.first == "lb" }
+        guard e.kind == 7679, belfry.map({ $0 == e.pubkey }) ?? true, !verify || e.isValid,
+              ephs.count == 1, ephs[0].count >= 2, isHex64(ephs[0][1]), lbs.count <= 1 else { return .refused }
+        guard let lbTag = lbs.first else { return .signer }
+        guard lbTag.count >= 2, isHex64(lbTag[1]) else { return .refused }
+        guard let s = secret(lbTag[1]) else { return .locked }
+        guard let text = try? NIP44.decrypt(e.content, conversationKey: conv(s, ephs[0][1])) else { return .error }
+        return .opened(text)
+    }
+
     // ---- handing keys to a device (sealed.md 5.5) --------------------------------------------------
 
     public struct Handover: Sendable {
