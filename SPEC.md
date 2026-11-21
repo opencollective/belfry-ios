@@ -1982,7 +1982,12 @@ The vectors file is the belfry's `docs/actions-vectors.json` copied unchanged (n
   Join sheet instead.
 - **Confirmation**: before a `belfry:` action the client asks with **its own fixed text** for that
   action, never the button's label (`belfry:website-publish`: "Publish this version as the
-  website? Everyone will see it at https://<domain>." · Publish / Cancel). A `danger` button
+  website? Everyone will see it at https://<domain>." · Publish / Cancel; since 2026-11-21
+  `belfry:request-close`, Close on a request card of the requests channel: "Close this request? It
+  stays readable, and people can still comment." · Close / Cancel, the first sentence as the
+  dialog's title, and the locked button reads "Closing"; who may close and every line after it
+  are the belfry's answers. An action in the vectors that the client does not know, such as
+  `belfry:offer-decide` on iPhone, stays disabled with "Update the app to use this."). A `danger` button
   handled by its author asks "<label>?" with the label as the destructive button and Cancel.
   Plain and primary author buttons press at once.
 - **The answer** (by the handler, on the groups relay): `kind 1985, ["L","belfry/action-result"]

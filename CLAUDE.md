@@ -379,3 +379,10 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   `not_guest`); a channel's name before its metadata = id without its random ending, metadata
   always subscribed without `since`, `SyncEngine.catchUpFromStart` after access changed (19.42).
   `kinds` (whois) is stored per account (`db "kinds"`). Screens `todo`, `todoassign`, `join-member`.
+
+- 2026-11-21 `belfry:request-close` (canvas channels/buttons-request-close, collective-belfry
+  belfry-sh 02afda6, vectors/message-actions.json sha256 31b45437…ecf9): a known action with its
+  own question (`Buttons.confirmParts` = title + line), "Closing" while locked; the filled message
+  button is `.brand` (borderedProminent was white on white in dark mode). `belfry:offer-decide`
+  is in the vectors but NOT known here (no board for iPhone yet). Demo channel #requests;
+  screens `reqclose`, `reqcloseconfirm`.

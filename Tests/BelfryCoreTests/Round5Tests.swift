@@ -73,6 +73,9 @@ final class ButtonsTests: XCTestCase {
             case "unknown_belfry_action": XCTAssertEqual(Buttons.unknownActionText, v as? String)
             case let c where c.hasPrefix("confirm:"):
                 let action = String(c.dropFirst("confirm:".count))
+                // an action this app does not know yet (its button is disabled, "Update the app
+                // to use this.") has no question here
+                guard Buttons.knownActions.contains(action) else { XCTAssertNil(Buttons.confirmText(action, domain: "<domain>")); continue }
                 XCTAssertEqual(Buttons.confirmText(action, domain: "<domain>"), v as? String)
             default: XCTAssertEqual(Buttons.fixed[k], v as? String, k)
             }
