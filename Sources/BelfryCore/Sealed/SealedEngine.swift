@@ -69,6 +69,8 @@ public final class SealedEngine: @unchecked Sendable {
     private var waiting = [String: String]()
     /// Devices this run handed the key chain to.
     private var given = Set<String>()
+    /// Requests of head devices already answered with the keys.
+    private var answeredRequests = Set<String>()
     private var handled = Set<String>()
     /// The belfry's own key, from belfry.json: the one seal signer that is not a device, for a
     /// mail (kind 1301) only (sealed.md 7). Never a name looked up at the time.
@@ -599,6 +601,17 @@ public final class SealedEngine: @unchecked Sendable {
         onChange?()
     }
 
+    /// The anchor again, naming the head, when the head is a roster this device signed and the
+    /// anchor does not name it yet (sealed.md 3.2: at each start and each upkeep).
+    private func anchorMine(_ c: RosterChain, now: Int) async {
+        let (anchors, _) = index()
+        guard let a = anchors[me], c.head.signer == devicePub else { return }
+        let heads = a.tags.filter { $0.first == "head" }
+        let named = heads.count == 1 && heads[0].count >= 2 ? heads[0][1] : c.root.id
+        guard named != c.head.id else { return }
+        try? await publishAsAccount(RosterChain.anchor(root: c.root.id, head: c.head.id, now: max(now, a.createdAt + 1)))
+    }
+
     /// A well-formed session list that has this device's own chat session: without it nothing is
     /// concluded (an empty or odd answer removes nobody).
     private func listsMe(_ sessions: [SessionInfo]) -> Bool {
@@ -635,10 +648,30 @@ public final class SealedEngine: @unchecked Sendable {
             onChange?()
             return []
         }
+        // a roster of mine past the anchored end (its anchor was lost or refused): anchored now
+        await anchorMine(c, now: now)
+        // in the head, but without the head letterbox's secret (a hand-over that was lost): this
+        // device asks like a new one; a head device that holds the secret answers with the keys
+        lock.lock(); let lacks = keys.secret(c.lb) == nil, last = memory.lastRequest, link = self.link; lock.unlock()
+        if lacks {
+            if now - last >= 3600, (try? publish(Sealed.request(account: me, device: devicePub, link: link, now: now))) != nil {
+                remember { $0.lastRequest = now }
+            }
+            onChange?()
+            return []
+        }
         let gone = c.devices.filter { $0 != devicePub && !live.contains($0) }
         if !gone.isEmpty { return gone }
         // a device I let in whose Allow did not finish here (the relay was slow): its keys now
         for d in c.devices { give(d, c, now: now) }
+        // a head device that asks (it lost its hand-over): the keys at once, no prompt, when its
+        // chat session is live; once per request
+        for e in engine.snapshot() where e.kind == SealedKind.request && e.hasTag("p", me) && e.pubkey != devicePub && c.devices.contains(e.pubkey) {
+            lock.lock(); let fresh = answeredRequests.insert(e.id).inserted, k = keys; lock.unlock()
+            guard fresh, sessions.contains(where: { $0.clientPubkey == e.pubkey && $0.chat }),
+                  let ws = try? Sealed.keysWraps(k, account: me, device: device, to: e.pubkey) else { continue }
+            for w in ws { engine.enqueueSigned(w, target: .main, dm: nil) }
+        }
         // a request with the proof of a code this device showed is allowed at once (5.2)
         lock.lock(); let secrets = shownLinks.filter { now - $0.at < 900 }.map(\.secret); lock.unlock()
         for r in requests(c, sessions) where Sealed.linked(r.event, secrets: secrets) {

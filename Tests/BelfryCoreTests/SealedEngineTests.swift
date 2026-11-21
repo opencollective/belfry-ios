@@ -66,7 +66,8 @@ private final class FakeBelfry: @unchecked Sendable {
         return d
     }
 
-    /// The same device with an empty store (nothing synced yet): no new session.
+    /// The same device with an empty store (nothing synced yet): no new session; it publishes to
+    /// the relay and asks the belfry like any other, but `sync` does not feed it.
     func again(_ person: String, _ device: String) throws -> Device {
         let account = try LocalSigner(secret: secret(person))
         let key = secret(person + "/" + device)
@@ -74,6 +75,15 @@ private final class FakeBelfry: @unchecked Sendable {
                                 attachmentsDir: FileManager.default.temporaryDirectory)
         let sealed = try XCTUnwrap(SealedEngine(engine: engine, deviceSecret: key, store: MemoryKeyStore()))
         sealed.runsLocally = true
+        sealed.mayStart = true
+        sealed.removalWait = 0...0
+        sealed.askAnchor = { [weak self] in self?.all().filter { $0.kind == 30078 && $0.pubkey == account.pubkey && $0.tag("d") == SealedKind.anchorD } }
+        sealed.askChains = { [weak self] who in
+            self?.all().filter { e in (e.kind == 30078 && who.contains(e.pubkey) && e.tag("d") == SealedKind.anchorD) || (e.kind == 8560 && who.contains(e.tag("p") ?? "")) }
+        }
+        sealed.sessions = { [weak self] in self?.list(account.pubkey) }
+        sealed.myName = { Sealed.DeviceName(name: "iPhone", kind: "phone", added: 1) }
+        engine.onSent = { [weak self] _, e in if let e { self?.put(e) } }
         return Device(account: account.pubkey, pub: try Keys.publicKeyHex(secret: key), engine: engine, sealed: sealed)
     }
 
@@ -564,5 +574,90 @@ final class SealedEngineTests: XCTestCase {
         // the relay does not answer: the wrap waits (an error that is tried again), it never goes stale
         alice.sealed.askChains = { _ in nil }
         do { _ = try await dms.reseal(item); XCTFail("sent without checking the head") } catch {}
+    }
+
+    private func chainEvents(_ b: FakeBelfry) -> [NostrEvent] {
+        b.all().filter { $0.kind == 8560 || ($0.kind == 30078 && $0.tag("d") == SealedKind.anchorD) }
+    }
+
+    /// In the head, but the hand-over was lost: the device asks like a new one, and a head device
+    /// that holds the secret answers with the keys at once, no prompt.
+    func testADeviceOfTheHeadThatLostItsKeysAsksAndIsAnswered() async throws {
+        let b = FakeBelfry()
+        let (phone, mac) = try await pair(b, "alice")
+        let before = b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }.count
+        // the Mac with its rosters but none of the key wraps
+        let lost = try b.again("alice", "mac")
+        lost.engine.add(chainEvents(b))
+        XCTAssertEqual(lost.sealed.mine, .inside)
+        await lost.sealed.maintain(now: now + 100)
+        await lost.engine.flush()
+        let asked = b.all().filter { $0.kind == 8562 && $0.pubkey == mac.pub && $0.createdAt == now + 100 }
+        XCTAssertEqual(asked.count, 1)
+        // the phone sees the request of a device that is in the head: no card, the keys go
+        await b.sync()
+        await phone.sealed.maintain(now: now + 101)
+        await phone.engine.flush()
+        let cards = await phone.sealed.asks()
+        XCTAssertTrue(cards.isEmpty)
+        let wraps = b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }
+        XCTAssertGreaterThan(wraps.count, before)
+        lost.engine.add(wraps)
+        XCTAssertTrue(lost.sealed.takeKeys())
+        // once per request: a second upkeep sends nothing more
+        await phone.sealed.maintain(now: now + 102)
+        await phone.engine.flush()
+        XCTAssertEqual(b.all().filter { $0.kind == 1059 && $0.hasTag("p", mac.pub) }.count, wraps.count)
+        // a request "from" a head device whose chat session is gone gets nothing
+        b.lock.lock(); b.sessions[phone.account]?.removeAll { $0.clientPubkey == mac.pub }; b.lock.unlock()
+        let stale = try Sealed.request(account: phone.account, device: mac.pub, now: now + 200).event(pubkey: "").signed(with: secret("alice/mac"))
+        phone.engine.add([stale])
+        let sessions = phone.sealed.sessions
+        phone.sealed.removalWait = 0...0
+        phone.sealed.sessions = sessions
+        _ = mac
+    }
+
+    /// The session list can't be read: nothing rotates (a new letterbox whose secret went to
+    /// nobody must never be published).
+    func testNothingRotatesWhenTheSessionListCannotBeRead() async throws {
+        let b = FakeBelfry()
+        let (phone, mac) = try await pair(b, "alice")
+        let rosters = b.all().filter { $0.kind == 8560 }.count
+        let head = phone.sealed.chain(phone.account)?.head.id
+        b.lock.lock(); b.sessions[phone.account]?.removeAll { $0.clientPubkey == mac.pub }; b.lock.unlock()
+        phone.sealed.sessions = { nil }
+        await phone.sealed.maintain(now: now + 100)
+        await b.sync()
+        XCTAssertEqual(b.all().filter { $0.kind == 8560 }.count, rosters)
+        XCTAssertEqual(phone.sealed.chain(phone.account)?.head.id, head)
+        // an answer that does not list this device's own session: the same
+        phone.sealed.sessions = { [] }
+        await phone.sealed.maintain(now: now + 101)
+        await b.sync()
+        XCTAssertEqual(b.all().filter { $0.kind == 8560 }.count, rosters)
+    }
+
+    /// A roster of mine past the anchored end (its anchor was lost): anchored at the next upkeep.
+    func testARosterOfMinePastTheAnchoredEndIsAnchored() async throws {
+        let b = FakeBelfry()
+        let (phone, _) = try await pair(b, "alice")
+        let chain = try XCTUnwrap(phone.sealed.chain(phone.account))
+        XCTAssertEqual(chain.rosters.count, 2)
+        // the relay as if the second anchor never arrived: the root's anchor only
+        let anchors = b.all().filter { $0.kind == 30078 && $0.tag("d") == SealedKind.anchorD }.sorted { $0.createdAt < $1.createdAt }
+        XCTAssertEqual(anchors.last?.tag("head"), chain.head.id)
+        let first = try XCTUnwrap(anchors.first)
+        XCTAssertEqual(first.tag("head"), chain.root.id)
+        let restarted = try b.again("alice", "phone")
+        restarted.engine.add(b.all().filter { $0.kind == 8560 } + [first])
+        XCTAssertEqual(restarted.sealed.chain(phone.account)?.head.id, chain.head.id) // the unanchored tail, for now
+        b.lock.lock(); b.events.removeAll { $0.kind == 30078 && $0.tag("d") == SealedKind.anchorD && $0.id != first.id }; b.lock.unlock()
+        await restarted.sealed.maintain(now: now + 500)
+        await restarted.engine.flush()
+        let newest = b.all().filter { $0.kind == 30078 && $0.tag("d") == SealedKind.anchorD }.max { $0.createdAt < $1.createdAt }
+        XCTAssertEqual(newest?.tag("head"), chain.head.id)
+        XCTAssertEqual(newest?.tag("root"), chain.root.id)
+        XCTAssertGreaterThan(newest?.createdAt ?? 0, first.createdAt)
     }
 }
