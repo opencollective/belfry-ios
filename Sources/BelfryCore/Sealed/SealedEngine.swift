@@ -59,8 +59,9 @@ public final class MemoryKeyStore: SealedKeyStore, @unchecked Sendable {
 
 /// What this device remembers about sealed conversations (database kv `sealed-state`; no secret).
 struct SealedMemory: Codable {
-    /// Per person: the root first accepted.
-    var pins = [String: String]()
+    /// Per person: what this device remembers of their chain (root, head and its path, what was
+    /// seen anchored, and for my own account who is trusted after a switch). `SealedFollow`.
+    var pins = [String: SealedPin]()
     /// Per person: the last valid head seen (where to seal when their chain is not ready any more).
     var heads = [String: Head]()
     /// Sealed conversations → when this device first saw them sealed.
@@ -75,18 +76,7 @@ struct SealedMemory: Codable {
     /// Per device: when this device last handed it the key chain.
     var handed = [String: Int]()
 
-    /// `anchored`: this head was seen named by the person's anchor.
-    struct Head: Codable { var lb: String; var devices: [String]; var id: String?; var anchored: Bool? }
-    /// My own account, after an anchor left a head this device had seen anchored (a switch): the
-    /// devices of the head held before. A device of the new head that is not one of them, nor let
-    /// in by one of them or by me since, is never answered without a prompt.
-    var preSwitch: [String]?
-    /// The head the switch led to: rosters after it on the followed chain can vouch for devices.
-    var switchHead: String?
-    /// Devices this device allowed by hand after a switch.
-    var allowedSince = [String]()
-    /// For each of them, the head when the person allowed it (its place in the chain's order).
-    var allowedAt = [String: String]()
+    struct Head: Codable { var lb: String; var devices: [String] }
     /// Since when this device is in my head without the key.
     var waitingSince: Int?
     struct Reset: Codable, Hashable { var root: String; var at: Int; var shared: Bool }
@@ -244,15 +234,17 @@ public final class SealedEngine: @unchecked Sendable {
         return (anchors, rosters)
     }
 
-    /// ACCOUNT's valid chain, from the events held here (signatures were checked when stored).
+    /// ACCOUNT's chain as this device follows it (its pin: no going back behind an anchored head),
+    /// from the events held here (signatures were checked when stored). Remembering what was
+    /// followed is `observe`'s.
     public func chain(_ account: String) -> RosterChain? {
         let (anchors, rosters) = index()
         lock.lock()
         if let hit = chains?.cache[account] { lock.unlock(); return hit }
+        let pin = memory.pins[account]
         lock.unlock()
         let v = engine.version
-        lock.lock(); let pinned = memory.heads[account]?.id; lock.unlock()
-        let c = RosterChain.resolve(account: account, anchor: anchors[account], rosters: rosters[account] ?? [], pinnedHead: pinned, verify: false)
+        let c = SealedFollow.follow(account: account, anchor: anchors[account], rosters: rosters[account] ?? [], pin: pin, verify: false).chain
         // kept only for the snapshot it was read from (a newer one may have come meanwhile)
         lock.lock(); if chains?.version == v { chains?.cache[account] = .some(c) }; lock.unlock()
         return c
@@ -321,45 +313,33 @@ public final class SealedEngine: @unchecked Sendable {
         return engine.connection(.main).map { "\($0)" } == seen
     }
 
-    /// Pins, last heads and fresh starts, from the chains as they are now. Call when rosters or
-    /// anchors arrive.
+    /// One read of these people's chains: what is followed, remembered (the pin), and told. A
+    /// fresh start or a switch of somebody else gives the amber line in each conversation with
+    /// them; of my own account, the old root's devices may still hand keys over. Call when
+    /// rosters or anchors arrive.
     public func observe(_ accounts: [String], now: Int = .now) {
         var changed = false
+        let (anchors, rosters) = index()
         for a in Set(accounts) {
-            guard let c = chain(a) else { continue }
-            lock.lock()
-            let pin = memory.pins[a], head = memory.heads[a]
-            lock.unlock()
-            if pin == nil {
-                remember { $0.pins[a] = c.root.id }
-            } else if pin != c.root.id {
-                // the anchor names another root: the person started fresh
-                remember { m in
-                    m.pins[a] = c.root.id
-                    if a == self.me, let pin { m.oldRoots.append(pin) }
-                    else { m.resets[a, default: []].append(.init(root: c.root.id, at: c.root.createdAt, shared: false)) }
+            lock.lock(); let pin = memory.pins[a], head = memory.heads[a]; lock.unlock()
+            let (c, next, event) = SealedFollow.follow(account: a, anchor: anchors[a], rosters: rosters[a] ?? [], pin: pin, verify: false)
+            if next != pin {
+                remember(rechain: true) { m in
+                    m.pins[a] = next
+                    switch event {
+                    case .freshStart:
+                        if a == self.me { if let old = pin?.root { m.oldRoots.append(old) } }
+                        else if let c { m.resets[a, default: []].append(.init(root: c.root.id, at: c.root.createdAt, shared: false)) }
+                    case .switch:
+                        if a != self.me, let c { m.resets[a, default: []].append(.init(root: c.head.id, at: c.head.createdAt, shared: false)) }
+                    default: break
+                    }
                 }
                 changed = true
             }
-            let (anchors, _) = index()
-            let heads = anchors[a]?.tags.filter { $0.first == "head" } ?? []
-            let named = heads.count == 1 && heads[0].count >= 2 ? heads[0][1] : c.root.id
-            let anchoredNow = named == c.head.id
-            if head?.id != c.head.id || head?.lb != c.lb || head?.devices != c.devices {
-                // a SWITCH (sealed.md 3.3): same root, the head this device held had been seen
-                // anchored, and the new chain does not pass through it. Followed, but shown like a
-                // fresh start: the key that signs anchors is the server's to use.
-                let switched = pin == c.root.id && head?.anchored == true && head?.id.map { old in !c.rosters.contains { $0.id == old } } == true
-                remember(rechain: true) { m in
-                    if switched {
-                        if a == self.me { m.preSwitch = head?.devices ?? []; m.allowedSince = []; m.allowedAt = [:]; m.switchHead = c.head.id }
-                        else { m.resets[a, default: []].append(.init(root: c.head.id, at: c.head.createdAt, shared: false)) }
-                    }
-                    m.heads[a] = .init(lb: c.lb, devices: c.devices, id: c.head.id, anchored: anchoredNow)
-                }
+            if let c, head?.lb != c.lb || head?.devices != c.devices {
+                remember { $0.heads[a] = .init(lb: c.lb, devices: c.devices) }
                 changed = true
-            } else if anchoredNow, head?.anchored != true {
-                remember { $0.heads[a]?.anchored = true }
             }
         }
         if changed { onChange?() }
@@ -743,10 +723,9 @@ public final class SealedEngine: @unchecked Sendable {
         }
     }
 
-    /// The ids of the rosters from the root to the head the relay's anchor names.
+    /// The ids of the rosters from the root to the end of the anchored path.
     private func anchoredPath(_ c: RosterChain) -> [String] {
-        let (anchors, _) = index()
-        guard let head = anchors[me]?.tag("head"), let i = c.rosters.firstIndex(where: { $0.id == head }) else { return [c.root.id] }
+        guard let i = c.rosters.firstIndex(where: { $0.id == c.anchored }) else { return [c.root.id] }
         return c.rosters[...i].map(\.id)
     }
 
@@ -787,31 +766,12 @@ public final class SealedEngine: @unchecked Sendable {
         try? await publishAsAccount(RosterChain.anchor(root: c.root.id, head: c.head.id, now: max(now, a.createdAt + 1)), local: false)
     }
 
-    /// After a switch: DEVICE is in my head, but was not in the head held before it, and was let
-    /// in neither by one of those devices nor by me since. It gets no key without the Allow card.
+    /// After a switch of my own account: DEVICE is not one this device trusts (the pin's
+    /// `trusted`). It gets no key without the Allow card.
     private func unvouched(_ d: String, _ c: RosterChain) -> Bool {
-        lock.lock(); let pre = memory.preSwitch, mine = memory.allowedSince, when = memory.allowedAt, at = memory.switchHead; lock.unlock()
-        // trusted: the devices of the head held before the switch, those the person allowed here
-        // since, and those a LATER roster of the followed chain, signed by a trusted device, ADDS.
-        // A roster that merely keeps a device vouches for nothing (devices publish rosters on
-        // their own: `ready`, a gone session). A device this one had let in and later removed
-        // comes back untrusted.
-        guard let pre, d != devicePub else { return false }
-        // a device allowed by hand counts from the head at which the person allowed it
-        let known = Set(c.rosters.map(\.id))
-        var trusted = Set(pre + [devicePub] + mine.filter { d in when[d].map { $0 == at || !known.contains($0) } ?? true })
-        if let at, let i = c.rosters.firstIndex(where: { $0.id == at }), i + 1 < c.rosters.count {
-            // only rosters that descend from the switch head, in chain order (never by their dates,
-            // which a signer chooses); what is at or before it on the new branch counts for nothing
-            for j in (i + 1)..<c.rosters.count {
-                let r = c.rosters[j], before = c.rosters[j - 1]
-                // whoever leaves the roster leaves trusted (coming back needs a trusted roster again)
-                trusted.subtract(before.devices.filter { !r.devices.contains($0) && $0 != devicePub })
-                if trusted.contains(r.signer) { trusted.formUnion(r.devices.filter { !before.devices.contains($0) }) }
-                trusted.formUnion(mine.filter { when[$0] == r.id })
-            }
-        }
-        return !trusted.contains(d)
+        lock.lock(); let t = memory.pins[me]?.trusted; lock.unlock()
+        guard let t, d != devicePub else { return false }
+        return !t.contains(d)
     }
 
     /// A well-formed session list that has this device's own chat session: without it nothing is
@@ -890,18 +850,16 @@ public final class SealedEngine: @unchecked Sendable {
         }
         // a head device that asks (it lost its hand-over): the keys at once, no prompt, when its
         // chat session is live; once per request; only for a head that is anchored
-        for e in engine.snapshot() where e.kind == SealedKind.request && e.hasTag("p", me) && e.pubkey != devicePub && c.devices.contains(e.pubkey)
-            && anchoredPath(c).last == c.head.id {
-            // once per request, remembered across restarts; never one older than my last hand-over to it
+        let liveChat = Set(sessions.filter(\.chat).compactMap(\.clientPubkey))
+        for e in engine.snapshot() where e.kind == SealedKind.request && e.hasTag("p", me) && e.pubkey != devicePub && c.devices.contains(e.pubkey) {
+            // once per request, remembered across restarts
             lock.lock()
-            let fresh = !memory.answeredRequests.contains(e.id) && e.createdAt > (memory.handed[e.pubkey] ?? 0)
-            let k = keys
+            let done = memory.answeredRequests.contains(e.id), last = memory.handed[e.pubkey], pin = memory.pins[me], k = keys
             lock.unlock()
-            // after a switch, a device nobody this device trusts let in asks through the Allow card
-            if unvouched(e.pubkey, c) { continue }
-            // (the head is the one this device holds: an older anchor never brings a removed device
-            // back.) A request newer than the roster that added the device, a live chat session
-            guard fresh, e.createdAt > (c.joined(e.pubkey)?.at ?? Int.max), sessions.contains(where: { $0.clientPubkey == e.pubkey && $0.chat }) else { continue }
+            // on the anchored end, in the head this device holds, trusted (after a switch), a
+            // live chat session, a request strictly newer than the roster that added the device
+            // and than my last hand-over to it
+            guard !done, SealedFollow.answerWithoutPrompt(chain: c, pin: pin, device: e.pubkey, liveChatDevices: liveChat, requestAt: e.createdAt, lastHandoverAt: last) else { continue }
             remember { m in m.answeredRequests = Array((m.answeredRequests + [e.id]).suffix(300)) }
             hand(e.pubkey, k, now: now)
         }
@@ -966,7 +924,7 @@ public final class SealedEngine: @unchecked Sendable {
             lock.lock(); let no = denied.contains(newDevice), k = keys; lock.unlock()
             guard !no, !lacksKey, let sessions = await sessions?(), listsMe(sessions),
                   sessions.contains(where: { $0.clientPubkey == newDevice && $0.chat }) else { return .failed }
-            remember { $0.allowedSince.append(newDevice); $0.allowedAt[newDevice] = c.head.id }
+            remember(rechain: true) { m in if let p = m.pins[self.me] { m.pins[self.me] = SealedFollow.allowLocally(p, newDevice) } }
             hand(newDevice, k, now: now)
             onChange?()
             return .done

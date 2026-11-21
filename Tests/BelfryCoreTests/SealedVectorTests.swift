@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import BelfryCore
 
-// vectors/sealed.json = collective-belfry docs/sealed-vectors.json (sha256 1aa97802…47f2), byte
+// vectors/sealed.json = collective-belfry docs/sealed-vectors.json (sha256 a1daadbd…5286), byte
 // for byte: the roster chain, opening and acceptance, the ceiling and the packing of a shared
 // history, the key hand-over, the link proof, shared history, `ready`. Not reproduced here:
 // making the same wrap byte for byte (it needs fixed one-time keys, nonces and Schnorr auxiliary).
@@ -47,7 +47,7 @@ final class SealedVectorTests: XCTestCase {
     func testWraps() throws {
         let v = try vector("sealed")
         let cases = list(v["wraps"])
-        XCTAssertEqual(cases.count, 11)
+        XCTAssertEqual(cases.count, 12)
         for c in cases {
             let name = c["name"] as? String ?? ""
             let exp = dict(c["expected"])
@@ -198,5 +198,65 @@ final class SealedVectorTests: XCTestCase {
             XCTAssertEqual(SealedEngine.mayCarryReady(sessions, devices: c["roster_devices"] as? [String] ?? [], now: now),
                            dict(c["expected"])["may_carry_ready"] as? Bool, name)
         }
+    }
+
+    private func pin(_ v: Any?) throws -> SealedPin? {
+        guard let v, !(v is NSNull) else { return nil }
+        return try JSONDecoder().decode(SealedPin.self, from: JSONSerialization.data(withJSONObject: v))
+    }
+
+    /// One case's steps: each is one read given to follow(anchor, rosters, pin); then the devices
+    /// the person allows on this device. Returns the chain and pin after the last step.
+    private func run(_ c: [String: Any], account: String, check: Bool) throws -> (RosterChain?, SealedPin?) {
+        let name = c["name"] as? String ?? ""
+        var p = try pin(c["pin"])
+        var chain: RosterChain?
+        for (i, step) in list(c["steps"]).enumerated() {
+            let (got, next, event) = SealedFollow.follow(account: account, anchor: try? event(step["anchor"]), rosters: try events(step["rosters"]), pin: p)
+            chain = got
+            p = next
+            for d in step["allow_locally"] as? [String] ?? [] { p = p.map { SealedFollow.allowLocally($0, d) } }
+            guard check else { continue }
+            let exp = dict(step["expected"])
+            let at = "\(name) [step \(i)]"
+            XCTAssertEqual(event.rawValue, exp["event"] as? String, at)
+            XCTAssertEqual(p, try pin(exp["pin"]), at)
+            let ec = dict(exp["chain"])
+            XCTAssertEqual(got?.rosters.map(\.id), ec["valid_ids"] as? [String], at)
+            XCTAssertEqual(got?.head.id, ec["head"] as? String, at)
+            XCTAssertEqual(got?.devices, ec["devices"] as? [String], at)
+            XCTAssertEqual(got?.lb, ec["lb"] as? String, at)
+            if got != nil { XCTAssertEqual(got?.ready, ec["ready"] as? Bool, at) }
+        }
+        return (chain, p)
+    }
+
+    func testFollow() throws {
+        let v = try vector("sealed")
+        let alice = key(v, "alice").pub
+        let cases = list(dict(v["follow"])["cases"])
+        XCTAssertEqual(cases.count, 17)
+        for c in cases { _ = try run(c, account: alice, check: true) }
+    }
+
+    func testTrust() throws {
+        let v = try vector("sealed")
+        let alice = key(v, "alice").pub
+        let cases = list(dict(v["trust"])["cases"])
+        XCTAssertEqual(cases.count, 13)
+        var asks = 0
+        for c in cases {
+            let name = c["name"] as? String ?? ""
+            let (chain, p) = try run(c, account: alice, check: true)
+            for a in list(c["asks"]) {
+                asks += 1
+                let got = SealedFollow.answerWithoutPrompt(chain: chain, pin: p, device: a["device"] as? String ?? "",
+                                                           liveChatDevices: Set(a["live_chat_devices"] as? [String] ?? []),
+                                                           requestAt: a["request_created_at"] as? Int ?? 0,
+                                                           addedAt: a["added_at"] as? Int, lastHandoverAt: a["last_handover_at"] as? Int)
+                XCTAssertEqual(got, a["expected"] as? Bool, "\(name): \(a["device_name"] as? String ?? "")")
+            }
+        }
+        XCTAssertEqual(asks, 27)
     }
 }

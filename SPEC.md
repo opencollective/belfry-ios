@@ -2649,7 +2649,7 @@ an all-day end date as the last day too. Test: `EventsOverTests` (fixed clock, E
 
 The contract is collective-belfry `docs/sealed.md` (version 1), shared with the web chat and
 Android; this section only says where the iPhone app implements it. Vectors: `vectors/sealed.json`
-(the lead's `docs/sealed-vectors.json`, sha256 1aa97802…47f2, copied byte for byte).
+(the lead's `docs/sealed-vectors.json`, sha256 a1daadbd…5286, copied byte for byte).
 
 - `Sealed/Roster.swift`: a roster (8560), the valid chain from the anchor (30078 `belfry:sealed`),
   forks (lower id, lower-case hex), which device may have signed a seal (`accepts`), the changes
@@ -2692,4 +2692,8 @@ Android; this section only says where the iPhone app implements it. Vectors: `ve
   the key chain is stored with its owner and never touched before the account's key is known
   (`OwnedKeyStore`); the session item moves to the app's own Keychain group; rosters and anchors
   are paged once per connection; answered requests are remembered.
+- `Sealed/Follow.swift`: the pin and `follow` / `allowLocally` / `answerWithoutPrompt`, a port
+  of the belfry's reference (sealed.py), checked against the vectors' `follow` and `trust`
+  sections: no going back behind a head seen anchored, a switch of branch told like a fresh
+  start, and after a switch of my own account only trusted devices are answered without the card.
 - Not done: "I don't have another device" (the user's own fresh start) waits for the owner.

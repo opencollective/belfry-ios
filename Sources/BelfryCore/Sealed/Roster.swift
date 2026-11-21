@@ -51,6 +51,9 @@ public struct RosterChain: Hashable, Sendable {
     public let account: String
     /// Root first, head last.
     public let rosters: [Roster]
+    /// The end of the anchored path, as the anchor gives it (the root when it names no usable
+    /// head); what comes after it in `rosters` is not anchored yet.
+    public let anchored: String
 
     public var root: Roster { rosters[0] }
     public var head: Roster { rosters[rosters.count - 1] }
@@ -108,6 +111,7 @@ public struct RosterChain: Hashable, Sendable {
         let heads = anchor.tags.filter { $0.first == "head" }
         let named = heads.count == 1 && heads[0].count >= 2 && isHex64(heads[0][1]) ? heads[0][1] : nil
         var chain = named.flatMap(path(to:)) ?? [root]
+        let anchored = chain[chain.count - 1].id
         // no going back: the anchor's head is an ancestor of the head already accepted
         if let pinnedHead, let pinned = path(to: pinnedHead), pinned.count > chain.count, pinned[chain.count - 1].id == chain[chain.count - 1].id {
             chain = pinned
@@ -119,7 +123,7 @@ public struct RosterChain: Hashable, Sendable {
             chain.append(next)
             lbs.insert(next.lb)
         }
-        return RosterChain(account: account, rosters: chain)
+        return RosterChain(account: account, rosters: chain, anchored: anchored)
     }
 
     /// Whether a seal signed by DEVICE counts for a rumor of this account written at RUMORAT:
