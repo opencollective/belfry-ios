@@ -146,6 +146,9 @@ public final class SealedEngine: @unchecked Sendable {
     /// the relay took late is anchored, the hand-over it owed is made) instead of at the next
     /// event, which may be hours away on a quiet socket.
     var followUps: [UInt64] = [10, 60, 300]
+    /// How long a change waits for the relay to take an event: tries × pause (5 s).
+    var settleTries = 10
+    var settlePause: UInt64 = 500_000_000
     private var following = false
     /// Per person: when the relay last gave a complete answer about their anchor and rosters.
     private var answered = [String: Int]()
@@ -552,10 +555,10 @@ public final class SealedEngine: @unchecked Sendable {
         // The roster first; its anchor only once the relay took it (an anchor that names a roster
         // the relay refused would un-anchor the head that stands)
         let id = engine.enqueueSigned(r, target: .main, dm: nil)
-        for _ in 0..<10 {
+        for _ in 0..<settleTries {
             await engine.flush()
             guard let item = engine.outboxItems().first(where: { $0.localId == id }), item.status != .failed else { break }
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            try? await Task.sleep(nanoseconds: settlePause)
         }
         if engine.outboxItems().contains(where: { $0.localId == id }) { engine.cancel(id); return nil }
         engine.enqueueSigned(a, target: .main, dm: nil)
@@ -688,11 +691,11 @@ public final class SealedEngine: @unchecked Sendable {
             engine.outboxItems().filter { $0.signed?.id == roster.id || ($0.kind == 30078 && $0.signed?.tag("head") == roster.id) }
         }
         // a few seconds for the relay to take both
-        for _ in 0..<10 {
+        for _ in 0..<settleTries {
             await engine.flush()
             let left = mine()
             if left.isEmpty || left.contains(where: { $0.status == .failed }) { break }
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            try? await Task.sleep(nanoseconds: settlePause)
         }
         // refused, or still waiting: what did not leave is withdrawn, so a later try starts clean
         // (a roster that did leave without its anchor is anchored by the next upkeep)

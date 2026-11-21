@@ -131,7 +131,10 @@ public final class DirectMessages: @unchecked Sendable {
                         if opened.rumor.kind == 7 || opened.rumor.kind == 5 {
                             // the conversation is the one of the message it points at, as this
                             // device holds it (not what the rumor says about itself)
-                            let target = opened.rumor.tagValues("e").last.flatMap { items[$0]?.conv }
+                            // (a take-back: through the reaction it takes back)
+                            let es = opened.rumor.tagValues("e")
+                            let message = opened.rumor.kind == 7 ? es.last : es.compactMap { reactions.reactions[$0]?.target }.first
+                            let target = message.flatMap { items[$0]?.conv }
                             let conv = target ?? MailThreads.nostrConv(author: opened.rumor.pubkey, pTags: opened.rumor.tagValues("p"), me: me)
                             // ignored only when it is dated after this device first saw that conversation sealed
                             let since = sealed?.sealedSince(conv)

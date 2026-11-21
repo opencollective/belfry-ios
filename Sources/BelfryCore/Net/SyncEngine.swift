@@ -272,13 +272,14 @@ public final class SyncEngine: @unchecked Sendable {
             return nil
         }
         if let made = item.signed {
+            // a sealed wrap whose letterbox changed while it waited is sealed again (sealed.md 9);
+            // one that may not leave yet throws and stays
+            let signed = try await reseal?(item) ?? made
             if localOnly {
                 // tests: the relay refuses this one
-                if let why = localRefuse?(made) { throw BelfryError.relay(why) }
-                return made
+                if let why = localRefuse?(signed) { throw BelfryError.relay(why) }
+                return signed
             }
-            // a sealed wrap whose letterbox changed while it waited is sealed again (sealed.md 9)
-            let signed = try await reseal?(item) ?? made
             try await publish(item.target, signed)
             return signed
         }
