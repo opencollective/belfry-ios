@@ -298,7 +298,12 @@ public final class Relay: NSObject, @unchecked Sendable, URLSessionWebSocketDele
             lock.unlock()
             if ok { c?.resume() } else { c?.resume(throwing: BelfryError.relay(reason.isEmpty ? "error: refused" : reason)) }
         case "CLOSED":
-            if arr.count >= 2, let sub = arr[1] as? String { onClosed?(sub, arr.count > 2 ? (arr[2] as? String ?? "") : "") }
+            if arr.count >= 2, let sub = arr[1] as? String {
+                // a one-off question the relay closed: over at once, and NOT a complete answer
+                lock.lock(); let q = queries[sub]; lock.unlock()
+                q?.finish()
+                onClosed?(sub, arr.count > 2 ? (arr[2] as? String ?? "") : "")
+            }
         case "AUTH":
             guard arr.count >= 2, let challenge = arr[1] as? String, let signer = authSigner else { return }
             lock.lock(); challengedFlag = true; lock.unlock()
