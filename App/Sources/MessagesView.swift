@@ -478,6 +478,9 @@ struct Bubble: View {
                 if let f = dm.failed {
                     Label("Not sent", systemImage: "exclamationmark.circle").font(.caption2).foregroundStyle(.red).help(f)
                     Button("Retry") { model.dms?.retry(dm) }.font(.caption2.weight(.semibold))
+                } else if dm.pending == true, model.lockedHere(dm.conv) {
+                    // held while this device is out of my head: the locked line's words
+                    Label("Locked on this device", systemImage: "lock.fill").font(.caption2).foregroundStyle(.secondary)
                 } else if dm.pending == true {
                     SendLineView(id: dm.rid, tries: model.dmTries(dm.rid), font: .caption2, icon: false)
                 } else if dm.unsealed == true {

@@ -402,6 +402,9 @@ public final class DirectMessages: @unchecked Sendable {
         let rumor = queued[rid] ?? items[rid]?.rumor.flatMap(NostrEvent.from(json:))
         lock.unlock()
         if let lb = Sealed.lb(of: w) {
+            // this device is no longer in my head (a fresh start elsewhere, a removal it missed):
+            // nothing it sealed before leaves now, resealed or not (the lead, 2026-11-21)
+            guard s.mine == .inside else { throw BelfryError.relay("hold: this device is locked") }
             // "hold:": this wrap waits, the others in the outbox still go
             guard await s.refresh([account]) else { throw BelfryError.relay("hold: the lock could not be checked") }
             return rumor.flatMap { s.again($0, for: account, was: lb) }

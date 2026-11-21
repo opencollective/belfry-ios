@@ -564,6 +564,12 @@ final class SealedEngineTests: XCTestCase {
         await bobPhone.sealed.maintain(now: now)
         await b.sync()
         let oldRoot = try XCTUnwrap(bobPhone.sealed.chain(bobPhone.account)?.root.id)
+        // a message the phone sealed to Alice while it was in the head, still queued
+        await bobPhone.sealed.refresh([alice.account], now: now + 1)
+        let queuedRumor = GiftWrap.rumor(kind: 14, pubkey: bobPhone.account, tags: [["p", alice.account]], content: "queued", createdAt: now + 2)
+        let queuedWrap = try XCTUnwrap(try bobPhone.sealed.wraps(queuedRumor, to: [alice.account], selfCopy: false).first)
+        let phoneDms = DirectMessages(engine: bobPhone.engine)
+        phoneDms.sealed = bobPhone.sealed
         let pad = try b.signIn("bob", "pad")
         await b.sync()
         await pad.sealed.maintain(now: now)
@@ -589,6 +595,12 @@ final class SealedEngineTests: XCTestCase {
         // "Sign out every other device" revokes every other session and asks to be allowed
         await bobPhone.sealed.refresh([bobPhone.account], now: now + 40)
         XCTAssertEqual(bobPhone.sealed.foreignFreshStart?.device, pad.pub)
+        // out of the head: nothing it sealed before leaves now (the web's hole, 2026-11-21)
+        XCTAssertEqual(bobPhone.sealed.mine, .waiting)
+        let item = OutboxItem(target: .main, kind: 1059, content: queuedWrap.content, tags: queuedWrap.tags, createdAt: queuedWrap.createdAt, signed: queuedWrap, dm: queuedRumor.id)
+        do { _ = try await phoneDms.reseal(item); XCTFail("a wrap left a device that is out of the head") }
+        catch { XCTAssertTrue((error as? BelfryError)?.relayMessage.hasPrefix("hold:") == true) }
+        XCTAssertThrowsError(try bobPhone.sealed.wraps(queuedRumor, to: [alice.account], selfCopy: false))
         XCTAssertNil(pad.sealed.foreignFreshStart, "the device that started fresh is told nothing")
         let out = await bobPhone.sealed.signOutEveryOtherDevice(now: now + 50)
         XCTAssertNotNil(out)

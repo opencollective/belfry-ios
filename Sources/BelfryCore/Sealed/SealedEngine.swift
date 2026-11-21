@@ -476,7 +476,7 @@ public final class SealedEngine: @unchecked Sendable {
 
     /// A queued wrap of RUMOR for ACCOUNT, made again when that account's letterbox is no longer LB.
     public func again(_ rumor: NostrEvent, for account: String, was lb: String) -> NostrEvent? {
-        guard let now = letterbox(account), now != lb else { return nil }
+        guard mine == .inside, let now = letterbox(account), now != lb else { return nil }
         return try? Sealed.wrap(rumor, device: device, to: account, lb: now)
     }
 
