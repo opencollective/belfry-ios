@@ -53,6 +53,11 @@ public struct Dm: Codable, Hashable, Sendable, Identifiable {
     public var raw: String?
     public var pending: Bool?
     public var failed: String?
+    /// Kind 15: the file it carries (nil with `unreadable`: a tag missing or malformed).
+    public var file: DmFile?
+    public var unreadable: Bool?
+    /// Several files and a caption sent together (16 hex).
+    public var group: String?
 
     public var id: String { rid }
 
@@ -78,9 +83,15 @@ public enum DmReader {
     /// A rumor as a Dm (SPEC 10). KNOWN: mails already placed (for thread assignment).
     public static func dm(from rumor: NostrEvent, me: String, bridge: String?, known: [(messageId: String?, conv: String)]) -> Dm? {
         let mine = rumor.pubkey == me
-        if rumor.kind == 14 {
+        if rumor.kind == 14 || rumor.kind == DmFiles.kind {
             let conv = MailThreads.nostrConv(author: rumor.pubkey, pTags: rumor.tagValues("p"), me: me)
-            return Dm(rid: rumor.id, conv: conv, from: rumor.pubkey, mine: mine, at: rumor.createdAt, kind: 14, text: rumor.content)
+            var d = Dm(rid: rumor.id, conv: conv, from: rumor.pubkey, mine: mine, at: rumor.createdAt, kind: rumor.kind, text: rumor.content)
+            d.group = DmFiles.hex(rumor.tag("group"), bytes: 8)
+            if rumor.kind == DmFiles.kind {
+                if let f = DmFiles.parse(tags: rumor.tags, content: rumor.content) { d.file = f; d.text = DmFiles.lastLine([f]) }
+                else { d.unreadable = true; d.text = DmFiles.unreadable }
+            }
+            return d
         }
         guard rumor.kind == 1301 else { return nil }
         var address: String?

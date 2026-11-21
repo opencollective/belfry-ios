@@ -631,7 +631,7 @@ struct RootView: View {
                 model.openEvent = "repair-cafe"
             }
         case "membersinvite": selection = .members
-        case "messages", "conversation", "mail", "sendstill", "sendnotyet": selection = .messages
+        case "messages", "conversation", "mail", "sendstill", "sendnotyet", "dmfiles", "dmfilessending": selection = .messages
         case "mentions": selection = .mentions
         case "requests": selection = .requests
         case "directory", "membersagents", "memberssearch": selection = .members

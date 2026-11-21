@@ -416,6 +416,21 @@ enum Demo {
         await dms.process()
         // the screenshots of a send that is not out yet (SPEC 19.50): my last message to Ana waits
         let args = ProcessInfo.processInfo.arguments
+        // pictures, files and a recording in the conversation with Ana (boards messages/attach-*)
+        if let i = args.firstIndex(of: "-screen"), i + 1 < args.count, args[i + 1].hasPrefix("dmfiles") {
+            let ana = "n:" + ps["ana"]!.pubkey
+            func jpeg(_ n: Int) -> Data { DemoPictures.draw(n, wide: false).jpegData(compressionQuality: 0.7) ?? Data() }
+            dms.demoFile(jpeg(1), mime: "image/jpeg", name: nil, dim: "900x900", in: ana, from: ps["ana"]!.pubkey, at: now - 5000)
+            let g = "5f0c3a9e1b7d2c48"
+            for (k, n) in [2, 3, 4].enumerated() {
+                dms.demoFile(jpeg(n), mime: "image/jpeg", name: nil, dim: "900x900", group: g, in: ana, from: me, at: now - 3000 + k)
+            }
+            dms.demoText("The seedlings came up!", group: g, in: ana, from: me, at: now - 2996)
+            var pdf = Data("%PDF-1.4 demo".utf8); pdf.append(Data(count: 1_200_000))
+            dms.demoFile(pdf, mime: "application/pdf", name: "Garden plan 2027.pdf", in: ana, from: ps["ana"]!.pubkey, at: now - 2000)
+            dms.demoFile(Data(count: 60_000), mime: "audio/mp4", name: nil, duration: 42, in: ana, from: me, at: now - 1000)
+            if args[i + 1] == "dmfilessending" { dms.demoPendingFiles(in: ana) }
+        }
         if let i = args.firstIndex(of: "-screen"), i + 1 < args.count, ["sendstill", "sendnotyet"].contains(args[i + 1]) {
             dms.demoPending(conv: "n:" + ps["ana"]!.pubkey, text: "Yes, I'll be there at 9 with the keys.", at: now - 40)
         }

@@ -47,7 +47,7 @@ struct MessagesView: View {
             model.messagesOpen = true
             guard !didLaunch else { return }
             didLaunch = true
-            if ["conversation", "mail", "sendstill", "sendnotyet"].contains(model.launch.screen ?? "") {
+            if ["conversation", "mail", "sendstill", "sendnotyet", "dmfiles", "dmfilessending"].contains(model.launch.screen ?? "") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     let list = model.dms?.threads() ?? []
                     let pick = model.launch.screen == "mail" ? list.first { MailThreads.isMail($0.conv) } : list.first { !MailThreads.isMail($0.conv) }
@@ -92,7 +92,7 @@ struct ThreadRow: View {
                     Text(Format.brief(thread.last.at)).font(.caption).foregroundStyle(.secondary)
                 }
                 if mail { Text(model.dms?.threadName(thread.conv) ?? "").font(.subheadline.weight(.medium)).lineLimit(1) }
-                Text((thread.last.mine ? "You: " : "") + (mail ? thread.last.text : model.derive.plainRefs(thread.last.text))).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                Text((thread.last.mine ? "You: " : "") + lastLine(mail)).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
             }
             if thread.unread > 0 {
                 Circle().fill(Color.brand).frame(width: 10, height: 10).padding(.top, 6).accessibilityLabel("Unread")
@@ -102,6 +102,18 @@ struct ThreadRow: View {
     }
 
     var title: String { convName(model, thread.conv) }
+
+    /// "Picture", "3 pictures", "File: Garden plan 2027.pdf", "Audio recording · 0:42"; else the text.
+    private func lastLine(_ mail: Bool) -> String {
+        let last = thread.last
+        if mail { return last.text }
+        if let g = last.group, last.kind == DmFiles.kind || last.kind == 14 {
+            let files = (model.dms?.thread(thread.conv) ?? []).filter { $0.group == g && $0.from == last.from }.compactMap(\.file)
+            if last.kind == 14 { return model.derive.plainRefs(last.text) }
+            return DmFiles.lastLine(files)
+        }
+        return last.kind == DmFiles.kind ? last.text : model.derive.plainRefs(last.text)
+    }
 }
 
 @MainActor func convName(_ model: AppModel, _ conv: String) -> String {
@@ -132,7 +144,10 @@ struct ConversationView: View {
                          : "No messages yet. Only you two can read them.")
                         .font(.callout).foregroundStyle(.secondary).padding()
                 }
-                ForEach(list) { d in Bubble(dm: d) }
+                ForEach(DmBlocks.of(list)) { b in
+                    if !b.files.isEmpty { DmFilesBlock(files: b.files) }
+                    if let c = b.caption { Bubble(dm: c) }
+                }
             }
             .padding()
         }
@@ -172,6 +187,8 @@ struct ConversationView: View {
                 }
                 // the channel composer's shape: a capsule field with Send inside it
                 let can = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                HStack(alignment: .bottom, spacing: 8) {
+                if !mail { DmAddMenu(conv: conv, error: $error) }
                 HStack(alignment: .bottom, spacing: 0) {
                     TextField(mail ? "Write an e-mail" : "Message", text: $text, axis: .vertical)
                         .font(.body)
@@ -190,6 +207,7 @@ struct ConversationView: View {
                     .accessibilityLabel("Send")
                 }
                 .composerField()
+                }
             }
             .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
             .composerBackground(compact: false)

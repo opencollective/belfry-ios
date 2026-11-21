@@ -92,6 +92,10 @@ shot 060c-send-still sendstill light
 shot 060d-send-not-yet sendnotyet light
 shot 060e-send-not-yet-dark sendnotyet dark
 shot 060f-diagnostics diagnostics light
+# 2026-11-21 pictures, files and a recording in a direct message (boards messages/attach-thread, attach-sending)
+shot 061-dm-files dmfiles light
+shot 061b-dm-files-dark dmfiles dark
+shot 061c-dm-files-sending dmfilessending light
 # 2026-11-21: Close on a request card (belfry:request-close) and its question
 shot 150c-request-close reqclose light
 shot 150d-request-close-dark reqclose dark

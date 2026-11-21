@@ -118,6 +118,9 @@ struct RecorderSheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let group: String
+    /// A direct message: the recording is handed back (data, type, file name, seconds) and sent
+    /// there instead of posted in a channel.
+    var onSend: ((Data, String, String, Int) -> Void)? = nil
     @StateObject private var rec = Recorder()
     @State private var posting = false
     @State private var error: String?
@@ -162,7 +165,7 @@ struct RecorderSheet: View {
         case .idle: return "Tap to start. It keeps recording with the screen locked."
         case .recording: return "Recording…"
         case .paused: return "Paused"
-        case .stopped: return "Done: post it in the channel, or discard it."
+        case .stopped: return onSend == nil ? "Done: post it in the channel, or discard it." : "Done: send it, or discard it."
         case .failed(let m): return m
         }
     }
@@ -185,7 +188,7 @@ struct RecorderSheet: View {
             HStack(spacing: 12) {
                 Button(role: .destructive) { confirmDiscard = true } label: { Label("Discard", systemImage: "trash").frame(maxWidth: .infinity) }
                     .buttonStyle(.bordered).controlSize(.large)
-                BusyButton { await post() } label: { Label("Post", systemImage: "arrow.up").frame(maxWidth: .infinity) }
+                BusyButton { await post() } label: { Label(onSend == nil ? "Post" : "Send", systemImage: "arrow.up").frame(maxWidth: .infinity) }
                     .buttonStyle(.brand).controlSize(.large)
             }
         }
@@ -197,6 +200,12 @@ struct RecorderSheet: View {
         var data: Data?, mime = "audio/mp4", file = name + ".m4a"
         if let m4a = await rec.m4a() { data = try? Data(contentsOf: m4a) }
         if data == nil, let caf = rec.file { data = try? Data(contentsOf: caf); mime = "audio/x-caf"; file = name + ".caf" }
+        if let onSend, let data {
+            onSend(data, mime, file, Int(rec.elapsed.rounded()))
+            rec.discard()
+            dismiss()
+            return
+        }
         guard let data, let a = model.saveAttachment(data, name: file, mime: mime, width: nil, height: nil) else {
             error = "The recording could not be read. Try again."
             return

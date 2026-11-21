@@ -138,6 +138,15 @@ public final class SendTrace: @unchecked Sendable {
         onChange?()
     }
 
+    /// Send FROM is now known as TO (a file's local id → its rumor's id): its run and its time go on.
+    public func rename(_ from: String, _ to: String) {
+        lock.lock()
+        if let r = runs.removeValue(forKey: from) { runs[to] = r }
+        if let p = current.removeValue(forKey: from) { current[to] = p }
+        lock.unlock()
+        onChange?()
+    }
+
     /// Forgets ID (out, discarded).
     public func forget(_ id: String) {
         lock.lock(); runs[id] = nil; let had = current.removeValue(forKey: id) != nil; lock.unlock()

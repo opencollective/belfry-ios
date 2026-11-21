@@ -453,6 +453,8 @@ final class AppModel: ObservableObject {
                 self.updateAddress()
                 self.describeAccount()
                 await d.process()
+                // files of direct messages that were not out when the app last stopped
+                d.resumeFiles()
             }
         }
         // a store that never had a member's view (it was a guest's, or older than round 7): the

@@ -2696,3 +2696,37 @@ Android also did nothing when the phone changed network while online (Wi-Fi to m
 (iOS: the one manager is `SyncEngine` with the signer's socket `BunkerSigner.relay`, made once;
 lanes `OutboxPass.lane`; `SendState` / `SendTrace` in `Outbox/SendTrace.swift`; the line is
 `SendLineView`, Diagnostics is `DiagnosticsScreen`.)
+
+### 19.65 Pictures, files and audio recordings in direct messages (iOS, 2026-11-21; the lead's contract; boards messages/attach-plus, attach-thread, attach-sending, attach-sealed, canvas v104–v109; `vectors/dm-files.json` = belfry-android's, sha256 02feb5a4…d210, copied byte for byte; the web: chat e558a84)
+
+- **Wire**: each file is its own NIP-17 **kind 15** rumor, sealed and gift-wrapped like a kind 14 to
+  every participant and to me. The device encrypts the file with **AES-256-GCM** (a fresh 32-byte
+  key and 12-byte nonce per file, no associated data, the 16-byte tag appended) and uploads only
+  the ciphertext to the belfry's Blossom (`application/octet-stream`; the upload's auth names no
+  file). Content = the blob URL. Tags in this order: `p` per other participant, `file-type`,
+  `encryption-algorithm` `aes-gcm`, `decryption-key`, `decryption-nonce`, `x` (sha256 of the
+  ciphertext), `ox` (sha256 of the plain file), `size` (plain bytes), then optional `name` (files;
+  only inside the sealed rumor), `dim`, `blurhash`, `thumb` + `thumb-nonce` (the thumbnail under
+  the file's key, its own nonce), `duration` (seconds, audio), `group` (16 hex).
+- **Together**: several files and a caption share one `group`, created_at strictly increasing
+  (`max(last + 1, now)`); the caption is a kind 14 with the same `group`. Readers show a group (same
+  author, same group) as one bubble: files by created_at (ties: rumor id), the caption under them;
+  a bubble's time is its first rumor's.
+- **Reading**: download, check `x`, decrypt, check `ox`; a mismatch or a missing / malformed tag
+  shows "This file can't be opened", never the bytes. Decrypted files stay in the app's private
+  storage only.
+- **Names**: the last path segment, no control characters or direction marks, trimmed, at most 200
+  UTF-16 units; else File / Picture / Audio recording.
+- **Limits**: 25 MB a file (5 MB for a guest); over it nothing is sent: "This file is too large
+  (25 MB at most)". A video goes as a File (no inline video yet).
+- **Sending**: the same line as a text message (19.64): "Sending…", after 5 s "Still sending… ·
+  encrypting / uploading 2.2 of 4.8 MB / waiting for the server", after 30 s "Not sent yet ·
+  Retry"; what I send is dimmed until it is out, no ring or bar on the picture. A file waits on the
+  device until it is out (kept by its `ox`, queued as `dm-file-queue`); after its upload it keeps
+  its key, nonce and URL, so a retry wraps the same rumor and never uploads twice. A refused upload
+  (4xx but 401 / 408 / 429) fails it ("Not sent · Retry").
+- **Shown**: one picture alone, rounded, no bubble (tap: full screen, swipe, Save, Share); several
+  as a 2 × 2 grid, "+N" on the fourth; a file as its name (cut in the middle) and "PDF · 1.2 MB"
+  (tap: the phone's viewer); a recording as play / pause, a waveform, the duration. The list's last
+  line: "Picture", "3 pictures", "File: Garden plan 2027.pdf", "Audio recording · 0:42".
+  Reactions on a file: as 19.50 with `["k","15"]`.

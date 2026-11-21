@@ -37,6 +37,7 @@ extension AppModel {
     func sendLine(_ id: String, tries: Int) -> SendLine {
         if launch.screen == "sendstill" { return SendLine(text: "Still sending… · waiting for the server") }
         if launch.screen == "sendnotyet" { return SendLine(text: "Not sent yet", retry: true) }
+        if launch.screen == "dmfilessending" { return SendLine(text: "Still sending… · uploading 2.2 of 4.8 MB") }
         guard let e = engine, !isDemo else { return SendLine(text: "Sending…") }
         return SendState.line(failed: false, tries: tries, progress: e.trace.progress(id), now: e.trace.now, online: e.online)
     }
@@ -45,7 +46,7 @@ extension AppModel {
     func dmTries(_ rid: String) -> Int { engine?.outboxItems().filter { $0.dm == rid }.map(\.tries).max() ?? 0 }
 
     /// "Not sent yet · Retry": every socket asked now, a fresh 30 s, a pass at once.
-    func retrySends() { engine?.retryNow() }
+    func retrySends() { engine?.retryNow(); dms?.resumeFiles() }
 }
 
 /// About Belfry → Diagnostics: each socket's state and quiet time, and the last 20 sends' timing

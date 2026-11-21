@@ -15,8 +15,8 @@ public struct DmThread: Hashable, Sendable, Identifiable {
 public final class DirectMessages: @unchecked Sendable {
     let engine: SyncEngine
     let db: Database
-    private let lock = NSLock()
-    private var items = [String: Dm]()
+    let lock = NSLock()
+    var items = [String: Dm]()
     private var seen = Set<String>()
     private var read = [String: Int]()
     private var reports = [String: DeliveryReport]()
@@ -40,7 +40,7 @@ public final class DirectMessages: @unchecked Sendable {
 
     var me: String { engine.me }
 
-    private func save() {
+    func save() {
         lock.lock()
         let list = Array(items.values), s = Array(seen), rp = reports, rx = reactions
         lock.unlock()
@@ -196,7 +196,7 @@ public final class DirectMessages: @unchecked Sendable {
     /// Shown at once; wrapped to every participant and to me. Never on e-mail.
     public func react(_ emoji: String, on d: Dm) async throws {
         try engine.guestMode.check()
-        guard d.kind == 14, d.pending != true else { return }
+        guard d.kind == 14 || d.kind == DmFiles.kind, d.pending != true else { return }
         let others = MailThreads.peers(d.conv).filter { $0 != me }
         guard !others.isEmpty, others.allSatisfy(isHex64) else { return }
         lock.lock()
@@ -206,7 +206,7 @@ public final class DirectMessages: @unchecked Sendable {
         if let mine {
             rumor = GiftWrap.rumor(kind: 5, pubkey: me, tags: DmReactions.removeTags(reaction: mine, participants: others, me: me), content: "")
         } else {
-            rumor = GiftWrap.rumor(kind: 7, pubkey: me, tags: DmReactions.addTags(message: d.rid, author: d.from, participants: others + [me], me: me), content: emoji)
+            rumor = GiftWrap.rumor(kind: 7, pubkey: me, tags: DmReactions.addTags(message: d.rid, author: d.from, participants: others + [me], me: me, kind: d.kind), content: emoji)
         }
         lock.lock(); reactions.apply(rumor); lock.unlock()
         save()
@@ -216,14 +216,16 @@ public final class DirectMessages: @unchecked Sendable {
     /// Called when this device sends a DM or an e-mail (push: stay quiet for its own echo).
     public var onSend: (() -> Void)?
 
-    /// A NIP-17 message in a Nostr conversation.
-    public func send(_ text: String, in conv: String) async throws {
+    /// A NIP-17 message in a Nostr conversation. GROUP: the caption of files sent with it.
+    public func send(_ text: String, in conv: String, group: String? = nil) async throws {
         try engine.guestMode.check()
         onSend?()
         let to = MailThreads.peers(conv).filter { $0 != me }
         guard to.allSatisfy(isHex64) else { throw BelfryError.invalid("This is not a valid Nostr key.") }
-        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: to.map { ["p", $0] }, content: text)
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: to.map { ["p", $0] } + (group.map { [["group", $0]] } ?? []), content: text,
+                                   createdAt: group == nil ? .now : engine.nextCreatedAt())
         var d = Dm(rid: rumor.id, conv: conv, from: me, mine: true, at: rumor.createdAt, kind: 14, text: text)
+        d.group = group
         d.pending = engine.localOnly ? nil : true
         lock.lock(); items[rumor.id] = d; lock.unlock()
         save()
@@ -347,6 +349,7 @@ public final class DirectMessages: @unchecked Sendable {
     }
 
     public func retry(_ d: Dm) {
+        if d.kind == DmFiles.kind { retryFile(d) }
         for o in engine.outboxItems() where o.dm == d.rid { engine.retry(o.localId) }
         lock.lock()
         items[d.rid]?.failed = nil
