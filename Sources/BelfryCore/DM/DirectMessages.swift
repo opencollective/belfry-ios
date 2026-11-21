@@ -248,8 +248,8 @@ public final class DirectMessages: @unchecked Sendable {
     /// A 21059 wrap to me: the typing rumor inside and its conversation (nil: not one for me).
     public func openTyping(_ wrap: NostrEvent) async -> (conv: String, author: String, createdAt: Int, stop: Bool)? {
         guard wrap.kind == Typing.wrapKind, wrap.hasTag("p", me),
-              let opened = try? await withTimeout(Typing.signerWait, "timeout: typing", { try await GiftWrap.unwrap(wrap, signer: self.engine.signer) }),
-              let o = opened, o.rumor.kind == Typing.kind else { return nil }
+              let o = try? await withTimeout(Typing.signerWait, "timeout: typing", { try await GiftWrap.unwrap(wrap, signer: self.engine.signer) }),
+              o.rumor.kind == Typing.kind else { return nil }
         let r = o.rumor
         return (MailThreads.nostrConv(author: r.pubkey, pTags: r.tagValues("p"), me: me), r.pubkey, r.createdAt, Typing.isStop(r.tags))
     }
