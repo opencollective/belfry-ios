@@ -29,6 +29,10 @@ public final class DirectMessages: @unchecked Sendable {
     public var sealed: SealedEngine? {
         didSet { sealed?.holdRumor = { [weak self] r in self?.hold(r) } }
     }
+    /// The one line a person sees when a send is refused because this device can't tell how to
+    /// lock it (board messages/encryption-held): never a technical reason.
+    public static let cantCheck = "Can't send yet: this device can't reach the belfry to check how to lock it."
+
     /// This session can seal (a member's own, not the demo, not a guest reading): set by the app
     /// when the session opens, BEFORE the engine starts. Until the sealed engine is attached, no
     /// queued gift wrap leaves: the first flush of a launch must not send one unchecked.
@@ -273,7 +277,7 @@ public final class DirectMessages: @unchecked Sendable {
             await s.refresh(conv.map(MailThreads.peers) ?? [])
             // the old way only on knowledge, never on silence (sealed.md 6): refused, the text is kept
             let way = conv.map { s.way($0) } ?? s.mailWay()
-            if way == .unknown { throw BelfryError.invalid("Not sent: the belfry did not answer in time to check the lock. Try again.") }
+            if way == .unknown { throw BelfryError.invalid(DirectMessages.cantCheck) }
         }
         if let s = sealed, let conv, s.isSealed(conv) {
             hold(rumor)

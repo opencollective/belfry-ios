@@ -291,7 +291,8 @@ struct ConversationView: View {
                     .composerBackground(compact: false)
             } else {
             VStack(spacing: 6) {
-                if let error { Text(error).font(.caption).foregroundStyle(.red) }
+                // a refusal to send unlocked is a quiet grey line, the text stays in the box; a failure is red
+                if let error { Text(error).font(.caption).foregroundStyle(error == DirectMessages.cantCheck ? Color.secondary : Color.red).multilineTextAlignment(.center) }
                 if MailThreads.isNewMail(conv) {
                     TextField("Subject", text: $subject).font(.body)
                         .padding(.horizontal, 14).frame(minHeight: 38)
