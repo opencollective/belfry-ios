@@ -17,7 +17,9 @@ public enum GiftWrap {
         let seal = try await signer.sign(EventTemplate(kind: 13, content: sealed, tags: [], createdAt: backdate()))
         let one = Keys.generateSecret()
         let content = try NIP44.encrypt(seal.json, conversationKey: NIP44.conversationKey(secret: one, publicKey: Data(hex: to) ?? Data()))
-        return try NostrEvent(pubkey: "", createdAt: backdate(), kind: 1059, tags: [["p", to]], content: content).signed(with: one)
+        // my own copy (a note to myself too): silent, the belfry sends no push for it (sealed.md 4)
+        let tags: [Tag] = [["p", to]] + (to == rumor.pubkey ? [Sealed.silentTag] : [])
+        return try NostrEvent(pubkey: "", createdAt: backdate(), kind: 1059, tags: tags, content: content).signed(with: one)
     }
 
     public struct Opened: Sendable { public let rumor: NostrEvent; public let sealPubkey: String }

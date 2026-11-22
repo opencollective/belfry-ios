@@ -77,7 +77,12 @@ public enum Sealed {
 
     /// Seal (signed by the device) and wrap (a one-time key) RUMOR for ACCOUNT's letterbox LB
     /// (sealed.md 4). SIGN: nil = the device key signs the seal.
-    public static func wrap(_ rumor: NostrEvent, device: Data, to account: String, lb: String, now: Int = .now) throws -> NostrEvent {
+    /// SILENT (sealed.md 4 "Silent wraps", 2026-11-23): a wrap that addresses only its own sender
+    /// carries ["silent", "1"] and the belfry sends no push for it. nil = when the rumor's author
+    /// is the account it is wrapped for (my copy of a message I send, a note to myself).
+    public static let silentTag: Tag = ["silent", "1"]
+
+    public static func wrap(_ rumor: NostrEvent, device: Data, to account: String, lb: String, now: Int = .now, silent: Bool? = nil) throws -> NostrEvent {
         let json = Sealed.json(rumor)
         // a sealed rumor's JSON is at most 40 000 bytes: a sender never seals a larger one
         guard json.utf8.count <= maxRumorBytes else { throw BelfryError.invalid(tooLong) }
@@ -85,7 +90,7 @@ public enum Sealed {
         let seal = try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 13, tags: [], content: sealContent).signed(with: device)
         let one = Keys.generateSecret()
         let content = try NIP44.encrypt(seal.json, conversationKey: conv(one, lb))
-        return try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 1059, tags: [["p", account], ["lb", lb]], content: content).signed(with: one)
+        return try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 1059, tags: [["p", account], ["lb", lb]] + ((silent ?? (account == rumor.pubkey)) ? [silentTag] : []), content: content).signed(with: one)
     }
 
     public enum Opening: Sendable {
@@ -185,7 +190,8 @@ public enum Sealed {
             let seal = try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 13, tags: [],
                                       content: NIP44.encrypt(Sealed.json(r), conversationKey: conv(device, to))).signed(with: device)
             let one = Keys.generateSecret()
-            return try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 1059, tags: [["p", to]],
+            // (to a device of my own: silent)
+            return try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 1059, tags: [["p", to], silentTag],
                                   content: NIP44.encrypt(seal.json, conversationKey: conv(one, to))).signed(with: one)
         }
     }

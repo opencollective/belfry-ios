@@ -1224,7 +1224,7 @@ public final class SealedEngine: @unchecked Sendable {
         if let c = chain(me), c.devices.contains(devicePub), let r = AddedConfirm.addedBy(c, device) {
             let rumor = GiftWrap.rumor(kind: AddedConfirm.kind, pubkey: devicePub, tags: AddedConfirm.tags(account: me, device: device, roster: r.id), content: "")
             lock.lock(); let gone = closed; lock.unlock()
-            if !gone, let w = try? Sealed.wrap(rumor, device: self.device, to: me, lb: c.lb) {
+            if !gone, let w = try? Sealed.wrap(rumor, device: self.device, to: me, lb: c.lb, silent: true) {
                 _ = engine.enqueueSigned(w, target: .main, dm: nil)
             }
         }

@@ -435,6 +435,16 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertEqual(new.count, 1, "self as the only recipient: one wrap")
         XCTAssertEqual(new.first?.tagValues("p"), [phone.account])
         XCTAssertNotNil(new.first?.tag("lb"), "sealed by the device")
+        XCTAssertEqual(new.first?.tags.filter { $0.first == "silent" }, [["silent", "1"]], "a wrap to myself alone: no push")
+        // a message to someone else: my copy is silent, theirs is not
+        let (bob, _) = try await pair(b, "bob")
+        await b.sync()
+        let seen = Set(b.all().map(\.id))
+        try await dms.send("Hello Bob", in: "n:" + bob.account)
+        await b.sync()
+        let two = b.all().filter { !seen.contains($0.id) && $0.kind == 1059 }
+        XCTAssertEqual(two.first { $0.hasTag("p", bob.account) }?.tags.contains(["silent", "1"]), false)
+        XCTAssertEqual(two.first { $0.hasTag("p", phone.account) }?.tags.contains(["silent", "1"]), true)
         let note = try XCTUnwrap(dms.thread(conv).first)
         XCTAssertTrue(note.mine)
         XCTAssertEqual(dms.threads().first { $0.conv == conv }?.unread, 0, "never unread")

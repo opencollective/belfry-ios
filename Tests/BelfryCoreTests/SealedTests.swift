@@ -159,7 +159,7 @@ final class SealedMessageTests: XCTestCase {
         chain.add(lb: pub("lb1"), secret: key("lb1").hex)
         chain.add(lb: pub("lb2"), secret: key("lb2").hex)
         let w = try XCTUnwrap(Sealed.keysWraps(chain, account: pub("alice"), device: key("phone"), to: pub("mac")).first)
-        XCTAssertEqual(w.tags, [["p", pub("mac")]])
+        XCTAssertEqual(w.tags, [["p", pub("mac")], ["silent", "1"]])
         let h = try XCTUnwrap(Sealed.openKeys(w, device: key("mac")))
         XCTAssertEqual(h.giver, pub("phone"))
         XCTAssertEqual(h.account, pub("alice"))
