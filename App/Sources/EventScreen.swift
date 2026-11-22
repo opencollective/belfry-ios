@@ -12,12 +12,21 @@ import SwiftUI
 //   screen), full (also hosted by, going / maybe, the description, the address, host tools);
 // - under it Chat · Photos · People (a native segmented picker): the event group's feed and
 //   composer, the photos with Add photos, the people with a message button.
+// One shape (0.8.0, boards one-shape/event-default, -online, -tiny, -full, 2026-11-22): the
+// levels are now tiny (up: the two-line header in the bar, my answer leading its icon row), mid
+// (half, how it opens: the cover fitted to the width at 16:9 under the floating ‹ and •••, the
+// title full width, when, where or the call with Join, hosted by, who's going, Going / Maybe /
+// Can't go) and full (Directions, to-dos, files, photos, people, everything); the conversation
+// is under the header (no tabs), people / photos / to-dos / files are pushed screens; scrolling
+// the conversation up folds mid to tiny.
 // Everything draws from the local log; the belfry's `viewer` block refreshes in the background
 // and is kept per event (AppModel+Checkin).
 
 enum EventLevel: Hashable { case up, half, full }
 
-enum EventTab: String, CaseIterable, Hashable { case chat = "Chat", photos = "Photos", people = "People" }
+/// What the event pushes (one shape, 2026-11-22: no tabs any more; the conversation is under the
+/// header, people / photos / to-dos / files are screens of their own).
+enum EventSub: String, Hashable, Identifiable { case people, photos, todos, files; var id: String { rawValue } }
 
 struct EventRoute: Hashable { let key: String; var ticket: String? = nil; /** A message of its chat to open at (a message link). */ var focus: String? = nil }
 
@@ -66,7 +75,7 @@ struct EventScreenBody: View {
     let root: Bool
     var focus: String? = nil
     @State private var level: EventLevel = .half
-    @State private var tab: EventTab = .chat
+    @State private var sub: EventSub?
     @State private var drag: CGFloat = 0
     @State private var halfContentH: CGFloat = 0
     /// The page's height below the bar and the bar's height (see body).
@@ -87,7 +96,6 @@ struct EventScreenBody: View {
     @State private var launched = false
 
     static let handleH: CGFloat = 22
-    static let pickerH: CGFloat = 48
 
     struct Heights { let up, half, full: CGFloat }
     struct PageBox: Equatable, Sendable { let top: CGFloat; let width: CGFloat; let height: CGFloat }
@@ -109,7 +117,7 @@ struct EventScreenBody: View {
                 LoopWatch.tick("page"); if p != page { page = p }
             }
             .background(alignment: .top) {
-                EventBackdrop(e: e, height: page.top + (e.hasCover ? EventCover.height : 0))
+                EventBackdrop(e: e, height: page.top + coverGap)
                     .ignoresSafeArea(edges: .top)
                     .opacity(access && level == .up ? 0 : 1)
                     .allowsHitTesting(false)
@@ -139,6 +147,7 @@ struct EventScreenBody: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar { toolbar(d) }
         .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group).overRoot() }
+        .navigationDestination(item: $sub) { s in subScreen(s).overRoot() }
         .environment(\.showProfile) { pk in openProfile(pk) }
         .fullScreenCover(isPresented: $showTicket) { MyTicketView(e: e) }
         .fullScreenCover(isPresented: $checkingIn) { CheckInScreen(e: e) }
@@ -153,9 +162,8 @@ struct EventScreenBody: View {
             // typing in the event's chat: the header steps out of the way
             LoopWatch.tick("keyboardWillShow")
             LoopWatch.mark("keyboardWillShow level=\(level)")
-            if access && tab == .chat && level != .up { withAnimation(.snappy(duration: 0.25)) { level = .up } }
+            if access && sub == nil && level != .up { withAnimation(.snappy(duration: 0.25)) { level = .up } }
         }
-        .onChange(of: tab) { _, _ in if level == .full { withAnimation(.snappy(duration: 0.28)) { level = .half } } }
         .onChange(of: level) { _, l in
             if l == .up {
                 // once the pull-up has finished; back in at once (at height 0) when it comes down
@@ -181,7 +189,7 @@ struct EventScreenBody: View {
         guard access else { return Heights(up: total, half: total, full: total) }
         let up: CGFloat = 0
         let measured = halfContentH > 0 ? halfContentH : 320
-        let full = max(up + 120, total - EventScreenBody.handleH - EventScreenBody.pickerH)
+        let full = max(up + 120, total - EventScreenBody.handleH)
         let half = min(full, max(up + 120, min(measured, total * 0.72)))
         return Heights(up: up, half: half, full: full)
     }
@@ -246,7 +254,7 @@ struct EventScreenBody: View {
                         }
                     // kept in the tree at every level (clipped away): nothing pops in while pulling
                     EventFullPart(e: e, api: api, error: $error, coHost: $coHost, open: openProfile,
-                                  showPeople: { withAnimation(.snappy) { tab = .people; level = .half } },
+                                  showPeople: { hideKeyboard(); sub = .people }, push: { hideKeyboard(); sub = $0 },
                                   edit: { editing = true }, tickets: { ticketsSheet = true }, cancel: { cancelSheet = true },
                                   delete: { confirmDelete = true })
                         .background(PDSurface.color)
@@ -268,20 +276,33 @@ struct EventScreenBody: View {
         .accessibilityHidden(access && level == .up)
     }
 
+    /// The cover fitted to the width at 16:9, from the top of the screen (under the bar): the
+    /// part of it below the bar is a clear gap at the top of the header.
+    private var coverGap: CGFloat {
+        guard e.hasCover, page.width > 0 else { return 0 }
+        return max(0, (page.width * 9 / 16).rounded() - page.top)
+    }
+
+    /// Mid, how it opens (board one-shape/event-default): the title over the full width (26 pt),
+    /// when, where (a maps link, or the call with Join), hosted by, who's going (People), then
+    /// Going / Maybe / Can't go with my answer highlighted.
     private func halfPart(_ d: Derive, access: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             // the cover itself is the page's backdrop (under the bar too): a clear gap shows it
-            Color.clear.frame(height: e.hasCover ? EventCover.height : 0).accessibilityHidden(true)
+            Color.clear.frame(height: coverGap).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     if e.meeting { Text("Meeting · members only").font(.footnote.weight(.semibold)).foregroundStyle(.secondary) }
-                    Text(e.title).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
+                    Text(e.title).font(.system(size: 26, weight: .bold)).fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
                 }
                 EventInfoRows(e: e, api: api)
+                if let hosted = hostedLine(d) {
+                    Text(hosted).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                goingLine(d, access: access)
                 EventStatusControl(e: e, api: api, showTicket: { showTicket = true }, getTickets: { getTickets = true },
                                    checkIn: { checkingIn = true })
-                goingLine(d, access: access)
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)
@@ -291,63 +312,64 @@ struct EventScreenBody: View {
         }
     }
 
+    private func hostedLine(_ d: Derive) -> String? {
+        let hosts = d.eventPeopleList(e).hosts.filter { d.eventRole(e, $0) != .steward }
+        let names = hosts.map { pk in api?.hosts.first { $0.first == pk }?.last.flatMap { $0.isEmpty ? nil : $0 } ?? model.name(pk) }
+        return EventShape.hostedBy(names)
+    }
+
     private func goingLine(_ d: Derive, access: Bool) -> some View {
         let going = e.goingKeys
         let maybe = e.rsvps.filter { $0.value == .tentative && !going.contains($0.key) }.count
-        let text = maybe > 0 ? "\(e.going) going · \(maybe) maybe" : "\(e.going) going"
+        let text = EventShape.goingLine(going: e.going, maybe: maybe) ?? ""
         return Button {
-            withAnimation(.snappy(duration: 0.28)) {
-                if access { tab = .people; level = .half } else { level = .full }
-            }
+            hideKeyboard()
+            if access { sub = .people } else { withAnimation(.snappy(duration: 0.28)) { level = .full } }
         } label: {
             HStack(spacing: 10) {
                 FacePile(keys: Array(going.prefix(5)))
                 Text(text).font(.subheadline).foregroundStyle(.secondary)
-                Spacer(minLength: 0)
                 if access { Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary) }
+                Spacer(minLength: 0)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .opacity(e.going > 0 || maybe > 0 ? 1 : 0)
-        .accessibilityHidden(e.going == 0 && maybe == 0)
+        .opacity(text.isEmpty ? 0 : 1)
+        .frame(height: text.isEmpty ? 0 : nil)
+        .accessibilityHidden(text.isEmpty)
         .accessibilityLabel(text + ". Show the people.")
+        .accessibilityIdentifier("event-going")
     }
 
     // ---- the content ---------------------------------------------------------------------------
 
+    /// The conversation about the event, under the header (a plain stack: see CLAUDE.md, the
+    /// event-chat freeze). Scrolling it up folds the header to the tiny one.
     private func content(hidden: Bool, height: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            Picker("Show", selection: $tab) {
-                ForEach(EventTab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .frame(width: page.width, height: EventScreenBody.pickerH)
-            .accessibilityIdentifier("event-tabs")
-            ZStack {
-                // the chat stays in the tree (its place in the feed, its draft); Photos and People
-                // exist only while shown: hidden, their scroll and list views still took part in
-                // every keyboard layout of the chat, and that layout could stop returning
-                // (the freeze when typing in the event's chat, 2026-11-16)
-                pane(.chat) { ChannelView(id: e.groupId, focus: focus, embedded: true) }
-                if tab == .photos { EventPhotosTab(e: e) }
-                if tab == .people { EventPeopleTab(e: e, open: openProfile, checkIn: { checkingIn = true }) }
-            }
-            .frame(width: page.width, height: max(0, height - EventScreenBody.pickerH))
+        ChannelView(id: e.groupId, focus: focus, embedded: true)
+            .frame(width: page.width, height: height)
+            .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { v in
+                if level == .half && v.translation.height < -60 && abs(v.translation.width) < 40 {
+                    withAnimation(.snappy(duration: 0.28)) { level = .up }
+                }
+            })
             .opacity(hidden ? 0 : 1)
             .allowsHitTesting(!hidden)
             .accessibilityHidden(hidden)
-        }
-        .frame(width: page.width, height: height, alignment: .top)
     }
 
-    /// One tab's view, kept in the tree (switching tabs keeps the feed's place and the drafts).
-    private func pane<V: View>(_ t: EventTab, @ViewBuilder _ v: () -> V) -> some View {
-        v()
-            .opacity(tab == t ? 1 : 0)
-            .allowsHitTesting(tab == t)
-            .accessibilityHidden(tab != t)
+    /// People, photos, to-dos and files: screens of their own, pushed.
+    @ViewBuilder private func subScreen(_ s: EventSub) -> some View {
+        switch s {
+        case .people:
+            EventPeopleTab(e: e, open: openProfile, checkIn: { checkingIn = true })
+                .navigationTitle("People").navigationBarTitleDisplayMode(.inline)
+        case .photos:
+            EventPhotosTab(e: e).navigationTitle("Photos").navigationBarTitleDisplayMode(.inline)
+        case .todos, .files:
+            ChannelPlaceView(id: e.groupId, place: s == .todos ? .todos : .files, go: { _ in sub = nil }, filter: { _ in sub = nil })
+        }
     }
 
     // ---- toolbar -------------------------------------------------------------------------------
@@ -355,13 +377,14 @@ struct EventScreenBody: View {
     @ToolbarContentBuilder private func toolbar(_ d: Derive) -> some ToolbarContent {
         if root { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
         ToolbarItem(placement: .principal) {
-            VStack(spacing: 0) {
-                Text(e.title).font(.headline).lineLimit(1)
-                Text(upLine(d)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            // tiny (board one-shape/event-tiny): the title, then my answer, the date in the
+            // accent colour, 👥 going, open to-dos, files
+            OneHeader(title: e.title, items: tinyItems(d), chevron: false) {
+                withAnimation(.snappy(duration: 0.28)) { level = .half }
             }
             .opacity(level == .up ? 1 : 0)
             .accessibilityHidden(level != .up)
-            .onTapGesture { withAnimation(.snappy(duration: 0.28)) { level = .half } }
+            .accessibilityIdentifier("event-tiny")
         }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
@@ -385,11 +408,21 @@ struct EventScreenBody: View {
         }
     }
 
-    /// "Today · 18:00 – 21:00 · Going": the bar's line when the header is up.
-    private func upLine(_ d: Derive) -> String {
-        var parts = [d.lineDay(e.start, now: .now), d.lineWhen(e)]
-        if let s = d.stateLabel(e) { parts.append(s) }
-        return parts.joined(separator: " · ")
+    /// The tiny header's row: ✓ Going (my answer) · 📅 Thu 4 Dec · 7 PM · 👥 15 · ✓ 2 · 📁 1.
+    private func tinyItems(_ d: Derive) -> [HeaderItem] {
+        var items = [HeaderItem]()
+        if let r = d.myRsvp(e) {
+            let icon = r == .accepted ? "checkmark" : r == .tentative ? "questionmark" : "xmark"
+            items.append(HeaderItem(key: "answer", icon: icon, text: r.label, label: "You answered " + r.label,
+                                    tint: r == .accepted ? .green : .secondary))
+        }
+        let when = d.lineDay(e.start, now: .now) + " · " + d.lineWhen(e)
+        items.append(HeaderItem(key: "lead", icon: "calendar", text: when, label: when, accent: true))
+        if let p = HeaderItem.count("people", "person.2", e.going, "going", "going") { items.append(p) }
+        if let t = HeaderItem.count("todos", "checkmark.circle", d.tasks(e.groupId).filter { !$0.done }.count, "open to-do", "open to-dos") { items.append(t) }
+        let files = d.files(e.groupId).filter { !$0.isImage }.count
+        if let f = HeaderItem.count("files", "folder", files, "file", "files") { items.append(f) }
+        return items
     }
 
     private func openProfile(_ pk: String) {
@@ -407,10 +440,10 @@ struct EventScreenBody: View {
         model.launchEventDone = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
             switch s {
-            case "eventup": withAnimation { level = .up }
+            case "eventup", "eventtiny": withAnimation { level = .up }
             case "eventfull", "eventaddress": withAnimation { level = .full }
-            case "eventphotos": tab = .photos
-            case "eventpeople", "meetingpeople": tab = .people
+            case "eventphotos": sub = .photos
+            case "eventpeople", "meetingpeople": sub = .people
             case "ticket": showTicket = true
             case "checkin": checkingIn = true
             case "eventrole": openProfile(Demo.signer("ana").pubkey)
@@ -420,15 +453,13 @@ struct EventScreenBody: View {
     }
 }
 
-/// The cover, edge to edge under the navigation bar (or the bar's height of nothing).
-enum EventCover { static let height: CGFloat = 170 }
-
 extension CalEvent {
     var hasCover: Bool { (cover ?? "").hasPrefix("https://") }
 }
 
-/// The cover, edge to edge from the top of the screen (under the bar) to the header's gap: a
-/// background decoration only. Without a cover, the page's own surface.
+/// The cover, from the top of the screen (under the bar, where ‹ and ••• float on it) to the
+/// header's gap: a background decoration only. Fitted to the width, never cropped sideways (the
+/// same picture, blurred, fills what a narrow one leaves). Without a cover, the page's surface.
 struct EventBackdrop: View {
     let e: CalEvent
     let height: CGFloat
@@ -437,11 +468,12 @@ struct EventBackdrop: View {
             Color.secondary.opacity(0.12)
                 .frame(height: height)
                 .frame(maxWidth: .infinity)
-                .overlay { CachedImage(url: u) { $0.resizable().scaledToFill() } placeholder: { Color.clear } }
+                .overlay { CachedImage(url: u) { $0.resizable().scaledToFill().blur(radius: 24).opacity(0.6) } placeholder: { Color.clear } }
+                .overlay { CachedImage(url: u) { $0.resizable().scaledToFit() } placeholder: { Color.clear } }
                 .clipped()
-                // the bar's buttons read over any picture
+                // the floating buttons read over any picture
                 .overlay(alignment: .top) {
-                    LinearGradient(colors: [Color.black.opacity(0.28), .clear], startPoint: .top, endPoint: .bottom).frame(height: max(0, height - EventCover.height) + 20)
+                    LinearGradient(colors: [Color.black.opacity(0.25), .clear], startPoint: .top, endPoint: .bottom).frame(height: 90)
                 }
                 .accessibilityHidden(true)
         } else {
@@ -466,14 +498,35 @@ struct EventInfoRows: View {
                     .buttonStyle(.plain)
                     .accessibilityHint("Opens Maps")
             }
+            // online (board one-shape/event-default-online): "Online · Jitsi" links to the call,
+            // Join on the same line, open from 10 minutes before the start until the end
             ForEach(e.links, id: \.self) { l in
-                if let u = URL(string: l) {
-                    Link(destination: u) { row("video", "Join on \(Actions.meetingLabel(l))", tint: true) }
-                }
+                if let u = URL(string: l) { onlineRow(u, EventShape.service(l)) }
             }
             if e.links.isEmpty && (api?.online ?? false) {
                 row("video", "The online link shows once you have a place")
             }
+        }
+    }
+
+    private func onlineRow(_ u: URL, _ service: String) -> some View {
+        let open = EventShape.joinOpen(start: e.start, end: e.end, now: .now)
+        return HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "video").foregroundStyle(.secondary).frame(width: 22)
+            Link(destination: u) {
+                Text("Online · " + service).font(.body).foregroundStyle(Color.brand).lineLimit(1)
+            }
+            .accessibilityHint("Opens the call")
+            Spacer(minLength: 8)
+            Link(destination: u) {
+                Text("Join").font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 16).padding(.vertical, 6)
+                    .background(open ? Color.blue : Color.secondary.opacity(0.2), in: Capsule())
+                    .foregroundStyle(open ? Color.white : Color.secondary)
+            }
+            .disabled(!open)
+            .accessibilityLabel(open ? "Join the call" : "Join opens 10 minutes before the start")
+            .accessibilityIdentifier("event-join")
         }
     }
 
@@ -633,6 +686,7 @@ struct EventFullPart: View {
     @Binding var coHost: String?
     let open: (String) -> Void
     let showPeople: () -> Void
+    var push: (EventSub) -> Void = { _ in }
     let edit: () -> Void
     let tickets: () -> Void
     let cancel: () -> Void
@@ -643,8 +697,23 @@ struct EventFullPart: View {
         let lists = d.eventPeopleList(e)
         let hosts = lists.hosts.filter { d.eventRole(e, $0) != .steward }
         let host = d.isHost(e) && e.isNew && !e.remote
+        let photos = d.files(e.groupId).filter(\.isImage).count
+        let files = d.files(e.groupId).filter { !$0.isImage }.count
+        let todos = d.tasks(e.groupId).filter { !$0.done }.count
         VStack(alignment: .leading, spacing: 0) {
             Divider()
+            // full (board one-shape/event-full): the place with Directions, then everything
+            if let l = e.location, !l.isEmpty { directions(l) }
+            if !e.remote, model.group(e.groupId) != nil {
+                PDRow(symbol: "checkmark.circle", title: "To-dos", value: todos > 0 ? "\(todos) open" : nil) { push(.todos) }
+                PDDivider()
+                PDRow(symbol: "folder", title: "Files", value: files > 0 ? "\(files)" : nil) { push(.files) }
+                PDDivider()
+                PDRow(symbol: "photo.on.rectangle", title: "Photos", value: photos > 0 ? "\(photos)" : nil) { push(.photos) }
+                PDDivider()
+                PDRow(symbol: "person.2", title: "People", value: "\(e.going)") { push(.people) }
+                    .accessibilityIdentifier("event-people")
+            }
             if !e.creator.isEmpty {
                 PDHeader(text: "Hosted by")
                 ForEach(hosts, id: \.self) { pk in
@@ -672,6 +741,27 @@ struct EventFullPart: View {
             }
         }
         .padding(.bottom, 28)
+    }
+
+    /// "The hall, 12 Mill Lane" and Directions (Maps).
+    private func directions(_ place: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "mappin.and.ellipse").foregroundStyle(.secondary).frame(width: 28)
+            Text(place).font(.body).lineLimit(2)
+            Spacer(minLength: 8)
+            Button {
+                var c = URLComponents(string: "https://maps.apple.com/")!
+                c.queryItems = [URLQueryItem(name: "daddr", value: place)]
+                if let u = c.url { UIApplication.shared.open(u) }
+            } label: {
+                Label("Directions", systemImage: "arrow.triangle.turn.up.right.diamond")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityIdentifier("event-directions")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     private func hostName(_ pk: String) -> String? {

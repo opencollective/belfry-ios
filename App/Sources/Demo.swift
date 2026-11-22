@@ -405,6 +405,10 @@ enum Demo {
             engine.add(evs, verify: false)
             return
         }
+        // (two statements: `channel` appends to evs while the call runs)
+        let oneShape = Demo.oneShapeEvents(now: now, ben: ps["ben"]!, others: [ps["emma"]!, ps["ana"]!], me: you, ev: ev,
+                                       channel: { channel($0, $1, $2, admins: $3, members: $4, at: $5) })
+        evs += oneShape
         engine.add(evs, verify: false)
         engine.add([ev(you, 30078, now - 3 * day, [["d", "seen:general"], ["h", "general"]])], verify: false)
 
@@ -448,5 +452,34 @@ enum Demo {
         if let i = args.firstIndex(of: "-screen"), i + 1 < args.count, ["sendstill", "sendnotyet"].contains(args[i + 1]) {
             dms.demoPending(conv: "n:" + ps["ana"]!.pubkey, text: "Yes, I'll be there at 9 with the keys.", at: now - 40)
         }
+    }
+}
+
+// ---- one shape, events (0.8.0, boards one-shape/event-default-online) --------------------------
+extension Demo {
+    /// An online event that has just started (Join is open): Garden planning on Jitsi, hosted by
+    /// Ben; Emma, Ana and Sam going.
+    static func oneShapeEvents(now: Int, ben: LocalSigner, others: [LocalSigner], me: LocalSigner,
+                               ev: (LocalSigner, Int, Int, [Tag], String) -> NostrEvent,
+                               channel: (String, String, String, [String], [String], Int) -> Void) -> [NostrEvent] {
+        var out = [NostrEvent]()
+        let d = "2026-gplan01"
+        var f = EventForm(title: "Garden planning")
+        f.description = "Bring your seed list, we'll plan the beds for spring."
+        f.start = (now / 300) * 300 - 300
+        f.end = f.start + 3600
+        f.tz = TimeZone.current.identifier
+        f.online = "https://meet.jit.si/garden-planning-4c1d2"
+        f.slug = "garden-planning"
+        for (i, dr) in EventActions.create(f, d: d, me: ben.pubkey, groupsRelay: "wss://groups-relay.demo.belfry.sh", mainRelay: "wss://relay.demo.belfry.sh").enumerated() {
+            out.append(ev(ben, dr.kind, now - 2 * 86400 + i, dr.tags, dr.content))
+        }
+        channel("ev-" + d, "Garden planning", f.description, [ben.pubkey], [ben.pubkey, me.pubkey] + others.map(\.pubkey), now - 2 * 86400 + 5)
+        let coord = "31923:\(ben.pubkey):\(d)"
+        for (i, who) in (others + [me]).enumerated() {
+            out.append(ev(who, 31925, now - 86400 + i * 600, [["d", "gp\(i)"], ["a", coord], ["status", "accepted"], ["p", ben.pubkey]], ""))
+        }
+        out.append(ev(ben, 9, now - 3600, [["h", "ev-" + d]], "Bring your seed list, we'll plan the beds for spring."))
+        return out
     }
 }

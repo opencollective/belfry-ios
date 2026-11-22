@@ -33,6 +33,7 @@ MAP = [
     (r"App/Sources/CalendarView", "calendar.*|guest-calendar", ""),
     (r"App/Sources/(GroupsView|GroupPage|ArchiveUI|AppModel\+Archive)", "groups.*|group.*|pod|archivedlist", ""),
     (r"App/Sources/(EventScreen|EventsUI|Tickets|AppModel\+Events|AppModel\+Checkin|GroupRoles)", "event.*|events|ticket|checkin.*|calendar", "testEventHeaderDrag testEventChatTyping"),
+    (r"Sources/BelfryCore/Model/EventShape", "event.*", ""),
     (r"App/Sources/(MeetingUI|AppModel\+Meetings)", "meeting.*", ""),
     (r"App/Sources/(GuestUI|JoinUI|AppModel\+Guest|AppModel\+MemberLink|AppModel\+Apply)", "guest-.*|join-member", "testMemberLinkSignUp"),
     (r"App/Sources/(SignInView|AppModel\+SignIn|NoLinkUI|WayInUI|AppModel\+WayIn)", "signin.*", ""),
