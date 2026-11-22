@@ -9,6 +9,15 @@ import XCTest
 class ShotCase: XCTestCase {
     override func setUp() { continueAfterFailure = true }
 
+    /// A failed check leaves a picture of the screen as it was ("fail-<test>-<n>"), next to the
+    /// other screenshots: what the app showed is the first thing to know about a failure.
+    private var failures = 0
+    override func record(_ issue: XCTIssue) {
+        failures += 1
+        if failures <= 2 { shot("fail-" + name.replacingOccurrences(of: "-[", with: "").replacingOccurrences(of: "]", with: "").replacingOccurrences(of: " ", with: "-") + "-\(failures)") }
+        super.record(issue)
+    }
+
     func launch(_ screen: String) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "-screen", screen]
