@@ -185,6 +185,16 @@ final class MenuShots: XCTestCase {
         shot("55-home-drawer-tap")
     }
 
+    /// A screen pushed on a place shows only ‹, never ☰ too (Xavier, 2026-11-22): Messages from Home.
+    func testPushedHasNoDrawer() {
+        let app = launch("homemessages")
+        XCTAssertTrue(app.buttons["New message"].firstMatch.waitForExistence(timeout: 10), "Messages was not pushed on Home")
+        sleep(1)
+        XCTAssertFalse(app.buttons["drawer-button"].exists, "Messages pushed on Home still shows ☰")
+        XCTAssertTrue(app.navigationBars.buttons.element(boundBy: 0).exists, "Messages pushed on Home has no ‹")
+        shot("57-home-messages-pushed")
+    }
+
     /// Calendar and Groups have the same ☰ and drawer as Home (2026-11-17); no belfry switcher.
     func testCalendarAndGroupsDrawer() {
         for screen in ["calendar", "groups"] {

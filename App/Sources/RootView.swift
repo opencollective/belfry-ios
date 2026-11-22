@@ -604,6 +604,10 @@ struct RootView: View {
         case "reqclose", "reqcloseconfirm": selection = .channel("requests")
         case "closedask", "closedpending", "closedrequests": selection = .channel("board-5d1e")
         case "settingsfailed", "settingsfailedalert": selection = .channel("garden-3f2a")
+        case "homemessages":
+            // Home's Messages tile: Messages pushed on Home (‹ only, no ☰)
+            model.tab = .home
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { homePath.append(PlaceRoute.messages) }
         case "homedrawer":
             model.tab = .home
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openDrawer() }
@@ -690,6 +694,19 @@ struct DrawerButton: View {
             .accessibilityIdentifier("drawer-button")
         }
     }
+}
+
+/// ☰ top left only at the root of a stack: a screen pushed on a place (Home → Messages,
+/// Mentions, Members, Archived) shows only ‹, never both (Xavier, 2026-11-22).
+struct DrawerItem: ViewModifier {
+    @Environment(\.isPresented) private var pushed
+    func body(content: Content) -> some View {
+        content.toolbar { if !pushed { ToolbarItem(placement: .topBarLeading) { DrawerButton() } } }
+    }
+}
+
+extension View {
+    func drawerItem() -> some View { modifier(DrawerItem()) }
 }
 
 /// The phone's drawer: under the page, which slides right (250 ms) to show it; follows a finger

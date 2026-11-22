@@ -50,9 +50,7 @@ struct MembersDirectory: View {
         .navigationTitle(PlaceNames.members)
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search")
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) { DrawerButton() }
-        }
+        .drawerItem()
         .sheet(isPresented: $inviting) {
             if let c = inviteChannel { InviteSheet(id: c, startAs: .member(role: model.roles.defaultRole, membership: "permanent")) }
         }

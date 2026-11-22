@@ -45,11 +45,11 @@ struct MessagesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.refresh() }
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) { DrawerButton() }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { newOne = true } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("New message")
             }
         }
+        .drawerItem()
         .sheet(isPresented: $newOne) { NewConversation() }
         .navigationDestination(isPresented: $how) { UnlockHowScreen() }
         .onDisappear { model.messagesOpen = false }

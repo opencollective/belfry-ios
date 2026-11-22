@@ -183,7 +183,7 @@ struct ArchivedScreen: View {
         }
         .navigationTitle("Archived")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
+        .drawerItem()
     }
 
     private func line(_ g: Channel) -> String {

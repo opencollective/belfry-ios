@@ -35,7 +35,7 @@ struct MentionsView: View {
         .listStyle(.plain)
         .navigationTitle("Mentions")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
+        .drawerItem()
         .refreshable { await model.refresh() }
         .onAppear {
             seenBefore = model.mentionsSeenAt

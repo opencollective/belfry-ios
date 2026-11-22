@@ -161,7 +161,7 @@ struct PlaceChrome: ViewModifier {
         content
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.large)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
+            .drawerItem()
     }
 }
 

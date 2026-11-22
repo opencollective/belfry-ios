@@ -52,6 +52,7 @@ shot 130-home home light
 shot 130b-home-dark home dark
 shot 131-home-drawer homedrawer light
 shot 131b-home-drawer-dark homedrawer dark
+shot 131c-home-messages homemessages light
 shot 131c-calendar-drawer calendardrawer light
 shot 132-drawer-admin towndrawer light
 shot 132b-drawer-member member-towndrawer light
