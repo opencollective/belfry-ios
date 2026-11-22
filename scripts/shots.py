@@ -39,6 +39,18 @@ def frame(path):
     except OSError: return b""
 
 
+def blank(path, name):
+    """A frame with nearly nothing on it (a white screen is about 77 KB) is an app that hangs or
+    never drew: say so and keep what its main thread is doing (`sample`, 3 s) beside the pictures
+    (run 45082572612: three blank screens passed for done)."""
+    try: size = os.path.getsize(path)
+    except OSError: return
+    if size > 90_000: return
+    print(f"WARNING {name}: a blank frame ({size} bytes); sampling the app", flush=True)
+    pid = subprocess.run(["pgrep", "-n", "-f", "Belfry.app/Belfry"], capture_output=True, text=True).stdout.strip()
+    if pid: subprocess.run(["sample", pid, "3", "-file", os.path.join(out, f"sample-blank-{name}.txt")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def settle(path):
     """The demo's scripted steps (a sheet opened, a screen pushed) run for several seconds after a
     launch, and a cold launch is slower still: a fixed wait, as before. (Ending the wait when two
@@ -101,5 +113,6 @@ for s in mine:
         else:
             before = frame(path)
         print("captured " + name, flush=True)
+        blank(path, name)
 simctl("ui", udid, "appearance", "light")
 print(f"shots done in {time.time() - t_all:.0f} s", flush=True)
