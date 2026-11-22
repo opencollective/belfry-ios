@@ -255,6 +255,8 @@ struct SettingsTab: View {
     @State private var saved = false
     /// Who reads it (channels: members only / public / closed; SPEC 19.38)
     @State private var access = ChannelAccess.members
+    /// A group's "Who can join" (Open / Closed / Private).
+    @State private var join = GroupAccess.open
     @State private var askPublic = false
     @State private var vouches = 0
     /// What can be posted: "" = anything, else thread / event / proposal (/ request when it is set so).
@@ -266,12 +268,29 @@ struct SettingsTab: View {
         Section("Description") { TextField("What is it about? (Markdown)", text: $about, axis: .vertical).lineLimit(3...8).font(.body) }
         // a private group stays private: only invited people, nothing to choose and no question
         // (one-shape.md "Groups: open, closed, private")
-        if g?.isPrivate == true {
+        if g?.isPod == true {
+            // a group: the same three choices as the New group form (board groups/settings-closed)
             Section("Who can join") {
-                Label { VStack(alignment: .leading, spacing: 2) { Text("Private"); Text("Only invited people").font(.footnote).foregroundStyle(.secondary) } } icon: { Image(systemName: "lock") }
+                ForEach(GroupAccess.allCases, id: \.self) { a in
+                    Button { join = a } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: a == .open ? "door.left.hand.open" : a == .closed ? "hand.raised" : "lock").frame(width: 24).foregroundStyle(.primary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(a.title).foregroundStyle(.primary)
+                                Text(a.line).font(.footnote).foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 8)
+                            if join == a { Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Color.brand).accessibilityLabel("Selected") }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("join-" + a.rawValue)
+                    .accessibilityAddTraits(join == a ? .isSelected : [])
+                }
             }
-        } else if g?.type == .channel || g?.isPod == true { whoReads(g) }
-        if g?.isPod == true && access == .closed && g?.isPrivate != true {
+        } else if g?.type == .channel { whoReads(g) }
+        if g?.isPod == true && join == .closed {
             // a closed group's question and how requests are accepted (web ClosedFields)
             Section("Question people answer when they ask") {
                 TextField(Actions.defaultPrompt, text: $prompt, axis: .vertical).lineLimit(1...4).font(.body)
@@ -324,13 +343,15 @@ struct SettingsTab: View {
                 hideKeyboard()
                 let n = name.jsTrim(), a = about.jsTrim()
                 if g?.isPod == true {
-                    let c = access == .closed
-                    model.editGroupMeta(id, name: n, about: a, closed: c, prompt: prompt, vouches: c ? vouches : 0)
+                    // Open = open + public; Closed = closed + public (its question, who accepts);
+                    // Private = closed + private
+                    model.editGroupMeta(id, name: n, about: a, closed: join != .open, prompt: join == .closed ? prompt : "",
+                                        vouches: join == .closed ? vouches : 0, isPrivate: join == .private)
                 } else if let g, g.type == .channel, (access == .closed) != g.closed {
                     // closed or open again (one 9002 with the name and description)
                     model.editGroupMeta(id, name: n, about: a, closed: access == .closed, prompt: g.prompt ?? "")
                 } else { model.editChannel(id, name: n, about: a, inbox: nil) }
-                if g?.type == .channel || g?.isPod == true { model.setVisibility(id, public: access == .public) }
+                if g?.type == .channel { model.setVisibility(id, public: access == .public) }
                 if g?.type == .channel { model.setPosts(id, posts.isEmpty ? nil : posts) }
                 if Actions.inboxToSend(chosen: inbox, reads: model.derive.isInbox(g), touched: inboxTouched) { model.editChannelInbox(id, inbox) }
                 dismiss()
@@ -360,6 +381,7 @@ struct SettingsTab: View {
             prompt = g.prompt ?? ""
             vouches = g.vouches
             access = model.derive.channelAccess(g)
+            join = g.isPrivate ? .private : g.closed ? .closed : .open
             posts = model.derive.webPage(g)?.posts ?? ""
             if model.launch.screen == "chpublic" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { askPublic = true } }
         }

@@ -288,8 +288,6 @@ struct ChannelsSettings: View {
                     for id in idx.map({ cats[$0].id }) { cats = Categories.remove(id, cats) }
                     save()
                 }
-                Button { name = ""; adding = true } label: { Label("Add a category", systemImage: "plus") }
-                    .accessibilityIdentifier("channels-add-category")
             } header: { Text("Categories") } footer: {
                 Text("Tap one to rename it. Deleting a category moves its channels to \(ChannelCategory.defaultNames[ChannelCategory.life]!).")
             }
@@ -334,7 +332,15 @@ struct ChannelsSettings: View {
         }
         .navigationTitle("Channels")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { EditButton() } }
+        // "add one" is an icon top right, never a row (Xavier, 2026-11-22): ＋ = a new category
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                EditButton()
+                Button { name = ""; adding = true } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("Add a category")
+                    .accessibilityIdentifier("channels-add-category")
+            }
+        }
         .sensoryFeedback(.success, trigger: saved)
         .alert("Rename the category", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $name)

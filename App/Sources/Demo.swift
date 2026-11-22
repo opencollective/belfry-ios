@@ -143,6 +143,8 @@ enum Demo {
         react(ps["emma"]!, budget, "👀", now - 2900)
         // a guest joins
         evs.append(ev(groupsKey, 9000, now - 2000, [["h", "general"], ["p", signer("guest").pubkey, "member"], ["guest", "2026-12-09"], ["invited-by", ps["ana"]!.pubkey], ["name", "Lou (neighbour)"]]))
+        // board one-shape/townsquare-join: "Lina Moreau joined Riverside Commons" (the belfry's own line)
+        evs.append(ev(groupsKey, 9000, now - 2600, [["h", "general"], ["p", signer("lina").pubkey, "member"], ["joined", "belfry"], ["name", "Lina Moreau"]]))
         // seen events: who is active this month
         for (i, k) in ["ana", "ben", "chloe", "dev", "emma"].enumerated() {
             evs.append(ev(ps[k]!, 30078, now - i * 3600, [["d", "seen:general"], ["h", "general"]]))

@@ -274,11 +274,18 @@ struct MeetingPeopleSection: View {
                     Button { OpenProfile(env: showProfile, model: model)(p.pubkey) } label: { Label("Profile", systemImage: "person") }
                 }
             }
-            if host {
-                Button { hideKeyboard(); adding = true } label: { Label("Add someone", systemImage: "person.badge.plus") }
-            }
             if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red).font(.footnote) }
         } header: { Text(d.meetingPeopleLine(e)) }
+        // "add one" is an icon top right, never a row (Xavier, 2026-11-22)
+        .toolbar {
+            if host {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { hideKeyboard(); adding = true } label: { Image(systemName: "person.badge.plus") }
+                        .accessibilityLabel("Add someone")
+                        .accessibilityIdentifier("meeting-add-person")
+                }
+            }
+        }
         .sheet(isPresented: $adding) {
             AddPersonSheet(channel: e.originChannel ?? e.groupId, exclude: people.map(\.pubkey)) { pick in
                 switch pick {

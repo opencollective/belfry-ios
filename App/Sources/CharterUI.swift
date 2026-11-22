@@ -58,13 +58,18 @@ struct CharterView: View {
         .navigationTitle("Charter")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if steward && !rules.isEmpty {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button { writing = true } label: { Label("New agreement", systemImage: "plus") }
-                        Button { ordering = true } label: { Label("Reorder or remove", systemImage: "arrow.up.arrow.down") }
-                    } label: { Image(systemName: "ellipsis.circle") }
-                    .accessibilityLabel("Edit the charter")
+            // "add one" is an icon top right (Xavier, 2026-11-22): ＋ = New agreement; the rest in •••
+            if steward {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if !rules.isEmpty {
+                        Menu {
+                            Button { ordering = true } label: { Label("Reorder or remove", systemImage: "arrow.up.arrow.down") }
+                        } label: { Image(systemName: "ellipsis.circle") }
+                        .accessibilityLabel("Edit the charter")
+                    }
+                    Button { writing = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("New agreement")
+                        .accessibilityIdentifier("charter-add")
                 }
             }
         }

@@ -161,7 +161,7 @@ public extension Actions {
     /// A 9002 that changes only what is given and keeps the rest of G's metadata (the relay
     /// replaces the whole metadata on each 9002: one with only a name dropped closed / prompt /
     /// vouches / picture).
-    static func groupMeta(_ g: Group, name: String? = nil, about: String? = nil, picture: String? = nil, closed: Bool? = nil, prompt: String? = nil, archived: Bool? = nil, vouches: Int? = nil) -> Draft {
+    static func groupMeta(_ g: Group, name: String? = nil, about: String? = nil, picture: String? = nil, closed: Bool? = nil, prompt: String? = nil, archived: Bool? = nil, vouches: Int? = nil, isPrivate: Bool? = nil) -> Draft {
         // a name not known here is left out, never written as "" or the id (Xavier 2026-11-18)
         let n = name ?? g.name
         var tags: [Tag] = [["h", g.id]] + (n.isEmpty ? [] : [["name", PlaceNames.wire(id: g.id, name: n)]]) + [["about", about ?? g.about]]
@@ -175,7 +175,14 @@ public extension Actions {
         if isClosed && v > 0 { tags.append(["vouches", String(v)]) }
         // archived (SPEC 19.30): said when it changes, kept while it is on
         if let archived { tags.append(["archived", archived ? "1" : "0"]) } else if g.archived { tags.append(["archived", "1"]) }
-        tags += g.metaExtra // what the relay's copy holds that this app doesn't model (web metaTags)
+        // private / public (one-shape.md): kept as the relay has it unless it is being changed
+        // (a private group is closed: Private = `closed`, `private`)
+        var extra = g.metaExtra
+        if let isPrivate {
+            extra.removeAll { $0 == ["private"] || $0 == ["public"] }
+            tags.append([isPrivate ? "private" : "public"])
+        }
+        tags += extra // what the relay's copy holds that this app doesn't model (web metaTags)
         return Draft(kind: 9002, tags: tags)
     }
 
