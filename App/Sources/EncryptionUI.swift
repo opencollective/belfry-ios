@@ -426,22 +426,11 @@ struct UnlockHowScreen: View {
     @State private var asking = false
     @State private var starting = false
     @State private var failed = false
-    private let steps = [
-        "Open Belfry on a phone, tablet or computer where you're already signed in.",
-        "It adds this device by itself: nothing to approve here.",
-        "Your conversations open here.",
-    ]
     var body: some View {
         List {
             Section {
-                ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Image(systemName: "\(i + 1).circle.fill").foregroundStyle(.secondary).accessibilityHidden(true)
-                        Text(s)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(i + 1). \(s)")
-                }
+                // board messages/encryption-start-fresh (Messages canvas v5): one step, by name
+                Text(LockedHereBanner.openLine(model.sealed.unlockers) + " Nothing to approve here.")
             } header: {
                 Text("With another device")
             } footer: {
@@ -469,7 +458,7 @@ struct UnlockHowScreen: View {
                 }
             }
         }
-        .navigationTitle("Unlock this device")
+        .navigationTitle("No other device?")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Start fresh on this device?", isPresented: $asking) {
             Button("Start fresh", role: .destructive) { start() }
