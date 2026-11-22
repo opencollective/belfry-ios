@@ -114,7 +114,7 @@ struct EncryptionScreen: View {
                 Section {
                     VStack(alignment: .leading, spacing: 6) {
                         Label("This device can't read it yet", systemImage: "lock.fill").font(.subheadline.weight(.semibold))
-                        Text("Open Belfry on a device where you already read your messages and tap Allow.")
+                        Text(LockedHereBanner.openLine(model.sealed.unlockers))
                             .font(.subheadline).foregroundStyle(.secondary)
                         Button("Show how") { how = true }
                             .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
@@ -297,14 +297,15 @@ struct LockedHereBanner: View {
         return "Asked " + (today ? Format.time(at) : Format.day(at)) + " · waiting for one of your devices"
     }
 
-    /// "Open Belfry on Safari on Mac or Android phone and tap Allow." (the general sentence when
-    /// the names are not known).
+    /// "Open Belfry on Safari on Mac or Android phone. This device is added by itself as soon as
+    /// one of them is open." (devices are added without a tap now; the lead, 2026-11-22). The
+    /// names not known: "another device of yours".
     static func openLine(_ devices: [String]) -> String {
         var names = [String]()
         for d in devices where !names.contains(d) { names.append(d) }
-        guard !names.isEmpty else { return "Open Belfry on a device where you already read your messages and tap Allow." }
-        let list = names.count == 1 ? names[0] : names.dropLast().joined(separator: ", ") + " or " + names.last!
-        return "Open Belfry on \(list) and tap Allow."
+        let list = names.isEmpty ? "another device of yours" : names.count == 1 ? names[0] : names.dropLast().joined(separator: ", ") + " or " + names.last!
+        let them = names.count == 1 ? "it" : "one of them"
+        return "Open Belfry on \(list). This device is added by itself as soon as \(names.isEmpty ? "it" : them) is open."
     }
 
     static func title(waiting: Int, checking: Bool) -> String {
@@ -418,7 +419,7 @@ struct UnlockHowScreen: View {
     @State private var failed = false
     private let steps = [
         "Open Belfry on a phone, tablet or computer where you're already signed in.",
-        "It asks whether to give this device access: tap Allow.",
+        "It adds this device by itself. If it asks instead, tap Allow.",
         "Your conversations open here.",
     ]
     var body: some View {

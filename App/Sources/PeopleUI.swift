@@ -688,8 +688,8 @@ struct DevicesView: View {
                         Label("This device can't read sealed messages yet", systemImage: "lock.fill")
                             .font(.subheadline.weight(.semibold))
                         Text(LockedHereBanner.title(waiting: model.sealed.waitingCount, checking: false) == "Messages are locked on this device"
-                             ? "Open Belfry on a device where you already read your messages and tap Allow."
-                             : LockedHereBanner.title(waiting: model.sealed.waitingCount, checking: false) + ". Open Belfry on a device where you already read your messages and tap Allow.")
+                             ? LockedHereBanner.openLine(model.sealed.unlockers)
+                             : LockedHereBanner.title(waiting: model.sealed.waitingCount, checking: false) + ". " + LockedHereBanner.openLine(model.sealed.unlockers))
                             .font(.subheadline).foregroundStyle(.secondary)
                         Button("Show how") { how = true }
                             .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
