@@ -129,6 +129,9 @@ shot 138-pinned pinned light
 # 2026-11-16 round 2: e-mail threads in a channel, a guest's request, the first minutes
 shot 120-mail-feed mailfeed light
 shot 120b-mail-feed-dark mailfeed dark
+shot 120c-inbox-pulldown inboxpull light
+shot 120d-inbox-emails inboxemails light
+shot 120e-inbox-emails-dark inboxemails dark
 # 0.8.0 (g) one shape: the thread pulled (e-mails on top, Cc line, reply-all icon; the draft in the
 # conversation), Reply all (the compose sheet), the thread folded (mailcomment)
 shot 121-mail-thread mailthread light

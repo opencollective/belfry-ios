@@ -290,8 +290,9 @@ struct PullDownList: View {
                 }
                 if g?.type == .channel || g?.isPod == true, !model.guestReading {
                     // the channel's address (members' mail shows as their message; a shared inbox takes anyone's)
-                    Label(d.mailAddress(id), systemImage: d.isInbox(g) ? "tray" : "envelope")
-                        .font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                    Label(d.isInbox(g) ? "Anyone can write to \(d.mailAddress(id)); each e-mail opens its own thread here." : d.mailAddress(id),
+                          systemImage: d.isInbox(g) ? "tray" : "envelope")
+                        .font(.footnote).foregroundStyle(.secondary).lineLimit(d.isInbox(g) ? 3 : 1)
                         .textSelection(.enabled)
                         .padding(.horizontal, 16).padding(.top, 6)
                         .accessibilityLabel((d.isInbox(g) ? "Anyone can e-mail " : "Members can e-mail ") + d.mailAddress(id))
@@ -345,6 +346,10 @@ struct PullDownList: View {
     private func places(_ c: ChannelCounts, _ g: Channel?) -> [PDPlace] {
         let locked = g?.archived == true
         var out = [PDPlace]()
+        if model.derive.isInbox(g) {
+            let open = model.derive.mailThreads(id).list.filter { $0.state.status == .open }.count
+            out.append(PDPlace(place: .emails, value: open > 0 ? "\(open) open" : nil))
+        }
         if c.pins > 0 { out.append(PDPlace(place: .pinned, value: "\(c.pins)")) }
         if c.events > 0 { out.append(PDPlace(place: .events, value: "\(c.events)")) }
         if c.proposals > 0 { out.append(PDPlace(place: .proposals, value: "\(c.proposals)")) }
@@ -360,7 +365,11 @@ struct PullDownList: View {
         out.append(PDPlace(place: .members, value: "\(c.members)"))
         if !model.guestReading && !model.derive.amGuest && !locked { out.append(PDPlace(place: .notifications, value: nil)) }
         if !model.guestReading { out.append(PDPlace(place: .log, value: nil)) }
-        if model.derive.canAdmin(g) && !locked && !model.guestReading { out.append(PDPlace(place: .settings, value: nil)) }
+        // Settings for every member (Pin for me, the bell; the channel's own settings for admins):
+        // not in a group I'm not in
+        if !model.derive.amGuest && !locked && !model.guestReading && (g?.isPod != true || model.derive.canAdmin(g) || g?.members.contains(model.me) == true) {
+            out.append(PDPlace(place: .settings, value: nil))
+        }
         return out
     }
 }

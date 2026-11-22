@@ -92,6 +92,15 @@ struct ThreadView: View {
             }
         }
         .navigationTitle("Thread")
+        // one shape: two lines, the beginning of the first message, then 👥 · 💬
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                OneHeader(title: ChannelHeaderItems.threadTitle(model, group: group, root: rootId),
+                          items: ChannelHeaderItems.thread(model, group: group, root: rootId), chevron: false)
+                    .allowsHitTesting(false)
+                    .accessibilityIdentifier("thread-header")
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $actionsFor) { m in
             MessageActions(m: m, group: group, onReply: {}, onOpenThread: {}, onEdit: { editing = m })

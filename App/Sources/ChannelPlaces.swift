@@ -8,11 +8,12 @@ import SwiftUI
 // Notifications, Log, Settings (those who may edit the channel). Channel info is gone.
 
 enum ChannelPlace: String, Hashable, Identifiable {
-    case pinned, events, proposals, todos, photos, files, groups, topics, members, notifications, log, settings
+    case emails, pinned, events, proposals, todos, photos, files, groups, topics, members, notifications, log, settings
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .emails: return "E-mails"
         case .pinned: return "Pinned"
         case .events: return "Events"
         case .proposals: return "To decide"
@@ -30,6 +31,7 @@ enum ChannelPlace: String, Hashable, Identifiable {
 
     var symbol: String {
         switch self {
+        case .emails: return "envelope"
         case .pinned: return "pin"
         case .events: return "calendar"
         case .proposals: return "doc.text"
@@ -63,6 +65,7 @@ struct ChannelPlaceView: View {
             switch place {
             case .events: EventsScreen(channel: id, sheet: true)
             case .members: ChannelMembersScreen(id: id)
+            case .emails: EmailsScreen(id: id) { tid in go(.thread(tid)) }
             default: list
             }
         }
@@ -104,7 +107,7 @@ struct ChannelPlaceView: View {
             case .log: LogTab(id: id) { g in go(g) }
             // Navigation v2 (nav2/channel-pin): every member pins here; the rest is the admins'
             case .settings: PinSection(id: id); if model.derive.canAdmin(model.group(id)) { SettingsTab(id: id) }
-            case .events, .members: EmptyView()
+            case .events, .members, .emails: EmptyView()
             }
         }
     }

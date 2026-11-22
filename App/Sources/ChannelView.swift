@@ -2,10 +2,10 @@ import BelfryCore
 import PhotosUI
 import SwiftUI
 
-// A channel: its name with a short subtitle (lock/globe, N active, photos, groups; tap: the
+// A channel: one shape's header (its name, then the icon row; tap: the
 // pull-down, whose rows push the channel's screens), the feed (day
 // separators, blocks per author, cards, reactions, inline threads, resurfaced threads, join
-// lines), the composer. Holding a message opens its menu (a Discord-style list).
+// lines, activity previews), the composer. Holding a message opens its menu (a Discord-style list).
 
 struct ThreadRoute: Hashable { let group: String; let root: String; var reply = false; /** A reply to centre and flash (a message link). */ var focus: String? = nil }
 
@@ -53,7 +53,8 @@ struct ChannelView: View {
         let _ = model.version
         let d = model.derive
         let g = model.group(id)
-        let rows = d.feedRows(id, topic: topic, openThreads: openThreads)
+        // activity lines (d): collapsed only in 0.8.0 (the lead): a tap opens the item
+        let rows = d.feedRows(id, topic: topic, openThreads: openThreads, actions: true)
         let threads = d.threadsOf(id)
         let reactions = d.reactions(id)
         let todos = d.todosBySource(id)
@@ -95,6 +96,8 @@ struct ChannelView: View {
                             // one row per e-mail thread (SPEC 19.33): it opens the thread
                             MailThreadRow(t: t, group: id) { thread = ThreadRoute(group: id, root: t.id) }
                                 .id("mail:" + t.id)
+                        case .action(let a):
+                            ActivityPreviewRow(a: a, group: id).id("do:" + a.id)
                         case .activity(let root, let last):
                             let key = "act:" + root.id
                             ThreadActivity(root: root, last: last, open: false) { thread = ThreadRoute(group: id, root: root.id) }
@@ -190,8 +193,9 @@ struct ChannelView: View {
                     if locked { ArchivedBanner(id: id) }
                     // a message link whose message is deleted, unknown or not readable: until the feed is scrolled
                     if model.missingMessage == id { MissingMessageLine().onTapGesture { withAnimation { model.missingMessage = nil } } }
-                    // only while something asks for attention; the counts live in the subtitle
-                    if let line = d.attentionLine(id, now: .now, topic: topic, hiddenPins: model.hiddenPins) {
+                    // one shape (2026-11-22): the counts live in the header's icon row and actions
+                    // show as previews in the feed; the line stays only for a topic filter
+                    if topic != nil, let line = d.attentionLine(id, now: .now, topic: topic, hiddenPins: model.hiddenPins) {
                         ChannelLineBar(id: id, line: line, open: { togglePull() }, showAll: { withAnimation { topic = nil } },
                                        review: { model.openGroup = id }, todos: { closePull(); place = .todos },
                                        pulled: pull != .closed, pull: { openPull() })
@@ -237,8 +241,9 @@ struct ChannelView: View {
             if !embedded {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 6) {
+                // one shape: the title, then the icon row (people, pinned, to-dos, files, events)
                 Button { togglePull() } label: {
-                    VStack(spacing: 0) {
+                    VStack(spacing: 1) {
                         HStack(spacing: 4) {
                             if let g, g.type != .channel { ChannelGlyph(group: g, size: 16) }
                             if g?.named == true { Text(titleText(g)).font(.headline).foregroundStyle(.primary).lineLimit(1) }
@@ -246,10 +251,15 @@ struct ChannelView: View {
                             Image(systemName: "chevron.down").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
                                 .rotationEffect(.degrees(pull == .closed ? 0 : 180))
                         }
-                        if g != nil { ChannelSubtitle(id: id) }
+                        if g != nil {
+                            let items = ChannelHeaderItems.items(model, id)
+                            if !items.isEmpty { IconRow(items: items, font: .caption2) }
+                        }
                     }
                 }
-                .accessibilityLabel("\(model.derive.label(id)). Show what's going on in this channel.")
+                .accessibilityIdentifier("channel-header")
+                .accessibilityLabel(headerLabel)
+                .accessibilityHint("Shows more about this conversation")
                 // a settings change refused for good (SPEC 19.37): tap for what failed
                 if !failedSettings.isEmpty {
                     Button { settingsIssue = true } label: {
@@ -342,6 +352,11 @@ struct ChannelView: View {
     }
 
     /// From a pushed screen of the channel (Pinned, Log) back to the channel at a message or a thread.
+    private var headerLabel: String {
+        let items = model.group(id) == nil ? [] : ChannelHeaderItems.items(model, id)
+        return ([model.derive.label(id)] + items.map(\.label)).joined(separator: ", ")
+    }
+
     func back(to g: LogGo) {
         place = nil
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -423,6 +438,8 @@ struct ChannelView: View {
         case "pullempty": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }
         case "invite", "invitesearch", "inviteexternal": invite = true
         case "pulldown", "proposal": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }
+        case "inboxpull": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openPull() }
+        case "inboxemails": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .emails }
         case "pullfull": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { withAnimation(.snappy) { pull = .full } }
         case "menu":
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
