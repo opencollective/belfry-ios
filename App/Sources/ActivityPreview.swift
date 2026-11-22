@@ -84,18 +84,46 @@ struct ActivityPreviewRow: View {
     }
 }
 
-/// The small card's frame: a rounded box that opens the item when tapped.
+/// The small card's frame: a rounded box. No tap gesture over it and no bordered buttons in it:
+/// in the feed's lazy stack with the keyboard moving, an open card with `.bordered` buttons under
+/// a tap gesture kept the main thread laying out (testKeyboardComposer hung, 2026-11-22).
 private struct PreviewBox<Content: View>: View {
-    let open: () -> Void
     @ViewBuilder let content: () -> Content
     var body: some View {
         content()
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .onTapGesture(perform: open)
-            .accessibilityAction(named: "Open", open)
+    }
+}
+
+/// The card's text: opens the item.
+private struct OpenArea<Content: View>: View {
+    let open: () -> Void
+    @ViewBuilder let content: () -> Content
+    var body: some View {
+        Button(action: open) {
+            content().frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens it")
+    }
+}
+
+/// A quick action on the card: a small capsule, filled when it is my answer.
+private struct QuickAction: View {
+    let title: String
+    var on = false
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Text(title).font(.footnote.weight(.semibold))
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .foregroundStyle(on ? Theme.onAccent : Color.primary)
+                .background(on ? Color.brand : Color.secondary.opacity(0.15), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 
@@ -104,7 +132,7 @@ struct TodoPreviewCard: View {
     let t: TodoTask
     let group: String
     var body: some View {
-        PreviewBox(open: { model.openTodo = TodoKey(group: group, task: t.id) }) {
+        PreviewBox {
             HStack(alignment: .top, spacing: 10) {
                 Button { model.todo(t, in: group, t.done ? "undone" : "done") } label: {
                     Image(systemName: t.done ? "checkmark.circle.fill" : "circle").font(.title3)
@@ -112,9 +140,11 @@ struct TodoPreviewCard: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(t.done ? "Reopen" : "Mark done")
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(t.title).font(.subheadline.weight(.semibold)).strikethrough(t.done).lineLimit(2)
-                    Text(t.assignee.map { model.name($0) } ?? "Unassigned").font(.footnote).foregroundStyle(.secondary)
+                OpenArea(open: { model.openTodo = TodoKey(group: group, task: t.id) }) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(t.title).font(.subheadline.weight(.semibold)).strikethrough(t.done).lineLimit(2)
+                        Text(t.assignee.map { model.name($0) } ?? "Unassigned").font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
             }
         }
@@ -127,20 +157,18 @@ struct EventPreviewCard: View {
     var body: some View {
         let mine = e.rsvps[model.me]
         let going = e.rsvps.values.filter { $0 == .accepted }.count
-        PreviewBox(open: { model.openEvent = e.coord }) {
+        PreviewBox {
             VStack(alignment: .leading, spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(e.title).font(.subheadline.weight(.semibold)).lineLimit(2)
-                    Text(detail(going)).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                OpenArea(open: { model.openEvent = e.coord }) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(e.title).font(.subheadline.weight(.semibold)).lineLimit(2)
+                        Text(detail(going)).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                    }
                 }
                 if (e.end ?? e.start) > Int.now {
                     HStack(spacing: 8) {
-                        ForEach([Rsvp.accepted, .tentative], id: \.self) { r in
-                            Button { model.rsvp(e, r) } label: { Text(r.label).font(.footnote.weight(.semibold)) }
-                                .buttonStyle(.bordered)
-                                .tint(mine == r ? Color.brand : Color.secondary)
-                                .accessibilityAddTraits(mine == r ? .isSelected : [])
-                        }
+                        QuickAction(title: Rsvp.accepted.label, on: mine == .accepted) { model.rsvp(e, .accepted) }
+                        QuickAction(title: Rsvp.tentative.label, on: mine == .tentative) { model.rsvp(e, .tentative) }
                     }
                 }
             }
@@ -161,16 +189,16 @@ struct ProposalPreviewCard: View {
     let p: Proposal
     var body: some View {
         let t = p.tally
-        PreviewBox(open: { openChannel(p.groupId, nil) }) {
+        PreviewBox {
             HStack(alignment: .center, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(p.title).font(.subheadline.weight(.semibold)).lineLimit(2)
-                    Text("\(t["yes"] ?? 0) yes · \(t["no"] ?? 0) no · \(p.status.label)").font(.footnote).foregroundStyle(.secondary)
+                OpenArea(open: { openChannel(p.groupId, nil) }) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(p.title).font(.subheadline.weight(.semibold)).lineLimit(2)
+                        Text("\(t["yes"] ?? 0) yes · \(t["no"] ?? 0) no · \(p.status.label)").font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
-                Spacer(minLength: 4)
                 if p.status == .voting {
-                    Button { openChannel(p.groupId, nil) } label: { Text(model.derive.myVote(p) == nil ? "Vote" : "Voted").font(.footnote.weight(.semibold)) }
-                        .buttonStyle(.bordered)
+                    QuickAction(title: model.derive.myVote(p) == nil ? "Vote" : "Voted") { openChannel(p.groupId, nil) }
                 }
             }
         }
