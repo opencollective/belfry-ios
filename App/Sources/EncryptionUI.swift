@@ -434,7 +434,7 @@ struct UnlockHowScreen: View {
             } header: {
                 Text("With another device")
             } footer: {
-                Text("No other device? The people you write to can share a conversation's history with this device.")
+                Text("The people you write to can share a conversation's history with this device.")
             }
             // board messages/encryption-start-fresh: the last row; it asks first
             if model.sealed.notAllowed || model.launch.screen?.hasPrefix("encfresh") == true {
