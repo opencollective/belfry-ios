@@ -17,6 +17,8 @@ public enum MenuChannels {
         let knownSet = Set(known)
         var pinned = [String]()
         var seen = Set<String>()
+        // the main channel is always first when known, pinned or not (the lead, 2026-11-22)
+        if knownSet.contains(generalId) { pinned.append(generalId); seen.insert(generalId) }
         for id in pinsAll + pinsMine where knownSet.contains(id) && !seen.contains(id) {
             seen.insert(id); pinned.append(id)
         }

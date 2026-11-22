@@ -66,14 +66,7 @@ extension AppModel {
     /// The menu's channels, cached per snapshot and pins.
     var menu: (pinned: [String], recent: [String]) {
         if let c = menuCache, c.version == version, c.pins == myPins { return c.value }
-        var v = derive.menuChannels(now: Int.now, pinsMine: myPins)
-        // the main channel is always first in everyone's list and can't be unpinned (the lead,
-        // 2026-11-22, one-shape.md)
-        if derive.group(generalId) != nil {
-            v.pinned.removeAll { $0 == generalId }
-            v.pinned.insert(generalId, at: 0)
-            v.recent.removeAll { $0 == generalId }
-        }
+        let v = derive.menuChannels(now: Int.now, pinsMine: myPins)
         menuCache = (version, myPins, v)
         return v
     }
