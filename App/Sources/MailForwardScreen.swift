@@ -234,8 +234,8 @@ struct MailAliasScreen: View {
         hideKeyboard()
         do {
             alias = try await model.api.setMailAlias(channel: channel, alias: value)
-            error = nil
+            self.error = nil
             dismiss()
-        } catch let e as ApiError { error = e.message } catch { error = BelfryAPI.network }
+        } catch let e as ApiError { self.error = e.message } catch { self.error = BelfryAPI.network }
     }
 }

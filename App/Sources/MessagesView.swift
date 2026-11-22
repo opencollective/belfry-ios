@@ -173,7 +173,8 @@ struct ThreadRow: View {
     /// The row's one line: an e-mail thread's subject, else the last message ("You: " for mine).
     private func oneLine(_ mail: Bool) -> String {
         if mail, let subject = model.dms?.threadName(thread.conv), !subject.isEmpty { return subject }
-        return (thread.last.mine ? "You: " : "") + lastLine(mail).split(whereSeparator: \.isNewline).first.map(String.init).map { $0 } ?? ""
+        let first = lastLine(mail).split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        return (thread.last.mine ? "You: " : "") + first
     }
 
     /// "Picture", "3 pictures", "File: Garden plan 2027.pdf", "Audio recording · 0:42"; else the text.

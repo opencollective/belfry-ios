@@ -163,7 +163,7 @@ struct NewGroupPickScreen: View {
         if model.engine?.localOnly == true {
             // the demo: the people of its channels (guests and agents left out)
             let d = model.derive
-            let keys = Set(model.groups.flatMap(\.members)).filter { !d.isGuest($0) && d.agentOwner($0) == nil }
+            let keys = Set(model.groups.flatMap(\.members)).filter { !d.isGuest($0) && d.agentOwner($0) == nil && !model.realName($0).isEmpty }
             people = keys.map { DirMember(pubkey: $0, name: "", role: nil, agents: []) }
             if model.launch.screen == "groupnewpick" { picked = Set(keys.filter { $0 != model.me }.sorted().prefix(2)) }
             return
