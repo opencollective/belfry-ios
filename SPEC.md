@@ -2817,3 +2817,13 @@ lanes `OutboxPass.lane`; `SendState` / `SendTrace` in `Outbox/SendTrace.swift`; 
 - (iOS: `Typing`, `TypingSender`, `TypingBoard` in `Typing/Typing.swift`; `TypingCenter`,
   `TypingLine`, `PrivacyScreen` in `App/Sources/TypingUI.swift`; `SyncEngine.watchTyping /
   publishTyping / onTyping`; `DirectMessages.sendTyping / openTyping`.)
+
+### 19.67 Navigation v2 and One shape (iOS, 2026-11-22; Xavier via the lead; canvas v172 sections "Navigation v2" and "One shape"; wire = collective-belfry docs/one-shape.md; `vectors/one-shape.json` = belfry-android's 6831439, copied byte for byte)
+
+- **Bottom bar (phones)**: Today · Calendar · Messages · Groups · Town, no ＋. Messages = conversations with new messages, Groups = my groups with new messages (red counts); Town none. ☰ = the new items across the menu's rows (channels, groups, conversations), a black total.
+- **The menu**: Today, Messages, Mentions (red count), Calendar; GROUPS (mine, ＋ = new group); CHANNELS (＋ = Add a channel): pinned for everyone, then pinned for me, then recent (vectors `recent`: within 30 days I posted (9 / 1111), reacted (7) or another's 9 / 1111 tags me; ordered by the channel's newest 9 / 1111 / 7, ties by channel id). No follow, no "All channels". iOS: while the admins' channel-order has no `pinned` key at all, the main channel counts as pinned for everyone (a new member always has one).
+- **Pinned for everyone**: `"pinned": [ids]` in the admins' kind 30078 d=belfry:channel-order; every writer of that event keeps the keys it doesn't set. **Pinned for me**: kind 30078 d=belfry:pins, NIP-44 v2 to myself, `{"v":1,"c":[ids]}`, newest wins, through the outbox (a newer copy replaces one still waiting); guests, guest mode and the demo keep it on the device.
+- **Add a channel**: one field; filters the channels the device knows; "Create #name" last; any member.
+- **Preview**: a channel not in my menu opens with a bar above the composer; writing, reacting, a mention or Pin for me brings it in (the bar goes, a toast says "#x is in your menu").
+- **Bell** (a channel's top right, off by default) = push level `all` for that channel; off = `default`.
+- **Header**: two lines (title, icon row); drop order vectors `headerRow`.
