@@ -16,7 +16,9 @@ final class OneShapeMailTests: XCTestCase {
     func testThreadState() throws {
         for c in try vector("one-shape").dict("threadState").list("cases") {
             let received = (c["received"] as? [NSNumber] ?? []).map(\.intValue)
-            let labels = c.list("labels").map { MailThreadState.Label(id: $0.str("id")!, at: $0.int("created_at")!, value: $0.str("l")!) }
+            var labels = c.list("labels").map { MailThreadState.Label(id: $0.str("id")!, at: $0.int("created_at")!, value: $0.str("l")!) }
+            // a sent reply card counts as an `answered` label at its time (vectors 3fe5202)
+            for (i, at) in (c["sent"] as? [NSNumber] ?? []).enumerated() { labels.append(MailThreadState.Label(id: "sent\(i)", at: at.intValue, value: "answered")) }
             XCTAssertEqual(MailThreadState.state(received: received, labels: labels), c.str("expect"), c.str("name")!)
         }
     }
