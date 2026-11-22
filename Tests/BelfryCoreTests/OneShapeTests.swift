@@ -41,3 +41,43 @@ final class OneShapeTests: XCTestCase {
         XCTAssertEqual(HeaderRow.fit(items, budget: 10, gap: 8), ["lead", "people"])
     }
 }
+
+/// vectors/one-shape.json (belfry-android's, copied byte for byte).
+final class OneShapeVectorTests: XCTestCase {
+    func testRecent() throws {
+        for c in try vector("one-shape").dict("recent").list("cases") {
+            let r = MenuChannels.list(events: try events(c["events"]), me: c.str("me")!, now: c.int("now")!, known: c.strs("known"),
+                                      pinsAll: c.strs("pinsAll"), pinsMine: c.strs("pinsMine"))
+            XCTAssertEqual(r.pinned, c.dict("expect").strs("pinned"), c.str("name")!)
+            XCTAssertEqual(r.recent, c.dict("expect").strs("recent"), c.str("name")!)
+            XCTAssertEqual(r.pinned + r.recent, c.dict("expect").strs("list"), c.str("name")!)
+        }
+    }
+
+    func testPins() throws {
+        for c in try vector("one-shape").dict("pins").list("cases") {
+            let name = c.str("name")!
+            let known = Set(c.strs("known"))
+            if let start = c["start"] as? [String] {
+                var ids = start
+                for t in c.strs("toggle") { ids = Pins.toggle(ids, t) }
+                XCTAssertEqual(Pins.serialize(ids), c.str("expectContent"), name)
+            } else if let order = c.str("channelOrder") {
+                XCTAssertEqual(Pins.pinnedForEveryone(order).filter(known.contains), c.strs("expect"), name)
+            } else {
+                let newest = c.list("copies").max { ($0.int("created_at") ?? 0) < ($1.int("created_at") ?? 0) }
+                XCTAssertEqual(Pins.parse(newest?.str("plain")).filter(known.contains), c.strs("expect"), name)
+            }
+        }
+    }
+
+    func testHeaderRow() throws {
+        let v = try vector("one-shape").dict("headerRow")
+        XCTAssertEqual(HeaderRow.dropOrder, v.strs("dropOrder"))
+        for c in v.list("cases") {
+            let items = c.list("items").map { (key: $0.str("key")!, width: ($0["width"] as! NSNumber).doubleValue) }
+            XCTAssertEqual(HeaderRow.fit(items, budget: (c["budget"] as! NSNumber).doubleValue, gap: (c["gap"] as! NSNumber).doubleValue),
+                           c.strs("expect"), c.str("name")!)
+        }
+    }
+}

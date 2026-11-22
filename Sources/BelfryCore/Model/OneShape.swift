@@ -10,7 +10,7 @@ public enum MenuChannels {
     /// The menu's CHANNELS, in order: pinned for everyone (channel-order "pinned"), then mine
     /// (belfry:pins), deduplicated, unknown ids skipped; then the channels where, within the last
     /// 30 days, I posted (9 / 1111), reacted (7) or someone else's 9 / 1111 tags me (p), ordered by
-    /// the channel's newest 9 / 1111 / 7 by anyone (all time), newest first, ties by id ascending.
+    /// the channel's newest 9 / 1111 / 7 by anyone (all time), newest first, ties by channel id ascending.
     /// Recent leaves out the pinned ones.
     public static func list(events: [NostrEvent], me: String, now: Int, known: [String],
                             pinsAll: [String], pinsMine: [String]) -> (pinned: [String], recent: [String]) {
@@ -22,19 +22,17 @@ public enum MenuChannels {
         }
         let since = now - recentWindow
         var involved = Set<String>()
-        var newest = [String: (at: Int, id: String)]()
+        var newest = [String: Int]()
         for e in events where e.kind == 9 || e.kind == 1111 || e.kind == 7 {
             guard let h = e.tag("h"), knownSet.contains(h) else { continue }
-            if let o = newest[h] {
-                if e.createdAt > o.at || (e.createdAt == o.at && e.id < o.id) { newest[h] = (e.createdAt, e.id) }
-            } else { newest[h] = (e.createdAt, e.id) }
+            newest[h] = max(newest[h] ?? Int.min, e.createdAt)
             guard e.createdAt > since, !me.isEmpty else { continue }
             if e.pubkey == me { involved.insert(h); continue }
             if e.kind != 7, e.tags.contains(where: { $0.count >= 2 && $0[0] == "p" && $0[1] == me }) { involved.insert(h) }
         }
         let recent = involved.subtracting(seen).sorted { a, b in
             let x = newest[a]!, y = newest[b]!
-            return x.at != y.at ? x.at > y.at : x.id < y.id
+            return x != y ? x > y : a < b
         }
         return (pinned, recent)
     }
@@ -42,6 +40,11 @@ public enum MenuChannels {
 
 public enum Pins {
     public static let d = "belfry:pins"
+
+    /// IDS with ID added at the end, or removed when it is there (Pin for me).
+    public static func toggle(_ ids: [String], _ id: String) -> [String] {
+        ids.contains(id) ? ids.filter { $0 != id } : ids + [id]
+    }
 
     /// {"v":1,"c":[ids]} → the ids (bad JSON → [], non-strings skipped, duplicates keep the first).
     public static func parse(_ content: String?) -> [String] {
