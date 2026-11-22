@@ -94,3 +94,10 @@ final class PinWriterTests: XCTestCase {
         XCTAssertEqual(d.tags, [["d", "belfry:channel-order"]])
     }
 }
+
+final class EventOwnLinesTests: XCTestCase {
+    func testOwnLineWords() {
+        XCTAssertEqual(RsvpLine(pubkey: "a", rsvp: .accepted, at: 1).text(name: "Lina Moreau", me: true), "You're going")
+        XCTAssertEqual(RsvpLine(pubkey: "a", rsvp: .accepted, at: 1).text(name: "Lina Moreau", me: false), "Lina Moreau is going")
+    }
+}

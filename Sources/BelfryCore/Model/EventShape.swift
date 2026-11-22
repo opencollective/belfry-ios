@@ -49,6 +49,8 @@ public struct RsvpLine: Hashable, Sendable {
     public let rsvp: Rsvp
     public let at: Int
 
+    public init(pubkey: String, rsvp: Rsvp, at: Int) { self.pubkey = pubkey; self.rsvp = rsvp; self.at = at }
+
     /// The words after the name (or the whole line for me).
     public func text(name: String, me: Bool) -> String {
         switch (rsvp, me) {

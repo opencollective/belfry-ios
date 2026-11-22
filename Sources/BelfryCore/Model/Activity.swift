@@ -24,6 +24,9 @@ public struct Activity: Hashable, Sendable, Identifiable {
     public let verb: String
     public let title: String
     public let item: ActivityItem
+    /// An answer shown in the event's own conversation (one-shape/event-rsvp-line): a plain line,
+    /// "You're going" / "Lina Moreau is going", since the event is the header there.
+    public var own: Rsvp? = nil
     /// The SF Symbol of the item's kind.
     public var icon: String {
         switch item {
@@ -61,6 +64,13 @@ public extension Derive {
                 guard s == .accepted || s == .tentative else { continue }
                 out.append(Activity(id: r.id, at: r.createdAt, who: pk, verb: s == .accepted ? Activity.going : Activity.maybe,
                                     title: ev.title, item: .event(ev.coord)))
+            }
+        }
+        // the event's own conversation: every answer (going, maybe, can't go) as a plain line
+        if let ev = eventOfGroup(groupId), !ev.channels.contains(groupId) {
+            for l in rsvpLines(ev) {
+                guard let r = ev.rsvpEvents[l.pubkey] else { continue }
+                out.append(Activity(id: r.id, at: l.at, who: l.pubkey, verb: "", title: ev.title, item: .event(ev.coord), own: l.rsvp))
             }
         }
         for p in proposalsIn(groupId) {

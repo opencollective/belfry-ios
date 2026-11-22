@@ -31,6 +31,27 @@ struct ActivityPreviewRow: View {
     let group: String
 
     var body: some View {
+        if let r = a.own { ownLine(r) } else { itemLine }
+    }
+
+    /// In the event's own conversation: "You're going" (green) / "Lina Moreau is going".
+    private func ownLine(_ r: Rsvp) -> some View {
+        let mine = a.who == model.me
+        let text = RsvpLine(pubkey: a.who, rsvp: r, at: a.at).text(name: model.name(a.who), me: mine)
+        return HStack(spacing: 8) {
+            Image(systemName: r == .accepted ? "checkmark.circle" : r == .tentative ? "questionmark.circle" : "xmark.circle")
+                .font(.footnote).frame(width: 20)
+            Text(text).font(.footnote.weight(mine ? .semibold : .regular)).lineLimit(1)
+            Spacer(minLength: 4)
+            Text(Format.time(a.at)).font(.caption).foregroundStyle(.secondary)
+        }
+        .foregroundStyle(mine && r == .accepted ? Color.green : Color.secondary)
+        .padding(.horizontal).padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("rsvp-line")
+    }
+
+    private var itemLine: some View {
         Button(action: openItem) {
             HStack(spacing: 8) {
                 Image(systemName: a.icon).font(.footnote).foregroundStyle(.secondary).frame(width: 20)
