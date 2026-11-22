@@ -70,6 +70,16 @@ struct MessagesView: View {
                     }
                 }
             }
+            // boards messages/email-pictures: the e-mail with pictures
+            if screen == "mailpictures" {
+                Task { @MainActor in
+                    for _ in 0..<8 {
+                        try? await Task.sleep(nanoseconds: 700_000_000)
+                        let pick = (model.dms?.threads() ?? []).first { t in (model.dms?.thread(t.conv) ?? []).contains { $0.subject == "Photos of the repair café" } }
+                        if let pick { navigate(pick.conv); return }
+                    }
+                }
+            }
             // boards messages/encryption-*: Lina's conversation, the group's, the three steps
             if screen == "encshared" || screen == "encsharedwhy" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("dev").pubkey) } }
             // board one-shape/dm-thread: Ana's conversation holds the demo's thread
@@ -535,9 +545,8 @@ struct Bubble: View {
                     Text(r.details).font(.caption2).foregroundStyle(r.status == "failed" ? .red : .secondary)
                 }
             }
-            if let atts = dm.attachments, !atts.isEmpty {
-                ForEach(atts, id: \.name) { a in Label("\(a.name) · \(ByteCountFormatter.string(fromByteCount: Int64(a.size), countStyle: .file))", systemImage: "paperclip").font(.caption) }
-            }
+            // an e-mail's pictures show in the message; its other files are rows (PicturesUI)
+            if dm.kind == 1301, !(dm.attachments ?? []).isEmpty || dm.large != nil { MailAttachments(dm: dm) }
         }
         .frame(maxWidth: .infinity, alignment: dm.mine ? .trailing : .leading)
         .accessibilityElement(children: .combine)

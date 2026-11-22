@@ -445,6 +445,11 @@ enum Demo {
         try? await dms.demoDM(from: ps["dev"]!, text: "I found the spare bike parts you asked about.", at: now - 2 * day)
         try? await dms.demoMail(bridgeSecret: secret("bridge"), sender: "\"Town Hall\" <events@townhall.example>", subject: "Street party permit",
                                 text: "Hello,\n\nYour request for the street party on 14 June is approved.\n\nKind regards,\nTown Hall", at: now - 5 * 3600)
+        // boards messages/email-pictures (canvas v179): an e-mail with three pictures and a PDF
+        let shots = (1...3).compactMap { i in DemoPictures.draw(i, wide: false).jpegData(compressionQuality: 0.6).map { MailPart(name: "repair-\(i).jpg", type: "image/jpeg", data: $0) } }
+        try? await dms.demoMail(bridgeSecret: secret("bridge"), sender: "\"Lou Martin\" <lou@example.org>", subject: "Photos of the repair café",
+                                text: "Hi Sam,\n\nHere are the pictures from Saturday, and the parts list.\n\nLou", at: now - 26 * 3600,
+                                files: shots + [MailPart(name: "parts-list.pdf", type: "application/pdf", data: Data("%PDF-1.4 demo".utf8))])
         await dms.process()
         // board messages/encryption-shared-history: Dev shared the earlier messages with this device
         dms.demoShared(conv: "n:" + ps["dev"]!.pubkey, by: ps["dev"]!.pubkey)

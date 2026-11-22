@@ -292,6 +292,8 @@ shot 08-conversation conversation light
 shot 08b-dm-thread dmthread light
 shot 08c-dm-thread-dark dmthread dark
 shot 09-email mail light
+shot 09c-mail-pictures mailpictures light
+shot 09d-mail-pictures-dark mailpictures dark
 shot 13-pulldown pulldown light
 shot 14-message-menu menu light
 shot 15-delete-confirm delete light

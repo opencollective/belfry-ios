@@ -54,7 +54,7 @@ struct MessageRow: View {
                 if !m.eventRefs.isEmpty {
                     ForEach(m.eventRefs, id: \.self) { r in EventCardView(ref: r) }
                 }
-                ForEach(m.media, id: \.url) { media in MediaView(media: media, all: m.media) }
+                MediaBlock(media: m.media)
                 if let e = m.edited { Text("edited").font(.caption2).foregroundStyle(.secondary).accessibilityLabel("Edited \(Format.ago(e))") }
                 let extra = d.extraTopics(m, openTopic: openTopic)
                 if !extra.isEmpty {
@@ -287,13 +287,14 @@ struct MediaView: View {
     /// The message's media: the lightbox swipes through its photos.
     var all: [Media] = []
     var body: some View {
-        if media.mime.hasPrefix("image/"), let url = URL(string: media.url), url.scheme == "https" || url.scheme == "http" {
+        if MediaBlock.shows(media), let url = URL(string: media.url) {
             // the size from imeta `dim` when known: no jump when the picture arrives
             let ratio: CGFloat? = (media.w ?? 0) > 0 && (media.h ?? 0) > 0 ? CGFloat(media.w!) / CGFloat(media.h!) : nil
             CachedImage(url: url) { phase in
                 switch phase {
                 case .success(let img): img.resizable().scaledToFit()
-                case .failure: Label(media.name ?? "Photo", systemImage: "photo").foregroundStyle(.secondary)
+                // a picture that can't be loaded is a file row
+                case .failure: fileRow(url)
                 default:
                     if ratio != nil { Color.secondary.opacity(0.12) } else { ProgressView().frame(height: 120) }
                 }
@@ -303,7 +304,7 @@ struct MediaView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .contentShape(Rectangle())
             .onTapGesture {
-                let photos = (all.isEmpty ? [media] : all).filter { $0.mime.hasPrefix("image/") }.map(\.url)
+                let photos = (all.isEmpty ? [media] : all).filter(MediaBlock.shows).map(\.url)
                 hideKeyboard()
                 model.lightbox = Lightbox(urls: photos, index: photos.firstIndex(of: media.url) ?? 0)
             }
@@ -312,10 +313,22 @@ struct MediaView: View {
             .accessibilityHint("Opens the photo")
         } else if media.mime.hasPrefix("audio/") {
             AudioRow(media: media)
-        } else if media.mime.hasPrefix("image/") {
-            Label(media.name ?? "Photo", systemImage: "photo").foregroundStyle(.secondary)
         } else if let url = URL(string: media.url), url.scheme == "https" {
-            Link(destination: url) { Label(media.name ?? "File", systemImage: "paperclip") }.font(.callout)
+            fileRow(url)
+        } else if media.isImage {
+            Label(media.name ?? "Photo", systemImage: "photo").foregroundStyle(.secondary)
+        }
+    }
+
+    /// A file by its name: a tap opens it (a web address only).
+    @ViewBuilder private func fileRow(_ url: URL) -> some View {
+        if url.scheme == "https" {
+            Link(destination: url) {
+                Label(media.isImage ? (media.name.map { $0 + " · " } ?? "") + "Picture · couldn't be opened" : media.name ?? "File", systemImage: "paperclip")
+            }
+            .font(.callout)
+        } else {
+            Label(media.name ?? "Photo", systemImage: "paperclip").font(.callout).foregroundStyle(.secondary)
         }
     }
 }
@@ -385,7 +398,7 @@ struct ReplyRow: View {
                 }
                 if !r.text.isEmpty { MessageText(text: r.text, shownEvents: r.eventRefs) }
                 MessageButtonsView(m: r, group: group.isEmpty ? (r.ev.tag("h") ?? "") : group)
-                ForEach(r.media, id: \.url) { MediaView(media: $0, all: r.media) }
+                MediaBlock(media: r.media)
                 // reactions on a reply (Xavier 2026-11-18), as on a message
                 let g = group.isEmpty ? (r.ev.tag("h") ?? "") : group
                 let reactions = model.derive.reactions(g)[r.id] ?? []
@@ -442,7 +455,7 @@ struct ThreadActivity: View {
                         if last.edited != nil { Text("edited").font(.caption2).foregroundStyle(.secondary) }
                     }
                     if !last.text.isEmpty { MarkdownText(text: last.text).lineLimit(8) }
-                    ForEach(last.media, id: \.url) { MediaView(media: $0, all: last.media) }
+                    MediaBlock(media: last.media)
                 }
                 Spacer(minLength: 0)
             }

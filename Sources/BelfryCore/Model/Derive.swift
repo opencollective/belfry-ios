@@ -173,7 +173,13 @@ public struct Media: Hashable, Sendable, Codable {
     public let name: String?
     public let w: Int?
     public let h: Int?
-    public var isImage: Bool { mime.hasPrefix("image/") }
+    public init(url: String, mime: String, name: String? = nil, w: Int? = nil, h: Int? = nil) {
+        self.url = url; self.mime = mime; self.name = name; self.w = w; self.h = h
+    }
+    /// A picture: by its type, or (no type, or a generic one) by the extension of its name or URL.
+    public var isImage: Bool {
+        mime.hasPrefix("image/") || MailPictures.isPicture(type: mime, name: name) || MailPictures.isPicture(type: mime, name: URL(string: url)?.path)
+    }
 }
 
 /// A member's e-mail kept whole on the file server (AES-256-GCM; key and nonce base64).
