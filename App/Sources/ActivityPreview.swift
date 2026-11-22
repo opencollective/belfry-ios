@@ -85,9 +85,10 @@ struct ActivityPreviewRow: View {
     }
 }
 
-/// The small card's frame: a rounded box. No tap gesture over it and no bordered buttons in it:
-/// in the feed's lazy stack with the keyboard moving, an open card with `.bordered` buttons under
-/// a tap gesture kept the main thread laying out (testKeyboardComposer hung, 2026-11-22).
+/// The small card's frame: a rounded box. Its parts answer taps with tap gestures, not Buttons:
+/// an open card holding Buttons (any style) in the feed's lazy stack kept the main thread laying
+/// out when the keyboard came up (testKeyboardComposer hung, 2026-11-22; a card of text and tap
+/// gestures did not).
 private struct PreviewBox<Content: View>: View {
     @ViewBuilder let content: () -> Content
     var body: some View {
@@ -104,11 +105,11 @@ private struct OpenArea<Content: View>: View {
     let open: () -> Void
     @ViewBuilder let content: () -> Content
     var body: some View {
-        Button(action: open) {
-            content().multilineTextAlignment(.leading).contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint("Opens it")
+        content().multilineTextAlignment(.leading).contentShape(Rectangle())
+            .onTapGesture(perform: open)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint("Opens it")
     }
 }
 
@@ -118,14 +119,14 @@ private struct QuickAction: View {
     var on = false
     let action: () -> Void
     var body: some View {
-        Button(action: action) {
-            Text(title).font(.footnote.weight(.semibold))
-                .padding(.horizontal, 12).padding(.vertical, 6)
-                .foregroundStyle(on ? Theme.onAccent : Color.primary)
-                .background(on ? Color.brand : Color.secondary.opacity(0.15), in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(on ? .isSelected : [])
+        Text(title).font(.footnote.weight(.semibold))
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .foregroundStyle(on ? Theme.onAccent : Color.primary)
+            .background(on ? Color.brand : Color.secondary.opacity(0.15), in: Capsule())
+            .contentShape(Capsule())
+            .onTapGesture { UIImpactFeedbackGenerator(style: .light).impactOccurred(); action() }
+            .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction(action)
     }
 }
 
@@ -136,12 +137,13 @@ struct TodoPreviewCard: View {
     var body: some View {
         PreviewBox {
             HStack(alignment: .top, spacing: 10) {
-                Button { model.todo(t, in: group, t.done ? "undone" : "done") } label: {
-                    Image(systemName: t.done ? "checkmark.circle.fill" : "circle").font(.title3)
-                        .foregroundStyle(t.done ? Color.green : Color.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(t.done ? "Reopen" : "Mark done")
+                Image(systemName: t.done ? "checkmark.circle.fill" : "circle").font(.title3)
+                    .foregroundStyle(t.done ? Color.green : Color.secondary)
+                    .contentShape(Circle())
+                    .onTapGesture { model.todo(t, in: group, t.done ? "undone" : "done") }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityLabel(t.done ? "Reopen" : "Mark done")
+                    .accessibilityAction { model.todo(t, in: group, t.done ? "undone" : "done") }
                 OpenArea(open: { model.openTodo = TodoKey(group: group, task: t.id) }) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(t.title).font(.subheadline.weight(.semibold)).strikethrough(t.done).lineLimit(2)
