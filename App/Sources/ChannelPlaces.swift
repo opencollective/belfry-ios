@@ -220,7 +220,7 @@ struct PhotosSection: View {
     }
 }
 
-/// Members of the channel (Invite at the top for whoever may invite), who was active this month,
+/// Members of the channel (＋ top right for whoever may invite), who was active this month,
 /// and Join / Leave at the bottom. A row pushes the profile (with the role here).
 struct ChannelMembersScreen: View {
     @EnvironmentObject var model: AppModel
@@ -236,12 +236,6 @@ struct ChannelMembersScreen: View {
         let mayInvite = !model.guestReading && g?.archived != true
         let active = d.recentlyActive(id)
         List {
-            if mayInvite {
-                Section {
-                    Button { hideKeyboard(); invite = true } label: { Label("Invite someone", systemImage: "person.badge.plus") }
-                        .accessibilityIdentifier("members-invite")
-                }
-            }
             // people asking to join a closed channel or group: at the top, for its stewards (and,
             // while it accepts by vouches, its members)
             if let g, !g.archived, g.isPod || g.closed {
@@ -283,6 +277,16 @@ struct ChannelMembersScreen: View {
         }
         .navigationTitle("Members")
         .navigationBarTitleDisplayMode(.inline)
+        // "add one" is an icon top right, never a first row (Xavier, 2026-11-22)
+        .toolbar {
+            if mayInvite {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { hideKeyboard(); invite = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("Invite someone")
+                        .accessibilityIdentifier("members-invite")
+                }
+            }
+        }
         .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group).overRoot() }
         .sheet(isPresented: $invite) { InviteSheet(id: id) }
         .sheet(isPresented: $asking) { if let g { PodApplySheet(group: g) } }
