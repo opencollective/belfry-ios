@@ -31,8 +31,13 @@ env:
 # - core: BelfryCore's tests, when the core, its tests or the vectors changed.
 # - sim: the app built for the simulator, then only the screenshots and UI tests of the screens the
 #   change touched (one job; up to three for many screens). The full suite (three screenshot jobs
-#   and the UI tests in light and in dark, side by side) only for a release with a new minor
-#   version: a tag vX.Y.0, a new major or minor MARKETING_VERSION, or the `full` input.
+#   and the UI tests in light and in dark, side by side) only for a release: a tag vX.Y.0, the
+#   `full` input, or main with a new major or minor MARKETING_VERSION whose tree has not passed
+#   the full suite yet.
+# - build (Xavier, 2026-11-22: run less per change): with more than one simulator job, the app is
+#   compiled once and the jobs download it (each used to compile it itself, 4 to 8 minutes).
+# - passed: a full suite that passed is recorded on its commit (status "full-suite"). main then
+#   runs only the core tests and TestFlight for that same tree: the full suite once per release.
 # - testflight: on main, after the core tests only. It does not wait for the simulator jobs: its
 #   own archive is the compile check.
 jobs:
@@ -43,16 +48,22 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      statuses: read
     outputs:
       core: ${{ steps.plan.outputs.core }}
       app: ${{ steps.plan.outputs.app }}
       parts: ${{ steps.plan.outputs.parts }}
+      shared: ${{ steps.plan.outputs.shared }}
+      full: ${{ steps.plan.outputs.full }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - id: plan
         env:
+          GH_TOKEN: ${{ github.token }}
           BEFORE: ${{ github.event.before }}
           INPUT_FULL: ${{ inputs.full }}
           INPUT_SHOTS: ${{ inputs.shots }}
@@ -89,10 +100,61 @@ jobs:
           name: core-test-log
           path: swift-test.log
 
+  build:
+    name: Build for the simulator (once)
+    needs: plan
+    if: needs.plan.outputs.shared == 'true'
+    concurrency:
+      group: ci-${{ github.ref }}-build
+      cancel-in-progress: true
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode 26
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -v -i beta | sort -V | tail -1)
+          [ -n "$XCODE" ] || { echo "no Xcode 26 on this runner"; ls /Applications | grep -i xcode; exit 1; }
+          sudo xcode-select -s "$XCODE" && xcodebuild -version
+      - name: XcodeGen
+        run: scripts/xcodegen.sh
+      - uses: actions/cache@v4
+        with:
+          path: build/SourcePackages
+          key: spm-app26-${{ runner.os }}-${{ hashFiles('Package.swift', 'project.yml') }}
+      - name: Build for the simulator (app + UI tests)
+        run: |
+          set -o pipefail
+          xcodebuild -project Belfry.xcodeproj -scheme Belfry -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build -clonedSourcePackagesDirPath build/SourcePackages \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 | tee xcodebuild.log | grep -E "error:|warning: .*BelfryApp|BUILD (SUCCEEDED|FAILED)|TEST BUILD (SUCCEEDED|FAILED)" || true
+          if grep -q "BUILD FAILED" xcodebuild.log; then exit 1; fi
+          test -d build/Build/Products/Debug-iphonesimulator/Belfry.app
+      - name: Build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log-build
+          path: xcodebuild.log
+      - name: Pack the products (the apps and the test run file)
+        run: |
+          cd build/Build/Products
+          tar --exclude='*.swiftmodule' --exclude='*.dSYM' -czf "$GITHUB_WORKSPACE/sim-products.tar.gz" .
+          ls -lh "$GITHUB_WORKSPACE/sim-products.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sim-build
+          path: sim-products.tar.gz
+          retention-days: 1
+          compression-level: 0
+
   sim:
     name: Simulator (${{ matrix.part.name }})
-    needs: plan
-    if: needs.plan.outputs.parts != '[]'
+    needs: [plan, build]
+    # the build job runs only with more than one simulator job; a single job compiles for itself
+    if: always() && needs.plan.outputs.parts != '[]' && (needs.build.result == 'success' || needs.build.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -125,12 +187,15 @@ jobs:
           xcrun simctl boot "$UDID" || true
           echo "UDID=$UDID" >> "$GITHUB_ENV"
       - name: XcodeGen
-        run: brew install xcodegen && xcodegen generate
+        if: needs.plan.outputs.shared != 'true'
+        run: scripts/xcodegen.sh
       - uses: actions/cache@v4
+        if: needs.plan.outputs.shared != 'true'
         with:
           path: build/SourcePackages
           key: spm-app26-${{ runner.os }}-${{ hashFiles('Package.swift', 'project.yml') }}
       - name: Build for the simulator (app + UI tests)
+        if: needs.plan.outputs.shared != 'true'
         run: |
           set -o pipefail
           xcodebuild -project Belfry.xcodeproj -scheme Belfry -configuration Debug \
@@ -141,11 +206,24 @@ jobs:
           if grep -q "BUILD FAILED" xcodebuild.log; then exit 1; fi
           test -d build/Build/Products/Debug-iphonesimulator/Belfry.app
       - name: Build log
-        if: always()
+        if: always() && needs.plan.outputs.shared != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: xcodebuild-log-${{ matrix.part.name }}
           path: xcodebuild.log
+      - name: The app built once (the build job's)
+        if: needs.plan.outputs.shared == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: sim-build
+      - name: Unpack it
+        if: needs.plan.outputs.shared == 'true'
+        run: |
+          mkdir -p build/Build/Products
+          tar -xzf sim-products.tar.gz -C build/Build/Products
+          rm sim-products.tar.gz
+          test -d build/Build/Products/Debug-iphonesimulator/Belfry.app
+          ls build/Build/Products/*.xctestrun
       - name: Screenshots and UI tests (${{ matrix.part.shard }})
         env:
           SHOTS: ${{ matrix.part.shots }}
@@ -173,6 +251,24 @@ jobs:
           name: screenshots
           pattern: screenshots-*
           delete-merged: true
+
+  passed:
+    name: Full suite passed (recorded on the commit)
+    needs: [plan, core, sim]
+    if: always() && needs.plan.outputs.full == 'true' && needs.sim.result == 'success' && (needs.core.result == 'success' || needs.core.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - name: Status "full-suite" on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -f state=success -f context=full-suite \
+            -f description="run ${{ github.run_id }}" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
   testflight:
     name: TestFlight (only with signing secrets)
@@ -210,7 +306,7 @@ jobs:
           XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -v -i beta | sort -V | tail -1)
           [ -n "$XCODE" ] || { echo "no Xcode 26 on this runner"; ls /Applications | grep -i xcode; exit 1; }
           sudo xcode-select -s "$XCODE" && xcodebuild -version
-          brew install xcodegen && xcodegen generate
+          scripts/xcodegen.sh
           mkdir -p private_keys
           echo "$ASC_KEY_P8" > "private_keys/AuthKey_${ASC_KEY_ID}.p8"
           KEY="$PWD/private_keys/AuthKey_${ASC_KEY_ID}.p8"

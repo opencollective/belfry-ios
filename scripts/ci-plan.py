@@ -6,11 +6,20 @@ Reads the changed files (git diff BASE..HEAD) and prints GitHub outputs:
   core=true|false     run the core tests (BelfryCore, its tests, the vectors)
   app=true|false      app code changed: main uploads to TestFlight (after the core tests)
   parts=<JSON list>   simulator jobs: {name, shots, shard, uitests, uimodes}; [] = none
+  shared=true|false   more than one simulator job: the app is built once (the build job)
+  full=true|false     this run is the full suite (when it passes, the commit gets the status
+                      "full-suite")
   why=<one line>
 
-Full suite: a tag vX.Y.0, a change of the major or minor of MARKETING_VERSION in project.yml, or
-the workflow's `full` input. Otherwise the screens and UI tests mapped from the changed files
-(MAP below: keep it current when a screen moves to another file), a small smoke set for shared code.
+Full suite (Xavier, 2026-11-22: once per release, not twice): the workflow's `full` input, a tag
+vX.Y.0, or main with a new major or minor MARKETING_VERSION whose tree has not passed it yet. A
+version bump on a branch no longer forces it. On main, a tree that already passed the full suite
+(the status "full-suite" on this commit, or on a merged parent with the same tree) runs no
+simulator job at all: the core tests and TestFlight only.
+Otherwise the screens and UI tests mapped from the changed files (MAP below: keep it current when
+a screen moves to another file), a small smoke set for shared code. A changed UI test file
+(App/UITests/<Area>Shots.swift) runs its own tests; ShotCase.swift (their base) the smoke tests.
+Dark mode UI tests: the full suite, and changes to colours / the theme.
 """
 import json, math, os, re, subprocess, sys
 
@@ -30,7 +39,7 @@ MAP = [
     (r"App/Sources/(OneShapeUI|ChannelHeader|ActivityPreview)", "feed|thread|threadscreen|pulldown|mailfeed|inbox.*|town|todos", ""),
     (r"App/Sources/(PullDown|ChannelPlaces|ChannelDetails|NotifySheet)", "inbox.*|pull.*|member-pulldown|pinned|chsettings|chvisibility|chpublic|notify|members|membersinvitech|todos|files|log|closedrequests", ""),
     (r"App/Sources/(TodoScreen|AppModel\+Due)", "todo.*|mytodos", "testTodoAssign"),
-    (r"App/Sources/(TownDrawer|Tabs)", ".*drawer|home|town|calendar|groups|messagestab", "testDrawerSwipe testMenuRows testHomeDrawer testCalendarAndGroupsDrawer"),
+    (r"App/Sources/(TownDrawer|Tabs)", ".*drawer|home|town|calendar|groups|messagestab", "NavShots"),
     (r"App/Sources/(Nav2UI|AppModel\+Nav)", "addchannel.*|channelpreview|channelpin|member-channelpin|.*drawer|messagestab|feed", "testDrawerSwipe"),
     (r"App/Sources/(HomeView|AppModel\+Home)", "home|homedrawer|guest-home|guest-applied|mytodos", "testHomeDrawer"),
     (r"App/Sources/CalendarView", "calendar.*|guest-calendar", ""),
@@ -53,6 +62,8 @@ MAP = [
     (r"App/Sources/CreateMenu", "create|add", "testAddMenu"),
     (r"App/Sources/AppModel\+Push", "notifications", ""),
 ]
+# colours and the theme: their UI tests run in dark too
+THEME = re.compile(r"^App/(Sources/Theme|Assets\.xcassets/|Resources/.*\.xcassets/)")
 DOCS = re.compile(r"(\.md$|^LICENSE|^\.gitignore$|^tools/)")
 CORE = re.compile(r"^(Sources/|Tests/|vectors/|Package\.(swift|resolved)$)")
 APP = re.compile(r"^(App/Sources/|App/NotificationService/|Sources/|project\.yml$|Package\.(swift|resolved)$)")
@@ -77,6 +88,31 @@ def screens():
     return out
 
 
+def tests_in(path):
+    """The UI tests of one App/UITests file (none when it was deleted)."""
+    try:
+        return re.findall(r"func (test\w+)\(\)", open(path, encoding="utf-8").read())
+    except OSError:
+        return []
+
+
+def passed_full():
+    """The run that passed the full suite on this tree (a line of text), else ""."""
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    if not repo or not os.environ.get("GH_TOKEN"):
+        return ""
+    tree = git("rev-parse", "HEAD^{tree}")
+    shas = [git("rev-parse", "HEAD")] + [p for p in git("rev-list", "--parents", "-n", "1", "HEAD").split()[1:]
+                                         if git("rev-parse", p + "^{tree}") == tree]
+    for sha in shas:
+        r = subprocess.run(["gh", "api", f"repos/{repo}/commits/{sha}/statuses", "--jq",
+                            '[.[] | select(.context == "full-suite" and .state == "success")][0].description // ""'],
+                           capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip():
+            return f"{r.stdout.strip()} on {sha[:9]}"
+    return ""
+
+
 def plan(changed, full=False, shots="", uitests=""):
     code = [f for f in changed if not DOCS.search(f)]
     core = any(CORE.search(f) for f in code)
@@ -96,7 +132,9 @@ def plan(changed, full=False, shots="", uitests=""):
                     want.append(s); tests += t.split()
                 why.append(os.path.basename(f))
             elif f.startswith("App/UITests/"):
-                tests = ["all"]; why.append("the UI tests")
+                # one area's tests; their base class: the smoke tests
+                tests += SMOKE_TESTS.split() if f.endswith("/ShotCase.swift") else tests_in(f)
+                why.append(os.path.basename(f))
             elif APP.search(f) or f.startswith(("scripts/", ".github/")):
                 want.append(SMOKE); tests += SMOKE_TESTS.split(); why.append(os.path.basename(f) + " (shared: smoke)")
     rx = "|".join(dict.fromkeys(want))
@@ -105,8 +143,11 @@ def plan(changed, full=False, shots="", uitests=""):
     if n == 0 and ui == "none":
         return core, app, [], "no screen touched" if code else "documentation only"
     jobs = min(3, max(1, math.ceil(n / PER_JOB)))
+    dark = any(THEME.search(f) for f in code)
+    if dark and ui == "none":
+        ui = SMOKE_TESTS
     parts = [{"name": f"selected-{i}" if jobs > 1 else "selected", "shots": rx or "none", "shard": f"{i}/{jobs}",
-              "uitests": ui if i == 1 else "none", "uimodes": "light"} for i in range(1, jobs + 1)]
+              "uitests": ui if i == 1 else "none", "uimodes": "light dark" if dark else "light"} for i in range(1, jobs + 1)]
     return core, app, parts, f"{n} screens, UI tests: {ui} ({', '.join(dict.fromkeys(why))[:300]})"
 
 
@@ -120,10 +161,19 @@ def main():
         mb = git("merge-base", "origin/main", "HEAD")
         base = mb if mb and mb != git("rev-parse", "HEAD") else git("rev-parse", "HEAD~1")
     changed = [f for f in git("diff", "--name-only", base, "HEAD").splitlines() if f]
-    if base and version(base) and version("HEAD") and version(base) != version("HEAD"):
-        full = True
-    core, app, parts, why = plan(changed, full, os.environ.get("INPUT_SHOTS", "").strip(), os.environ.get("INPUT_UITESTS", "").strip())
-    lines = [f"core={'true' if core else 'false'}", f"app={'true' if app else 'false'}", "parts=" + json.dumps(parts), f"why={why}"]
+    shots, uitests = os.environ.get("INPUT_SHOTS", "").strip(), os.environ.get("INPUT_UITESTS", "").strip()
+    bumped = bool(base and version(base) and version("HEAD") and version(base) != version("HEAD"))
+    done = ""
+    if ref == "refs/heads/main" and event == "push" and not full:
+        # the full suite once per release: a tree that passed it on its branch is not tested again
+        done = passed_full()
+        if bumped and not done:
+            full = True
+    core, app, parts, why = plan(changed, full, shots, uitests)
+    if done:
+        parts, why = [], f"this tree passed the full suite ({done}): core tests and TestFlight only"
+    lines = [f"core={'true' if core else 'false'}", f"app={'true' if app else 'false'}", "parts=" + json.dumps(parts),
+             f"shared={'true' if len(parts) > 1 else 'false'}", f"full={'true' if full and parts else 'false'}", f"why={why}"]
     print(f"base {base[:9]}: {len(changed)} files changed")
     print("\n".join(lines))
     if os.environ.get("GITHUB_OUTPUT"):

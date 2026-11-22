@@ -340,11 +340,19 @@ shot 175-wayin-declined signin-wayin-declined light
 python3 "$(dirname "$0")/shots.py" "$UDID" "$BUNDLE" "$OUT" "$LIST"
 
 # native menus only a touch opens: UI tests (App/UITests) write their own PNGs.
-# UITESTS: "all" (default), "none", or test names ("testAddMenu testTodoAssign"); UIMODES: "light dark".
+# UITESTS: "all" (default), "none", or test names and / or classes ("testAddMenu TodoShots"); UIMODES: "light dark".
 UITESTS="${UITESTS:-all}"
 ONLY=""
 if [ "$UITESTS" != "all" ] && [ "$UITESTS" != "none" ]; then
-  for t in $UITESTS; do ONLY="$ONLY -only-testing:BelfryUITests/MenuShots/$t"; done
+  # a test's class is the file it lives in (App/UITests/<Area>Shots.swift); a class name runs the
+  # whole class
+  TESTS_DIR="$(dirname "$0")/../App/UITests"
+  for t in $UITESTS; do
+    if [ -f "$TESTS_DIR/$t.swift" ]; then ONLY="$ONLY -only-testing:BelfryUITests/$t"; continue; fi
+    f=$(grep -l "func $t()" "$TESTS_DIR"/*.swift 2>/dev/null | head -1)
+    [ -n "$f" ] || { echo "no UI test named $t"; exit 1; }
+    ONLY="$ONLY -only-testing:BelfryUITests/$(basename "$f" .swift)/$t"
+  done
 fi
 if [ "$UITESTS" != "none" ] && [ -n "${XCTESTRUN:-}" ] && [ -f "$XCTESTRUN" ]; then
   ABS="$(cd "$OUT" && pwd)"

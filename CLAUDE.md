@@ -84,7 +84,7 @@ This Linux box has no Xcode. Push and let GitHub Actions build (`gh run watch`, 
   (a regex on the screen names, "all", "none"), `SHARD` (i/n), `UITESTS` (names, "all", "none")
   and `UIMODES`. The script only lists the screens; `scripts/shots.py` captures them: one launch
   per screen (after one warm-up launch), its dark picture by switching the appearance without
-  launching again, a fixed 6 s per launch (ending the wait on a still frame took unfinished screens). The UI tests (`App/UITests/MenuShots.swift`)
+  launching again, a fixed 6 s per launch (ending the wait on a still frame took unfinished screens). The UI tests (`App/UITests/<Area>Shots.swift`, one class per area on `ShotCase`)
   tap what only a touch opens and write their own PNGs. Artifacts `screenshots-<part>`, merged into
   `screenshots`. A branch: `gh workflow run ci.yml --ref <branch>` (optionally `-f shots='invite.*'
   -f uitests='testTodoAssign'`, or `-f full=true`).
