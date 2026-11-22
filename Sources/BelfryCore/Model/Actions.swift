@@ -83,6 +83,10 @@ public enum Actions {
         Draft(kind: 30078, content: on ? "{\"on\":true}" : "{\"on\":false}", tags: [["d", Derive.inboxD(group)], ["h", group]])
     }
 
+    /// Whether Save sends the inbox switch: when the person touched it, or it differs from what the
+    /// channel reads (a stale reading must never swallow a Save).
+    public static func inboxToSend(chosen: Bool, reads: Bool, touched: Bool) -> Bool { touched || chosen != reads }
+
     public static func seen(_ group: String) -> Draft {
         Draft(kind: 30078, tags: [["d", Derive.seenD(group)], ["h", group]])
     }

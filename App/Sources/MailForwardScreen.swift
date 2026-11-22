@@ -11,20 +11,43 @@ struct MailForwardRow: View {
     @EnvironmentObject var model: AppModel
     let channel: String
     @State private var forward: MailForward?
-    @State private var loaded = false
+    @State private var state = MailForwardLoad.loading
 
     var body: some View {
-        NavigationLink { MailForwardScreen(channel: channel, forward: $forward) } label: {
+        NavigationLink { MailForwardScreen(channel: channel, forward: $forward, state: $state) } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Forward e-mails")
-                Text(loaded ? MailForward.line(forward) : " ").font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                Text(state.line(forward)).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
             }
         }
         .accessibilityIdentifier("settings-forward")
-        .task {
-            guard !loaded else { return }
-            if model.engine?.localOnly == false { forward = try? await model.api.mailForward(channel: channel) }
-            loaded = true
+        // the server's state, asked each time the row shows; a call cut short (the row scrolled
+        // away, the screen pushed) is asked again, and a failure never reads as "Off"
+        .task { if state != .loaded { await MailForwardLoad.load(model, channel, $forward, $state) } }
+    }
+}
+
+/// Where the forward's state stands: asked, known (the server's answer), or not known (a failure).
+enum MailForwardLoad: Equatable {
+    case loading, loaded, failed
+
+    func line(_ f: MailForward?) -> String {
+        switch self {
+        case .loading: return " "
+        case .loaded: return MailForward.line(f)
+        case .failed: return "Couldn't check. Open to try again."
+        }
+    }
+
+    @MainActor static func load(_ model: AppModel, _ channel: String, _ forward: Binding<MailForward?>, _ state: Binding<MailForwardLoad>) async {
+        guard model.engine?.localOnly == false else { return }
+        do {
+            let f = try await model.api.mailForward(channel: channel)
+            forward.wrappedValue = f
+            state.wrappedValue = .loaded
+        } catch {
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled || error is CancellationError { return }
+            if state.wrappedValue != .loaded { state.wrappedValue = .failed }
         }
     }
 }
@@ -33,6 +56,7 @@ struct MailForwardScreen: View {
     @EnvironmentObject var model: AppModel
     let channel: String
     @Binding var forward: MailForward?
+    @Binding var state: MailForwardLoad
     @State private var address = ""
     @State private var note: String?
     @State private var error: String?
@@ -53,6 +77,12 @@ struct MailForwardScreen: View {
                     .onChange(of: address) { _, v in error = nil; note = nil; if v.count > 200 { address = String(v.prefix(200)) } }
             } header: { Text("Forward all e-mails to") } footer: {
                 Text("E-mails still show up in the channel. A copy goes to this address, once it has confirmed.")
+            }
+            if state == .failed {
+                Section {
+                    Label("Couldn't check where e-mails are forwarded.", systemImage: "exclamationmark.triangle")
+                    BusyButton("Try again") { await MailForwardLoad.load(model, channel, $forward, $state) }
+                }
             }
             if let f = forward {
                 Section {
@@ -95,6 +125,9 @@ struct MailForwardScreen: View {
         .navigationTitle("Forward e-mails")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { if address.isEmpty { address = forward?.address ?? "" } }
+        // the server's state, asked again on opening: the field and the line follow its answer
+        .task { await MailForwardLoad.load(model, channel, $forward, $state) }
+        .onChange(of: forward) { _, f in if address.isEmpty, let f { address = f.address } }
     }
 
     /// One call to the belfry; its refusal shows in fixed words.
@@ -103,7 +136,7 @@ struct MailForwardScreen: View {
         note = nil
         hideKeyboard()
         if model.engine?.localOnly != false { error = BelfryAPI.mailForwardErrors["unsupported"]; return }
-        do { try await work() }
+        do { try await work(); state = .loaded }
         catch let e as ApiError { self.error = e.message }
         catch { self.error = BelfryAPI.network }
     }

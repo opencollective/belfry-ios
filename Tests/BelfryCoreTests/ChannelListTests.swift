@@ -104,4 +104,52 @@ final class InboxSwitchTests: XCTestCase {
         // what the app writes
         XCTAssertEqual(Actions.setInbox("general", on: true).tags, [["d", "belfry:inbox:general"], ["h", "general"]])
     }
+
+    /// OSV, 2026-11-22: the log keeps every copy of a 30078. An old-d copy for #hello (on), replaced
+    /// by the same admin's old-d copy for #sponsors, counts no more: #hello reads off (it opened ON,
+    /// so Save saw no change and published nothing).
+    func testAReplacedOldSwitchCountsNoMore() {
+        let base = [meta("hello", "hello"), meta("sponsors", "sponsors"), admins("hello"), admins("sponsors")]
+        var d = Derive(events: base + [sw(ADMIN, 200, d: Derive.inboxD, h: "hello", on: true),
+                                       sw(ADMIN, 300, d: Derive.inboxD, h: "sponsors", on: true)], me: ME)
+        XCTAssertFalse(d.isInbox(d.group("hello")))
+        XCTAssertTrue(d.isInbox(d.group("sponsors")))
+        // only the sponsors copy on the relay: viewing #hello → off
+        d = Derive(events: base + [sw(ADMIN, 300, d: Derive.inboxD, h: "sponsors", on: true)], me: ME)
+        XCTAssertFalse(d.isInbox(d.group("hello")))
+        // the new d for #hello still decides, newer than the old copy
+        d = Derive(events: base + [sw(ADMIN, 300, d: Derive.inboxD, h: "sponsors", on: true),
+                                   sw(ADMIN, 310, d: Derive.inboxD("hello"), h: "hello", on: true)], me: ME)
+        XCTAssertTrue(d.isInbox(d.group("hello")))
+        // a replaced new-d copy: the newest of that d wins, even when an older copy said on
+        d = Derive(events: base + [sw(ADMIN, 200, d: Derive.inboxD("hello"), h: "hello", on: true),
+                                   sw(ADMIN, 250, d: Derive.inboxD("hello"), h: "hello", on: false)], me: ME)
+        XCTAssertFalse(d.isInbox(d.group("hello")))
+    }
+
+    /// The forward row reads the server's answer as it is (mailforward.py `public`): on and confirmed.
+    func testForwardStateFromTheServersAnswer() {
+        let on: [String: Any] = ["forward": ["address": "team@example.org", "state": "on", "set_by": "ab", "since": 1763337600, "same_domain_skipped": false]]
+        XCTAssertEqual(MailForward.parse(on), MailForward(address: "team@example.org", on: true, sameDomainSkipped: false))
+        XCTAssertEqual(MailForward.line(MailForward.parse(on)), "team@example.org")
+        let pending: [String: Any] = ["forward": ["address": "team@gmail.com", "state": "pending", "same_domain_skipped": true]]
+        XCTAssertEqual(MailForward.parse(pending)?.on, false)
+        XCTAssertNil(MailForward.parse(["forward": NSNull()]))
+    }
+
+    /// Save publishes the switch whenever it was touched or differs from what the channel reads, so
+    /// a stale reading can never swallow a Save; a refused one shows the channel's error mark.
+    func testSaveSendsTheSwitchAndAFailureShows() {
+        XCTAssertTrue(Actions.inboxToSend(chosen: true, reads: true, touched: true))
+        XCTAssertTrue(Actions.inboxToSend(chosen: true, reads: false, touched: false))
+        XCTAssertFalse(Actions.inboxToSend(chosen: false, reads: false, touched: false))
+        let d = Actions.setInbox("hello", on: true)
+        var item = OutboxItem(target: d.target, kind: d.kind, content: d.content, tags: d.tags, createdAt: 1)
+        XCTAssertEqual(SettingsQueue.part(item), .inbox)
+        XCTAssertEqual(d.target, .groups)
+        item.status = .failed
+        item.error = "restricted: not an admin"
+        XCTAssertEqual(SettingsQueue.failed([item], channel: "hello").count, 1)
+        XCTAssertEqual(SettingsQueue.message(item), "The e-mail setting wasn't saved: you're not allowed to change this channel.")
+    }
 }

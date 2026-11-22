@@ -1243,19 +1243,34 @@ public final class Derive {
     public static let inboxD = "belfry:inbox"
     public static func inboxD(_ group: String) -> String { inboxD + ":" + group }
 
-    /// A 30078 that is GROUP's inbox switch: the new d naming it, or the old d with its h.
-    static func isInboxSwitch(_ e: NostrEvent, _ group: String) -> Bool {
-        guard e.kind == 30078, e.tag("h") == group, let d = e.tag("d") else { return false }
-        return d == inboxD(group) || d == inboxD
-    }
     /// 9002 / 39000 tags the app writes itself (the rest of the relay's copy is kept as it is).
     public static let metaKnown: Set<String> = ["d", "h", "-", "name", "about", "picture", "open", "closed", "prompt", "vouches", "archived", "client"]
 
+    /// The server's rule (collective-belfry mail.md): the group's admins' switches, each only in its
+    /// CURRENT version (a 30078 is replaced per author + d, and the log keeps the older copies): the
+    /// new d naming the group, or the old d while its h names the group; the newest wins. An old-d
+    /// copy that once named this group and was replaced by one for another group counts no more
+    /// (OSV's #hello opened ON from a replaced copy, so Save saw no change and sent nothing).
     public func isInbox(_ g: Group?) -> Bool {
         guard let g else { return false }
-        guard let last = inGroupSorted(g.id).last(where: { Derive.isInboxSwitch($0, g.id) && g.admins.contains($0.pubkey) }) else { return false }
+        guard let last = Derive.inboxSwitch(ofKind(30078), group: g.id, admins: g.admins) else { return false }
         let obj = JSON.parse(last.content.isEmpty ? "{}" : last.content) as? [String: Any]
         return jsTruthy(obj?["on"])
+    }
+
+    /// The switch that decides GROUP's inbox among EVENTS (any 30078s), or nil.
+    static func inboxSwitch(_ events: [NostrEvent], group: String, admins: Set<String>) -> NostrEvent? {
+        let newD = inboxD(group)
+        var current = [String: NostrEvent]() // author + d → its newest copy
+        for e in events where e.kind == 30078 && admins.contains(e.pubkey) {
+            guard let d = e.tag("d"), d == newD || d == inboxD else { continue }
+            let k = e.pubkey + "|" + d
+            if let o = current[k], o.createdAt > e.createdAt || (o.createdAt == e.createdAt && o.id < e.id) { continue }
+            current[k] = e
+        }
+        let names = { (e: NostrEvent) in e.tags.contains { $0.count >= 2 && $0[0] == "h" && $0[1] == group } }
+        return current.values.filter(names)
+            .max { ($0.createdAt, $1.id) < ($1.createdAt, $0.id) }
     }
 
     /// The channel's e-mail address.

@@ -247,6 +247,8 @@ struct SettingsTab: View {
     @State private var name = ""
     @State private var about = ""
     @State private var inbox = false
+    /// The person moved the switch: Save sends it even when the channel already reads the same.
+    @State private var inboxTouched = false
     @State private var closed = false
     @State private var prompt = ""
     @State private var loaded = false
@@ -300,7 +302,7 @@ struct SettingsTab: View {
             }
         }
         Section {
-            Toggle("E-mails from anyone", isOn: $inbox).tint(Theme.toggle)
+            Toggle("E-mails from anyone", isOn: Binding(get: { inbox }, set: { inbox = $0; inboxTouched = true })).tint(Theme.toggle)
             // a copy of every e-mail to an outside address (channels only; saved at once, apart from Save)
             if g?.type == .channel, !model.isDemo { MailForwardRow(channel: id) }
         } footer: {
@@ -324,7 +326,7 @@ struct SettingsTab: View {
                 } else { model.editChannel(id, name: n, about: a, inbox: nil) }
                 if g?.type == .channel || g?.isPod == true { model.setVisibility(id, public: access == .public) }
                 if g?.type == .channel { model.setPosts(id, posts.isEmpty ? nil : posts) }
-                if inbox != model.derive.isInbox(g) { model.editChannelInbox(id, inbox) }
+                if Actions.inboxToSend(chosen: inbox, reads: model.derive.isInbox(g), touched: inboxTouched) { model.editChannelInbox(id, inbox) }
                 dismiss()
             } label: {
                 Text("Save").frame(maxWidth: .infinity)
