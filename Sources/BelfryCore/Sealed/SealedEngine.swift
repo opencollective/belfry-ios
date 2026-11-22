@@ -1203,8 +1203,11 @@ public final class SealedEngine: @unchecked Sendable {
     }
 
     /// The person answered for DEVICE here (Allow, a link code, "It was me"): no notice for it.
+    /// The notice for DEVICE is answered: for the roster that last added it (a device removed
+    /// and added again is a new notice that needs its own answer).
     private func noticed(_ device: String) {
-        remember { m in if !(m.noticeDone ?? []).contains(device) { m.noticeDone = Array(((m.noticeDone ?? []) + [device]).suffix(200)) } }
+        let key = chain(me).flatMap { AddedConfirm.addedBy($0, device) }.map { device + ":" + $0.id } ?? device
+        remember { m in if !(m.noticeDone ?? []).contains(key) { m.noticeDone = Array(((m.noticeDone ?? []) + [key]).suffix(200)) } }
     }
 
     /// "It was me" on the notice: answered here, and once for every device of mine (5.2 step
@@ -1231,7 +1234,9 @@ public final class SealedEngine: @unchecked Sendable {
         guard let since else { return [] }
         let mine = c.joined(devicePub)?.at ?? 0
         return c.devices.compactMap { d -> (device: String, at: Int)? in
-            guard d != devicePub, !done.contains(d), let j = c.joined(d), j.from != nil, j.at >= since, j.at > mine else { return nil }
+            // answered: for this adding roster (or, kept from builds before 2026-11-23, for the device)
+            if done.contains(d) || done.contains(d + ":" + (AddedConfirm.addedBy(c, d)?.id ?? "")) { return nil }
+            guard d != devicePub, let j = c.joined(d), j.from != nil, j.at >= since, j.at > mine else { return nil }
             return (d, j.at)
         }.sorted { $0.at < $1.at }
     }

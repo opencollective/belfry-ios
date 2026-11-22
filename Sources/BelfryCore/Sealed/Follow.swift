@@ -176,13 +176,15 @@ public enum AutoAdd {
 public enum AddedConfirm {
     public static let kind = 8563
 
-    /// The roster of C that added DEVICE: the first one that lists it while the one before does
-    /// not (nil: the root's own device, or not in the chain).
+    /// The roster of C that added DEVICE: the LAST one that lists it while the one before does
+    /// not (a device removed and added again is a new notice that needs its own answer; nil:
+    /// the root's own device, or not in the chain).
     public static func addedBy(_ c: RosterChain, _ device: String) -> Roster? {
+        var last: Roster?
         for i in c.rosters.indices.dropFirst() where c.rosters[i].devices.contains(device) && !c.rosters[i - 1].devices.contains(device) {
-            return c.rosters[i]
+            last = c.rosters[i]
         }
-        return nil
+        return last
     }
 
     public static func tags(account: String, device: String, roster: String) -> [Tag] {
@@ -202,11 +204,18 @@ public enum AddedConfirm {
     /// itself, nor two devices added together each other), (b) is in the head now, and (c) `e`
     /// names the roster that really added that device. Anything else is ignored.
     public static func verdict(_ rumor: NostrEvent, sealPubkey: String, chain c: RosterChain?, account: String) -> Verdict {
-        guard rumor.kind == kind, rumor.pubkey == sealPubkey, rumor.tagValues("p") == [account],
-              let device = rumor.tag("device"), isHex64(device), let e = rumor.tag("e"), isHex64(e) else { return .no }
+        // the shape, read strictly (vectors/sealed.json `confirm`): the rumor's key is the key
+        // that signed its seal, content "", p / device / e exactly once
+        func once(_ name: String) -> String? {
+            let all = rumor.tags.filter { $0.first == name }
+            return all.count == 1 && all[0].count >= 2 ? all[0][1] : nil
+        }
+        guard rumor.kind == kind, rumor.pubkey == sealPubkey, rumor.content.isEmpty, once("p") == account,
+              let device = once("device"), isHex64(device), let e = once("e"), isHex64(e) else { return .no }
         guard let c, c.account == account else { return .unknownRoster }
         guard let i = c.rosters.firstIndex(where: { $0.id == e }) else { return .unknownRoster }
-        guard i > 0, c.rosters[i].devices.contains(device), !c.rosters[i - 1].devices.contains(device) else { return .no }
+        // the roster that LAST added the device, never the root
+        guard i > 0, addedBy(c, device)?.id == e else { return .no }
         guard c.rosters[i - 1].devices.contains(sealPubkey), c.devices.contains(sealPubkey) else { return .no }
         return .clears(device)
     }

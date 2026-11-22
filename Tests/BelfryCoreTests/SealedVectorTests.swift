@@ -2,8 +2,8 @@ import Foundation
 import XCTest
 @testable import BelfryCore
 
-// vectors/sealed.json = collective-belfry docs/sealed-vectors.json (sha256 32f97764…b09a), byte
-// for byte: the roster chain, opening and acceptance, the ceiling and the packing of a shared
+// vectors/sealed.json = belfry-android main 921a6c1 (sha256 3942f031…0986), byte for byte: the
+// lead's docs/sealed-vectors.json (32f97764…b09a) plus the `confirm` section (kind 8563): the roster chain, opening and acceptance, the ceiling and the packing of a shared
 // history, the key hand-over, the link proof, shared history, `ready`. Not reproduced here:
 // making the same wrap byte for byte (it needs fixed one-time keys, nonces and Schnorr auxiliary).
 
@@ -42,6 +42,46 @@ final class SealedVectorTests: XCTestCase {
             XCTAssertEqual(got?.lb, exp["lb"] as? String, name)
             XCTAssertEqual(got?.ready ?? false, exp["ready"] as? Bool ?? false, name)
         }
+    }
+
+    /// "It was me" once for every device (sealed.md 5.2 step 2b, kind 8563): belfry-android's
+    /// `confirm` section (main 921a6c1): 1 accepted, 9 refused by the rule, 5 on the shape.
+    func testConfirm() throws {
+        let v = try vector("sealed")
+        let c = dict(v["confirm"])
+        let account = try XCTUnwrap(c["account"] as? String)
+        let ch = try XCTUnwrap(try chain(events: dict(c["chain"]), account: account))
+        XCTAssertEqual(ch.rosters.count, 4)
+        let cases = list(c["cases"])
+        XCTAssertEqual(cases.count, 15)
+        var accepted = 0
+        for k in cases {
+            let name = k["name"] as? String ?? ""
+            let r = dict(k["rumor"])
+            let rumor = NostrEvent(id: r["id"] as? String ?? "", pubkey: r["pubkey"] as? String ?? "", createdAt: r["created_at"] as? Int ?? 0,
+                                   kind: r["kind"] as? Int ?? 0, tags: r["tags"] as? [[String]] ?? [], content: r["content"] as? String ?? "")
+            let exp = dict(k["expected"])
+            let got = AddedConfirm.verdict(rumor, sealPubkey: k["seal_pubkey"] as? String ?? "", chain: ch, account: account)
+            if exp["accepted"] as? Bool == true {
+                accepted += 1
+                XCTAssertEqual(got, .clears(exp["device"] as? String ?? ""), name)
+                XCTAssertEqual(AddedConfirm.addedBy(ch, exp["device"] as? String ?? "")?.id, exp["roster"] as? String, name)
+            } else {
+                XCTAssertEqual(exp["accepted"] as? Bool, false, name)
+                if case .clears = got { XCTFail("cleared: " + name) }
+            }
+        }
+        XCTAssertEqual(accepted, 1)
+        // the one real wrap opens to the first case's rumor, sealed by the phone
+        let w = dict(c["wrap"])
+        let secret = try XCTUnwrap(Data(hex: w["letterbox_secret"] as? String ?? ""))
+        guard case .opened(let rumor, let seal) = Sealed.open(try event(w["wrap"]), secret: secret) else { return XCTFail("the confirm wrap does not open") }
+        let exp = dict(w["expected"])
+        XCTAssertEqual(seal, exp["seal_pubkey"] as? String)
+        XCTAssertEqual(rumor.id, dict(exp["rumor"])["id"] as? String)
+        XCTAssertEqual(AddedConfirm.verdict(rumor, sealPubkey: seal, chain: ch, account: account), .clears(rumor.tag("device") ?? ""))
+        // an 8563 is never taken from a shared history
+        XCTAssertFalse([14, 7, 5].contains(AddedConfirm.kind))
     }
 
     func testWraps() throws {

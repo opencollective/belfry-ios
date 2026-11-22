@@ -2662,7 +2662,11 @@ an all-day end date as the last day too. Test: `EventsOverTests` (fixed clock, E
 
 The contract is collective-belfry `docs/sealed.md` (version 1), shared with the web chat and
 Android; this section only says where the iPhone app implements it. Vectors: `vectors/sealed.json`
-(the lead's `docs/sealed-vectors.json`, sha256 32f97764…b09a, copied byte for byte).
+(belfry-android main 921a6c1, sha256 3942f031…0986, copied byte for byte: the lead's
+`docs/sealed-vectors.json` 32f97764…b09a plus the `confirm` section). "It was me" once for every
+device (5.2 step 2b, kind 8563): `AddedConfirm` in `Sealed/Follow.swift`; the roster named is the
+one that LAST added the device; the shape is read strictly (rumor key = seal signer, content "",
+p / device / e exactly once); an unknown roster is kept and judged again when my chain moves.
 
 - `Sealed/Roster.swift`: a roster (8560), the valid chain from the anchor (30078 `belfry:sealed`),
   forks (lower id, lower-case hex), which device may have signed a seal (`accepts`), the changes

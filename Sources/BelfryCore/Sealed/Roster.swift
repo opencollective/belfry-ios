@@ -166,7 +166,9 @@ public struct RosterChain: Hashable, Sendable {
     /// The first roster that contains DEVICE: when it was added, and the device that signed it
     /// (nil when it signed itself in: the root).
     public func joined(_ device: String) -> (at: Int, from: String?)? {
-        guard let r = rosters.first(where: { $0.devices.contains(device) }) else { return nil }
+        // the roster that LAST added it (removed and added again: the later one)
+        guard let i = rosters.indices.last(where: { rosters[$0].devices.contains(device) && ($0 == 0 || !rosters[$0 - 1].devices.contains(device)) }) else { return nil }
+        let r = rosters[i]
         return (r.createdAt, r.signer == device ? nil : r.signer)
     }
 
