@@ -374,9 +374,12 @@ if [ "$UITESTS" != "none" ] && [ -n "${XCTESTRUN:-}" ] && [ -f "$XCTESTRUN" ]; t
             [ -n "$pid" ] && sample "$pid" 3 -file "$ABS/sample-$mode-$(date +%s).txt" >/dev/null 2>&1
           done ) &
     SAMPLER=$!
+    # a test that fails is run once more before the job fails (a held message's menu sometimes
+    # does not open on the first press on a busy runner; a whole job used to be run again for it)
     set +e
     TEST_RUNNER_SHOTS_DIR="$ABS" TEST_RUNNER_SHOTS_SUFFIX="$mode" \
       xcodebuild test-without-building -xctestrun "$XCTESTRUN" -destination "id=$UDID" $ONLY \
+      -retry-tests-on-failure -test-iterations 2 \
       -resultBundlePath "ui-$mode.xcresult" > "ui-$mode.log" 2>&1
     code=$?
     kill $SAMPLER 2>/dev/null; pkill -f "log stream --style compact --predicate subsystem" 2>/dev/null
