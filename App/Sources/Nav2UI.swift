@@ -34,7 +34,7 @@ struct AddChannelScreen: View {
                         .accessibilityIdentifier("add-channel-name")
                 }
             } footer: {
-                Button { hideKeyboard(); model.createFirst = .group; model.showCreate = true } label: {
+                Button { hideKeyboard(); model.pushRoute = .newGroup } label: {
                     (Text("Everyone in \(model.config.name) can read channels. For a smaller circle, ") + Text("start a group").foregroundColor(.brand) + Text("."))
                         .multilineTextAlignment(.leading)
                 }

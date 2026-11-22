@@ -53,7 +53,7 @@ struct GroupsView: View {
         .placeChrome("Groups")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { hideKeyboard(); model.createFirst = .group; model.showCreate = true } label: { Image(systemName: "plus") }
+                Button { hideKeyboard(); model.pushRoute = .newGroup } label: { Image(systemName: "plus") }
                     .accessibilityLabel("New group")
             }
         }

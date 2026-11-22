@@ -4,6 +4,13 @@ import Foundation
 // proposals, drop links, profiles, labels, inbox cards, Belfry events. Pure: random ids and the
 // time come in as parameters. Port of the web chat's actions.ts / events.ts (Android Actions.kt).
 
+/// Who can join a new group (the New group form).
+public enum GroupAccess: String, Hashable, Sendable, CaseIterable {
+    case open, closed, `private`
+    public var title: String { self == .open ? "Open" : self == .closed ? "Closed" : "Private" }
+    public var line: String { self == .open ? "Any member can join" : self == .closed ? "Members apply to join" : "Only invited people" }
+}
+
 public struct PodAccess: Hashable, Sendable {
     public var closed = false
     public var prompt = ""
@@ -114,6 +121,30 @@ public extension Actions {
             return [["closed"], ["prompt", p.isEmpty ? defaultPrompt : p]]
         }
         return [["open"]]
+    }
+
+    /// A new group from the New group form (one-shape.md "Groups: open, closed, private"): Open =
+    /// `open`, `public`; Closed = `closed`, `public` (no question yet: that is in its Settings);
+    /// Private = `closed`, `private`, and no announcement in its parent (it is in no list).
+    static func createGroup(id: String, name: String, about: String, parent: String = generalId, access: GroupAccess) -> [Draft] {
+        let tags: [Tag]
+        switch access {
+        case .open: tags = [["open"], ["public"]]
+        case .closed: tags = [["closed"], ["public"]]
+        case .private: tags = [["closed"], ["private"]]
+        }
+        var out = [Draft(kind: 9007, tags: [["h", id]]),
+                   Draft(kind: 9002, tags: [["h", id], ["name", name], ["about", about]] + tags)]
+        if access != .private {
+            out.append(Draft(kind: 9, content: "⬡ New pod: \(name)" + (about.isEmpty ? "" : " · \(about)"), tags: [["h", parent], ["pod", id]]))
+        }
+        return out
+    }
+
+    /// The people the creator picked after the form: one 9000 each, ["p", pubkey, "member"].
+    static func addPeople(_ id: String, _ pubkeys: [String]) -> [Draft] {
+        var seen = Set<String>()
+        return pubkeys.filter { seen.insert($0).inserted }.map { admit(id, pubkey: $0) }
     }
 
     /// A pod: its own group `pod-…`, announced in its parent by a post with a `pod` tag.

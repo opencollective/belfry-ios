@@ -151,6 +151,9 @@ shot 100b-home-dark home dark
 shot 101-calendar calendar light
 shot 101b-calendar-dark calendar dark
 shot 102-groups groups light
+shot 136-group-new groupnew light
+shot 136b-group-new-dark groupnew dark
+shot 136c-group-new-pick groupnewpick light
 shot 102b-groups-all groupsall light
 shot 102c-groups-dark groups dark
 shot 103-create create light

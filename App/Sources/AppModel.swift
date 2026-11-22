@@ -815,6 +815,18 @@ final class AppModel: ObservableObject {
         return id
     }
 
+    /// New group (the form: Open / Closed / Private), under the main channel.
+    func createGroup(name: String, about: String, access: GroupAccess) -> String {
+        let id = Actions.newPodId(name)
+        for d in Actions.createGroup(id: id, name: name, about: about, access: access) { engine?.enqueue(d) }
+        return id
+    }
+
+    /// The people picked after the form: one 9000 each.
+    func addPeople(_ pubkeys: [String], to id: String) {
+        for d in Actions.addPeople(id, pubkeys) { engine?.enqueue(d) }
+    }
+
     func editPod(_ id: String, name: String, about: String, closed: Bool, prompt: String) {
         editGroupMeta(id, name: name, about: about, closed: closed, prompt: prompt)
     }

@@ -487,7 +487,7 @@ struct RootView: View {
                           if model.tab == t { current.wrappedValue = NavigationPath() } else { model.tab = t }
                       },
                       push: { r in closeDrawer(); push(r) },
-                      newGroup: { hideKeyboard(); closeDrawer(); model.createFirst = .group; model.showCreate = true })
+                      newGroup: { hideKeyboard(); closeDrawer(); push(PlaceRoute.newGroup) })
     }
 
     private func openDrawer() {
@@ -531,6 +531,13 @@ struct RootView: View {
         case "home", "homecalm": model.tab = .home
         case "calendar": model.tab = .calendar
         case "groups": model.tab = .groups
+        // boards groups/new, groups/new-pick (canvas v183)
+        case "groupnew":
+            model.tab = .groups
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { groupsPath.append(PlaceRoute.newGroup) }
+        case "groupnewpick":
+            model.tab = .groups
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { groupsPath.append(GroupPick(id: "pod-seed-swap-5e1d")) }
         case "groupsall":
             model.tab = .groups // GroupsView picks All from the launch screen
         case "create":

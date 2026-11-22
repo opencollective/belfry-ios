@@ -264,8 +264,14 @@ struct SettingsTab: View {
         let g = model.group(id)
         Section("Name") { TextField("Name", text: $name).font(.body) }
         Section("Description") { TextField("What is it about? (Markdown)", text: $about, axis: .vertical).lineLimit(3...8).font(.body) }
-        if g?.type == .channel || g?.isPod == true { whoReads(g) }
-        if g?.isPod == true && access == .closed {
+        // a private group stays private: only invited people, nothing to choose and no question
+        // (one-shape.md "Groups: open, closed, private")
+        if g?.isPrivate == true {
+            Section("Who can join") {
+                Label { VStack(alignment: .leading, spacing: 2) { Text("Private"); Text("Only invited people").font(.footnote).foregroundStyle(.secondary) } } icon: { Image(systemName: "lock") }
+            }
+        } else if g?.type == .channel || g?.isPod == true { whoReads(g) }
+        if g?.isPod == true && access == .closed && g?.isPrivate != true {
             // a closed group's question and how requests are accepted (web ClosedFields)
             Section("Question people answer when they ask") {
                 TextField(Actions.defaultPrompt, text: $prompt, axis: .vertical).lineLimit(1...4).font(.body)
