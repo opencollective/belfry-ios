@@ -30,7 +30,7 @@ MAP = [
     (r"App/Sources/(OneShapeUI|ChannelHeader|ActivityPreview)", "feed|thread|threadscreen|pulldown|mailfeed|inbox.*|town|todos", ""),
     (r"App/Sources/(PullDown|ChannelPlaces|ChannelDetails|NotifySheet)", "inbox.*|pull.*|member-pulldown|pinned|chsettings|chvisibility|chpublic|notify|members|membersinvitech|todos|files|log|closedrequests", ""),
     (r"App/Sources/(TodoScreen|AppModel\+Due)", "todo.*|mytodos", "testTodoAssign"),
-    (r"App/Sources/(TownDrawer|Tabs)", ".*drawer|home|town|calendar|groups|messagestab", "testDrawerSwipe testDrawerDrag testHomeDrawer testCalendarAndGroupsDrawer"),
+    (r"App/Sources/(TownDrawer|Tabs)", ".*drawer|home|town|calendar|groups|messagestab", "testDrawerSwipe testMenuRows testHomeDrawer testCalendarAndGroupsDrawer"),
     (r"App/Sources/(Nav2UI|AppModel\+Nav)", "addchannel.*|channelpreview|channelpin|member-channelpin|.*drawer|messagestab|feed", "testDrawerSwipe"),
     (r"App/Sources/(HomeView|AppModel\+Home)", "home|homedrawer|guest-home|guest-applied|mytodos", "testHomeDrawer"),
     (r"App/Sources/CalendarView", "calendar.*|guest-calendar", ""),

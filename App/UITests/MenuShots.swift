@@ -146,32 +146,23 @@ final class MenuShots: XCTestCase {
         }
     }
 
-    /// A steward holds a channel in the drawer and drags it into another category (SPEC 19.34).
-    func testDrawerDrag() {
+    /// Navigation v2 (boards nav2/drawer, 2026-11-22): the menu has Today, Messages, Mentions,
+    /// Calendar, GROUPS and CHANNELS (the main channel first, then the pinned ones), and its ＋ on
+    /// CHANNELS pushes Add a channel. (Categories and dragging channels left the menu.)
+    func testMenuRows() {
         let app = launch("towndrawer")
         sleep(2)
-        let kitchen = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Shared kitchen")).firstMatch
-        XCTAssertTrue(kitchen.waitForExistence(timeout: 10), "the drawer shows no Shared kitchen row")
-        let header = app.staticTexts["MAKING & MENDING"].firstMatch
-        XCTAssertTrue(header.waitForExistence(timeout: 5), "the drawer shows no Making & mending category")
-        guard kitchen.isHittable, header.isHittable else { XCTFail("the drawer's rows are not on screen"); return }
-        // the demo's database can keep an earlier run's move: drag it to the other side of the
-        // header. The simulator sometimes takes the drag as a scroll: up to five tries.
-        func kitchenRow() -> XCUIElement { app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Shared kitchen")).firstMatch }
-        func headerRow() -> XCUIElement { app.staticTexts["MAKING & MENDING"].firstMatch }
-        let below = kitchenRow().frame.minY > headerRow().frame.minY
-        var crossed = false
-        for _ in 1...5 where !crossed {
-            let k = kitchenRow(), h = headerRow()
-            guard k.isHittable, h.isHittable else { break }
-            let target = h.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: below ? -90 : 70))
-            k.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-                .press(forDuration: 1.6, thenDragTo: target, withVelocity: .slow, thenHoldForDuration: 0.8)
-            sleep(2)
-            crossed = (kitchenRow().frame.minY > headerRow().frame.minY) != below
+        for id in ["drawer-today", "drawer-messages", "drawer-mentions", "drawer-calendar", "drawer-new-group", "drawer-add-channel"] {
+            XCTAssertTrue(app.descendants(matching: .any)[id].firstMatch.waitForExistence(timeout: 10), "the menu has no \(id)")
         }
-        shot("54-drawer-drag")
-        XCTAssertTrue(crossed, "Shared kitchen did not cross the Making & mending header in five tries")
+        let general = app.descendants(matching: .any)["drawer-channel-general"].firstMatch
+        let kitchen = app.descendants(matching: .any)["drawer-channel-kitchen-7d10"].firstMatch
+        XCTAssertTrue(general.waitForExistence(timeout: 5), "the main channel is not in the menu")
+        XCTAssertTrue(kitchen.exists, "the channel pinned for everyone is not in the menu")
+        XCTAssertLessThan(general.frame.minY, kitchen.frame.minY, "the main channel is not first")
+        shot("54-menu")
+        app.descendants(matching: .any)["drawer-add-channel"].firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["add-channel-name"].firstMatch.waitForExistence(timeout: 6), "＋ on CHANNELS did not open Add a channel")
     }
 
     /// Home's ☰ opens the Town drawer, Today selected.
