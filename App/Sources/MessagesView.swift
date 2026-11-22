@@ -88,7 +88,7 @@ struct MessagesView: View {
             // board one-shape/dm-thread: Ana's conversation holds the demo's thread
             if screen == "dmthread" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("ana").pubkey) } }
             if screen == "enclocked" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("ana").pubkey) } }
-            if ["encthread", "encdevices", "encshare", "encwaiting", "encheld"].contains(screen) {
+            if ["encthread", "encdevices", "encdeviceswaiting", "encshare", "encwaiting", "encheld"].contains(screen) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate("n:" + Demo.signer("lina").pubkey) }
             }
             if screen == "encgroup" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate(Demo.groupConv(me: model.me)) } }
@@ -350,7 +350,7 @@ struct ConversationView: View {
                 if let r = DmThreads.split(model.dms?.thread(conv) ?? []).replies.keys.sorted().first { threadOf = DmThreadRoute(conv: conv, root: r) }
                 return
             }
-            guard ["encdevices", "encgroup", "encmaildevices", "encshare"].contains(screen) else { return }
+            guard ["encdevices", "encdeviceswaiting", "encgroup", "encmaildevices", "encshare"].contains(screen) else { return }
             try? await Task.sleep(nanoseconds: 700_000_000) // after the push: the picture is taken 6 s after launch
             if screen == "encshare" { sharing = sealed?.notices.first { $0.what == .locked } } else { encryption = true }
         }

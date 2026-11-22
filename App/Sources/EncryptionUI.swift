@@ -91,6 +91,14 @@ struct EncryptionScreen: View {
     @State private var mineOpen = true
     @State private var how = false
 
+    /// "Not allowed yet · asked 14:26" (when its request last left; "not asked yet" before that).
+    private var waitingLine: String {
+        let at = model.sealed.askedAt
+        guard at > 0 else { return "Not allowed yet · not asked yet" }
+        let today = Calendar.current.isDateInToday(Date(timeIntervalSince1970: TimeInterval(at)))
+        return "Not allowed yet · asked " + (today ? Format.time(at) : Format.day(at))
+    }
+
     var body: some View {
         let s = model.sealedConv(conv) ?? SealedConv(others: [])
         let mine = model.sealed.myDevices
@@ -134,6 +142,8 @@ struct EncryptionScreen: View {
                 Section("You") {
                     DisclosureGroup(isExpanded: $mineOpen) {
                         ForEach(mine) { d in MyDeviceRow(icon: d.kind.icon, name: d.name, line: SealedWords.added(d.added, from: d.from), this: d.this) }
+                        // this device, not allowed yet (board messages/encryption-devices-waiting, canvas v182)
+                        if model.sealed.notAllowed { MyDeviceRow(icon: UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone", name: UIDevice.current.model, line: waitingLine, this: true) }
                     } label: {
                         HStack(spacing: 12) {
                             Avatar(pubkey: model.me, size: 32)
@@ -147,6 +157,8 @@ struct EncryptionScreen: View {
             } else {
                 Section {
                     ForEach(mine) { d in MyDeviceRow(icon: d.kind.icon, name: d.name, line: SealedWords.added(d.added, from: d.from), this: d.this) }
+                        // this device, not allowed yet (board messages/encryption-devices-waiting, canvas v182)
+                        if model.sealed.notAllowed { MyDeviceRow(icon: UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone", name: UIDevice.current.model, line: waitingLine, this: true) }
                 } header: {
                     HStack(spacing: 8) {
                         Avatar(pubkey: model.me, size: 22)

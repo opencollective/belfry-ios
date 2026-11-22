@@ -87,6 +87,8 @@ struct SealedState: Equatable {
     /// Messages kept for a letterbox this device does not know yet (my devices are still being
     /// read from the relay): "Checking your devices…".
     var checkingCount = 0
+    /// When this device last asked to be allowed (0: not yet).
+    var askedAt = 0
     /// Diagnostics: why this device did or did not ask to be allowed (each step of the last pass).
     var upkeepLines: [String] = []
     /// In my head, the key not here yet: sealed conversations show "Waiting for another of your
@@ -270,6 +272,7 @@ extension AppModel {
         st.missingKeys = dms.lockedWraps > 0
         st.waitingCount = dms.lockedWraps
         st.checkingCount = dms.unknownWraps
+        st.askedAt = se.upkeepState.lastRequest
         st.upkeepLines = SealedDiagnostics.lines(se.upkeepState, mine: se.mine, now: Int.now)
         st.waitingForKey = se.lacksKey
         st.waitingLong = st.waitingForKey && (se.waitingSince.map { Int.now - $0 > 86400 } ?? false)
@@ -417,6 +420,9 @@ extension Demo {
         case "encnewdevice", "enchow", "enclocked":
             s.notAllowed = true
         // boards messages/encryption-waiting-list, -waiting-checking (canvas v177)
+        case "encdeviceswaiting":
+            s.notAllowed = true
+            s.askedAt = now - 1500
         case "encwaitinglist":
             s.notAllowed = true
             s.missingKeys = true

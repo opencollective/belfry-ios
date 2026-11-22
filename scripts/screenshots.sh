@@ -234,6 +234,7 @@ shot 180-enc-thread encthread light
 shot 180b-enc-thread-dark encthread dark
 shot 181-enc-devices encdevices light
 shot 181b-enc-devices-dark encdevices dark
+shot 181c-enc-devices-waiting encdeviceswaiting light
 shot 182-enc-group encgroup light
 shot 183-enc-mail encmail light
 shot 184-enc-mail-devices encmaildevices light
