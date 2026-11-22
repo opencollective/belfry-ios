@@ -580,15 +580,19 @@ public final class DirectMessages: @unchecked Sendable {
     /// LOCAL: the channel's address before the @ (its plain alias when it has one, SPEC 19.33).
     /// REFERENCES: the thread's Message-IDs before In-Reply-To, oldest first, space-separated.
     public func sendAsChannel(channel: String, local: String? = nil, channelName: String, to: String, subject: String, text: String, inReplyTo: String?,
-                              references: String? = nil, cardId: String, myName: String) async throws -> String {
+                              references: String? = nil, cardId: String, myName: String, cc: [String] = [], draft: String? = nil) async throws -> String {
         try engine.guestMode.check()
         guard let b = bridge else { throw BelfryError.invalid("This belfry does not send e-mail yet.") }
         // envelope (mail-from) and From header alike: the bridge checks they match
         let from = (local.flatMap { $0.isEmpty ? nil : $0 } ?? channel) + "@" + engine.config.domain
-        let (raw, _) = MIME.build(fromName: myName.isEmpty ? channelName : "\(myName) for \(channelName)", from: from, to: to, subject: subject, text: text,
+        let (raw, _) = MIME.build(fromName: myName.isEmpty ? channelName : "\(myName) for \(channelName)", from: from, to: to, cc: cc, subject: subject, text: text,
                                   inReplyTo: inReplyTo, references: references, domain: engine.config.domain)
         let emailId = UUID().uuidString.lowercased()
-        let rumor = GiftWrap.rumor(kind: 1301, pubkey: me, tags: [["email-id", emailId], ["mail-from", from], ["rcpt-to", to], ["subject", subject], ["e", cardId]], content: raw)
+        // Reply all (one-shape.md §4): one rcpt-to per person; the draft it came from
+        var tags: [Tag] = [["email-id", emailId], ["mail-from", from]] + ([to] + cc).map { ["rcpt-to", $0] }
+        tags += [["subject", subject], ["e", cardId]]
+        if let draft, !draft.isEmpty { tags.append(["draft", draft]) }
+        let rumor = GiftWrap.rumor(kind: 1301, pubkey: me, tags: tags, content: raw)
         if engine.localOnly {
             lock.lock(); reports[emailId] = DeliveryReport(status: "failed", details: "Demo mode sends no e-mail."); lock.unlock()
             save()

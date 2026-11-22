@@ -38,7 +38,7 @@ MAP = [
     (r"App/Sources/(SignInView|AppModel\+SignIn|NoLinkUI|WayInUI|AppModel\+WayIn)", "signin.*", ""),
     (r"App/Sources/(PeopleUI|MembersDirectory|RequestsView|AppModel\+People)", "profile|guestprofile|guestagentprofile|editprofile|me|meplace|enconlydevice|mycard|myprofile|members.*|directory|requests|rolepicker|eventrole", ""),
     (r"App/Sources/(BelfrySettings|RolesSettings|ChannelEnd)", "settings.*|channelend.*|channelarchive|rolepicker", "testDeleteEmptyChannel"),
-    (r"App/Sources/MailUI", "mail.*|fullmail", ""),
+    (r"App/Sources/(MailUI|AppModel\+MailReply)", "mail.*|fullmail", ""),
     (r"App/Sources/ProposalScreen", "proposal.*", ""),
     (r"App/Sources/(MessagesView|MentionsView)", "messages|homemessages|conversation|mentions|mail|enc.*|sendstill|sendnotyet|dmfiles|dmfilessending", "testPushedHasNoDrawer"),
     (r"App/Sources/SendLine", "sendstill|sendnotyet|diagnostics|feed|dmfilessending", ""),

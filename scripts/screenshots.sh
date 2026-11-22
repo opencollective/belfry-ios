@@ -117,12 +117,14 @@ shot 138-pinned pinned light
 # 2026-11-16 round 2: e-mail threads in a channel, a guest's request, the first minutes
 shot 120-mail-feed mailfeed light
 shot 120b-mail-feed-dark mailfeed dark
+# 0.8.0 (g) one shape: the thread pulled (e-mails on top, Cc line, reply-all icon; the draft in the
+# conversation), Reply all (the compose sheet), the thread folded (mailcomment)
 shot 121-mail-thread mailthread light
 shot 121b-mail-thread-dark mailthread dark
 shot 122-mail-reply mailreply light
 shot 122b-mail-reply-dark mailreply dark
-shot 122c-mail-comment mailcomment light
-shot 122d-mail-comment-dark mailcomment dark
+shot 122c-mail-folded mailcomment light
+shot 122d-mail-folded-dark mailcomment dark
 shot 123-full-mail fullmail light
 shot 124-welcome welcome light
 shot 124b-welcome-charter welcomecharter light

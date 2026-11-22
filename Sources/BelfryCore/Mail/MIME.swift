@@ -218,7 +218,7 @@ public enum MIME {
     }
 
     /// An e-mail (UTF-8) ready for the bridge: the text as written and as Markdown rendered.
-    public static func build(fromName: String, from: String, to: String, subject: String, text: String,
+    public static func build(fromName: String, from: String, to: String, cc: [String] = [], subject: String, text: String,
                              inReplyTo: String? = nil, references: String? = nil, domain: String,
                              date: Date = Date()) -> (raw: String, messageId: String) {
         let messageId = "<\(UUID().uuidString.lowercased())@\(domain)>"
@@ -230,6 +230,10 @@ public enum MIME {
         var h = [
             "From: \(name.isEmpty ? "" : (isASCII(name) ? "\"\(name)\"" : word(name)) + " ")<\(from)>",
             "To: <\(to)>",
+        ]
+        let ccs = cc.map { $0.replacingOccurrences(of: "[\\r\\n<>,]", with: "", options: .regularExpression) }.filter { !$0.isEmpty }
+        if !ccs.isEmpty { h.append("Cc: " + ccs.map { "<\($0)>" }.joined(separator: ", ")) }
+        h += [
             "Subject: \(word(subject.replacingOccurrences(of: "[\\r\\n]+", with: " ", options: .regularExpression)))",
             "Date: \(df.string(from: date))",
             "Message-ID: \(messageId)",
