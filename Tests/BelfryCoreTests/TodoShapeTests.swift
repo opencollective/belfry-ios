@@ -91,3 +91,12 @@ final class TodoDescriptionTests: XCTestCase {
         XCTAssertNil(d2.todoDescription("g", try XCTUnwrap(d2.tasks("g").first)))
     }
 }
+
+final class TodoDescriptionVectorTests: XCTestCase {
+    func testVector() throws {
+        for c in try vector("one-shape").dict("description").list("cases") {
+            XCTAssertEqual(TodoDue.resolve(tags: tags(c["tags"]), title: c.str("title") ?? "", source: c.str("source")),
+                           c.str("expect"), c.str("name") ?? "")
+        }
+    }
+}

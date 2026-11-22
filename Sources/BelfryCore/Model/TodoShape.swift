@@ -21,6 +21,14 @@ public enum TodoDue {
         let s = t[1].jsTrim().sliceUnits(descriptionLimit)
         return s.isEmpty ? nil : s
     }
+
+    /// The description shown (vectors/one-shape.json "description"): the tag, else SOURCE (the
+    /// message it was made from) trimmed, when not empty and not exactly the trimmed TITLE.
+    public static func resolve(tags: [Tag], title: String, source: String?) -> String? {
+        if let d = description(tags) { return d }
+        guard let src = source?.jsTrim(), !src.isEmpty, src != title.jsTrim() else { return nil }
+        return src
+    }
 }
 
 /// One quiet line in a to-do's conversation, or a comment.
@@ -111,10 +119,8 @@ public extension Derive {
     /// What the to-do says beyond its title: its description, else the text of the message it was
     /// made from, when that says more than the title.
     func todoDescription(_ groupId: String, _ t: TodoTask) -> String? {
-        if let a = t.about { return a }
-        guard let s = t.source, let m = message(groupId, s) else { return nil }
-        let text = plainRefs(m.text, npub: "", links: false).jsTrim()
-        return text.isEmpty || text == t.title ? nil : text
+        let src = t.source.flatMap { message(groupId, $0) }.map { plainRefs($0.text, npub: "", links: false) }
+        return TodoDue.resolve(tags: t.about.map { [["description", $0]] } ?? [], title: t.title, source: src)
     }
 }
 
