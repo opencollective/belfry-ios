@@ -94,6 +94,7 @@ struct ChannelPlaceView: View {
     }
 
     private var list: some View {
+        ScrollViewReader { proxy in
         List {
             switch place {
             case .pinned: PinnedSection(id: id, go: go)
@@ -109,6 +110,12 @@ struct ChannelPlaceView: View {
             case .settings: if model.derive.canAdmin(model.group(id)) { SettingsTab(id: id) }; PinSection(id: id)
             case .events, .members, .emails: EmptyView()
             }
+        }
+        // screenshots: the end of Settings (the E-mail and Pin sections)
+        .onAppear {
+            guard place == .settings, model.launch.screen == "chsettingsend" else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { proxy.scrollTo("settings-pin", anchor: .bottom) }
+        }
         }
     }
 }

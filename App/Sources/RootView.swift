@@ -624,6 +624,9 @@ struct RootView: View {
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { account = true }
         case "members", "todos", "todo", "todoassign", "files", "log", "chsettings", "pinned", "membersinvitech": selection = .channel(generalId)
+        // the end of a channel's Settings (E-mail, Pin): the garden, which Sam does not administer
+        // by role but the demo's steward edits
+        case "chsettingsend": selection = .channel("garden-3f2a")
         case "website", "websitethread", "notify", "chvisibility", "chpublic": selection = .channel("website")
         case "reqclose", "reqcloseconfirm": selection = .channel("requests")
         case "closedask", "closedpending", "closedrequests": selection = .channel("board-5d1e")

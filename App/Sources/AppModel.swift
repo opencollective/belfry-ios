@@ -98,6 +98,9 @@ final class AppModel: ObservableObject {
     @Published var pushedOverRoot = 0
     /// iPhone: the bottom bar's place (Navigation v2: Today · Calendar · Messages · Groups · Town).
     @Published var tab: AppTab = .home
+    /// A channel's address as the belfry gives it (POST /mail-alias), kept per account: what the
+    /// app shows and answers from. A channel not in here: the address worked out on the device.
+    @Published var channelAddresses: [String: String] = (UserDefaults.standard.dictionary(forKey: AppModel.perAccount("belfry-channel-addresses")) as? [String: String]) ?? [:]
     /// How many members the belfry has, from its directory (the menu's header): the last answer,
     /// kept per account. Never the Townsquare's own list (members read it without being in it).
     @Published var directoryCount: Int?
@@ -919,7 +922,7 @@ final class AppModel: ObservableObject {
             return .success("")
         }
         do {
-            let id = try await dms.sendAsChannel(channel: group, local: d.mailLocal(group), channelName: self.group(group)?.name ?? group, to: to.address,
+            let id = try await dms.sendAsChannel(channel: group, local: await answerLocal(group), channelName: self.group(group)?.name ?? group, to: to.address,
                                                  subject: subject, text: text, inReplyTo: to.messageId, references: refs.isEmpty ? nil : refs,
                                                  cardId: to.m.id, myName: realName(me))
             return .success(id)

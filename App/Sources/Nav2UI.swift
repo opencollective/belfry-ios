@@ -222,6 +222,7 @@ struct PinSection: View {
                 }
             }
         } header: { Text("Pin") }
+        .id("settings-pin")
     }
 
     private func toggleMine() {

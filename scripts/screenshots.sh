@@ -83,6 +83,8 @@ shot 135c-pulldown-dark pulldown dark
 shot 136-channel-members members light
 shot 136b-channel-members-invite membersinvitech light
 shot 137-channel-settings chsettings light
+shot 137b-channel-settings-end chsettingsend light
+shot 137c-channel-settings-end-dark chsettingsend dark
 # 2026-11-18 round 6: the Notifications sheet, "Who can read it" (+ the Public question), a closed
 # channel (Ask to join as a member, the requests for its steward), the proposal at the top of its
 # chat (half, folded, full), the e-mail thread's two modes (mailreply / mailcomment above)

@@ -154,7 +154,7 @@ struct MailAliasRow: View {
     @State private var alias: MailAlias?
 
     var body: some View {
-        let address = alias?.address ?? fallback
+        let address = alias?.address ?? model.channelAddresses[channel] ?? fallback
         SwiftUI.Group {
             if alias?.maySet == true {
                 NavigationLink { MailAliasScreen(channel: channel, alias: $alias) } label: { line(address) }
@@ -166,7 +166,9 @@ struct MailAliasRow: View {
         .task {
             guard alias == nil, !model.isDemo else { return }
             alias = try? await model.api.mailAlias(channel: channel)
+            if let a = alias { model.keepChannelAddress(channel, a.address) }
         }
+        .onChange(of: alias) { _, a in if let a { model.keepChannelAddress(channel, a.address) } }
     }
 
     private func line(_ address: String) -> some View {
