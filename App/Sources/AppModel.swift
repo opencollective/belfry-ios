@@ -98,6 +98,9 @@ final class AppModel: ObservableObject {
     @Published var pushedOverRoot = 0
     /// iPhone: the bottom bar's place (Navigation v2: Today · Calendar · Messages · Groups · Town).
     @Published var tab: AppTab = .home
+    /// A channel's address as the belfry gives it (POST /mail-alias), kept per account: what the
+    /// app shows and answers from. A channel not in here: the address worked out on the device.
+    @Published var channelAddresses: [String: String] = (UserDefaults.standard.dictionary(forKey: AppModel.perAccount("belfry-channel-addresses")) as? [String: String]) ?? [:]
     /// How many members the belfry has, from its directory (the menu's header): the last answer,
     /// kept per account. Never the Townsquare's own list (members read it without being in it).
     @Published var directoryCount: Int?
@@ -815,6 +818,18 @@ final class AppModel: ObservableObject {
         return id
     }
 
+    /// New group (the form: Open / Closed / Private), under the main channel.
+    func createGroup(name: String, about: String, access: GroupAccess) -> String {
+        let id = Actions.newPodId(name)
+        for d in Actions.createGroup(id: id, name: name, about: about, access: access) { engine?.enqueue(d) }
+        return id
+    }
+
+    /// The people picked after the form: one 9000 each.
+    func addPeople(_ pubkeys: [String], to id: String) {
+        for d in Actions.addPeople(id, pubkeys) { engine?.enqueue(d) }
+    }
+
     func editPod(_ id: String, name: String, about: String, closed: Bool, prompt: String) {
         editGroupMeta(id, name: name, about: about, closed: closed, prompt: prompt)
     }
@@ -907,7 +922,7 @@ final class AppModel: ObservableObject {
             return .success("")
         }
         do {
-            let id = try await dms.sendAsChannel(channel: group, local: d.mailLocal(group), channelName: self.group(group)?.name ?? group, to: to.address,
+            let id = try await dms.sendAsChannel(channel: group, local: await answerLocal(group), channelName: self.group(group)?.name ?? group, to: to.address,
                                                  subject: subject, text: text, inReplyTo: to.messageId, references: refs.isEmpty ? nil : refs,
                                                  cardId: to.m.id, myName: realName(me))
             return .success(id)
@@ -1060,6 +1075,12 @@ final class AppModel: ObservableObject {
     }
 
     /// What can be posted in the channel: anything (nil), or one kind of post.
+    /// The kinds of post a channel takes (its Settings' four switches).
+    func setAccepts(_ id: String, _ takes: Set<String>) {
+        guard let g = group(id), let d = Actions.setAccepts(g, takes: takes, derive: derive) else { return }
+        engine?.enqueue(d)
+    }
+
     func setPosts(_ id: String, _ posts: String?) {
         guard let g = group(id), let d = Actions.setPosts(g, posts: posts, derive: derive) else { return }
         engine?.enqueue(d)

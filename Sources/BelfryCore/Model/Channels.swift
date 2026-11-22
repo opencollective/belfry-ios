@@ -12,6 +12,31 @@ public struct WebPage: Hashable, Sendable {
     public var visibility: String
     /// thread | event | proposal | request: the channel takes this one type of post (nil = any).
     public var posts: String?
+    /// The kinds of post it takes, as written (one-shape.md "A channel's Settings", 2026-11-22):
+    /// any non-empty subset of message, thread, event, proposal; nil = not written.
+    public var accepts: [String]? = nil
+
+    public static let kinds = ["message", "thread", "event", "proposal"]
+
+    /// What it takes: `accepts` when written, else from `posts` (nothing or "anything" = all
+    /// four; a single kind = that one alone; "request" keeps the old behaviour: all four).
+    public var takes: Set<String> {
+        if let a = accepts { let s = Set(a).intersection(WebPage.kinds); if !s.isEmpty { return s } }
+        if let p = posts, ["thread", "event", "proposal"].contains(p) { return [p] }
+        return Set(WebPage.kinds)
+    }
+
+    /// Plain messages are off: the composer gives way to the first kind that is on.
+    public var only: String? {
+        let t = takes
+        return t.contains("message") ? nil : ["thread", "event", "proposal"].first { t.contains($0) }
+    }
+
+    /// The `posts` an older app reads for TAKES: one of thread / event / proposal alone, else
+    /// "anything".
+    public static func legacyPosts(_ takes: Set<String>) -> String {
+        takes.count == 1 && takes != ["message"] ? takes.first! : "anything"
+    }
 }
 
 /// One stretch of time a channel was public, in seconds; `to` nil = still public.
@@ -68,7 +93,9 @@ public extension Derive {
         let members = vis == "members" || (vis == nil && c["list"] as? String == "own")
         let posts = (c["posts"] as? String).flatMap { Derive.postTypes.contains($0) ? $0 : nil }
         let slug = c["slug"].map { "\($0)" } ?? ""
-        return WebPage(on: (c["on"] as? Bool) ?? ((c["on"] as? Int).map { $0 != 0 } ?? false), slug: slug, visibility: members ? "members" : "public", posts: posts)
+        let accepts = (c["accepts"] as? [Any])?.compactMap { $0 as? String }.filter(WebPage.kinds.contains)
+        return WebPage(on: (c["on"] as? Bool) ?? ((c["on"] as? Int).map { $0 != 0 } ?? false), slug: slug, visibility: members ? "members" : "public", posts: posts,
+                       accepts: accepts?.isEmpty == false ? accepts : nil)
     }
 
     /// A public channel: its page is on and anyone on the web reads it. Everything else is members only.
@@ -268,6 +295,26 @@ public extension Actions {
     /// What can be posted in a channel (board channels/settings "Posts"; the web settings' `posts`):
     /// nil = anything, else one of `Derive.postTypes`. The settings' other keys are kept; a
     /// channel without web settings yet gets them as members only, page off. nil when it is that already.
+    /// Which kinds of post the channel takes (its Settings' four switches): `accepts` in the web
+    /// setting, and `posts` beside it for older apps. Nil when nothing changes or TAKES is empty.
+    static func setAccepts(_ g: Group, takes: Set<String>, derive d: Derive) -> Draft? {
+        let want = takes.intersection(WebPage.kinds)
+        guard !want.isEmpty else { return nil }
+        let w = d.webPage(g)
+        if (w?.takes ?? Set(WebPage.kinds)) == want && (w?.accepts != nil || want.count == WebPage.kinds.count) { return nil }
+        var c = d.webContent(g)
+        c["accepts"] = WebPage.kinds.filter(want.contains)
+        // an old `posts` that is none of the kinds (e.g. "request", the requests page) is kept
+        // while all four are on; it follows the rule only once a kind is off (one-shape.md d85f408)
+        let old = c["posts"] as? String
+        let odd = old.map { !["anything", "thread", "event", "proposal"].contains($0) } ?? false
+        if !(odd && want.count == WebPage.kinds.count) { c["posts"] = WebPage.legacyPosts(want) }
+        if c["on"] == nil { c["on"] = false }
+        if c["visibility"] == nil { c["visibility"] = "members" }
+        if (c["slug"].map { "\($0)" } ?? "").isEmpty { c["slug"] = Derive.slugify(g.rawName.isEmpty ? g.name : g.rawName) }
+        return webPage(g.id, content: c)
+    }
+
     static func setPosts(_ g: Group, posts: String?, derive d: Derive) -> Draft? {
         let want = posts.flatMap { Derive.postTypes.contains($0) ? $0 : nil }
         let w = d.webPage(g)

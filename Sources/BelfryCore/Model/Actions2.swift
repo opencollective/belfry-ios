@@ -4,6 +4,13 @@ import Foundation
 // proposals, drop links, profiles, labels, inbox cards, Belfry events. Pure: random ids and the
 // time come in as parameters. Port of the web chat's actions.ts / events.ts (Android Actions.kt).
 
+/// Who can join a new group (the New group form).
+public enum GroupAccess: String, Hashable, Sendable, CaseIterable {
+    case open, closed, `private`
+    public var title: String { self == .open ? "Open" : self == .closed ? "Closed" : "Private" }
+    public var line: String { self == .open ? "Any member can join" : self == .closed ? "Members apply to join" : "Only invited people" }
+}
+
 public struct PodAccess: Hashable, Sendable {
     public var closed = false
     public var prompt = ""
@@ -116,6 +123,30 @@ public extension Actions {
         return [["open"]]
     }
 
+    /// A new group from the New group form (one-shape.md "Groups: open, closed, private"): Open =
+    /// `open`, `public`; Closed = `closed`, `public` (no question yet: that is in its Settings);
+    /// Private = `closed`, `private`, and no announcement in its parent (it is in no list).
+    static func createGroup(id: String, name: String, about: String, parent: String = generalId, access: GroupAccess) -> [Draft] {
+        let tags: [Tag]
+        switch access {
+        case .open: tags = [["open"], ["public"]]
+        case .closed: tags = [["closed"], ["public"]]
+        case .private: tags = [["closed"], ["private"]]
+        }
+        var out = [Draft(kind: 9007, tags: [["h", id]]),
+                   Draft(kind: 9002, tags: [["h", id], ["name", name], ["about", about]] + tags)]
+        if access != .private {
+            out.append(Draft(kind: 9, content: "⬡ New pod: \(name)" + (about.isEmpty ? "" : " · \(about)"), tags: [["h", parent], ["pod", id]]))
+        }
+        return out
+    }
+
+    /// The people the creator picked after the form: one 9000 each, ["p", pubkey, "member"].
+    static func addPeople(_ id: String, _ pubkeys: [String]) -> [Draft] {
+        var seen = Set<String>()
+        return pubkeys.filter { seen.insert($0).inserted }.map { admit(id, pubkey: $0) }
+    }
+
     /// A pod: its own group `pod-…`, announced in its parent by a post with a `pod` tag.
     static func createPod(id: String, name: String, about: String, parent: String = generalId, access: PodAccess = PodAccess()) -> [Draft] {
         [Draft(kind: 9007, tags: [["h", id]]),
@@ -130,7 +161,7 @@ public extension Actions {
     /// A 9002 that changes only what is given and keeps the rest of G's metadata (the relay
     /// replaces the whole metadata on each 9002: one with only a name dropped closed / prompt /
     /// vouches / picture).
-    static func groupMeta(_ g: Group, name: String? = nil, about: String? = nil, picture: String? = nil, closed: Bool? = nil, prompt: String? = nil, archived: Bool? = nil, vouches: Int? = nil) -> Draft {
+    static func groupMeta(_ g: Group, name: String? = nil, about: String? = nil, picture: String? = nil, closed: Bool? = nil, prompt: String? = nil, archived: Bool? = nil, vouches: Int? = nil, isPrivate: Bool? = nil) -> Draft {
         // a name not known here is left out, never written as "" or the id (Xavier 2026-11-18)
         let n = name ?? g.name
         var tags: [Tag] = [["h", g.id]] + (n.isEmpty ? [] : [["name", PlaceNames.wire(id: g.id, name: n)]]) + [["about", about ?? g.about]]
@@ -144,7 +175,14 @@ public extension Actions {
         if isClosed && v > 0 { tags.append(["vouches", String(v)]) }
         // archived (SPEC 19.30): said when it changes, kept while it is on
         if let archived { tags.append(["archived", archived ? "1" : "0"]) } else if g.archived { tags.append(["archived", "1"]) }
-        tags += g.metaExtra // what the relay's copy holds that this app doesn't model (web metaTags)
+        // private / public (one-shape.md): kept as the relay has it unless it is being changed
+        // (a private group is closed: Private = `closed`, `private`)
+        var extra = g.metaExtra
+        if let isPrivate {
+            extra.removeAll { $0 == ["private"] || $0 == ["public"] }
+            tags.append([isPrivate ? "private" : "public"])
+        }
+        tags += extra // what the relay's copy holds that this app doesn't model (web metaTags)
         return Draft(kind: 9002, tags: tags)
     }
 

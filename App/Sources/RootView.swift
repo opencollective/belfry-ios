@@ -487,7 +487,7 @@ struct RootView: View {
                           if model.tab == t { current.wrappedValue = NavigationPath() } else { model.tab = t }
                       },
                       push: { r in closeDrawer(); push(r) },
-                      newGroup: { hideKeyboard(); closeDrawer(); model.createFirst = .group; model.showCreate = true })
+                      newGroup: { hideKeyboard(); closeDrawer(); push(PlaceRoute.newGroup) })
     }
 
     private func openDrawer() {
@@ -531,6 +531,13 @@ struct RootView: View {
         case "home", "homecalm": model.tab = .home
         case "calendar": model.tab = .calendar
         case "groups": model.tab = .groups
+        // boards groups/new, groups/new-pick (canvas v183)
+        case "groupnew":
+            model.tab = .groups
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { groupsPath.append(PlaceRoute.newGroup) }
+        case "groupnewpick":
+            model.tab = .groups
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { groupsPath.append(GroupPick(id: "pod-seed-swap-5e1d")) }
         case "groupsall":
             model.tab = .groups // GroupsView picks All from the launch screen
         case "create":
@@ -617,6 +624,9 @@ struct RootView: View {
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { account = true }
         case "members", "todos", "todo", "todoassign", "files", "log", "chsettings", "pinned", "membersinvitech": selection = .channel(generalId)
+        // the end of a channel's Settings (E-mail, Pin): the garden, which Sam does not administer
+        // by role but the demo's steward edits
+        case "chsettingsend": selection = .channel("garden-3f2a")
         case "website", "websitethread", "notify", "chvisibility", "chpublic": selection = .channel("website")
         case "reqclose", "reqcloseconfirm": selection = .channel("requests")
         case "closedask", "closedpending", "closedrequests": selection = .channel("board-5d1e")
@@ -671,8 +681,8 @@ struct RootView: View {
         case "membersinvite": selection = .members
         case "messages", "conversation", "mail", "mailpictures", "sendstill", "sendnotyet", "dmfiles", "dmfilessending", "typingdm", "typinglist", "dmthread": selection = .messages
         // boards messages/encryption-*: MessagesView and ConversationView open the rest
-        case "encthread", "encdevices", "encgroup", "encmail", "encmaildevices", "encnewdevice", "encdeviceswaiting", "encwaitinglist", "encchecking", "enchow", "encfresh", "encfreshconfirm", "encallow", "encallowfull", "encallowwaiting", "encwaiting", "encheld", "encshare", "enclocked", "encshared", "encsharedwhy": selection = .messages
-        case "encremove", "encdevicesnotallowed":
+        case "encthread", "encdevices", "encgroup", "encmail", "encmaildevices", "encnewdevice", "encdeviceadded", "encdeviceswaiting", "encwaitinglist", "encchecking", "enchow", "encfresh", "encfreshconfirm", "encallow", "encallowfull", "encallowwaiting", "encwaiting", "encheld", "encshare", "enclocked", "encshared", "encsharedwhy": selection = .messages
+        case "encremove", "encdevicesnotallowed", "encdevicesadded":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { push(PlaceRoute.devices) }
         case "enclinked":

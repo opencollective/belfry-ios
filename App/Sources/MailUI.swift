@@ -433,7 +433,7 @@ struct MailThreadView: View {
             if fields {
                 VStack(alignment: .leading, spacing: 4) {
                     fieldRow("From", li.map { $0.name.isEmpty ? $0.address : "\($0.name) <\($0.address)>" } ?? t.address)
-                    fieldRow("To", to.isEmpty ? d.channelAddress(group) : to.map(party).joined(separator: ", "))
+                    fieldRow("To", to.isEmpty ? model.channelAddress(group) : to.map(party).joined(separator: ", "))
                     if !cc.isEmpty { fieldRow("Cc", cc.map(party).joined(separator: ", ")) }
                     Text("Hide").font(.caption.weight(.semibold)).foregroundStyle(Color.brand)
                 }
@@ -834,9 +834,11 @@ struct ReplyAllSheet: View {
         return Form {
             Section {
                 LabeledContent("From") {
-                    HStack(spacing: 4) { Text(d.channelAddress(group)); Image(systemName: "lock.fill").imageScale(.small).foregroundStyle(.secondary) }
+                    HStack(spacing: 4) { Text(model.channelAddress(group)); Image(systemName: "lock.fill").imageScale(.small).foregroundStyle(.secondary) }
                 }
-                .accessibilityLabel("From \(d.channelAddress(group)), fixed")
+                .accessibilityLabel("From \(model.channelAddress(group)), fixed")
+                // the belfry's word for the address (an admin may have set another one)
+                .task { await model.refreshChannelAddress(group) }
                 LabeledContent("To", value: all.first ?? "")
                 LabeledContent("Cc/Bcc", value: all.count > 1 ? all.dropFirst().joined(separator: ", ") : "")
                 TextField("Subject", text: $subject).font(.body)

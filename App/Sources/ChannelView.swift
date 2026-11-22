@@ -174,14 +174,27 @@ struct ChannelView: View {
                 if let g, d.readOnlyClosed(g) {
                     // a closed channel or group I'm not in: read only, the bar above asks to join
                     EmptyView()
-                } else if let only = d.webPage(g)?.posts, ["thread", "proposal", "event"].contains(only) {
-                    OnlyBar(id: id, only: only, isPublic: d.isPublic(g))
                 } else {
+                    // which kinds of post the channel takes (its Settings' four switches; the rule
+                    // shared with Android): Messages on = the composer; Messages off and Threads
+                    // on = the composer stays and starts a thread; both off = a button per kind on
+                    let takes = d.webPage(g)?.takes ?? Set(WebPage.kinds)
                     // Navigation v2 (nav2/channel-preview): a channel not in my menu
                     if model.previewing.contains(id) { PreviewBar(label: model.derive.label(id)) }
-                    Composer(group: id, placeholder: composerPlaceholder(g), canAnnounce: d.canAdmin(g), topic: topic, draftKey: "c:" + id) { text, attachments, announce in
-                        model.post(text, in: id, attachments: attachments, announce: announce, topic: topic)
-                        feedPos.toEnd(animated: true)
+                    if takes.contains("message") {
+                        Composer(group: id, placeholder: composerPlaceholder(g), canAnnounce: d.canAdmin(g), topic: topic, draftKey: "c:" + id, kinds: takes) { text, attachments, announce in
+                            model.post(text, in: id, attachments: attachments, announce: announce, topic: topic)
+                            feedPos.toEnd(animated: true)
+                        }
+                    } else if takes.contains("thread") {
+                        Composer(group: id, placeholder: "Start a thread", topic: topic, draftKey: "c:" + id, kinds: takes) { text, attachments, _ in
+                            // the first line is the thread's title, the rest its text
+                            let lines = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+                            model.postThread(title: lines.first ?? text, text: lines.count > 1 ? lines[1] : "", in: id, attachments: attachments)
+                            feedPos.toEnd(animated: true)
+                        }
+                    } else {
+                        OnlyBar(id: id, kinds: ["event", "proposal"].filter(takes.contains), isPublic: d.isPublic(g))
                     }
                 }
                 }
@@ -430,7 +443,7 @@ struct ChannelView: View {
         case "todos", "todo", "todoassign": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .todos }
         case "files": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .photos }
         case "log": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .log }
-        case "chsettings", "chvisibility", "chpublic", "channelpin": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .settings }
+        case "chsettings", "chsettingsend", "chvisibility", "chpublic", "channelpin": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .settings }
         case "closedrequests": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .members }
         case "settingsfailedalert": DispatchQueue.main.asyncAfter(deadline: .now() + 2) { settingsIssue = true }
         case "pinned": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .pinned }
@@ -587,25 +600,34 @@ struct EmptyChannel: View {
 struct OnlyBar: View {
     @EnvironmentObject var model: AppModel
     let id: String
-    let only: String
+    /// The kinds that are on while plain messages and threads are off: a button each.
+    let kinds: [String]
     let isPublic: Bool
     @State private var thread = false
     @State private var proposal: CreateKind?
     @State private var event = false
 
+    private var only: String { kinds.first ?? "event" }
+
     var body: some View {
         HStack(spacing: 12) {
-            Text(line).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 4)
-            Button(only == "thread" ? "New thread" : only == "proposal" ? "New proposal" : "New event") {
-                hideKeyboard()
-                switch only {
-                case "thread": thread = true
-                case "proposal": proposal = .proposal
-                default: event = true
-                }
+            if kinds.count == 1 {
+                Text(line).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            .buttonStyle(.brand).controlSize(.small)
+            Spacer(minLength: 4)
+            ForEach(kinds, id: \.self) { k in
+                Button(k == "thread" ? "New thread" : k == "proposal" ? "New proposal" : "New event") {
+                    hideKeyboard()
+                    switch k {
+                    case "thread": thread = true
+                    case "proposal": proposal = .proposal
+                    default: event = true
+                    }
+                }
+                .buttonStyle(.brand).controlSize(.small)
+                .accessibilityIdentifier("only-" + k)
+            }
+            if kinds.count > 1 { Spacer(minLength: 4) }
         }
         .padding(.horizontal).padding(.vertical, 10)
         .floatingBar()

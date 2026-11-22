@@ -16,6 +16,12 @@ struct MessagesView: View {
         let _ = model.version
         let threads = model.dms?.threads() ?? []
         List {
+            // a device added without a prompt here: said on top until answered (sealed.md 5.2 step 2a)
+            ForEach(model.sealed.added) { n in
+                DeviceAddedCard(notice: n)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+            }
             // this device is not allowed yet (whether or not anything arrived), or holds messages
             // it has no key for: the banner says how many wait. My devices not read yet and
             // messages kept meanwhile: "Checking your devices…". Never "No messages" under it.
@@ -27,7 +33,7 @@ struct MessagesView: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
             }
-            if threads.isEmpty && !locked && !checking {
+            if threads.isEmpty && !locked && !checking && model.sealed.added.isEmpty {
                 ContentUnavailableView("No messages", systemImage: "envelope", description: Text("Write to anyone in the town with the pen."))
             }
             // "Your address: sam@demo.belfry.sh" (board home/messages)
@@ -120,15 +126,14 @@ struct ThreadRow: View {
         let mail = MailThreads.isMail(thread.conv)
         HStack(alignment: .top, spacing: 12) {
             if mail {
-                Image(systemName: "envelope.fill").font(.title3).foregroundStyle(Theme.onAccent)
-                    .frame(width: 40, height: 40).background(Color.brand, in: Circle())
-                    .accessibilityHidden(true)
+                // a face, not an envelope (board home/messages): their picture, else initials
+                MailFace(address: MailThreads.address(thread.conv), name: mailName)
             } else {
                 Avatar(pubkey: MailThreads.peers(thread.conv).first ?? "", size: 40)
             }
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text(title).font(.body.weight(thread.unread > 0 ? .semibold : .regular)).lineLimit(1)
+                    Text(title).font(.body.weight(.semibold)).lineLimit(1)
                     // not allowed yet: every conversation and e-mail thread carries the lock (the lead, 2026-11-22)
                     if model.sealed.notAllowed, !model.lockedHere(thread.conv) {
                         Image(systemName: "lock.fill").font(.caption2).foregroundStyle(.secondary).accessibilityLabel("This device can't read new messages here yet")
@@ -136,7 +141,6 @@ struct ThreadRow: View {
                     Spacer()
                     Text(Format.brief(thread.last.at)).font(.caption).foregroundStyle(.secondary)
                 }
-                if mail, !model.lockedHere(thread.conv) { Text(model.dms?.threadName(thread.conv) ?? "").font(.subheadline.weight(.medium)).lineLimit(1) }
                 if model.lockedHere(thread.conv) {
                     HStack(spacing: 4) {
                         Image(systemName: "lock.fill").font(.caption)
@@ -148,7 +152,8 @@ struct ThreadRow: View {
                     HStack(spacing: 6) { TypingDots(); Text("typing…") }.font(.subheadline).foregroundStyle(.secondary)
                         .accessibilityIdentifier("row-typing")
                 } else {
-                    Text((thread.last.mine ? "You: " : "") + lastLine(mail)).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                    // one line: an e-mail thread's subject, else the last message
+                    Text(oneLine(mail)).font(.subheadline).foregroundStyle(thread.unread > 0 ? .primary : .secondary).lineLimit(1)
                 }
             }
             if thread.unread > 0 {
@@ -159,6 +164,18 @@ struct ThreadRow: View {
     }
 
     var title: String { convName(model, thread.conv) }
+
+    /// The correspondent's name as their mail gave it (for the initials), when one did.
+    private var mailName: String? {
+        (model.dms?.thread(thread.conv) ?? []).last { !$0.mine && $0.fromName != nil }?.fromName
+    }
+
+    /// The row's one line: an e-mail thread's subject, else the last message ("You: " for mine).
+    private func oneLine(_ mail: Bool) -> String {
+        if mail, let subject = model.dms?.threadName(thread.conv), !subject.isEmpty { return subject }
+        let first = lastLine(mail).split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        return (thread.last.mine ? "You: " : "") + first
+    }
 
     /// "Picture", "3 pictures", "File: Garden plan 2027.pdf", "Audio recording · 0:42"; else the text.
     private func lastLine(_ mail: Bool) -> String {

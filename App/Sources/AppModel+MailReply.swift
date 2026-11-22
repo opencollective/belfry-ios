@@ -29,7 +29,7 @@ extension AppModel {
             return .success("")
         }
         do {
-            let id = try await dms.sendAsChannel(channel: group, local: d.mailLocal(group), channelName: self.group(group)?.name ?? group, to: to,
+            let id = try await dms.sendAsChannel(channel: group, local: await answerLocal(group), channelName: self.group(group)?.name ?? group, to: to,
                                                  subject: subj, text: text, inReplyTo: last.messageId, references: refs.isEmpty ? nil : refs,
                                                  cardId: last.m.id, myName: realName(me), cc: r.cc, draft: draft)
             watchAnswered(id, card: t.id, in: group)

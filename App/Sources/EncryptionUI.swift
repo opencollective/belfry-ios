@@ -106,6 +106,9 @@ struct EncryptionScreen: View {
         let counted = s.others.contains { $0.mailName == nil }
         let mail = s.others.contains { $0.mailName != nil }
         List {
+            ForEach(model.sealed.added) { n in
+                DeviceAddedCard(notice: n).listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)).listRowBackground(Color.clear)
+            }
             // this device is not allowed yet: said first, with the way out (the lead, 2026-11-22)
             if model.sealed.notAllowed {
                 Section {
@@ -221,6 +224,54 @@ struct EncryptionScreen: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A device was added to my devices without a prompt here (boards messages/encryption-device-added,
+/// -devices-added; sealed.md 5.2 step 2a): on top of Messages, in Devices and in Encryption, until
+/// "It was me" or Remove. Remove asks first: the device is signed out and the lock changes.
+struct DeviceAddedCard: View {
+    @EnvironmentObject var model: AppModel
+    let notice: AddedNotice
+    @State private var asking = false
+    @State private var error: String?
+
+    static func when(_ at: Int, now: Int = Int(Date().timeIntervalSince1970)) -> String {
+        if now - at < 120 { return "just now" }
+        if now - at < 3600 { return "\((now - at) / 60) min ago" }
+        let today = Calendar.current.isDateInToday(Date(timeIntervalSince1970: TimeInterval(at)))
+        return today ? "at " + Format.time(at) : "on " + Format.day(at)
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: notice.kind.icon).foregroundStyle(.secondary).frame(width: 22).padding(.top, 2).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(notice.name) was added \(DeviceAddedCard.when(notice.at))").font(.subheadline.weight(.semibold))
+                Text("It can read your conversations.").font(.subheadline)
+                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+                HStack(spacing: 18) {
+                    BusyButton("Not you? Remove it", role: .destructive) { asking = true }
+                        .accessibilityIdentifier("added-remove")
+                    Button("It was me") { model.ackAdded(notice) }
+                        .accessibilityIdentifier("added-ok")
+                }
+                .font(.subheadline.weight(.semibold))
+                .buttonStyle(.borderless)
+                .padding(.top, 2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("device-added")
+        .alert("Remove \(notice.name)?", isPresented: $asking) {
+            Button("Remove", role: .destructive) { Task { error = await model.removeAdded(notice) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It will be signed out and stop reading new messages, in all your conversations. What it already shows stays on it.")
+        }
     }
 }
 

@@ -114,6 +114,35 @@ extension AppModel {
         setDirectoryCount(list.count)
     }
 
+    // ---- a channel's address (docs/mail.md "A channel's address") --------------------------------
+
+    /// The channel's address: the belfry's when known, else the one worked out here.
+    func channelAddress(_ id: String) -> String { channelAddresses[id] ?? derive.channelAddress(id) }
+
+    func keepChannelAddress(_ id: String, _ address: String) {
+        guard channelAddresses[id] != address else { return }
+        channelAddresses[id] = address
+        if !isDemo { UserDefaults.standard.set(channelAddresses, forKey: AppModel.perAccount("belfry-channel-addresses")) }
+    }
+
+    /// Ask the belfry for the channel's address (any member may); a belfry without the call, or
+    /// no answer: what is kept stays.
+    func refreshChannelAddress(_ id: String) async {
+        guard !isDemo, !guestReading, let a = try? await api.mailAlias(channel: id) else { return }
+        keepChannelAddress(id, a.address)
+    }
+
+    /// The part before the @ an answer as the channel goes out from: asked from the belfry just
+    /// before sending (an admin may have changed it: an answer from the old address would
+    /// confuse the outside person), else the kept one, else the one worked out here.
+    func answerLocal(_ id: String) async -> String {
+        await refreshChannelAddress(id)
+        let address = channelAddress(id)
+        let domain = "@" + config.domain
+        // only an address at this belfry's own domain can be a From here
+        return address.lowercased().hasSuffix(domain.lowercased()) ? String(address.dropLast(domain.count)) : derive.mailLocal(id)
+    }
+
     func setDirectoryCount(_ n: Int) {
         directoryCount = n
         if !isDemo { UserDefaults.standard.set(n, forKey: AppModel.perAccount("belfry-directory-count")) }

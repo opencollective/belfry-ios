@@ -94,6 +94,7 @@ struct ChannelPlaceView: View {
     }
 
     private var list: some View {
+        ScrollViewReader { proxy in
         List {
             switch place {
             case .pinned: PinnedSection(id: id, go: go)
@@ -105,10 +106,17 @@ struct ChannelPlaceView: View {
             case .topics: TopicsSection(id: id, topic: Binding(get: { nil }, set: { if let t = $0 { filter(t) } }), done: {})
             case .notifications: FollowBell(id: id)
             case .log: LogTab(id: id) { g in go(g) }
-            // Navigation v2 (nav2/channel-pin): every member pins here; the rest is the admins'
-            case .settings: PinSection(id: id); if model.derive.canAdmin(model.group(id)) { SettingsTab(id: id) }
+            // the order (Xavier, 2026-11-22): what its admins set, then Pin for everyone who is here
+            // (an admin's Settings hold the Pin section themselves, before Save and Archive)
+            case .settings: if model.derive.canAdmin(model.group(id)) { SettingsTab(id: id) } else { PinSection(id: id) }
             case .events, .members, .emails: EmptyView()
             }
+        }
+        // screenshots: the end of Settings (the E-mail and Pin sections)
+        .onAppear {
+            guard place == .settings, model.launch.screen == "chsettingsend" else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { proxy.scrollTo("settings-pin", anchor: .bottom) }
+        }
         }
     }
 }
@@ -220,7 +228,7 @@ struct PhotosSection: View {
     }
 }
 
-/// Members of the channel (Invite at the top for whoever may invite), who was active this month,
+/// Members of the channel (＋ top right for whoever may invite), who was active this month,
 /// and Join / Leave at the bottom. A row pushes the profile (with the role here).
 struct ChannelMembersScreen: View {
     @EnvironmentObject var model: AppModel
@@ -236,12 +244,6 @@ struct ChannelMembersScreen: View {
         let mayInvite = !model.guestReading && g?.archived != true
         let active = d.recentlyActive(id)
         List {
-            if mayInvite {
-                Section {
-                    Button { hideKeyboard(); invite = true } label: { Label("Invite someone", systemImage: "person.badge.plus") }
-                        .accessibilityIdentifier("members-invite")
-                }
-            }
             // people asking to join a closed channel or group: at the top, for its stewards (and,
             // while it accepts by vouches, its members)
             if let g, !g.archived, g.isPod || g.closed {
@@ -283,6 +285,16 @@ struct ChannelMembersScreen: View {
         }
         .navigationTitle("Members")
         .navigationBarTitleDisplayMode(.inline)
+        // "add one" is an icon top right, never a first row (Xavier, 2026-11-22)
+        .toolbar {
+            if mayInvite {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { hideKeyboard(); invite = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("Invite someone")
+                        .accessibilityIdentifier("members-invite")
+                }
+            }
+        }
         .navigationDestination(item: $profile) { ProfileView(pubkey: $0.pubkey, pushed: true, group: $0.group).overRoot() }
         .sheet(isPresented: $invite) { InviteSheet(id: id) }
         .sheet(isPresented: $asking) { if let g { PodApplySheet(group: g) } }

@@ -22,15 +22,6 @@ struct MembersDirectory: View {
         let letters = sections.keys.sorted { a, b in a == "#" ? false : b == "#" ? true : a < b }
         List {
             if query.isEmpty {
-                // "Invite someone": the first row, only for who may invite members (no disabled row)
-                if model.mayInviteMembers, inviteChannel != nil {
-                    Button { hideKeyboard(); inviting = true } label: {
-                        Label("Invite someone", systemImage: "person.badge.plus").foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("members-invite")
-                }
                 // what waits for me, only when something does (web 98c33fc)
                 RequestSections(error: $error)
             }
@@ -51,6 +42,17 @@ struct MembersDirectory: View {
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search")
         .drawerItem()
+        // "add one" is an icon top right, never a first row (Xavier, 2026-11-22: "adding a new
+        // member should be top right like creating a new group"); only for who may invite
+        .toolbar {
+            if model.mayInviteMembers, inviteChannel != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { hideKeyboard(); inviting = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("Invite someone")
+                        .accessibilityIdentifier("members-invite")
+                }
+            }
+        }
         .sheet(isPresented: $inviting) {
             if let c = inviteChannel { InviteSheet(id: c, startAs: .member(role: model.roles.defaultRole, membership: "permanent")) }
         }

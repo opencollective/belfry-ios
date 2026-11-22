@@ -205,12 +205,13 @@ struct PlaceDestinations: ViewModifier {
             .navigationDestination(for: PlaceRoute.self) { r in r.view }
             .navigationDestination(for: ConvRoute.self) { r in ConversationView(conv: r.conv) }
             .navigationDestination(for: TodoKey.self) { k in TodoScreen(key: k) }
+            .navigationDestination(for: GroupPick.self) { p in NewGroupPickScreen(group: p.id) }
     }
 }
 
 /// Screens a place pushes by name (the Home tiles, the drawer's town rows, the person row).
 enum PlaceRoute: Hashable {
-    case messages, mentions, todos, members, charter, me, settings, archived, events, channels, accounts, about, almostIn, devices, linked, addChannel
+    case messages, mentions, todos, members, charter, me, settings, archived, events, channels, accounts, about, almostIn, devices, linked, addChannel, newGroup
 
     @MainActor @ViewBuilder var view: some View {
         switch self {
@@ -232,6 +233,7 @@ enum PlaceRoute: Hashable {
         case .events: EventsScreen()
         case .channels: ChannelsSettings()
         case .addChannel: AddChannelScreen()
+        case .newGroup: NewGroupScreen()
         }
     }
 }

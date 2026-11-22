@@ -20,6 +20,8 @@ struct Composer: View {
     var focusTrigger = 0
     /// Where unsent text is kept on this phone (per channel, per thread; web f845d47).
     var draftKey: String?
+    /// The kinds of post this channel takes (nil: all): Event and Proposal leave the ＋ menu when off.
+    var kinds: Set<String>? = nil
     /// The thread this composer answers in (typing indicators, SPEC 19.66); nil: the conversation.
     var typingRoot: String? = nil
     /// A mode's colour (an e-mail thread: blue for an e-mail, yellow for the team): the field's
@@ -255,12 +257,12 @@ struct Composer: View {
                 }
             }
             Section(createTitle) {
-                if !guest {
+                if !guest, kinds?.contains("event") != false {
                     Button { choose(.event) } label: { Label("Event", systemImage: "calendar") }
                     Button { choose(.meeting) } label: { Label("Meeting", systemImage: "person.2") }
                 }
                 Button { choose(.create(.todo)) } label: { Label("To-do", systemImage: "checklist") }
-                if !guest {
+                if !guest, kinds?.contains("proposal") != false {
                     Button { choose(.create(.proposal)) } label: { Label("Proposal", systemImage: "doc.text") }
                 }
             }

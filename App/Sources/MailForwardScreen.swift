@@ -141,3 +141,103 @@ struct MailForwardScreen: View {
         catch { self.error = BelfryAPI.network }
     }
 }
+
+// ---- the channel's address (Settings → E-mail; docs/mail.md "A channel's address") ---------------
+
+/// "hello@riverside.example": the belfry's word for the channel's address, shown to whoever
+/// edits the channel; the belfry's stewards open it to change the part before the @.
+struct MailAliasRow: View {
+    @EnvironmentObject var model: AppModel
+    let channel: String
+    /// Worked out on the device: shown until the belfry answers, and on a belfry without the call.
+    let fallback: String
+    @State private var alias: MailAlias?
+
+    var body: some View {
+        let address = alias?.address ?? model.channelAddresses[channel] ?? fallback
+        SwiftUI.Group {
+            if alias?.maySet == true {
+                NavigationLink { MailAliasScreen(channel: channel, alias: $alias) } label: { line(address) }
+            } else {
+                line(address)
+            }
+        }
+        .accessibilityIdentifier("settings-address")
+        .task {
+            guard alias == nil, !model.isDemo else { return }
+            alias = try? await model.api.mailAlias(channel: channel)
+            if let a = alias { model.keepChannelAddress(channel, a.address) }
+        }
+        .onChange(of: alias) { _, a in if let a { model.keepChannelAddress(channel, a.address) } }
+    }
+
+    private func line(_ address: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Address")
+            Text(address).font(.footnote).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+        }
+    }
+}
+
+/// The part before the @, with the belfry's check as it is typed (available / taken / reserved /
+/// invalid) and Save; "Use the automatic address" goes back.
+struct MailAliasScreen: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    let channel: String
+    @Binding var alias: MailAlias?
+    @State private var name = ""
+    @State private var check = ""
+    @State private var checked = ""
+    @State private var error: String?
+
+    private var domain: String { alias.flatMap { $0.address.split(separator: "@").last.map(String.init) } ?? model.config.domain }
+    private var typed: String { name.trimmingCharacters(in: .whitespaces).lowercased() }
+
+    var body: some View {
+        Form {
+            Section {
+                HStack(spacing: 2) {
+                    TextField("name", text: $name)
+                        .font(.body)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.emailAddress)
+                        .accessibilityIdentifier("alias-name")
+                    Text("@" + domain).foregroundStyle(.secondary).lineLimit(1)
+                }
+            } footer: {
+                let line = typed == alias?.alias ? "This is the channel's address now." : MailAlias.checkLine(checked == typed ? check : "", address: typed + "@" + domain)
+                Text(line.isEmpty ? " " : line).foregroundStyle(check == "available" || typed == alias?.alias ? Color.secondary : Color.red)
+            }
+            if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
+            Section {
+                BusyButton("Save") { await save(typed) }
+                    .disabled(typed.isEmpty || typed == alias?.alias || checked != typed || check != "available")
+                    .accessibilityIdentifier("alias-save")
+                if alias?.custom == true {
+                    BusyButton("Use the automatic address", role: .destructive) { await save(nil) }
+                        .accessibilityIdentifier("alias-clear")
+                }
+            }
+        }
+        .navigationTitle("Address")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { if name.isEmpty { name = alias?.alias ?? "" } }
+        // the live check, a moment after the typing stops
+        .task(id: typed) {
+            guard !typed.isEmpty, typed != alias?.alias else { return }
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled, let r = try? await model.api.checkMailAlias(channel: channel, name: typed), !Task.isCancelled else { return }
+            check = r.state
+            checked = typed
+        }
+    }
+
+    private func save(_ value: String?) async {
+        hideKeyboard()
+        do {
+            alias = try await model.api.setMailAlias(channel: channel, alias: value)
+            self.error = nil
+            dismiss()
+        } catch let e as ApiError { self.error = e.message } catch { self.error = BelfryAPI.network }
+    }
+}

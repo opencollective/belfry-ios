@@ -100,6 +100,9 @@ public struct Group: Identifiable, Hashable, Sendable {
     /// (an admin by role is not one: the belfry acts for them, SPEC 19.29).
     public var relayAdmins: Set<String> = []
     public var closed = false
+    /// Private (one-shape.md, 2026-11-22): `closed` + `private` on its metadata. Only invited
+    /// people: nobody asks to join, and someone who is not in it sees no card and no list entry.
+    public var isPrivate = false
     public var prompt: String?
     public var parent: String?
     public var applications: [Application] = []
@@ -294,6 +297,9 @@ public struct GuestJoin: Hashable, Sendable, Identifiable {
     public var unsaved = false
     /// A member since (an admin made them one): no longer called a guest.
     public var member = false
+    /// Not a guest's line: someone joined the belfry (the belfry's own 9000 in the main channel
+    /// with ["joined", "belfry"], one-shape.md). Only in the feed, never among the guests.
+    public var belfry = false
 
     /// The chip next to their name: "agent", "guest · not saved", "guest"; nil once a member.
     public var chip: String? { member ? nil : agent ? "agent" : unsaved ? "guest · not saved" : "guest" }
@@ -644,7 +650,12 @@ public final class Derive {
     // ---- groups --------------------------------------------------------------------------------
 
     lazy var groupIndex: GroupIndex = computeGroups()
-    private lazy var groupList: [Group] = groupIndex.all.filter { !$0.archived }
+    private lazy var groupList: [Group] = groupIndex.all.filter { !$0.archived && !hiddenPrivate($0) }
+
+    /// A private group I am not in: in no list, no card, no count (one-shape.md).
+    func hiddenPrivate(_ g: Group) -> Bool {
+        g.isPod && g.isPrivate && !g.members.contains(me) && !g.admins.contains(me)
+    }
     private lazy var groupById: [String: Group] = Dictionary(groupIndex.all.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
 
     struct GroupIndex {
@@ -709,6 +720,8 @@ public final class Derive {
                 }
                 let access: Bool? = e.hasTag("closed") ? true : e.hasTag("open") ? false : nil
                 if let a = access, (m["closed"] ?? 0) <= e.createdAt { g.closed = a; m["closed"] = e.createdAt }
+                let hidden: Bool? = e.hasTag("private") ? true : e.hasTag("public") ? false : nil
+                if let h = hidden, (m["private"] ?? 0) <= e.createdAt { g.isPrivate = h; m["private"] = e.createdAt }
                 if let p = e.tag("prompt"), (m["prompt"] ?? 0) <= e.createdAt { g.prompt = p; m["prompt"] = e.createdAt }
                 // the vouches rule goes with the access tags: open / closed without it = admins accept
                 if (access != nil || e.tag("vouches") != nil) && (m["vouches"] ?? 0) <= e.createdAt {
@@ -796,7 +809,8 @@ public final class Derive {
             guard let e = applied[k] else { continue }
             let gid = String(k.dropLast(e.pubkey.count))
             guard var g = map[gid], !g.members.contains(e.pubkey), (decided[k] ?? 0) < e.createdAt else { continue }
-            g.applications.append(Application(pubkey: e.pubkey, answer: e.content, at: e.createdAt, id: e.id))
+            // nobody asks to join a private group: a 9021 for one is not shown and not answered
+            if !g.isPrivate { g.applications.append(Application(pubkey: e.pubkey, answer: e.content, at: e.createdAt, id: e.id)) }
             map[gid] = g
         }
         // deleted (SPEC 19.30): a 9008, or the relay said it has no such group and nothing newer
@@ -1163,6 +1177,22 @@ public final class Derive {
     private lazy var allGuestJoins: [GuestJoin] = groupList.flatMap { guestJoins($0.id) }.filter { !$0.member }
 
     /// Someone's guest joins across all channels, members-since left out.
+    /// "‹name› joined ‹the belfry›" lines of the main channel (one-shape.md, 2026-11-22; Xavier:
+    /// "when someone joins the belfry there is a message in town square"): the belfry's 9000 in
+    /// `general` with ["joined", "belfry"], by the groups key, once per person. Someone removed
+    /// since has no line. A 9000 without the tag draws none (older ones; guests keep their own).
+    public func belfryJoins() -> [GuestJoin] {
+        guard let key = ctx.groupsKey, !key.isEmpty else { return [] }
+        var out = [GuestJoin](), seen = Set<String>(), gone = [String: Int]()
+        let list = inGroup(generalId)
+        for e in list where e.kind == 9001 { if let p = e.tag("p"), !p.isEmpty { gone[p] = max(gone[p] ?? 0, e.createdAt) } }
+        for e in list.sorted(by: Derive.byTime) where e.kind == 9000 && e.pubkey == key && e.tag("joined") == "belfry" {
+            guard let p = e.tag("p"), !p.isEmpty, e.tag("reading") != "1", (gone[p] ?? 0) < e.createdAt, seen.insert(p).inserted else { continue }
+            out.append(GuestJoin(id: e.id, pubkey: p, by: nil, at: e.createdAt, agent: e.tag("agent") == "1", member: true, belfry: true))
+        }
+        return out
+    }
+
     public func guestJoinsOf(_ pubkey: String) -> [GuestJoin] { allGuestJoins.filter { $0.pubkey == pubkey } }
 
     /// Am I (still) a guest here, and not a member.
@@ -1202,6 +1232,7 @@ public final class Derive {
         if topic == nil {
             items += mt.list.map { .mailThread($0) }
             items += guestJoins(groupId).map { .join($0) }
+            if groupId == generalId { items += belfryJoins().map { .join($0) } }
             if actions { items += activities(groupId).map { .action($0) } }
             let byId = Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             for (rootId, info) in threadsInOrder(groupId) {

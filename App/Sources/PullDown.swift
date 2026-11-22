@@ -288,14 +288,12 @@ struct PullDownList: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 16).padding(.top, 12)
                 }
-                if g?.type == .channel || g?.isPod == true, !model.guestReading {
-                    // the channel's address (members' mail shows as their message; a shared inbox takes anyone's)
-                    Label(d.isInbox(g) ? "Anyone can write to \(d.mailAddress(id)); each e-mail opens its own thread here." : d.mailAddress(id),
-                          systemImage: d.isInbox(g) ? "tray" : "envelope")
-                        .font(.footnote).foregroundStyle(.secondary).lineLimit(d.isInbox(g) ? 3 : 1)
-                        .textSelection(.enabled)
+                // no e-mail address here (Xavier, 2026-11-22): it lives in Settings → E-mail. A channel
+                // that takes e-mails from anyone still says so.
+                if d.isInbox(g), !model.guestReading {
+                    Label("Anyone can write to this channel by e-mail; each e-mail opens its own thread here.", systemImage: "tray")
+                        .font(.footnote).foregroundStyle(.secondary).lineLimit(3)
                         .padding(.horizontal, 16).padding(.top, 6)
-                        .accessibilityLabel((d.isInbox(g) ? "Anyone can e-mail " : "Members can e-mail ") + d.mailAddress(id))
                 }
                 Color.clear.frame(height: 8)
                 if let g, let p = g.parent, let parent = model.group(p) {

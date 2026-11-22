@@ -83,6 +83,8 @@ shot 135c-pulldown-dark pulldown dark
 shot 136-channel-members members light
 shot 136b-channel-members-invite membersinvitech light
 shot 137-channel-settings chsettings light
+shot 137b-channel-settings-end chsettingsend light
+shot 137c-channel-settings-end-dark chsettingsend dark
 # 2026-11-18 round 6: the Notifications sheet, "Who can read it" (+ the Public question), a closed
 # channel (Ask to join as a member, the requests for its steward), the proposal at the top of its
 # chat (half, folded, full), the e-mail thread's two modes (mailreply / mailcomment above)
@@ -151,6 +153,9 @@ shot 100b-home-dark home dark
 shot 101-calendar calendar light
 shot 101b-calendar-dark calendar dark
 shot 102-groups groups light
+shot 136-group-new groupnew light
+shot 136b-group-new-dark groupnew dark
+shot 136c-group-new-pick groupnewpick light
 shot 102b-groups-all groupsall light
 shot 102c-groups-dark groups dark
 shot 103-create create light
@@ -258,6 +263,9 @@ shot 189-enc-share encshare light
 shot 189b-enc-share-dark encshare dark
 shot 190-enc-remove encremove light
 shot 190b-enc-devices-not-allowed encdevicesnotallowed light
+shot 190c-enc-device-added encdeviceadded light
+shot 190d-enc-device-added-dark encdeviceadded dark
+shot 190e-enc-devices-added encdevicesadded light
 shot 191-enc-shared encshared light
 shot 191b-enc-shared-dark encshared dark
 shot 192-enc-shared-why encsharedwhy light
@@ -374,17 +382,20 @@ if [ "$UITESTS" != "none" ] && [ -n "${XCTESTRUN:-}" ] && [ -f "$XCTESTRUN" ]; t
             [ -n "$pid" ] && sample "$pid" 3 -file "$ABS/sample-$mode-$(date +%s).txt" >/dev/null 2>&1
           done ) &
     SAMPLER=$!
+    # no test may run longer than 5 minutes (run 45048182149: a test that never ended held the
+    # job for its whole hour); the log goes with the screenshots so a hang can be read afterwards.
     # a test that fails is run once more before the job fails (a held message's menu sometimes
     # does not open on the first press on a busy runner; a whole job used to be run again for it)
     set +e
     TEST_RUNNER_SHOTS_DIR="$ABS" TEST_RUNNER_SHOTS_SUFFIX="$mode" \
       xcodebuild test-without-building -xctestrun "$XCTESTRUN" -destination "id=$UDID" $ONLY \
       -retry-tests-on-failure -test-iterations 2 \
-      -resultBundlePath "ui-$mode.xcresult" > "ui-$mode.log" 2>&1
+      -test-timeouts-enabled YES -default-test-execution-time-allowance 240 -maximum-test-execution-time-allowance 300 \
+      -resultBundlePath "ui-$mode.xcresult" > "$ABS/ui-$mode.log" 2>&1
     code=$?
     kill $SAMPLER 2>/dev/null; pkill -f "log stream --style compact --predicate subsystem" 2>/dev/null
     set -e
-    grep -E "Test Case|error:" "ui-$mode.log" | tail -30 || true
+    grep -E "Test Case|error:" "$ABS/ui-$mode.log" | tail -30 || true
     if [ $code -ne 0 ]; then UI_FAILED=1; echo "UI tests ($mode) failed"; fi
     # the app's watchdog (App/Sources/LoopWatch.swift): redraw loops and main-thread stalls
     xcrun simctl spawn "$UDID" log show --last 30m --style compact --predicate 'subsystem == "sh.belfry.app.watchdog"' 2>/dev/null | grep -E 'STALL|LOOP|MARK' | tail -200 | tee "$OUT/watchdog-$mode.txt" || true

@@ -70,3 +70,13 @@ final class TodoPicturesTests: XCTestCase {
         XCTAssertNil(TodoEntry.addedLine([]))
     }
 }
+
+final class MailInitialsTests: XCTestCase {
+    func testFirstAndLastWordElseTheAddress() {
+        XCTAssertEqual(MailInitials.of(name: "Ana Maria Silva", address: "ana@example.org"), "AS")
+        XCTAssertEqual(MailInitials.of(name: "Lina", address: "lina@example.org"), "L")
+        XCTAssertEqual(MailInitials.of(name: "  lou   martin ", address: "x@example.org"), "LM")
+        XCTAssertEqual(MailInitials.of(name: nil, address: "park@example.org"), "P")
+        XCTAssertEqual(MailInitials.of(name: "", address: "9lives@example.org"), "9")
+    }
+}

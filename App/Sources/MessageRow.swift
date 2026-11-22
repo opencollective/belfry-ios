@@ -493,6 +493,39 @@ struct JoinLine: View {
     @EnvironmentObject var model: AppModel
     let join: GuestJoin
     var body: some View {
+        if join.belfry { joined } else { guest }
+    }
+
+    /// Someone joined the belfry (board one-shape/townsquare-join): the face, "Lina Moreau joined
+    /// Riverside Commons", the time; a tap opens the profile.
+    private var joined: some View {
+        Button { model.openProfile = join.pubkey } label: {
+            HStack(spacing: 8) {
+                Avatar(pubkey: join.pubkey, size: 22)
+                Text(LocalizedStringKey(joinedText)).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+                Text(Format.time(join.at)).font(.caption2).foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens the profile")
+        .accessibilityIdentifier("belfry-join")
+    }
+
+    var joinedText: String {
+        let who = "**\(model.name(join.pubkey))**"
+        if join.agent || model.derive.agentOwner(join.pubkey) != nil {
+            guard let owner = model.derive.agentOwner(join.pubkey) else { return "\(who), an agent, joined" }
+            return owner == model.me ? "\(who), your agent, joined" : "\(who), **\(model.realNameOrKey(owner))**'s agent, joined"
+        }
+        return "\(who) joined \(model.config.name)"
+    }
+
+    private var guest: some View {
         HStack(spacing: 8) {
             Image(systemName: "arrow.right").foregroundStyle(Color.brand)
             Text(LocalizedStringKey(text)).font(.footnote)

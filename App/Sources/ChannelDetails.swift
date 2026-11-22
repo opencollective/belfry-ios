@@ -255,6 +255,10 @@ struct SettingsTab: View {
     @State private var saved = false
     /// Who reads it (channels: members only / public / closed; SPEC 19.38)
     @State private var access = ChannelAccess.members
+    /// The kinds of post the channel takes (the four switches).
+    @State private var takes = Set(WebPage.kinds)
+    /// A group's "Who can join" (Open / Closed / Private).
+    @State private var join = GroupAccess.open
     @State private var askPublic = false
     @State private var vouches = 0
     /// What can be posted: "" = anything, else thread / event / proposal (/ request when it is set so).
@@ -264,8 +268,40 @@ struct SettingsTab: View {
         let g = model.group(id)
         Section("Name") { TextField("Name", text: $name).font(.body) }
         Section("Description") { TextField("What is it about? (Markdown)", text: $about, axis: .vertical).lineLimit(3...8).font(.body) }
-        if g?.type == .channel || g?.isPod == true { whoReads(g) }
-        if g?.isPod == true && access == .closed {
+        // a private group stays private: only invited people, nothing to choose and no question
+        // (one-shape.md "Groups: open, closed, private")
+        if g?.isPod == true {
+            // a group: the same three choices as the New group form (board groups/settings-closed)
+            Section("Who can join") {
+                ForEach(GroupAccess.allCases, id: \.self) { a in
+                    Button { join = a } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: a == .open ? "door.left.hand.open" : a == .closed ? "hand.raised" : "lock").frame(width: 24).foregroundStyle(.primary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(a.title).foregroundStyle(.primary)
+                                Text(a.line).font(.footnote).foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 8)
+                            if join == a { Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Color.brand).accessibilityLabel("Selected") }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("join-" + a.rawValue)
+                    .accessibilityAddTraits(join == a ? .isSelected : [])
+                }
+            }
+            // who can read its page on the web is another setting; a private group has none
+            if join != .private {
+                Section {
+                    accessRow(.members, icon: "lock", title: "Members only", line: "Everyone with a pass in this belfry")
+                    accessRow(.public, icon: "globe", title: "Public", line: "Anyone on the web can read it. Only members write.")
+                } header: { Text("Who can read it") } footer: {
+                    Text("A change counts from now on. Messages keep the visibility they were posted with.")
+                }
+            }
+        } else if g?.type == .channel { whoReads(g) }
+        if g?.isPod == true && join == .closed {
             // a closed group's question and how requests are accepted (web ClosedFields)
             Section("Question people answer when they ask") {
                 TextField(Actions.defaultPrompt, text: $prompt, axis: .vertical).lineLimit(1...4).font(.body)
@@ -286,29 +322,29 @@ struct SettingsTab: View {
                 Text(vouches > 0 ? "Once enough of its members vouch (not guests, not agents), they're in. Stewards can still answer." : "A steward accepts or declines each request.")
             }
         }
+        // Posts: which kinds this channel takes, a switch each, at least one on (one-shape.md "A
+        // channel's Settings", board channels/settings). An old value like "request" is kept while all
+        // four are on.
         if g?.type == .channel {
             Section {
-                Picker("Posts", selection: $posts) {
-                    Text("Anything").tag("")
-                    Text("Threads").tag("thread")
-                    Text("Events").tag("event")
-                    Text("Proposals").tag("proposal")
-                    if posts == "request" { Text("Requests").tag("request") }
-                }
-                .pickerStyle(.segmented)
-                .accessibilityIdentifier("settings-posts")
-            } header: { Text("Posts") } footer: {
-                Text(posts.isEmpty ? "People post messages, and anything else." : "Only this kind of post starts something here; people answer in its thread.")
-            }
+                postRow("message", "Messages", "Plain messages, pictures and files")
+                postRow("thread", "Threads", "Each post starts its own thread")
+                postRow("event", "Events", "Dates people can answer")
+                postRow("proposal", "Proposals", "Texts to discuss and decide")
+            } header: { Text("Posts") }
         }
         Section {
+            // the channel's address, from the belfry (docs/mail.md "A channel's address")
+            if g?.type == .channel || g?.isPod == true { MailAliasRow(channel: id, fallback: model.derive.mailAddress(id)) }
             Toggle("E-mails from anyone", isOn: Binding(get: { inbox }, set: { inbox = $0; inboxTouched = true })).tint(Theme.toggle)
             // a copy of every e-mail to an outside address (channels only; saved at once, apart from Save)
             if g?.type == .channel, !model.isDemo { MailForwardRow(channel: id) }
-        } footer: {
-            Text(inbox ? "Anyone can e-mail \(id)@\(model.config.domain). Mails land here as cards and the channel's admins answer as the channel."
-                 : "Only members can e-mail \(id)@\(model.config.domain); their mail shows as their message.")
+        } header: { Text("E-mail") } footer: {
+            Text(inbox ? "Anyone can e-mail this address. Mails land here as cards and the channel's admins answer as the channel."
+                 : "Only members can e-mail this address; their mail shows as their message.")
         }
+        // Pin comes right after E-mail (Xavier's order); it applies at once, apart from Save
+        PinSection(id: id)
         // Save (SPEC 19.37): applied here at once and queued; back to the channel, which shows the
         // new name and description. Only a final refusal shows (the mark by the channel's name).
         Section {
@@ -318,14 +354,17 @@ struct SettingsTab: View {
                 hideKeyboard()
                 let n = name.jsTrim(), a = about.jsTrim()
                 if g?.isPod == true {
-                    let c = access == .closed
-                    model.editGroupMeta(id, name: n, about: a, closed: c, prompt: prompt, vouches: c ? vouches : 0)
+                    // Open = open + public; Closed = closed + public (its question, who accepts);
+                    // Private = closed + private
+                    model.editGroupMeta(id, name: n, about: a, closed: join != .open, prompt: join == .closed ? prompt : "",
+                                        vouches: join == .closed ? vouches : 0, isPrivate: join == .private)
                 } else if let g, g.type == .channel, (access == .closed) != g.closed {
                     // closed or open again (one 9002 with the name and description)
                     model.editGroupMeta(id, name: n, about: a, closed: access == .closed, prompt: g.prompt ?? "")
                 } else { model.editChannel(id, name: n, about: a, inbox: nil) }
-                if g?.type == .channel || g?.isPod == true { model.setVisibility(id, public: access == .public) }
-                if g?.type == .channel { model.setPosts(id, posts.isEmpty ? nil : posts) }
+                if g?.type == .channel { model.setVisibility(id, public: access == .public) }
+                else if g?.isPod == true { model.setVisibility(id, public: access == .public && join != .private) }
+                if g?.type == .channel { model.setAccepts(id, takes) }
                 if Actions.inboxToSend(chosen: inbox, reads: model.derive.isInbox(g), touched: inboxTouched) { model.editChannelInbox(id, inbox) }
                 dismiss()
             } label: {
@@ -354,7 +393,11 @@ struct SettingsTab: View {
             prompt = g.prompt ?? ""
             vouches = g.vouches
             access = model.derive.channelAccess(g)
+            join = g.isPrivate ? .private : g.closed ? .closed : .open
+            // a group's page: public or members only (closed or not is "Who can join")
+            if g.isPod { access = model.derive.isPublic(g) ? .public : .members }
             posts = model.derive.webPage(g)?.posts ?? ""
+            takes = model.derive.webPage(g)?.takes ?? Set(WebPage.kinds)
             if model.launch.screen == "chpublic" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { askPublic = true } }
         }
         .alert("Make \(label(g)) public?", isPresented: $askPublic) {
@@ -371,6 +414,21 @@ struct SettingsTab: View {
     }
 
     /// "Who can read it": three choices (the owner's mock-ups Settings-A / B); Public asks first.
+    /// One kind of post: a switch and one line. The last one on can't be turned off.
+    private func postRow(_ kind: String, _ title: String, _ line: String) -> some View {
+        Toggle(isOn: Binding(get: { takes.contains(kind) }, set: { on in
+            if on { takes.insert(kind) } else if takes.count > 1 { takes.remove(kind) }
+        })) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(line).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .tint(Theme.toggle)
+        .disabled(takes == [kind])
+        .accessibilityIdentifier("posts-" + kind)
+    }
+
     @ViewBuilder private func whoReads(_ g: Channel?) -> some View {
         Section {
             accessRow(.members, icon: "lock", title: "Members only", line: "Everyone with a pass in this belfry")
