@@ -190,8 +190,12 @@ final class MenuShots: XCTestCase {
     /// Copy text (no to-do, no Pin in a DM this build); Reply opens the message's thread.
     func testDmMenu() {
         let app = launch("conversation")
+        // the conversation itself, not its row in the list (whose line holds the same words: a
+        // press on the row only opened the conversation)
+        XCTAssertTrue(app.descendants(matching: .any)["dm-header"].firstMatch.waitForExistence(timeout: 20), "the conversation did not open")
+        sleep(1)
         let msgs = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "new phone"))
-        XCTAssertTrue(msgs.firstMatch.waitForExistence(timeout: 20), "the conversation did not open")
+        XCTAssertTrue(msgs.firstMatch.waitForExistence(timeout: 20), "the conversation has no such message")
         let msg = hittable(msgs, timeout: 20)
         XCTAssertNotNil(msg, "the message is not on screen")
         guard let msg else { return }
