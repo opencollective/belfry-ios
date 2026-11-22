@@ -452,6 +452,7 @@ extension Demo {
         switch screen {
         case "encwaiting":
             s.waitingForKey = true
+            s.addedAt = now - 120
         case "encnewdevice", "enchow", "enclocked":
             s.notAllowed = true
         // boards messages/encryption-waiting-list, -waiting-checking (canvas v177)
