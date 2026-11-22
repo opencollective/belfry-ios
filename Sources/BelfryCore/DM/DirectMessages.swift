@@ -345,7 +345,7 @@ public final class DirectMessages: @unchecked Sendable {
             return
         }
         if let s = sealed, mail, s.mailSealed, let b = to.first {
-            guard s.mine == .inside else { throw BelfryError.invalid("You can write here once this device is allowed.") }
+            guard s.mine == .inside else { throw BelfryError.invalid("You can write here once this device is added.") }
             var list = [try s.mailWrap(rumor, bridge: b)]
             if selfCopy {
                 hold(rumor)

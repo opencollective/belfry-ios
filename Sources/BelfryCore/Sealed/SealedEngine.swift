@@ -549,7 +549,7 @@ public final class SealedEngine: @unchecked Sendable {
     /// The wraps of RUMOR for a sealed conversation: one per participant's letterbox and one to my
     /// own. No signer call. Throws when this device may not write (it is not in my head).
     public func wraps(_ rumor: NostrEvent, to: [String], selfCopy: Bool = true) throws -> [NostrEvent] {
-        guard mine == .inside else { throw BelfryError.invalid("You can write here once this device is allowed.") }
+        guard mine == .inside else { throw BelfryError.invalid("You can write here once this device is added.") }
         var targets = [String]()
         for p in to + (selfCopy ? [me] : []) where !targets.contains(p) { targets.append(p) }
         return try targets.map { p in

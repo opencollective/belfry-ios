@@ -116,7 +116,7 @@ struct EncryptionScreen: View {
                         Label("This device can't read it yet", systemImage: "lock.fill").font(.subheadline.weight(.semibold))
                         Text(LockedHereBanner.openLine(model.sealed.unlockers))
                             .font(.subheadline).foregroundStyle(.secondary)
-                        Button("Show how") { how = true }
+                        Button("No other device?") { how = true }
                             .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
                             .accessibilityIdentifier("encryption-show-how")
                     }
@@ -297,15 +297,23 @@ struct LockedHereBanner: View {
         return "Asked " + (today ? Format.time(at) : Format.day(at)) + " · waiting for one of your devices"
     }
 
-    /// "Open Belfry on Safari on Mac or Android phone. This device is added by itself as soon as
-    /// one of them is open." (devices are added without a tap now; the lead, 2026-11-22). The
-    /// names not known: "another device of yours".
+    /// "Open Chat · Safari on Mac. This device is added by itself as soon as that one is open."
+    /// Two or more: "Open X or Y. … as soon as one of them is open." (board
+    /// messages/encryption-waiting-list, Messages canvas v4, n-e2e-locked-named). The names not
+    /// known: "Open Belfry on another device of yours."
     static func openLine(_ devices: [String]) -> String {
         var names = [String]()
         for d in devices where !names.contains(d) { names.append(d) }
-        let list = names.isEmpty ? "another device of yours" : names.count == 1 ? names[0] : names.dropLast().joined(separator: ", ") + " or " + names.last!
-        let them = names.count == 1 ? "it" : "one of them"
-        return "Open Belfry on \(list). This device is added by itself as soon as \(names.isEmpty ? "it" : them) is open."
+        if names.isEmpty { return "Open Belfry on another device of yours. This device is added by itself as soon as that one is open." }
+        if names.count == 1 { return "Open \(names[0]). This device is added by itself as soon as that one is open." }
+        return "Open \(names.dropLast().joined(separator: ", ")) or \(names.last!). This device is added by itself as soon as one of them is open."
+    }
+
+    /// "Added 9:42 PM · Your messages open here in a moment." (in my devices, the key on its way).
+    static func addedLine(_ at: Int) -> String {
+        guard at > 0 else { return "Your messages open here in a moment." }
+        let today = Calendar.current.isDateInToday(Date(timeIntervalSince1970: TimeInterval(at)))
+        return "Added " + (today ? Format.time(at) : Format.day(at)) + " · Your messages open here in a moment."
     }
 
     static func title(waiting: Int, checking: Bool) -> String {
@@ -326,7 +334,8 @@ struct LockedHereBanner: View {
                 } else {
                     Text(LockedHereBanner.openLine(devices)).font(.subheadline)
                     if let line = LockedHereBanner.askedLine(asked) { Text(line).font(.footnote).foregroundStyle(.secondary) }
-                    Button("Show how", action: showHow)
+                    Text("Nothing to approve on this device.").font(.footnote).foregroundStyle(.secondary)
+                    Button("No other device?", action: showHow)
                         .font(.subheadline.weight(.semibold))
                         .buttonStyle(.borderless)
                         .padding(.top, 2)
@@ -353,7 +362,7 @@ struct LockedThreadBlock: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Locked on this device").font(.subheadline.weight(.semibold))
                 Text(line).font(.subheadline)
-                Button("Show how", action: showHow)
+                Button("No other device?", action: showHow)
                     .font(.subheadline.weight(.semibold))
                     .buttonStyle(.borderless)
                     .padding(.top, 2)
@@ -419,7 +428,7 @@ struct UnlockHowScreen: View {
     @State private var failed = false
     private let steps = [
         "Open Belfry on a phone, tablet or computer where you're already signed in.",
-        "It adds this device by itself. If it asks instead, tap Allow.",
+        "It adds this device by itself: nothing to approve here.",
         "Your conversations open here.",
     ]
     var body: some View {
@@ -686,7 +695,7 @@ struct FreshElsewherePrompt: View {
         }
         .font(.subheadline)
         .frame(maxWidth: .infinity, alignment: .leading)
-        Button { how = true } label: { Text("Show how").frame(maxWidth: .infinity) }
+        Button { how = true } label: { Text("No other device?").frame(maxWidth: .infinity) }
             .buttonStyle(.borderedProminent).controlSize(.large)
         Button { model.sealed.signedOutOthers = nil } label: { Text("Done").frame(maxWidth: .infinity) }
             .buttonStyle(.bordered).controlSize(.large)

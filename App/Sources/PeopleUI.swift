@@ -691,7 +691,7 @@ struct DevicesView: View {
                              ? LockedHereBanner.openLine(model.sealed.unlockers)
                              : LockedHereBanner.title(waiting: model.sealed.waitingCount, checking: false) + ". " + LockedHereBanner.openLine(model.sealed.unlockers))
                             .font(.subheadline).foregroundStyle(.secondary)
-                        Button("Show how") { how = true }
+                        Button("No other device?") { how = true }
                             .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
                             .accessibilityIdentifier("devices-show-how")
                     }

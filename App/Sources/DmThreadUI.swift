@@ -82,7 +82,7 @@ struct DmThreadView: View {
         .onAppear { model.markConversationRead(conv) }
         .bottomBar {
             if locked {
-                Text("You can write here once this device is allowed.")
+                Text("You can write here once this device is added.")
                     .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 16).padding(.vertical, 14)

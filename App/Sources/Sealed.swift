@@ -99,6 +99,8 @@ struct SealedState: Equatable {
     var checkingCount = 0
     /// When this device last asked to be allowed (0: not yet).
     var askedAt = 0
+    /// When this device was added to my devices (0: not, or not known): "Added 9:42 PM · …".
+    var addedAt = 0
     /// The devices that can let this one in (my head's devices), by their session names.
     var unlockers: [String] = []
     /// Diagnostics: why this device did or did not ask to be allowed (each step of the last pass).
@@ -304,6 +306,7 @@ extension AppModel {
         st.waitingCount = dms.lockedWraps
         st.checkingCount = dms.unknownWraps
         st.askedAt = se.upkeepState.lastRequest
+        st.addedAt = se.lacksKey ? (mine?.joined(se.devicePub)?.at ?? 0) : 0
         st.unlockers = st.notAllowed ? unlockerNames : []
         st.upkeepLines = SealedDiagnostics.lines(se.upkeepState, mine: se.mine, now: Int.now)
         st.waitingForKey = se.lacksKey

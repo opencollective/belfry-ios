@@ -55,7 +55,7 @@ struct DmFilesBlock: View {
                     Label("Not sent", systemImage: "exclamationmark.circle").font(.caption2).foregroundStyle(.red).help(f.failed ?? "")
                     Button("Retry") { model.dms?.retryFile(f) }.font(.caption2.weight(.semibold))
                 } else if pending != nil, let c = files.first?.conv, model.lockedHere(c) {
-                    Label("You can write here once this device is allowed.", systemImage: "lock.fill").font(.caption2).foregroundStyle(.secondary)
+                    Label("You can write here once this device is added.", systemImage: "lock.fill").font(.caption2).foregroundStyle(.secondary)
                 } else if let p = pending {
                     SendLineView(id: p.rid, tries: model.dmTries(p.rid), font: .caption2, icon: false)
                 }

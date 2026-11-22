@@ -392,7 +392,7 @@ struct ConversationView: View {
                 VStack(spacing: 4) {
                     HStack(spacing: 8) {
                         if !locked { ProgressView().controlSize(.small) }
-                        Text(locked ? "You can write here once this device is allowed." : "Waiting for another of your devices…")
+                        Text(locked ? "You can write here once this device is added." : LockedHereBanner.addedLine(model.sealed.addedAt))
                             .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     }
                     // after a day without an answer (the way out, starting fresh, is not built yet)
@@ -546,7 +546,7 @@ struct Bubble: View {
                     Button("Retry") { model.dms?.retry(dm) }.font(.caption2.weight(.semibold))
                 } else if dm.pending == true, model.lockedHere(dm.conv) {
                     // held while this device is out of my head: the locked line's words (board messages/encryption-locked-thread, v123)
-                    Label("You can write here once this device is allowed.", systemImage: "lock.fill").font(.caption2).foregroundStyle(.secondary)
+                    Label("You can write here once this device is added.", systemImage: "lock.fill").font(.caption2).foregroundStyle(.secondary)
                 } else if dm.pending == true {
                     SendLineView(id: dm.rid, tries: model.dmTries(dm.rid), font: .caption2, icon: false)
                 } else if dm.unsealed == true {
