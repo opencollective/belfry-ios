@@ -323,8 +323,9 @@ struct SettingsTab: View {
             }
         }
         // Posts: which kinds this channel takes, a switch each, at least one on (one-shape.md "A
-        // channel's Settings", board channels/settings). The requests channel keeps its own rule.
-        if g?.type == .channel, posts != "request" {
+        // channel's Settings", board channels/settings). An old value like "request" is kept while all
+        // four are on.
+        if g?.type == .channel {
             Section {
                 postRow("message", "Messages", "Plain messages, pictures and files")
                 postRow("thread", "Threads", "Each post starts its own thread")
@@ -361,7 +362,7 @@ struct SettingsTab: View {
                 } else { model.editChannel(id, name: n, about: a, inbox: nil) }
                 if g?.type == .channel { model.setVisibility(id, public: access == .public) }
                 else if g?.isPod == true { model.setVisibility(id, public: access == .public && join != .private) }
-                if g?.type == .channel, posts != "request" { model.setAccepts(id, takes) }
+                if g?.type == .channel { model.setAccepts(id, takes) }
                 if Actions.inboxToSend(chosen: inbox, reads: model.derive.isInbox(g), touched: inboxTouched) { model.editChannelInbox(id, inbox) }
                 dismiss()
             } label: {

@@ -22,12 +22,10 @@ enum MailFaces {
         return Color(hue: Double(v) / 360, saturation: 0.45, brightness: 0.62)
     }
 
-    /// Up to two initials: from the name, else from the address before the @.
+    /// The first letters of the first and the last word of the name ("Ana Maria Silva" → "AS",
+    /// "Lina" → "L"); no name: the first letter of the address (one-shape.md d85f408).
     static func initials(name: String?, address: String) -> String {
-        let source = (name?.trimmingCharacters(in: .whitespaces)).flatMap { $0.isEmpty ? nil : $0 } ?? String(address.split(separator: "@").first ?? "")
-        let words = source.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).prefix(2)
-        let out = words.compactMap(\.first).map(String.init).joined().uppercased()
-        return out.isEmpty ? "@" : out
+        MailInitials.of(name: name, address: address)
     }
 
     // ---- fetching: three at a time, remembered ----------------------------------------------

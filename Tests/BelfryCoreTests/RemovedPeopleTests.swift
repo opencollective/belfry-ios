@@ -134,6 +134,9 @@ final class GroupAccessTests: XCTestCase {
         ]
         var d = Derive(events: base, context: WorldContext(me: me, groupsKey: gk))
         XCTAssertNil(d.groups().first { $0.id == "pod-secret-1a2b" }, "not in it: in no list")
+        // nobody outside it sees it, the belfry's stewards included (one-shape.md d85f408)
+        let steward = Derive(events: base, context: WorldContext(me: me, communityAdmins: [me], groupsKey: gk))
+        XCTAssertNil(steward.groups().first { $0.id == "pod-secret-1a2b" })
         // added by its admin: it shows, private, with no request in it
         d = Derive(events: base + [ev(ana, 9000, 40, [["h", "pod-secret-1a2b"], ["p", me, "member"]])], context: WorldContext(me: me, groupsKey: gk))
         let g = d.groups().first { $0.id == "pod-secret-1a2b" }
@@ -161,6 +164,31 @@ final class AcceptsTests: XCTestCase {
         XCTAssertEqual(WebPage.legacyPosts(["thread"]), "thread")
         XCTAssertEqual(WebPage.legacyPosts(["message"]), "anything")
         XCTAssertEqual(WebPage.legacyPosts(["event", "proposal"]), "anything")
+    }
+
+    func testAnOddOldValueStaysWhileAllFourAreOn() throws {
+        let me = String(repeating: "a", count: 64)
+        func ev(_ kind: Int, _ at: Int, _ tags: [Tag], _ content: String = "") -> NostrEvent {
+            var e = NostrEvent(pubkey: me, createdAt: at, kind: kind, tags: tags, content: content)
+            e.id = Crypto.sha256(Data("\(kind)\(at)\(tags)\(content)".utf8)).hex
+            return e
+        }
+        let events = [
+            ev(39000, 10, [["d", "requests"], ["name", "requests"]]),
+            ev(39001, 10, [["d", "requests"], ["p", me, "admin"]]),
+            ev(30078, 20, [["d", "belfry:web:requests"], ["h", "requests"]], #"{"on":false,"visibility":"members","slug":"requests","posts":"request","accepts":["message","thread"]}"#),
+        ]
+        let d = Derive(events: events, context: WorldContext(me: me))
+        let g = try XCTUnwrap(d.group("requests"))
+        func content(_ takes: Set<String>) throws -> [String: Any] {
+            let draft = try XCTUnwrap(Actions.setAccepts(g, takes: takes, derive: d))
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: Data(draft.content.utf8)) as? [String: Any])
+        }
+        // all four on again: "request" stays
+        XCTAssertEqual(try content(Set(WebPage.kinds))["posts"] as? String, "request")
+        // a kind is off: the rule
+        XCTAssertEqual(try content(["event"])["posts"] as? String, "event")
+        XCTAssertEqual(try content(["message", "event"])["posts"] as? String, "anything")
     }
 
     func testTheAddressTheBelfryGives() {

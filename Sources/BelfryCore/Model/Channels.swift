@@ -304,7 +304,11 @@ public extension Actions {
         if (w?.takes ?? Set(WebPage.kinds)) == want && (w?.accepts != nil || want.count == WebPage.kinds.count) { return nil }
         var c = d.webContent(g)
         c["accepts"] = WebPage.kinds.filter(want.contains)
-        c["posts"] = WebPage.legacyPosts(want)
+        // an old `posts` that is none of the kinds (e.g. "request", the requests page) is kept
+        // while all four are on; it follows the rule only once a kind is off (one-shape.md d85f408)
+        let old = c["posts"] as? String
+        let odd = old.map { !["anything", "thread", "event", "proposal"].contains($0) } ?? false
+        if !(odd && want.count == WebPage.kinds.count) { c["posts"] = WebPage.legacyPosts(want) }
         if c["on"] == nil { c["on"] = false }
         if c["visibility"] == nil { c["visibility"] = "members" }
         if (c["slug"].map { "\($0)" } ?? "").isEmpty { c["slug"] = Derive.slugify(g.rawName.isEmpty ? g.name : g.rawName) }

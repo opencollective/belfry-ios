@@ -27,6 +27,21 @@ public enum MailPictures {
     }
 }
 
+/// The letters on a face without a picture (one-shape.md "The Messages list: faces, not envelopes").
+public enum MailInitials {
+    /// The first letters of the first and the last word of the name ("Ana Maria Silva" → "AS",
+    /// "Lina" → "L"); no name: the first letter of the address.
+    public static func of(name: String?, address: String) -> String {
+        let words = (name ?? "").split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        if let first = words.first?.first {
+            let last = words.count > 1 ? words.last?.first : nil
+            return (String(first) + (last.map(String.init) ?? "")).uppercased()
+        }
+        let a = address.trimmingCharacters(in: .whitespaces)
+        return a.first(where: { $0.isLetter || $0.isNumber }).map { String($0).uppercased() } ?? "?"
+    }
+}
+
 /// A large e-mail kept on the file server (SPEC 8: `x`, `url`, `decryption-key`,
 /// `decryption-nonce`; AES-256-GCM, key and nonce base64).
 public struct LargeMail: Codable, Hashable, Sendable {
