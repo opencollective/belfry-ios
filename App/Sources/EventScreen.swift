@@ -415,6 +415,9 @@ struct EventScreenBody: View {
             let icon = r == .accepted ? "checkmark" : r == .tentative ? "questionmark" : "xmark"
             items.append(HeaderItem(key: "answer", icon: icon, text: r.label, label: "You answered " + r.label,
                                     tint: r == .accepted ? .green : .secondary))
+        } else if let s = d.stateLabel(e), !s.isEmpty {
+            // a ticket, an application: my state leads the row the same way
+            items.append(HeaderItem(key: "answer", icon: "checkmark", text: s, label: s, tint: .green))
         }
         let when = d.lineDay(e.start, now: .now) + " · " + d.lineWhen(e)
         items.append(HeaderItem(key: "lead", icon: "calendar", text: when, label: when, accent: true))
@@ -440,7 +443,9 @@ struct EventScreenBody: View {
         model.launchEventDone = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
             switch s {
-            case "eventup", "eventtiny": withAnimation { level = .up }
+            case "eventup": withAnimation { level = .up }
+            // no animation: the picture is taken at a fixed time after launch
+            case "eventtiny": level = .up
             case "eventfull", "eventaddress": withAnimation { level = .full }
             case "eventphotos": sub = .photos
             case "eventpeople", "meetingpeople": sub = .people
