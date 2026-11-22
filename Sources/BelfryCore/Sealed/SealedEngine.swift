@@ -162,7 +162,13 @@ public final class SealedEngine: @unchecked Sendable {
         public var inHead: Bool?
         /// The request (8562) was published in this pass.
         public var asked: Bool?
-        public var failed: Bool { relayAnswered == false || chainRead == false || sessions == false || listsMe == false || asked == false }
+        /// A request of this device is still in the outbox (not on the relay yet).
+        public var requestWaiting: Bool?
+        /// The relay refused this device's request for good: what it said (asked again at once).
+        public var requestRefused: String?
+        public var failed: Bool {
+            relayAnswered == false || chainRead == false || sessions == false || listsMe == false || asked == false || requestWaiting == true
+        }
     }
 
     private var report = UpkeepReport()
@@ -1058,8 +1064,21 @@ public final class SealedEngine: @unchecked Sendable {
         if !c.devices.contains(devicePub) {
             // not in my head: ask (5.2), again every 24 h. No fresh start is made here, whoever is
             // live: this device stays locked with the banner until another one allows it.
-            lock.lock(); let last = memory.lastRequest, link = self.link; lock.unlock()
+            lock.lock(); var last = memory.lastRequest; let link = self.link; lock.unlock()
             note { $0.inHead = false }
+            // "asked" means the relay has it: a request the relay refused for good is asked again
+            // now, and one still waiting in the outbox is pushed and looked at again in seconds
+            // (it used to count as asked for 24 hours from the moment it was queued)
+            let queued = engine.outboxItems().filter { $0.kind == SealedKind.request && $0.signed?.pubkey == devicePub }
+            if let refused = queued.first(where: { $0.status == .failed }) {
+                for q in queued { engine.cancel(q.localId) }
+                remember { $0.lastRequest = 0 }
+                last = 0
+                note { $0.requestRefused = String((refused.error ?? "refused").prefix(120)) }
+            } else if !queued.isEmpty {
+                engine.flushSoon()
+                note { $0.requestWaiting = true }
+            }
             if now - last >= 86400 {
                 let sent = (try? publish(Sealed.request(account: me, device: devicePub, link: link, now: now))) != nil
                 if sent { remember { $0.lastRequest = now } }

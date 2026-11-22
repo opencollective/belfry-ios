@@ -493,7 +493,9 @@ enum SealedDiagnostics {
                 yn(r.sessions, "Session list from the belfry: yes", "Session list from the belfry: no answer"),
                 yn(r.listsMe, "This device is in the session list: yes", "This device is in the session list: no"),
                 yn(r.inHead, "This device is allowed: yes", "This device is allowed: not yet"),
-                yn(r.asked, "Asked to be allowed in this check: yes", "Asked to be allowed in this check: could not send")].compactMap { $0 }
+                yn(r.asked, "Asked to be allowed in this check: yes", "Asked to be allowed in this check: could not send"),
+                r.requestWaiting == true ? "The request is still waiting to be sent" : nil,
+                r.requestRefused.map { "The relay refused the request (asked again): \($0)" }].compactMap { $0 }
         if mine == .waiting || u.lastRequest > 0 {
             out.append(u.lastRequest > 0 ? "Last asked to be allowed: \(Format.day(u.lastRequest)) \(Format.time(u.lastRequest))" : "Last asked to be allowed: never")
         }
