@@ -410,8 +410,39 @@ public final class Derive {
     public var communityAdmins: Set<String> { ctx.communityAdmins }
 
     public init(events: [NostrEvent], context: WorldContext) {
-        self.events = events
+        self.events = Derive.current(events)
         self.ctx = context
+    }
+
+    /// Kinds whose older copies stay readable on purpose: a proposal's versions (its Versions tab)
+    /// and calendar events (each host's copy; the reader takes the newest of the hosts' copies).
+    static let keepsVersions: Set<Int> = [30023, 31922, 31923]
+
+    /// The log keeps every copy it was given, but a replaceable event (0, 3, 10000–19999) or an
+    /// addressable one (30000–39999) is only its newest copy per author + kind (+ d): NIP-01, and
+    /// the server's rule. Older copies are dropped before any reader sees them, so a setting
+    /// replaced by the same author's next one (another channel's, under an old shared d) can never
+    /// count again (OSV's #hello, 2026-11-22). Ties: the lower id wins.
+    static func current(_ events: [NostrEvent]) -> [NostrEvent] {
+        var newest = [String: NostrEvent]()
+        var replaced = false
+        for e in events {
+            guard let k = replaceKey(e) else { continue }
+            if let o = newest[k] {
+                replaced = true
+                if o.createdAt > e.createdAt || (o.createdAt == e.createdAt && o.id < e.id) { continue }
+            }
+            newest[k] = e
+        }
+        guard replaced else { return events }
+        return events.filter { e in replaceKey(e).map { newest[$0]?.id == e.id } ?? true }
+    }
+
+    static func replaceKey(_ e: NostrEvent) -> String? {
+        let k = e.kind
+        if k == 0 || k == 3 || (10000..<20000).contains(k) { return "\(k):\(e.pubkey)" }
+        if (30000..<40000).contains(k), !keepsVersions.contains(k) { return "\(k):\(e.pubkey):\(e.tag("d") ?? "")" }
+        return nil
     }
 
     public convenience init(events: [NostrEvent], me: String, communityAdmins: Set<String> = []) {

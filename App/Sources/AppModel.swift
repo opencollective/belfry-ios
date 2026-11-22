@@ -314,10 +314,12 @@ final class AppModel: ObservableObject {
         let list = engine?.snapshot() ?? []
         let d = Derive(events: list, context: ctx)
         // offline first: the channels nothing arrived in keep what the last snapshot worked out
-        if let prev = cachedDerive?.2, list.count >= prev.events.count, list.count - prev.events.count < 500 {
+        // (both sides counted after older copies of replaceable events were dropped: Derive.current)
+        let cur = d.events
+        if let prev = cachedDerive?.2, cur.count >= prev.events.count, cur.count - prev.events.count < 500 {
             let known = prev.idSet
-            let fresh = list.filter { !known.contains($0.id) }
-            if fresh.count == list.count - prev.events.count { d.carry(from: prev, newEvents: fresh) }
+            let fresh = cur.filter { !known.contains($0.id) }
+            if fresh.count == cur.count - prev.events.count { d.carry(from: prev, newEvents: fresh) }
         }
         cachedDerive = (version, ev, d)
         // nothing is queued for an archived or deleted group (SPEC 19.30)

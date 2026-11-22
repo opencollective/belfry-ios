@@ -153,3 +153,53 @@ final class InboxSwitchTests: XCTestCase {
         XCTAssertEqual(SettingsQueue.message(item), "The e-mail setting wasn't saved: you're not allowed to change this channel.")
     }
 }
+
+/// The log keeps every copy it was given; readers see only the newest copy per author + kind (+ d)
+/// of a replaceable / addressable event (NIP-01, the server's rule; Xavier, 2026-11-22: settings
+/// for different channels never conflict or override each other).
+final class ReplaceableTests: XCTestCase {
+    func testOnlyTheNewestCopyPerAuthorKindAndD() {
+        let p1 = ev(ME, 0, 100, [], #"{"name":"Old"}"#), p2 = ev(ME, 0, 200, [], #"{"name":"New"}"#)
+        let w1 = ev(ADMIN, 30078, 100, [["d", "belfry:web:hello"], ["h", "hello"]], #"{"visibility":"public"}"#)
+        let w2 = ev(ADMIN, 30078, 200, [["d", "belfry:web:hello"], ["h", "hello"]], #"{"visibility":"members"}"#)
+        let wOther = ev(OTHER, 30078, 50, [["d", "belfry:web:hello"], ["h", "hello"]])
+        let s1 = ev(ME, 30078, 100, [["d", "seen:hello"], ["h", "hello"]]), s2 = ev(ME, 30078, 300, [["d", "seen:hello"], ["h", "hello"]])
+        let sG = ev(ME, 30078, 150, [["d", "seen:general"], ["h", "general"]])
+        let m1 = ev(RELAY, 39000, 100, [["d", "hello"], ["name", "hello"]]), m2 = ev(RELAY, 39000, 200, [["d", "hello"], ["name", "Hello!"]])
+        let msg1 = ev(ME, 9, 100, [["h", "hello"]], "a"), msg2 = ev(ME, 9, 100, [["h", "hello"]], "b")
+        let kept = Set(Derive.current([p1, p2, w1, w2, wOther, s1, s2, sG, m1, m2, msg1, msg2]).map(\.id))
+        XCTAssertEqual(kept, Set([p2, w2, wOther, s2, sG, m2, msg1, msg2].map(\.id)))
+        // the snapshot reads the newest: the channel's name, my profile
+        let d = Derive(events: [m1, m2, p1, p2], me: ME)
+        XCTAssertEqual(d.group("hello")?.name, "Hello!")
+        XCTAssertEqual(d.events.count, 2)
+    }
+
+    func testTiesGoToTheLowerIdAndVersionsStay() {
+        let a = NostrEvent(id: String(repeating: "1", count: 64), pubkey: ME, createdAt: 100, kind: 30078, tags: [["d", "x"]], content: "a")
+        let b = NostrEvent(id: String(repeating: "2", count: 64), pubkey: ME, createdAt: 100, kind: 30078, tags: [["d", "x"]], content: "b")
+        XCTAssertEqual(Derive.current([b, a]).map(\.content), ["a"])
+        // a proposal's versions and calendar events keep their older copies (their readers pick)
+        let v1 = ev(ME, 30023, 100, [["d", "p"], ["t", "proposal"]]), v2 = ev(ME, 30023, 200, [["d", "p"], ["t", "proposal"]])
+        let e1 = ev(ME, 31923, 100, [["d", "e"]]), e2 = ev(ME, 31923, 200, [["d", "e"]])
+        XCTAssertEqual(Derive.current([v1, v2, e1, e2]).count, 4)
+    }
+
+    /// A drop box link renewed under the same token shows once, with its newest expiry.
+    func testADropLinkShowsOnce() {
+        let base = [meta("hello", "hello")]
+        let d1 = ev(ME, 30078, 100, [["d", "drop:tok"], ["h", "hello"], ["expiration", "5000"]])
+        let d2 = ev(ME, 30078, 200, [["d", "drop:tok"], ["h", "hello"], ["expiration", "9000"]])
+        let d = Derive(events: base + [d1, d2], me: ME)
+        XCTAssertEqual(d.dropLinks("hello", now: 1000).map(\.expires), [9000])
+    }
+
+    /// Two channels' settings never touch each other: every per-channel setting the app writes
+    /// carries the channel in its d.
+    func testPerChannelSettingsCarryTheChannelInD() {
+        XCTAssertEqual(Actions.setInbox("hello", on: true).tags.first, ["d", "belfry:inbox:hello"])
+        XCTAssertEqual(Actions.seen("hello").tags.first, ["d", "seen:hello"])
+        XCTAssertEqual(Actions.webPage("hello", content: [:]).tags.first, ["d", "belfry:web:hello"])
+        XCTAssertEqual(Actions.createDropLink("hello", days: 1, login: false, now: 0, token: "t").1.tags.first, ["d", "drop:t"])
+    }
+}
