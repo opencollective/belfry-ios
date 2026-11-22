@@ -267,6 +267,8 @@ shot 06b-invite-search invitesearch light
 shot 06c-invite-external inviteexternal light
 shot 07-messages messages light
 shot 08-conversation conversation light
+shot 08b-dm-thread dmthread light
+shot 08c-dm-thread-dark dmthread dark
 shot 09-email mail light
 shot 13-pulldown pulldown light
 shot 14-message-menu menu light

@@ -448,5 +448,12 @@ enum Demo {
         if let i = args.firstIndex(of: "-screen"), i + 1 < args.count, ["sendstill", "sendnotyet"].contains(args[i + 1]) {
             dms.demoPending(conv: "n:" + ps["ana"]!.pubkey, text: "Yes, I'll be there at 9 with the keys.", at: now - 40)
         }
+        // ---- one shape, 0.8.0 (canvas one-shape/dm-thread): a thread in the conversation with Ana
+        if let root = try? await dms.demoDM(from: ps["ana"]!, text: "And could you bring the extension cable from the store room?", at: now - 7100) {
+            try? await dms.demoSent(to: ps["ana"]!.pubkey, text: "The long orange one or the reel?", at: now - 6600, root: root)
+            try? await dms.demoDM(from: ps["ana"]!, text: "The reel, the bike stands need two plugs.", at: now - 6480, root: root)
+            try? await dms.demoSent(to: ps["ana"]!.pubkey, text: "Yes to both.", at: now - 6300)
+            await dms.process()
+        }
     }
 }
