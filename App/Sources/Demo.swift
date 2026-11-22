@@ -469,5 +469,12 @@ enum Demo {
             engine.add([lou, took, ev(ps["ana"]!, 1111, start + 420, t1.tags, t1.content), ev(ps["ben"]!, 1111, start + 960, t2.tags, t2.content),
                         ev(you, 1111, start + 1500, draft.tags, draftText)], verify: false)
         }
+        // ---- one shape, 0.8.0 (canvas one-shape/dm-thread): a thread in the conversation with Ana
+        if let root = try? await dms.demoDM(from: ps["ana"]!, text: "And could you bring the extension cable from the store room?", at: now - 7100) {
+            try? await dms.demoSent(to: ps["ana"]!.pubkey, text: "The long orange one or the reel?", at: now - 6600, root: root)
+            try? await dms.demoDM(from: ps["ana"]!, text: "The reel, the bike stands need two plugs.", at: now - 6480, root: root)
+            try? await dms.demoSent(to: ps["ana"]!.pubkey, text: "Yes to both.", at: now - 6300)
+            await dms.process()
+        }
     }
 }

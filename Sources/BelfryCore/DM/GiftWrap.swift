@@ -68,6 +68,8 @@ public struct Dm: Codable, Hashable, Sendable, Identifiable {
     public var unreadable: Bool?
     /// Several files and a caption sent together (16 hex).
     public var group: String?
+    /// A reply in the thread of this rumor id (["e", root, "", "root"], one-shape.md §3).
+    public var root: String?
 
     public var id: String { rid }
 
@@ -97,6 +99,7 @@ public enum DmReader {
             let conv = MailThreads.nostrConv(author: rumor.pubkey, pTags: rumor.tagValues("p"), me: me)
             var d = Dm(rid: rumor.id, conv: conv, from: rumor.pubkey, mine: mine, at: rumor.createdAt, kind: rumor.kind, text: rumor.content)
             d.group = DmFiles.hex(rumor.tag("group"), bytes: 8)
+            if rumor.kind == 14 { d.root = DmThreads.root(rumor.tags) }
             if rumor.kind == DmFiles.kind {
                 if let f = DmFiles.parse(tags: rumor.tags, content: rumor.content) { d.file = f; d.text = DmFiles.lastLine([f]) }
                 else { d.unreadable = true; d.text = DmFiles.unreadable }

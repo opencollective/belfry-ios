@@ -72,6 +72,8 @@ struct MessagesView: View {
             }
             // boards messages/encryption-*: Lina's conversation, the group's, the three steps
             if screen == "encshared" || screen == "encsharedwhy" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("dev").pubkey) } }
+            // board one-shape/dm-thread: Ana's conversation holds the demo's thread
+            if screen == "dmthread" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("ana").pubkey) } }
             if screen == "enclocked" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("ana").pubkey) } }
             if ["encthread", "encdevices", "encshare", "encwaiting", "encheld"].contains(screen) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate("n:" + Demo.signer("lina").pubkey) }
@@ -173,6 +175,8 @@ struct ConversationView: View {
     /// The amber line's sheet: share history with someone's new device.
     @State private var sharing: DeviceNotice?
     @State private var how = false
+    /// A message's thread (one shape: Reply starts it), pushed.
+    @State private var threadOf: DmThreadRoute?
 
     /// Messages and device lines, in the order they happened.
     private enum Row: Identifiable {
@@ -228,6 +232,9 @@ struct ConversationView: View {
         // a sealed conversation has the lock by its name; one that is not sealed has none
         let sealed = model.sealedConv(conv)
         let firstShared = ConversationView.blockStarts(list)
+        // replies sit under their root (one-shape.md §3); one whose root isn't here shows in line
+        let split = DmThreads.split(list)
+        let canThread = !mail && !locked
         ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
@@ -236,7 +243,7 @@ struct ConversationView: View {
                          : "No messages yet. Only you two can read them.")
                         .font(.callout).foregroundStyle(.secondary).padding()
                 }
-                ForEach(rows(list, locked ? nil : sealed)) { r in
+                ForEach(rows(split.main, locked ? nil : sealed)) { r in
                     switch r {
                     case .dm(let d):
                         if let by = d.sharedBy {
@@ -246,7 +253,10 @@ struct ConversationView: View {
                                 .padding(.leading, 10)
                                 .overlay(alignment: .leading) { Rectangle().fill(Color.secondary.opacity(0.35)).frame(width: 2) }
                         } else {
-                            Bubble(dm: d)
+                            Bubble(dm: d, reply: canThread ? ({ openThread(d) } as () -> Void) : nil)
+                            if let replies = split.replies[d.rid], !replies.isEmpty {
+                                RepliesLine(dm: d, replies: replies) { openThread(d) }
+                            }
                         }
                     case .files(let f):
                         DmFilesBlock(files: f)
@@ -308,6 +318,7 @@ struct ConversationView: View {
                 }
             }
         }
+        .navigationDestination(item: $threadOf) { r in DmThreadView(conv: r.conv, root: r.root) }
         .navigationDestination(isPresented: $encryption) { EncryptionScreen(conv: conv) }
         .navigationDestination(isPresented: $how) { UnlockHowScreen() }
         .sheet(item: $sharing) { n in ShareHistorySheet(conv: conv, notice: n) }
@@ -316,6 +327,12 @@ struct ConversationView: View {
             let screen = model.launch.screen ?? ""
             // a send that was refused (board messages/encryption-held): the text kept, the grey line
             if screen == "encheld" { text = "I'll bring the ladder at 8:30."; error = DirectMessages.cantCheck }
+            // one shape (board one-shape/dm-thread): the first message with replies, its thread
+            if screen == "dmthread" {
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                if let r = DmThreads.split(model.dms?.thread(conv) ?? []).replies.keys.sorted().first { threadOf = DmThreadRoute(conv: conv, root: r) }
+                return
+            }
             guard ["encdevices", "encgroup", "encmaildevices", "encshare"].contains(screen) else { return }
             try? await Task.sleep(nanoseconds: 700_000_000) // after the push: the picture is taken 6 s after launch
             if screen == "encshare" { sharing = sealed?.notices.first { $0.what == .locked } } else { encryption = true }
@@ -391,6 +408,11 @@ struct ConversationView: View {
         }
     }
 
+    private func openThread(_ d: Dm) {
+        hideKeyboard()
+        threadOf = DmThreadRoute(conv: conv, root: d.rid)
+    }
+
     func send() {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty, let dms = model.dms else { return }
@@ -420,6 +442,8 @@ struct ConversationView: View {
 struct Bubble: View {
     @EnvironmentObject var model: AppModel
     let dm: Dm
+    /// Reply (one shape): opens the message's thread. Nil where there is no thread (e-mail).
+    var reply: (() -> Void)? = nil
     @State private var notSealed = false
     @State private var moreEmoji = false
 
@@ -460,6 +484,11 @@ struct Bubble: View {
                             Button { moreEmoji = true } label: { Label("More reactions", systemImage: "face.smiling") }
                         }
                         .controlGroupStyle(.compactMenu)
+                    }
+                    // one shape, this build in a DM: Reply · Copy text (no to-do, no Pin: sealed
+                    // rules first)
+                    if let reply, canReact {
+                        Button(action: reply) { Label("Reply", systemImage: "arrowshape.turn.up.left") }
                     }
                     Button {
                         UIPasteboard.general.string = dm.text
