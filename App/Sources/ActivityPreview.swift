@@ -106,27 +106,79 @@ private struct OpenArea<Content: View>: View {
     @ViewBuilder let content: () -> Content
     var body: some View {
         content().multilineTextAlignment(.leading).contentShape(Rectangle())
+            .frame(minHeight: 44)
             .onTapGesture(perform: open)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isButton)
             .accessibilityHint("Opens it")
+            .accessibilityAction(open)
     }
 }
 
-/// A quick action on the card: a small capsule, filled when it is my answer.
+/// A quick action on the card: a small capsule, filled when it is my answer. It behaves like
+/// BusyButton: the first tap locks it and shows progress until the work is done (no double
+/// send); 44 pt hit area; a button to VoiceOver.
 private struct QuickAction: View {
     let title: String
     var on = false
-    let action: () -> Void
+    let action: () async -> Void
+    @State private var busy = false
+
     var body: some View {
-        Text(title).font(.footnote.weight(.semibold))
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            .foregroundStyle(on ? Theme.onAccent : Color.primary)
-            .background(on ? Color.brand : Color.secondary.opacity(0.15), in: Capsule())
-            .contentShape(Capsule())
-            .onTapGesture { UIImpactFeedbackGenerator(style: .light).impactOccurred(); action() }
-            .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
-            .accessibilityAction(action)
+        HStack(spacing: 6) {
+            Text(title).font(.footnote.weight(.semibold))
+            if busy { ProgressView().controlSize(.mini) }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .foregroundStyle(on ? Theme.onAccent : Color.primary)
+        .background(on ? Color.brand : Color.secondary.opacity(0.15), in: Capsule())
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: run)
+        .opacity(busy ? 0.6 : 1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction(run)
+    }
+
+    private func run() {
+        guard !busy else { return }
+        busy = true
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Task { @MainActor in
+            await action()
+            // held a moment at least, so a quick second tap never sends again (BusyButton's 0.6 s)
+            try? await Task.sleep(for: .milliseconds(600))
+            busy = false
+        }
+    }
+}
+
+/// The to-do's tick on the card, as a button (locks on the first tap, 44 pt, VoiceOver).
+private struct QuickTick: View {
+    let done: Bool
+    let action: () -> Void
+    @State private var busy = false
+    var body: some View {
+        Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.title3)
+            .foregroundStyle(done ? Color.green : Color.secondary)
+            .opacity(busy ? 0.5 : 1)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: run)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(done ? "Reopen" : "Mark done")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(run)
+            .onChange(of: done) { _, _ in busy = false }
+    }
+    private func run() {
+        guard !busy else { return }
+        busy = true
+        action()
+        // the snapshot follows the outbox at once; unlock if nothing changed after a moment
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { busy = false }
     }
 }
 
@@ -137,13 +189,7 @@ struct TodoPreviewCard: View {
     var body: some View {
         PreviewBox {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: t.done ? "checkmark.circle.fill" : "circle").font(.title3)
-                    .foregroundStyle(t.done ? Color.green : Color.secondary)
-                    .contentShape(Circle())
-                    .onTapGesture { model.todo(t, in: group, t.done ? "undone" : "done") }
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityLabel(t.done ? "Reopen" : "Mark done")
-                    .accessibilityAction { model.todo(t, in: group, t.done ? "undone" : "done") }
+                QuickTick(done: t.done) { model.todo(t, in: group, t.done ? "undone" : "done") }
                 OpenArea(open: { model.openTodo = TodoKey(group: group, task: t.id) }) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(t.title).font(.subheadline.weight(.semibold)).strikethrough(t.done).lineLimit(2)
@@ -173,6 +219,7 @@ struct EventPreviewCard: View {
                     HStack(spacing: 8) {
                         QuickAction(title: Rsvp.accepted.label, on: mine == .accepted) { model.rsvp(e, .accepted) }
                         QuickAction(title: Rsvp.tentative.label, on: mine == .tentative) { model.rsvp(e, .tentative) }
+                        QuickAction(title: Rsvp.declined.label, on: mine == .declined) { model.rsvp(e, .declined) }
                     }
                 }
             }
