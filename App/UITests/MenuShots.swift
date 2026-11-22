@@ -267,27 +267,37 @@ final class MenuShots: XCTestCase {
     private func endRow(_ app: XCUIApplication, _ text: String) -> XCUIElement {
         app.buttons.matching(identifier: "channel-end").matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
-    /// Round 7: a to-do row opens its own screen (not the tick); Assign to… puts it on someone,
-    /// Unassign takes it off again.
+    /// Round 7, in one shape (2026-11-22): a to-do row opens its own screen (not the tick); ••• →
+    /// Assign to… puts it on someone (the header's row names them), ••• → Unassign takes it off
+    /// again ("Unassigned"), and ••• then offers Claim it.
     func testTodoAssign() {
         let app = launch("todos")
         let row = app.buttons["todo-open"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10), "no to-do row")
         row.tap()
-        let assign = app.buttons["todo-assign"].firstMatch
-        XCTAssertTrue(assign.waitForExistence(timeout: 5), "the to-do's screen did not open")
+        let more = app.buttons["todo-more"].firstMatch
+        XCTAssertTrue(more.waitForExistence(timeout: 5), "the to-do's screen did not open")
         shot("58-todo")
+        more.tap()
+        let assign = app.buttons["Assign to…"].firstMatch
+        XCTAssertTrue(assign.waitForExistence(timeout: 5), "no Assign to… in •••")
         assign.tap()
         let person = app.buttons.matching(identifier: "assign-person").element(boundBy: 1)
         XCTAssertTrue(person.waitForExistence(timeout: 5), "no one to assign")
         shot("58-todo-assign")
         person.tap()
-        let unassign = app.buttons["todo-unassign"].firstMatch
-        XCTAssertTrue(unassign.waitForExistence(timeout: 5), "assigning did not show Unassign")
-        unassign.tap()
-        expectation(for: NSPredicate(format: "label CONTAINS 'Nobody on it yet'"), evaluatedWith: app.descendants(matching: .any)["todo-who"].firstMatch)
+        let header = app.buttons["todo-header"].firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 5), "no header after assigning")
+        expectation(for: NSPredicate(format: "NOT (label CONTAINS 'Unassigned')"), evaluatedWith: header)
         waitForExpectations(timeout: 8)
-        XCTAssertTrue(app.buttons["todo-claim"].firstMatch.waitForExistence(timeout: 5))
+        more.tap()
+        let unassign = app.buttons["Unassign"].firstMatch
+        XCTAssertTrue(unassign.waitForExistence(timeout: 5), "assigning did not offer Unassign")
+        unassign.tap()
+        expectation(for: NSPredicate(format: "label CONTAINS 'Unassigned'"), evaluatedWith: header)
+        waitForExpectations(timeout: 8)
+        more.tap()
+        XCTAssertTrue(app.buttons["Claim it"].firstMatch.waitForExistence(timeout: 5))
     }
 
     /// Round 7: a member link shows "You're invited…" (no channel); Sign up → name, e-mail, the

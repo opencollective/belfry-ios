@@ -411,6 +411,22 @@ enum Demo {
         let oneShape = Demo.oneShapeEvents(now: now, ben: ps["ben"]!, others: [ps["emma"]!, ps["ana"]!], me: you, ev: ev,
                                        channel: { channel($0, $1, $2, admins: $3, members: $4, at: $5) })
         evs += oneShape
+        // ---- one shape, the to-do (canvas one-shape/todo-*, 2026-11-22) ----
+        // the budget to-do gets a due date (its author's 1010 edit) and a comment; the compost one is done
+        if let budgetTodo = evs.first(where: { $0.kind == 2100 && $0.content == "Comment on the 2027 budget" }) {
+            let cal = Calendar.current
+            let friday = cal.date(byAdding: .day, value: 3, to: cal.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(now)))) ?? Date()
+            let due = Int((cal.date(bySettingHour: 9, minute: 0, second: 0, of: friday) ?? friday).timeIntervalSince1970)
+            let edit = Actions.setTaskDue(budgetTodo, title: budgetTodo.content, due: due)
+            evs.append(ev(you, edit.kind, now - 2700, edit.tags, edit.content))
+            let c = Actions.commentTask("general", taskId: budgetTodo.id, text: "I'll read it tonight and add my notes to the shared folder.")
+            evs.append(ev(ps["ana"]!, c.kind, now - 2400, c.tags, c.content))
+        }
+        evs.append(ev(ps["chloe"]!, 2103, now - day - 3600, Actions.commentTask("general", taskId: compost.id, text: "Ordered: two cubic metres, delivered Thursday.").tags,
+                      "Ordered: two cubic metres, delivered Thursday."))
+        evs.append(ev(ps["chloe"]!, 2101, now - day, Actions.taskAction("general", taskId: compost.id, action: "done").tags))
+        evs.append(ev(ps["ben"]!, 2103, now - day + 600, Actions.commentTask("general", taskId: compost.id, text: "Thanks Chloe!").tags, "Thanks Chloe!"))
+        // ---- end of the to-do block ----
         engine.add(evs, verify: false)
         engine.add([ev(you, 30078, now - 3 * day, [["d", "seen:general"], ["h", "general"]])], verify: false)
 

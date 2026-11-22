@@ -28,7 +28,7 @@ MAP = [
     (r"App/Sources/DmThreadUI", "dmthread|conversation", "testDmMenu"),
     (r"App/Sources/ThreadView", "thread|threadscreen|mentions", ""),
     (r"App/Sources/(PullDown|ChannelPlaces|ChannelDetails|NotifySheet)", "pull.*|member-pulldown|pinned|chsettings|chvisibility|chpublic|notify|members|membersinvitech|todos|files|log|closedrequests", ""),
-    (r"App/Sources/TodoScreen", "todo.*|mytodos", "testTodoAssign"),
+    (r"App/Sources/(TodoScreen|AppModel\+Due)", "todo.*|mytodos", "testTodoAssign"),
     (r"App/Sources/(TownDrawer|Tabs)", ".*drawer|home|town|calendar|groups|messagestab", "testDrawerSwipe testDrawerDrag testHomeDrawer testCalendarAndGroupsDrawer"),
     (r"App/Sources/(Nav2UI|AppModel\+Nav)", "addchannel.*|channelpreview|channelpin|member-channelpin|.*drawer|messagestab|feed", "testDrawerSwipe"),
     (r"App/Sources/(HomeView|AppModel\+Home)", "home|homedrawer|guest-home|guest-applied|mytodos", "testHomeDrawer"),
