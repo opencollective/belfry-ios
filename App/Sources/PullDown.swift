@@ -365,7 +365,11 @@ struct PullDownList: View {
         out.append(PDPlace(place: .members, value: "\(c.members)"))
         if !model.guestReading && !model.derive.amGuest && !locked { out.append(PDPlace(place: .notifications, value: nil)) }
         if !model.guestReading { out.append(PDPlace(place: .log, value: nil)) }
-        if model.derive.canAdmin(g) && !locked && !model.guestReading { out.append(PDPlace(place: .settings, value: nil)) }
+        // Settings for every member (Pin for me, the bell; the channel's own settings for admins):
+        // not in a group I'm not in
+        if !model.derive.amGuest && !locked && !model.guestReading && (g?.isPod != true || model.derive.canAdmin(g) || g?.members.contains(model.me) == true) {
+            out.append(PDPlace(place: .settings, value: nil))
+        }
         return out
     }
 }
