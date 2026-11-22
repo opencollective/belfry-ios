@@ -25,15 +25,17 @@ public enum MenuChannels {
         let since = now - recentWindow
         var involved = Set<String>()
         var newest = [String: Int]()
-        for e in events where e.kind == 9 || e.kind == 1111 || e.kind == 7 {
+        for e in events where e.kind == 9 || e.kind == 1111 || e.kind == 7 || e.kind == 9007 {
+            // creating a channel counts as posting in it (the lead, 2026-11-22): the creator's 9007
+            // makes me involved; any 9007 is activity for the order
             guard let h = e.tag("h"), knownSet.contains(h) else { continue }
             newest[h] = max(newest[h] ?? Int.min, e.createdAt)
             guard e.createdAt > since, !me.isEmpty else { continue }
             if e.pubkey == me { involved.insert(h); continue }
-            if e.kind != 7, e.tags.contains(where: { $0.count >= 2 && $0[0] == "p" && $0[1] == me }) { involved.insert(h) }
+            if e.kind == 9 || e.kind == 1111, e.tags.contains(where: { $0.count >= 2 && $0[0] == "p" && $0[1] == me }) { involved.insert(h) }
         }
         let recent = involved.subtracting(seen).sorted { a, b in
-            let x = newest[a]!, y = newest[b]!
+            let x = newest[a] ?? 0, y = newest[b] ?? 0
             return x != y ? x > y : a < b
         }
         return (pinned, recent)
@@ -72,7 +74,7 @@ public enum Pins {
 
 /// The one header's second line: items that leave, when the row is too narrow, in this order.
 public enum HeaderRow {
-    public static let dropOrder = ["owner", "files", "todos", "photos", "comments", "pinned"]
+    public static let dropOrder = ["owner", "files", "todos", "photos", "comments", "events", "pinned"]
 
     /// ITEMS (key, width) in display order; the keys kept within BUDGET (items joined by GAP).
     /// The lead item and people never leave; kept items stay in their order.
