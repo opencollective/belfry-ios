@@ -21,37 +21,31 @@ enum PreviewMemory {
     }
 }
 
+/// One line in the feed (0.8.0, the lead's ruling: collapsed only): the item's icon, "<first
+/// name> <verb>: <item>", the time. Tapping it opens the item itself (the to-do, the event, the
+/// proposal). The expanded card (below) and its remembered state wait for a later build.
 struct ActivityPreviewRow: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.openChannel) private var openChannel
     let a: Activity
     let group: String
-    @State private var open: Bool?
 
     var body: some View {
-        let d = model.derive
-        let isOpen = open ?? PreviewMemory.get(a.id) ?? d.activityNeedsMe(a, groupId: group, now: Int.now)
-        VStack(alignment: .leading, spacing: 6) {
-            Button { toggle(isOpen) } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: a.icon).font(.footnote).foregroundStyle(.secondary).frame(width: 20)
-                    line(isOpen).font(.footnote).lineLimit(1).truncationMode(.tail)
-                    Spacer(minLength: 4)
-                    Text(Format.time(a.at)).font(.caption).foregroundStyle(.secondary)
-                    Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isOpen ? 180 : 0))
-                }
-                .contentShape(Rectangle())
+        Button(action: openItem) {
+            HStack(spacing: 8) {
+                Image(systemName: a.icon).font(.footnote).foregroundStyle(.secondary).frame(width: 20)
+                line.font(.footnote).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 4)
+                Text(Format.time(a.at)).font(.caption).foregroundStyle(.secondary)
+                Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(spoken)
-            .accessibilityHint(isOpen ? "Hides the details" : "Shows the details")
-            .accessibilityIdentifier("activity-line")
-            if isOpen {
-                card.padding(.leading, 28)
-            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .padding(.horizontal).padding(.vertical, 4)
-        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityLabel(spoken)
+        .accessibilityHint("Opens it")
+        .accessibilityIdentifier("activity-line")
     }
 
     private var who: String {
@@ -59,28 +53,20 @@ struct ActivityPreviewRow: View {
         return n.split(separator: " ").first.map(String.init) ?? n
     }
 
-    private func line(_ open: Bool) -> Text {
-        let w = Text(who).fontWeight(.semibold).foregroundColor(.primary)
-        let v = Text(" " + a.verb + (open ? "" : ": ")).foregroundColor(.secondary)
-        return open ? w + v : w + v + Text(a.title).foregroundColor(.primary)
+    private var line: Text {
+        Text(who).fontWeight(.semibold).foregroundColor(.primary)
+            + Text(" " + a.verb + ": ").foregroundColor(.secondary)
+            + Text(a.title).foregroundColor(.primary)
     }
 
     private var spoken: String { "\(model.name(a.who)) \(a.verb): \(a.title), \(Format.time(a.at))" }
 
-    private func toggle(_ was: Bool) {
-        withAnimation(.snappy(duration: 0.2)) { open = !was }
-        PreviewMemory.set(a.id, !was)
-    }
-
-    @ViewBuilder private var card: some View {
-        let d = model.derive
+    private func openItem() {
         switch a.item {
-        case .todo(let tid):
-            if let t = d.tasks(group).first(where: { $0.id == tid }) { TodoPreviewCard(t: t, group: group) }
-        case .event(let coord):
-            if let e = d.calendar.first(where: { $0.coord == coord }) { EventPreviewCard(e: e) }
+        case .todo(let tid): model.openTodo = TodoKey(group: group, task: tid)
+        case .event(let coord): model.openEvent = coord
         case .proposal(let coord):
-            if let p = d.proposals.first(where: { $0.coord == coord }) { ProposalPreviewCard(p: p) }
+            if let p = model.derive.proposals.first(where: { $0.coord == coord }) { openChannel(p.groupId, nil) }
         }
     }
 }

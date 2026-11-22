@@ -53,8 +53,8 @@ struct ChannelView: View {
         let _ = model.version
         let d = model.derive
         let g = model.group(id)
-        // activity previews (d) stay off on this branch: an open card hung the feed with the keyboard up
-        let rows = d.feedRows(id, topic: topic, openThreads: openThreads, actions: false)
+        // activity lines (d): collapsed only in 0.8.0 (the lead): a tap opens the item
+        let rows = d.feedRows(id, topic: topic, openThreads: openThreads, actions: true)
         let threads = d.threadsOf(id)
         let reactions = d.reactions(id)
         let todos = d.todosBySource(id)
