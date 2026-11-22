@@ -134,27 +134,38 @@ extension Derive {
                 e.kind == 1985 && !deleted().contains(e.id) && e.tags.contains { $0.count >= 2 && $0[0] == "L" && $0[1] == Derive.inboxNS }
             }
             for i in list.indices {
+                // one shape (vectors/one-shape.json threadState): the newest open / answered /
+                // closed label, open again when a newer e-mail came in; what went out counts as an
+                // answered label (older apps label nothing). Who has it: the newest "assigned".
                 let ids = Set(list[i].ids)
-                struct Step { let at: Int; let id: String; let label: NostrEvent?; let mail: MailItem? }
-                var steps = list[i].mails.map { Step(at: $0.m.at, id: $0.m.id, label: nil, mail: $0) }
-                steps += labels.filter { ids.contains($0.tag("e") ?? "") }.map { Step(at: $0.createdAt, id: $0.id, label: $0, mail: nil) }
-                steps.sort { $0.at != $1.at ? $0.at < $1.at : $0.id < $1.id }
                 var s = CardState()
-                for x in steps {
-                    if let l = x.label {
-                        let v = l.tags.first { $0.count >= 3 && $0[0] == "l" && $0[2] == Derive.inboxNS }?[1]
-                        if v == "open" { s.status = .open }
-                        if v == "closed" { s.status = .closed }
-                        if v == "assigned" { s.assignee = l.tag("p").flatMap { $0.isEmpty ? nil : $0 } }
-                    } else if let mail = x.mail {
-                        if mail.dir == .outgoing {
-                            s.answered += 1
-                            if s.status == .open { s.status = .waiting }
-                        } else if mail.m.id != list[i].id {
-                            s.status = .open // they wrote back
+                var marks = [MailThreadState.Label]()
+                var owner: (at: Int, id: String, p: String?)?
+                for l in labels where ids.contains(l.tag("e") ?? "") {
+                    guard let v = l.tags.first(where: { $0.count >= 3 && $0[0] == "l" && $0[2] == Derive.inboxNS })?[1] else { continue }
+                    if v == "assigned" {
+                        if owner == nil || (l.createdAt, l.id) > (owner!.at, owner!.id) {
+                            owner = (l.createdAt, l.id, l.tag("p").flatMap { $0.isEmpty ? nil : $0 })
                         }
+                    } else {
+                        marks.append(.init(id: l.id, at: l.createdAt, value: v))
                     }
                 }
+                var received = [Int]()
+                for mail in list[i].mails {
+                    if mail.dir == .outgoing {
+                        s.answered += 1
+                        marks.append(.init(id: mail.m.id, at: mail.m.at, value: "answered"))
+                    } else {
+                        received.append(mail.m.at)
+                    }
+                }
+                switch MailThreadState.state(received: received, labels: marks) {
+                case "answered": s.status = .waiting
+                case "closed": s.status = .closed
+                default: s.status = .open
+                }
+                s.assignee = owner?.p
                 list[i].state = s
             }
         }
@@ -170,7 +181,7 @@ extension Derive {
 
     /// The team's replies in a thread (NIP-22 under any of its e-mails), oldest first.
     public func mailThreadReplies(_ groupId: String, _ t: InboxThread) -> [Message] {
-        t.ids.flatMap { threadReplies(groupId, $0) }.sorted { $0.at != $1.at ? $0.at < $1.at : $0.id < $1.id }
+        t.ids.flatMap { threadReplies(groupId, $0) }.filter { !MailDrafts.isDraft($0.ev) }.sorted { $0.at != $1.at ? $0.at < $1.at : $0.id < $1.id }
     }
 
     // ---- the channel's address (web model.ts mailLocal) -------------------------------------------

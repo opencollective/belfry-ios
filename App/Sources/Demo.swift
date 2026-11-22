@@ -450,5 +450,24 @@ enum Demo {
         if let i = args.firstIndex(of: "-screen"), i + 1 < args.count, ["sendstill", "sendnotyet"].contains(args[i + 1]) {
             dms.demoPending(conv: "n:" + ps["ana"]!.pubkey, text: "Yes, I'll be there at 9 with the keys.", at: now - 40)
         }
+
+        // ---- 0.8.0 (g), one shape's e-mail thread (boards one-shape/email-*): Lou's e-mail to
+        // hello@ with To and Cc, Ana took it, the team's talk, Sam's internal draft. It is the
+        // oldest thread, so the screenshots' `mailthread` / `mailreply` / `mailcomment` open it.
+        if !reader {
+            let inbox = "hello-79f0"
+            let start = now - 3 * day
+            let lou = ev(groupsKey, 9, start, [["h", inbox], ["client", "belfry-mail"], ["mail-from", "lou@example.org"], ["mail-name", "Lou"],
+                                               ["subject", "Park cleaning on Saturday"], ["message-id", "<park1@example.org>"], ["belfry-auth", "pass"],
+                                               ["to", "hello@demo.belfry.sh", "Riverside Commons"], ["cc", "dev@example.net", "Dev Patel"], ["cc", "park@example.org", ""]],
+                         "Hello! Could Riverside Commons lend us rakes and gloves for the park cleaning on Saturday? We'd be about 15.")
+            let took = ev(ps["ana"]!, 1985, start + 360, Actions.assignCard(inbox, card: lou.id, assignee: ps["ana"]!.pubkey).tags)
+            let t1 = Actions.postThreadReply(inbox, rootId: lou.id, rootPubkey: lou.pubkey, text: "I know Lou, I'll answer. Ben, are the rakes in the shed?")
+            let t2 = Actions.postThreadReply(inbox, rootId: lou.id, rootPubkey: lou.pubkey, text: "Yes, 12 rakes and a box of gloves.")
+            let draftText = "Hi Lou, yes! We can lend you 12 rakes and a box of gloves…"
+            let draft = Actions.mailDraft(inbox, card: lou, text: draftText)
+            engine.add([lou, took, ev(ps["ana"]!, 1111, start + 420, t1.tags, t1.content), ev(ps["ben"]!, 1111, start + 960, t2.tags, t2.content),
+                        ev(you, 1111, start + 1500, draft.tags, draftText)], verify: false)
+        }
     }
 }
