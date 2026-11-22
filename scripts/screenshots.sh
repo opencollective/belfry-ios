@@ -234,6 +234,7 @@ shot 180-enc-thread encthread light
 shot 180b-enc-thread-dark encthread dark
 shot 181-enc-devices encdevices light
 shot 181b-enc-devices-dark encdevices dark
+shot 181c-enc-devices-waiting encdeviceswaiting light
 shot 182-enc-group encgroup light
 shot 183-enc-mail encmail light
 shot 184-enc-mail-devices encmaildevices light
@@ -241,6 +242,9 @@ shot 185-enc-new-device encnewdevice light
 shot 185b-enc-new-device-dark encnewdevice dark
 shot 185c-enc-locked-thread enclocked light
 shot 185d-enc-locked-thread-dark enclocked dark
+shot 185h-enc-waiting-list encwaitinglist light
+shot 185i-enc-waiting-list-dark encwaitinglist dark
+shot 185j-enc-checking encchecking light
 shot 186-enc-how enchow light
 shot 187-enc-allow encallow light
 shot 187b-enc-allow-dark encallow dark
@@ -253,6 +257,7 @@ shot 188-enc-linked enclinked light
 shot 189-enc-share encshare light
 shot 189b-enc-share-dark encshare dark
 shot 190-enc-remove encremove light
+shot 190b-enc-devices-not-allowed encdevicesnotallowed light
 shot 191-enc-shared encshared light
 shot 191b-enc-shared-dark encshared dark
 shot 192-enc-shared-why encsharedwhy light
@@ -292,6 +297,8 @@ shot 08-conversation conversation light
 shot 08b-dm-thread dmthread light
 shot 08c-dm-thread-dark dmthread dark
 shot 09-email mail light
+shot 09c-mail-pictures mailpictures light
+shot 09d-mail-pictures-dark mailpictures dark
 shot 13-pulldown pulldown light
 shot 14-message-menu menu light
 shot 15-delete-confirm delete light

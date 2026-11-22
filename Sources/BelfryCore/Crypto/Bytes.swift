@@ -92,6 +92,12 @@ public enum Crypto {
         return try AES.GCM.open(box, using: SymmetricKey(data: key))
     }
 
+    /// The same shape written (tests, the demo): ciphertext followed by the 16-byte tag.
+    public static func aesGCMSeal(key: Data, nonce: Data, plain: Data) throws -> Data {
+        let box = try AES.GCM.seal(plain, using: SymmetricKey(data: key), nonce: AES.GCM.Nonce(data: nonce))
+        return box.ciphertext + box.tag
+    }
+
     public static func base64url(_ data: Data) -> String {
         data.base64EncodedString().replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")

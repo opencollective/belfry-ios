@@ -101,4 +101,21 @@ extension AppModel {
         previewing.remove(id)
         showToast("\(derive.label(id)) is in your menu")
     }
+
+    /// The belfry's member count for the menu's header: the kept one at once, then the directory's
+    /// (at most every ten minutes). The demo counts the people of its channels.
+    func loadDirectoryCount(force: Bool = false) async {
+        if isDemo { directoryCount = memberKeys.count; return }
+        let key = AppModel.perAccount("belfry-directory-count")
+        if directoryCount == nil, let kept = UserDefaults.standard.object(forKey: key) as? Int { directoryCount = kept }
+        guard !derive.amGuest, !guestReading, force || Date().timeIntervalSince(directoryCountAt) > 600 else { return }
+        directoryCountAt = Date()
+        guard let list = try? await api.directory() else { return }
+        setDirectoryCount(list.count)
+    }
+
+    func setDirectoryCount(_ n: Int) {
+        directoryCount = n
+        if !isDemo { UserDefaults.standard.set(n, forKey: AppModel.perAccount("belfry-directory-count")) }
+    }
 }

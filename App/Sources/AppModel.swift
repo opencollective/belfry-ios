@@ -98,6 +98,10 @@ final class AppModel: ObservableObject {
     @Published var pushedOverRoot = 0
     /// iPhone: the bottom bar's place (Navigation v2: Today · Calendar · Messages · Groups · Town).
     @Published var tab: AppTab = .home
+    /// How many members the belfry has, from its directory (the menu's header): the last answer,
+    /// kept per account. Never the Townsquare's own list (members read it without being in it).
+    @Published var directoryCount: Int?
+    var directoryCountAt = Date.distantPast
     /// Pinned for me (kind 30078 d=belfry:pins, NIP-44 to myself; AppModel+Nav).
     @Published var myPins: [String] = []
     var pinsState: MyPinsState?

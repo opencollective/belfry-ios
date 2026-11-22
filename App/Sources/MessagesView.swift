@@ -16,15 +16,18 @@ struct MessagesView: View {
         let _ = model.version
         let threads = model.dms?.threads() ?? []
         List {
-            // a new device nobody allowed yet (board messages/encryption-new-device); the banner
-            // goes when it is unlocked, or when there is no older conversation
-            // the banner: this device is not allowed yet, or holds messages it has no key for
-            if threads.contains(where: { model.lockedHere($0.conv) }) || model.sealed.missingKeys {
-                LockedHereBanner { how = true }
+            // this device is not allowed yet (whether or not anything arrived), or holds messages
+            // it has no key for: the banner says how many wait. My devices not read yet and
+            // messages kept meanwhile: "Checking your devices…". Never "No messages" under it.
+            let st = model.sealed
+            let locked = st.notAllowed || st.missingKeys || threads.contains(where: { model.lockedHere($0.conv) })
+            let checking = !locked && st.checkingCount > 0
+            if locked || checking {
+                LockedHereBanner(waiting: locked ? st.waitingCount : st.checkingCount, checking: checking) { how = true }
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
             }
-            if threads.isEmpty {
+            if threads.isEmpty && !locked && !checking {
                 ContentUnavailableView("No messages", systemImage: "envelope", description: Text("Write to anyone in the town with the pen."))
             }
             // "Your address: sam@demo.belfry.sh" (board home/messages)
@@ -41,6 +44,8 @@ struct MessagesView: View {
             }
         }
         .listStyle(.plain)
+        // large e-mails (kept on the file server) are fetched and opened when the list shows
+        .task(id: threads.count) { await model.dms?.openLargeMails() }
         .navigationTitle("Messages")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.refresh() }
@@ -70,12 +75,22 @@ struct MessagesView: View {
                     }
                 }
             }
+            // boards messages/email-pictures: the e-mail with pictures
+            if screen == "mailpictures" {
+                Task { @MainActor in
+                    for _ in 0..<8 {
+                        try? await Task.sleep(nanoseconds: 700_000_000)
+                        let pick = (model.dms?.threads() ?? []).first { t in (model.dms?.thread(t.conv) ?? []).contains { $0.subject == "Photos of the repair café" } }
+                        if let pick { navigate(pick.conv); return }
+                    }
+                }
+            }
             // boards messages/encryption-*: Lina's conversation, the group's, the three steps
             if screen == "encshared" || screen == "encsharedwhy" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("dev").pubkey) } }
             // board one-shape/dm-thread: Ana's conversation holds the demo's thread
             if screen == "dmthread" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("ana").pubkey) } }
             if screen == "enclocked" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("ana").pubkey) } }
-            if ["encthread", "encdevices", "encshare", "encwaiting", "encheld"].contains(screen) {
+            if ["encthread", "encdevices", "encdeviceswaiting", "encshare", "encwaiting", "encheld"].contains(screen) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate("n:" + Demo.signer("lina").pubkey) }
             }
             if screen == "encgroup" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate(Demo.groupConv(me: model.me)) } }
@@ -114,6 +129,10 @@ struct ThreadRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text(title).font(.body.weight(thread.unread > 0 ? .semibold : .regular)).lineLimit(1)
+                    // not allowed yet: every conversation and e-mail thread carries the lock (the lead, 2026-11-22)
+                    if model.sealed.notAllowed, !model.lockedHere(thread.conv) {
+                        Image(systemName: "lock.fill").font(.caption2).foregroundStyle(.secondary).accessibilityLabel("This device can't read new messages here yet")
+                    }
                     Spacer()
                     Text(Format.brief(thread.last.at)).font(.caption).foregroundStyle(.secondary)
                 }
@@ -297,7 +316,7 @@ struct ConversationView: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel("Open \(convName(model, conv))’s profile")
                             .accessibilityIdentifier("dm-header")
-                            if sealed != nil { SealedLock { hideKeyboard(); encryption = true }.frame(width: 18, height: 16) }
+                            if sealed != nil || model.sealed.notAllowed { SealedLock { hideKeyboard(); encryption = true }.frame(width: 18, height: 16) }
                             Button { model.openProfile = peer } label: {
                                 Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary)
                                     .padding(.leading, 3).frame(height: 16).contentShape(Rectangle())
@@ -307,8 +326,8 @@ struct ConversationView: View {
                         }
                     }
                 }
-            } else if sealed != nil {
-                // a group, an e-mail thread: its title with the lock
+            } else if sealed != nil || model.sealed.notAllowed {
+                // a group, an e-mail thread: its title with the lock (always while this device is not allowed)
                 ToolbarItem(placement: .principal) {
                     HStack(spacing: 0) {
                         Text(mail && !MailThreads.isNewMail(conv) ? (model.dms?.threadName(conv) ?? "") : convName(model, conv))
@@ -333,7 +352,7 @@ struct ConversationView: View {
                 if let r = DmThreads.split(model.dms?.thread(conv) ?? []).replies.keys.sorted().first { threadOf = DmThreadRoute(conv: conv, root: r) }
                 return
             }
-            guard ["encdevices", "encgroup", "encmaildevices", "encshare"].contains(screen) else { return }
+            guard ["encdevices", "encdeviceswaiting", "encgroup", "encmaildevices", "encshare"].contains(screen) else { return }
             try? await Task.sleep(nanoseconds: 700_000_000) // after the push: the picture is taken 6 s after launch
             if screen == "encshare" { sharing = sealed?.notices.first { $0.what == .locked } } else { encryption = true }
         }
@@ -535,9 +554,8 @@ struct Bubble: View {
                     Text(r.details).font(.caption2).foregroundStyle(r.status == "failed" ? .red : .secondary)
                 }
             }
-            if let atts = dm.attachments, !atts.isEmpty {
-                ForEach(atts, id: \.name) { a in Label("\(a.name) · \(ByteCountFormatter.string(fromByteCount: Int64(a.size), countStyle: .file))", systemImage: "paperclip").font(.caption) }
-            }
+            // an e-mail's pictures show in the message; its other files are rows (PicturesUI)
+            if dm.kind == 1301, !(dm.attachments ?? []).isEmpty || dm.large != nil { MailAttachments(dm: dm) }
         }
         .frame(maxWidth: .infinity, alignment: dm.mine ? .trailing : .leading)
         .accessibilityElement(children: .combine)
@@ -558,7 +576,9 @@ struct NewConversation: View {
     @State private var error: String?
 
     var body: some View {
-        let people = model.profiles.filter { $0.key != model.me && ($0.value.name != nil || $0.value.nip05 != nil) }
+        // someone taken out of the belfry is in no list (Derive.removed)
+        let gone = model.derive.removed
+        let people = model.profiles.filter { $0.key != model.me && !gone.contains($0.key) && ($0.value.name != nil || $0.value.nip05 != nil) }
             .map { (pubkey: $0.key, name: $0.value.name ?? "", nip05: $0.value.nip05) }
             .sorted { $0.name < $1.name }
         let q = to.lowercased()
@@ -589,7 +609,8 @@ struct NewConversation: View {
     }
 
     func go() {
-        let people = model.profiles.map { (pubkey: $0.key, name: $0.value.name ?? "", nip05: $0.value.nip05) }
+        let gone = model.derive.removed
+        let people = model.profiles.filter { !gone.contains($0.key) }.map { (pubkey: $0.key, name: $0.value.name ?? "", nip05: $0.value.nip05) }
         Task {
             do {
                 if let c = try await model.dms?.conv(for: to, people: people) { open(c) } else { error = "That's not a member nor an e-mail address." }

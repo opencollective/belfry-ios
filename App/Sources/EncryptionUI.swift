@@ -89,6 +89,15 @@ struct EncryptionScreen: View {
     @EnvironmentObject var model: AppModel
     let conv: String
     @State private var mineOpen = true
+    @State private var how = false
+
+    /// "Not allowed yet · asked 14:26" (when its request last left; "not asked yet" before that).
+    private var waitingLine: String {
+        let at = model.sealed.askedAt
+        guard at > 0 else { return "Not allowed yet · not asked yet" }
+        let today = Calendar.current.isDateInToday(Date(timeIntervalSince1970: TimeInterval(at)))
+        return "Not allowed yet · asked " + (today ? Format.time(at) : Format.day(at))
+    }
 
     var body: some View {
         let s = model.sealedConv(conv) ?? SealedConv(others: [])
@@ -97,6 +106,20 @@ struct EncryptionScreen: View {
         let counted = s.others.contains { $0.mailName == nil }
         let mail = s.others.contains { $0.mailName != nil }
         List {
+            // this device is not allowed yet: said first, with the way out (the lead, 2026-11-22)
+            if model.sealed.notAllowed {
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("This device can't read it yet", systemImage: "lock.fill").font(.subheadline.weight(.semibold))
+                        Text("Open Belfry on a device where you already read your messages and tap Allow.")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                        Button("Show how") { how = true }
+                            .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
+                            .accessibilityIdentifier("encryption-show-how")
+                    }
+                    .listRowBackground(Color.orange.opacity(0.14))
+                }
+            }
             Section {
                 VStack(spacing: 10) {
                     Image(systemName: "lock.fill").font(.title2).foregroundStyle(.secondary)
@@ -119,6 +142,8 @@ struct EncryptionScreen: View {
                 Section("You") {
                     DisclosureGroup(isExpanded: $mineOpen) {
                         ForEach(mine) { d in MyDeviceRow(icon: d.kind.icon, name: d.name, line: SealedWords.added(d.added, from: d.from), this: d.this) }
+                        // this device, not allowed yet (board messages/encryption-devices-waiting, canvas v182)
+                        if model.sealed.notAllowed { MyDeviceRow(icon: UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone", name: UIDevice.current.model, line: waitingLine, this: true) }
                     } label: {
                         HStack(spacing: 12) {
                             Avatar(pubkey: model.me, size: 32)
@@ -132,6 +157,8 @@ struct EncryptionScreen: View {
             } else {
                 Section {
                     ForEach(mine) { d in MyDeviceRow(icon: d.kind.icon, name: d.name, line: SealedWords.added(d.added, from: d.from), this: d.this) }
+                        // this device, not allowed yet (board messages/encryption-devices-waiting, canvas v182)
+                        if model.sealed.notAllowed { MyDeviceRow(icon: UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone", name: UIDevice.current.model, line: waitingLine, this: true) }
                 } header: {
                     HStack(spacing: 8) {
                         Avatar(pubkey: model.me, size: 22)
@@ -158,6 +185,7 @@ struct EncryptionScreen: View {
         .listStyle(.insetGrouped)
         .navigationTitle("Encryption")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $how) { UnlockHowScreen() }
         .accessibilityIdentifier("encryption-screen")
     }
 
@@ -196,25 +224,47 @@ struct EncryptionScreen: View {
     }
 }
 
-/// The amber banner at the top of Messages on a new device nobody allowed yet.
+/// The amber banner at the top of Messages on a device that is not allowed yet (the lead,
+/// 2026-11-22, after a phone showed nothing for a mail it could not open): how many messages
+/// wait, what to do. While my devices are still being read from the relay: "Checking your
+/// devices…". (Boards messages/encryption-waiting-list, -waiting-checking, canvas v177: a draft for
+/// Xavier, built on a branch only.)
 struct LockedHereBanner: View {
+    /// Messages kept here for a key this device doesn't have.
+    var waiting = 0
+    /// My devices aren't read yet: no "locked", no Show how.
+    var checking = false
     let showHow: () -> Void
+
+    static func title(waiting: Int, checking: Bool) -> String {
+        if checking { return "Checking your devices…" }
+        if waiting == 1 { return "1 message is waiting for another of your devices" }
+        if waiting > 1 { return "\(waiting) messages are waiting for another of your devices" }
+        return "Messages are locked on this device"
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "lock.fill").foregroundStyle(.orange).padding(.top, 2).accessibilityHidden(true)
+            if checking { ProgressView().controlSize(.small).padding(.top, 2) }
+            else { Image(systemName: "lock.fill").foregroundStyle(.orange).padding(.top, 2).accessibilityHidden(true) }
             VStack(alignment: .leading, spacing: 4) {
-                Text("Messages are locked on this device").font(.subheadline.weight(.semibold))
-                Text("Open Belfry on another device of yours to unlock them.").font(.subheadline)
-                Button("Show how", action: showHow)
-                    .font(.subheadline.weight(.semibold))
-                    .buttonStyle(.borderless)
-                    .padding(.top, 2)
-                    .accessibilityIdentifier("locked-show-how")
+                Text(LockedHereBanner.title(waiting: waiting, checking: checking)).font(.subheadline.weight(.semibold))
+                if checking {
+                    Text(waiting == 1 ? "1 message is waiting." : "\(waiting) messages are waiting.").font(.subheadline)
+                } else {
+                    Text("Open Belfry on a device where you already read your messages and tap Allow.").font(.subheadline)
+                    Button("Show how", action: showHow)
+                        .font(.subheadline.weight(.semibold))
+                        .buttonStyle(.borderless)
+                        .padding(.top, 2)
+                        .accessibilityIdentifier("locked-show-how")
+                }
             }
             Spacer(minLength: 0)
         }
         .padding(12)
         .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityIdentifier("locked-banner")
     }
 }
 

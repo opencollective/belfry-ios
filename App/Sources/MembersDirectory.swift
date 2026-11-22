@@ -171,7 +171,7 @@ struct MembersDirectory: View {
             demo = true
             list = []
         } else {
-            do { list = try await model.api.directory() } catch { failed = true }
+            do { list = try await model.api.directory(); model.setDirectoryCount(list?.count ?? 0) } catch { failed = true }
         }
     }
 }

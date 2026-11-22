@@ -39,6 +39,9 @@ public final class DirectMessages: @unchecked Sendable {
     public var sealedExpected = false
     /// Wraps kept because this device has no secret for their letterbox (the banner).
     public private(set) var lockedWraps = 0
+    /// Sealed wraps kept for a letterbox this device does not know yet (my chain was not read, or
+    /// not far enough): "Checking your devices…" in Messages.
+    public private(set) var unknownWraps = 0
     /// The rumors of sealed wraps still in the outbox (to seal them again if a head changes).
     private var queued = [String: NostrEvent]()
     /// Old-style reactions and take-backs whose message is not on the device yet: the opened
@@ -139,6 +142,7 @@ public final class DirectMessages: @unchecked Sendable {
         var changed = false
         var done = 0
         var locked = 0
+        var unknown = 0
         for e in todo {
             // a sealed wrap opens on this device, never through the signer; one that can't be
             // opened yet (no key here, its author's chain not loaded) is kept and tried again
@@ -149,7 +153,7 @@ public final class DirectMessages: @unchecked Sendable {
                 switch s.open(e) {
                 case .keep:
                     // the banner: only a wrap to a letterbox of my own chain that this device has no key for
-                    if s.isLocked(e) { locked += 1 }
+                    if s.isLocked(e) { locked += 1 } else if s.isUnknown(e) { unknown += 1 }
                     continue
                 case .drop: break
                 case .rumor(let rumor): take(rumor, sharedBy: nil)
@@ -221,6 +225,8 @@ public final class DirectMessages: @unchecked Sendable {
         if settleWaiting() { changed = true }
         let was = lockedWraps
         lockedWraps = locked
+        let wasUnknown = unknownWraps
+        unknownWraps = unknown
         // a rumor kept for an item that is no longer in the outbox (cancelled, discarded): not kept
         // any longer (two minutes of grace: a send holds its rumor just before it queues its wraps)
         let stale = queued.filter { rid, r in r.createdAt < Int.now - 120 && !engine.outboxItems().contains { $0.dm == rid } }.map(\.key)
@@ -228,7 +234,7 @@ public final class DirectMessages: @unchecked Sendable {
         let left = queued.mapValues(Sealed.json)
         lock.unlock()
         if !stale.isEmpty { db.set("dm-queued", left) }
-        if changed { save() } else if was != locked { onChange?() }
+        if changed { save() } else if was != locked || wasUnknown != unknown { onChange?() }
     }
 
     /// A sealed rumor, opened: a message, a reaction, or (SHAREDBY) a piece of shared history,
@@ -712,13 +718,41 @@ public final class DirectMessages: @unchecked Sendable {
     }
 
     /// Demo mode: an e-mail arrives from SENDER as the belfry would deliver it.
-    public func demoMail(bridgeSecret: Data, sender: String, subject: String, text: String, at: Int) async throws {
+    public func demoMail(bridgeSecret: Data, sender: String, subject: String, text: String, at: Int, files: [MailPart] = []) async throws {
         let bridgeSigner = try LocalSigner(secret: bridgeSecret)
         bridge = bridgeSigner.pubkey
-        let raw = "From: \(sender)\r\nTo: \(myAddress ?? "me@demo")\r\nSubject: \(subject)\r\nMessage-ID: <\(UUID().uuidString)@example.org>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n\(text)\r\n"
-        let rumor = GiftWrap.rumor(kind: 1301, pubkey: bridgeSigner.pubkey, tags: [["email-id", UUID().uuidString], ["mail-from", MIME.address(sender).address], ["p", me], ["subject", subject], ["belfry-auth", "pass"]], content: raw, createdAt: at)
+        let head = "From: \(sender)\r\nTo: \(myAddress ?? "me@demo")\r\nSubject: \(subject)\r\nMessage-ID: <\(UUID().uuidString)@example.org>\r\n"
+        var raw = head + "Content-Type: text/plain; charset=utf-8\r\n\r\n\(text)\r\n"
+        if !files.isEmpty {
+            // attachments: a multipart/mixed, each file base64
+            raw = head + "MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"demo-b\"\r\n\r\n--demo-b\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n\(text)\r\n"
+            for f in files {
+                raw += "--demo-b\r\nContent-Type: \(f.type); name=\"\(f.name)\"\r\nContent-Disposition: attachment; filename=\"\(f.name)\"\r\nContent-Transfer-Encoding: base64\r\n\r\n"
+                raw += f.data.base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn, .endLineWithLineFeed]) + "\r\n"
+            }
+            raw += "--demo-b--\r\n"
+        }
+        var tags: [Tag] = [["email-id", UUID().uuidString], ["mail-from", MIME.address(sender).address], ["p", me], ["subject", subject], ["belfry-auth", "pass"]]
+        // with files it is a large e-mail (too big for a gift wrap): the rumor is empty and names
+        // the stored copy, which the demo keeps on the device instead of a file server
+        let large = !files.isEmpty
+        if large {
+            tags += [["x", Crypto.sha256(Data(raw.utf8)).hex], ["url", "https://blossom.demo.belfry.sh/" + Crypto.sha256(Data(raw.utf8)).hex],
+                     ["decryption-key", Data(repeating: 1, count: 32).base64EncodedString()], ["decryption-nonce", Data(repeating: 2, count: 12).base64EncodedString()]]
+        }
+        let rumor = GiftWrap.rumor(kind: 1301, pubkey: bridgeSigner.pubkey, tags: tags, content: large ? "" : raw, createdAt: at)
+        if large { keepMail(raw, for: rumor.id) }
         let w = try await GiftWrap.wrap(rumor, to: me, signer: bridgeSigner)
         engine.add([w], verify: false)
+    }
+
+    /// The large e-mails not opened yet (the newest ten): fetched and opened, so the list shows
+    /// their text and they open offline afterwards.
+    public func openLargeMails() async {
+        lock.lock()
+        let list = items.values.filter { $0.large != nil && $0.raw == nil && $0.attachments == nil }.sorted { $0.at > $1.at }.prefix(10)
+        lock.unlock()
+        for d in list { _ = await mail(d) }
     }
 
     /// Demo mode: a message of mine in CONV that is not out yet (the send line's screenshots).

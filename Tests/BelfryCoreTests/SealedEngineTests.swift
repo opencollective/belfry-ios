@@ -1497,3 +1497,95 @@ private func XCTUnwrapWrap(_ d: FakeBelfry.Device) throws -> NostrEvent {
     let rumor = GiftWrap.rumor(kind: 14, pubkey: d.account, tags: [["p", d.account]], content: "note", createdAt: 1795176000)
     return try XCTUnwrap(try d.sealed.wraps(rumor, to: []).first)
 }
+
+/// A device that is not in the head asks by itself, and a pass that fails on a precondition is
+/// tried again in seconds (the lead, 2026-11-22: an iPhone signed in for eight minutes never sent
+/// its request; the next try was the next trigger, hours away).
+final class SealedUpkeepRetryTests: XCTestCase {
+    let now = 1_795_000_000
+
+    func testAFailedPassSaysWhyAndIsTriedAgain() async throws {
+        let b = FakeBelfry()
+        let phone = try b.signIn("alice", "phone")
+        await phone.sealed.maintain(now: now)
+        await b.sync()
+        let mac = try b.signIn("alice", "mac")
+        await b.sync()
+        // the session list does not answer: nothing is asked, the report says which step failed
+        let sessions = mac.sealed.sessions
+        mac.sealed.sessions = { nil }
+        mac.sealed.retryDelays = [0.05]
+        let again = expectation(description: "the pass is tried again")
+        again.assertForOverFulfill = false
+        mac.sealed.onRetry = { again.fulfill() }
+        await mac.sealed.maintain(now: now + 10)
+        var u = mac.sealed.upkeepState
+        XCTAssertEqual(u.report.chainRead, true)
+        XCTAssertEqual(u.report.sessions, false)
+        XCTAssertNil(u.report.asked)
+        XCTAssertTrue(u.report.failed)
+        XCTAssertEqual(u.failures, 1)
+        XCTAssertNotNil(u.retryAt)
+        XCTAssertEqual(u.lastRequest, 0)
+        await b.sync()
+        XCTAssertFalse(b.all().contains { $0.kind == SealedKind.request }, "no request while the session list is silent")
+        await fulfillment(of: [again], timeout: 3)
+        // the retry: the list answers now, the request leaves
+        mac.sealed.sessions = sessions
+        await mac.sealed.maintain(now: now + 20)
+        u = mac.sealed.upkeepState
+        XCTAssertEqual(u.report.sessions, true)
+        XCTAssertEqual(u.report.listsMe, true)
+        XCTAssertEqual(u.report.inHead, false)
+        XCTAssertEqual(u.report.asked, true)
+        XCTAssertFalse(u.report.failed)
+        XCTAssertEqual(u.failures, 0)
+        XCTAssertNil(u.retryAt)
+        XCTAssertEqual(u.lastRequest, now + 20)
+        await b.sync()
+        XCTAssertTrue(b.all().contains { $0.kind == SealedKind.request && $0.createdAt == now + 20 }, "it asks to be allowed")
+    }
+
+    func testMyChainNotReadIsAFailureWithItsOwnLine() async throws {
+        let b = FakeBelfry()
+        let phone = try b.signIn("alice", "phone")
+        await phone.sealed.maintain(now: now)
+        await b.sync()
+        let mac = try b.signIn("alice", "mac")
+        await b.sync()
+        mac.sealed.askChains = { _ in nil }
+        mac.sealed.retryDelays = [30]
+        await mac.sealed.maintain(now: now + 10)
+        let u = mac.sealed.upkeepState
+        XCTAssertEqual(u.report.relayAnswered, true)
+        XCTAssertEqual(u.report.chainRead, false)
+        XCTAssertNil(u.report.sessions)
+        XCTAssertEqual(u.failures, 1)
+        // a second failing pass while the retry waits neither lengthens nor resets it
+        await mac.sealed.maintain(now: now + 11)
+        XCTAssertEqual(mac.sealed.upkeepState.failures, 1)
+        mac.sealed.close()
+        XCTAssertNil(mac.sealed.upkeepState.retryAt)
+    }
+
+    func testAWrapToALetterboxNotKnownYetIsUnknownNotLocked() async throws {
+        let b = FakeBelfry()
+        let phone = try b.signIn("alice", "phone")
+        await phone.sealed.maintain(now: now)
+        await b.sync()
+        let mac = try b.signIn("alice", "mac")
+        await b.sync()
+        let lb = try XCTUnwrap(phone.sealed.chain(phone.account)?.lb)
+        let one = Keys.generateSecret()
+        let wrap = try NostrEvent(pubkey: "", createdAt: now, kind: 1059, tags: [["p", phone.account], ["lb", lb]], content: "x").signed(with: one)
+        // the mac knows my chain (stored events): the wrap is locked here, not unknown
+        XCTAssertTrue(mac.sealed.isLocked(wrap))
+        XCTAssertFalse(mac.sealed.isUnknown(wrap))
+        // a letterbox nobody's chain names: unknown until my chain is read
+        let other = try Keys.publicKeyHex(secret: Keys.generateSecret())
+        let stray = try NostrEvent(pubkey: "", createdAt: now, kind: 1059, tags: [["p", phone.account], ["lb", other]], content: "x").signed(with: one)
+        XCTAssertFalse(mac.sealed.isLocked(stray))
+        XCTAssertTrue(mac.sealed.isUnknown(stray))
+        XCTAssertFalse(phone.sealed.isUnknown(wrap), "the device that holds the secret")
+    }
+}

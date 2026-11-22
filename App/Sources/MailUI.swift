@@ -178,7 +178,7 @@ struct MailEntryRow: View {
                     Label("unverified sender", systemImage: "exclamationmark.triangle").font(.caption2).foregroundStyle(.orange)
                 }
                 if !text.isEmpty { MarkdownText(text: text) } else { Text("(empty)").foregroundStyle(.secondary) }
-                ForEach(it.m.media, id: \.url) { media in MediaView(media: media, all: it.m.media) }
+                MediaBlock(media: it.m.media)
             }
         }
         .padding(.horizontal)
@@ -224,7 +224,7 @@ struct MailTeamRow: View {
                 }
                 if !r.text.isEmpty { MarkdownText(text: r.text) }
                 MessageButtonsView(m: r, group: group)
-                ForEach(r.media, id: \.url) { MediaView(media: $0, all: r.media) }
+                MediaBlock(media: r.media)
             }
         }
         .padding(.horizontal)
@@ -667,7 +667,7 @@ struct MailCard: View {
                 Label("unverified sender", systemImage: "exclamationmark.triangle").font(.caption2).foregroundStyle(.orange)
             }
             if !text.isEmpty { MarkdownText(text: text) } else { Text("(empty)").foregroundStyle(.secondary) }
-            ForEach(it.m.media, id: \.url) { media in MediaView(media: media, all: it.m.media) }
+            MediaBlock(media: it.m.media)
             if let o = it.original {
                 Button { model.fullMail = FullMailRef(subject: it.subject, original: o) } label: {
                     Text("Show the whole e-mail").font(.footnote.weight(.semibold))
