@@ -1712,6 +1712,38 @@ final class SealedAutoAddTests: XCTestCase {
         }
     }
 
+    /// A device that was in the chain once and was removed is never put back by itself: it asks.
+    func testARemovedDeviceAsksAgain() async throws {
+        let b = FakeBelfry()
+        let phone = try await head(b)
+        let mac = try b.signIn("alice", "mac")
+        await b.sync()
+        await mac.sealed.maintain(now: now + 10)
+        await b.sync()
+        await phone.sealed.maintain(now: now + 20)        // added by itself
+        await b.sync()
+        // the phone drops it from the roster, but its session outlives the removal
+        let revoke = phone.sealed.revoke
+        phone.sealed.revoke = { _ in true }
+        let removed = await phone.sealed.remove(mac.pub, now: now + 100)
+        phone.sealed.revoke = revoke
+        XCTAssertTrue(removed)
+        await b.sync()
+        var c = try XCTUnwrap(phone.sealed.chain(phone.account))
+        XCTAssertEqual(c.devices, [phone.pub])
+        XCTAssertFalse(AutoAdd.allowed(chain: c, pin: SealedPin(root: c.root.id, head: c.head.id, path: [], anchored: true), thisDevice: phone.pub, newDevice: mac.pub,
+                                       sessionCreatedAt: now - 7200, requestAt: now + 200, now: now + 210), "it was in the chain before")
+        // it asks again: not added by itself, the Allow card shows
+        b.put(try Sealed.request(account: phone.account, device: mac.pub, now: now + 200).event(pubkey: "").signed(with: secret("alice/mac")))
+        await b.sync()
+        await phone.sealed.maintain(now: now + 210)
+        await b.sync()
+        c = try XCTUnwrap(phone.sealed.chain(phone.account))
+        XCTAssertEqual(c.devices, [phone.pub], "not put back by itself")
+        let cards = await phone.sealed.asks(now: now + 211)
+        XCTAssertEqual(cards.map(\.device), [mac.pub])
+    }
+
     func testThePureConditions() async throws {
         let b = FakeBelfry()
         let phone = try await head(b)

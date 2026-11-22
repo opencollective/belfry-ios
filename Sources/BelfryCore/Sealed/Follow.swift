@@ -153,12 +153,16 @@ public enum AutoAdd {
     /// May THIS device (in the head) add NEWDEVICE at once? All of: this device holds this head
     /// (pinned), the head is the anchored end, this device is trusted (after a switch); the
     /// request is not dated before its session (minus 120 s) and is at most 30 days old; fewer
-    /// than 3 devices were added in the last 24 hours. The session being live and a chat client
+    /// than 3 devices were added in the last 24 hours; and no roster of the chain ever listed the
+    /// new device. The session being live and a chat client
     /// in a list read for this request is the caller's part (SESSIONCREATEDAT nil: not known, ask).
     public static func allowed(chain c: RosterChain?, pin p: SealedPin?, thisDevice: String, newDevice: String,
                                sessionCreatedAt: Int?, requestAt: Int, now: Int) -> Bool {
         guard let c, let p, c.head.id == p.head, c.root.id == p.root else { return false }
         guard c.anchored == c.head.id, c.devices.contains(thisDevice), !c.devices.contains(newDevice) else { return false }
+        // the chain never had the asking device before (sealed.md 5.2, belfry-sh e39e2e8): a
+        // removed device whose session outlived its removal asks; it is never put back by itself
+        guard !c.rosters.contains(where: { $0.devices.contains(newDevice) }) else { return false }
         if let t = p.trusted, !t.contains(thisDevice) { return false }
         guard let s = sessionCreatedAt, requestAt >= s - skew, now - requestAt <= maxAge else { return false }
         return addedLately(c, now: now) < limit
