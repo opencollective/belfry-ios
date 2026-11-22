@@ -502,15 +502,17 @@ public final class DirectMessages: @unchecked Sendable {
     }
 
     /// A NIP-17 message in a Nostr conversation. GROUP: the caption of files sent with it.
-    public func send(_ text: String, in conv: String, group: String? = nil) async throws {
+    /// ROOT: a reply in that message's thread (["e", root, "", "root"]), wrapped like any other.
+    public func send(_ text: String, in conv: String, group: String? = nil, root: String? = nil) async throws {
         try engine.guestMode.check()
         onSend?()
         let to = MailThreads.peers(conv).filter { $0 != me }
         guard to.allSatisfy(isHex64) else { throw BelfryError.invalid("This is not a valid Nostr key.") }
-        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: to.map { ["p", $0] } + (group.map { [["group", $0]] } ?? []), content: text,
-                                   createdAt: group == nil ? .now : engine.nextCreatedAt())
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: to.map { ["p", $0] } + (group.map { [["group", $0]] } ?? []) + (root.map { [DmThreads.rootTag($0)] } ?? []),
+                                   content: text, createdAt: group == nil ? .now : engine.nextCreatedAt())
         var d = Dm(rid: rumor.id, conv: conv, from: me, mine: true, at: rumor.createdAt, kind: 14, text: text)
         d.group = group
+        d.root = root
         d.pending = engine.localOnly ? nil : true
         if sealed?.isSealed(conv) == true { d.rumor = Sealed.json(rumor) }
         lock.lock(); items[rumor.id] = d; lock.unlock()
@@ -580,15 +582,19 @@ public final class DirectMessages: @unchecked Sendable {
     /// LOCAL: the channel's address before the @ (its plain alias when it has one, SPEC 19.33).
     /// REFERENCES: the thread's Message-IDs before In-Reply-To, oldest first, space-separated.
     public func sendAsChannel(channel: String, local: String? = nil, channelName: String, to: String, subject: String, text: String, inReplyTo: String?,
-                              references: String? = nil, cardId: String, myName: String) async throws -> String {
+                              references: String? = nil, cardId: String, myName: String, cc: [String] = [], draft: String? = nil) async throws -> String {
         try engine.guestMode.check()
         guard let b = bridge else { throw BelfryError.invalid("This belfry does not send e-mail yet.") }
         // envelope (mail-from) and From header alike: the bridge checks they match
         let from = (local.flatMap { $0.isEmpty ? nil : $0 } ?? channel) + "@" + engine.config.domain
-        let (raw, _) = MIME.build(fromName: myName.isEmpty ? channelName : "\(myName) for \(channelName)", from: from, to: to, subject: subject, text: text,
+        let (raw, _) = MIME.build(fromName: myName.isEmpty ? channelName : "\(myName) for \(channelName)", from: from, to: to, cc: cc, subject: subject, text: text,
                                   inReplyTo: inReplyTo, references: references, domain: engine.config.domain)
         let emailId = UUID().uuidString.lowercased()
-        let rumor = GiftWrap.rumor(kind: 1301, pubkey: me, tags: [["email-id", emailId], ["mail-from", from], ["rcpt-to", to], ["subject", subject], ["e", cardId]], content: raw)
+        // Reply all (one-shape.md §4): one rcpt-to per person; the draft it came from
+        var tags: [Tag] = [["email-id", emailId], ["mail-from", from]] + ([to] + cc).map { ["rcpt-to", $0] }
+        tags += [["subject", subject], ["e", cardId]]
+        if let draft, !draft.isEmpty { tags.append(["draft", draft]) }
+        let rumor = GiftWrap.rumor(kind: 1301, pubkey: me, tags: tags, content: raw)
         if engine.localOnly {
             lock.lock(); reports[emailId] = DeliveryReport(status: "failed", details: "Demo mode sends no e-mail."); lock.unlock()
             save()
@@ -726,8 +732,8 @@ public final class DirectMessages: @unchecked Sendable {
 
     /// Demo mode: a NIP-17 message from FROM.
     @discardableResult
-    public func demoDM(from: LocalSigner, text: String, at: Int, reaction: String? = nil, others: [String] = []) async throws -> String {
-        let rumor = GiftWrap.rumor(kind: 14, pubkey: from.pubkey, tags: ([me] + others).map { ["p", $0] }, content: text, createdAt: at)
+    public func demoDM(from: LocalSigner, text: String, at: Int, reaction: String? = nil, others: [String] = [], root: String? = nil) async throws -> String {
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: from.pubkey, tags: ([me] + others).map { ["p", $0] } + (root.map { [DmThreads.rootTag($0)] } ?? []), content: text, createdAt: at)
         let w = try await GiftWrap.wrap(rumor, to: me, signer: from)
         engine.add([w], verify: false)
         // the demo's own reaction to it (wrapped to me like any other)
@@ -755,8 +761,8 @@ public final class DirectMessages: @unchecked Sendable {
     }
 
     /// Demo mode: a NIP-17 message of mine to TO (my own copy of it).
-    public func demoSent(to: String, text: String, at: Int) async throws {
-        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: [["p", to]], content: text, createdAt: at)
+    public func demoSent(to: String, text: String, at: Int, root: String? = nil) async throws {
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: [["p", to]] + (root.map { [DmThreads.rootTag($0)] } ?? []), content: text, createdAt: at)
         engine.add([try await GiftWrap.wrap(rumor, to: me, signer: engine.signer)], verify: false)
     }
 }

@@ -102,7 +102,8 @@ struct ChannelPlaceView: View {
             case .topics: TopicsSection(id: id, topic: Binding(get: { nil }, set: { if let t = $0 { filter(t) } }), done: {})
             case .notifications: FollowBell(id: id)
             case .log: LogTab(id: id) { g in go(g) }
-            case .settings: SettingsTab(id: id)
+            // Navigation v2 (nav2/channel-pin): every member pins here; the rest is the admins'
+            case .settings: PinSection(id: id); if model.derive.canAdmin(model.group(id)) { SettingsTab(id: id) }
             case .events, .members: EmptyView()
             }
         }

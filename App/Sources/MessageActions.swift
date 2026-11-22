@@ -45,15 +45,17 @@ struct MessageActions: View {
                             }
                         }
                     }
+                    // the same order as the held menu (one shape): Reply, Make a to-do, Copy text,
+                    // Copy link, Pin; then Edit, Message …
                     Section {
                         if !pending {
                             Button { dismiss(); onReply() } label: { ActionRow(icon: "arrowshape.turn.up.left", title: "Reply") }
-                            if !isReply {
-                                Button { dismiss(); onOpenThread() } label: { ActionRow(icon: "bubble.left.and.bubble.right", title: "Open thread") }
+                            if !isReply && d.canMakeTodo(group, m) {
+                                ActionButtonRow(icon: "checklist", title: "Make a to-do", detail: d.todoTitle(m)) {
+                                    model.makeTodo(m, in: group)
+                                    dismiss()
+                                }
                             }
-                        }
-                        if d.canEdit(m) {
-                            Button { dismiss(); onEdit() } label: { ActionRow(icon: "pencil", title: "Edit message") }
                         }
                         if !m.text.isEmpty {
                             Button {
@@ -66,28 +68,23 @@ struct MessageActions: View {
                             UIPasteboard.general.string = d.messageURL(group, m.id)
                             dismiss()
                         } label: { ActionRow(icon: "link", title: "Copy link") }
+                        if !pending && !isReply && d.canPin(group) {
+                            let on = d.isPinned(group, m.id)
+                            ActionButtonRow(icon: on ? "pin.slash" : "pin", title: on ? "Unpin" : "Pin") {
+                                model.pin(m, in: group, !on)
+                                dismiss()
+                            }
+                        }
+                    }
+                    Section {
+                        if d.canEdit(m) {
+                            Button { dismiss(); onEdit() } label: { ActionRow(icon: "pencil", title: "Edit message") }
+                        }
                         if m.pubkey != model.me && !d.isGuest(model.me) {
                             Button {
                                 dismiss()
                                 model.messageAuthor = m.pubkey
                             } label: { ActionRow(icon: "envelope", title: "Message \(model.realNameOrKey(m.pubkey))") }
-                        }
-                    }
-                    if !pending {
-                        Section {
-                            if !isReply && d.canPin(group) {
-                                let on = d.isPinned(group, m.id)
-                                ActionButtonRow(icon: on ? "pin.slash" : "pin", title: on ? "Unpin from the channel" : "Pin to the channel") {
-                                    model.pin(m, in: group, !on)
-                                    dismiss()
-                                }
-                            }
-                            if !isReply && d.canMakeTodo(group, m) {
-                                ActionButtonRow(icon: "checklist", title: "Turn into a to-do", detail: d.todoTitle(m)) {
-                                    model.makeTodo(m, in: group)
-                                    dismiss()
-                                }
-                            }
                         }
                     }
                     if d.canDelete(m) || pending && m.pubkey == model.me {
@@ -292,15 +289,14 @@ struct MessageMenu: View {
             }
             .controlGroupStyle(.compactMenu)
         }
+        // one shape (canvas one-shape/dm-actions, 2026-11-22): Reply (it starts or opens the
+        // thread), Make a to-do, Copy text, Copy link, Pin; then what only some messages have
         Section {
             if !pending {
                 Button { h.reply(m) } label: { Label("Reply", systemImage: "arrowshape.turn.up.left") }
-                if !isReply {
-                    Button { h.openThread(m) } label: { Label("Open thread", systemImage: "bubble.left.and.bubble.right") }
+                if !isReply && d.canMakeTodo(group, m) {
+                    Button { model.makeTodo(m, in: group) } label: { Label("Make a to-do", systemImage: "checklist") }
                 }
-            }
-            if d.canEdit(m) {
-                Button { h.edit(m) } label: { Label("Edit message", systemImage: "pencil") }
             }
             if !m.text.isEmpty {
                 Button {
@@ -312,25 +308,23 @@ struct MessageMenu: View {
                 UIPasteboard.general.string = d.messageURL(group, m.id)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             } label: { Label("Copy link", systemImage: "link") }
+            if !pending && !isReply && d.canPin(group) {
+                let on = d.isPinned(group, m.id)
+                Button { model.pin(m, in: group, !on) } label: { Label(on ? "Unpin" : "Pin", systemImage: on ? "pin.slash" : "pin") }
+            }
+        }
+        Section {
+            if d.canEdit(m) {
+                Button { h.edit(m) } label: { Label("Edit message", systemImage: "pencil") }
+            }
             if case .memberMail(let subject, let original?) = m.special {
                 Button { model.fullMail = FullMailRef(subject: subject, original: original) } label: { Label("Full e-mail", systemImage: "envelope.open") }
             }
             if m.pubkey != model.me && !d.isGuest(model.me) {
                 Button { model.messageAuthor = m.pubkey } label: { Label("Message \(model.realNameOrKey(m.pubkey))", systemImage: "envelope") }
             }
-        }
-        if !pending {
-            Section {
-                if !isReply && d.canPin(group) {
-                    let on = d.isPinned(group, m.id)
-                    Button { model.pin(m, in: group, !on) } label: { Label(on ? "Unpin from the channel" : "Pin to the channel", systemImage: on ? "pin.slash" : "pin") }
-                }
-                if !isReply && d.canMakeTodo(group, m) {
-                    Button { model.makeTodo(m, in: group) } label: { Label("Turn into a to-do", systemImage: "checklist") }
-                }
-                if MessageActions.nsiteRef(m.text) != nil, !d.amGuest, let propose = h.proposeSite {
-                    Button { propose(m) } label: { Label("Propose as the website", systemImage: "globe") }
-                }
+            if !pending, MessageActions.nsiteRef(m.text) != nil, !d.amGuest, let propose = h.proposeSite {
+                Button { propose(m) } label: { Label("Propose as the website", systemImage: "globe") }
             }
         }
         if d.canDelete(m) || pending && m.pubkey == model.me {

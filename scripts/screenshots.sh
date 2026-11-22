@@ -58,6 +58,14 @@ shot 131-home-drawer homedrawer light
 shot 131b-home-drawer-dark homedrawer dark
 shot 131c-home-messages homemessages light
 shot 131c-calendar-drawer calendardrawer light
+shot 133-messages-tab messagestab light
+shot 133b-messages-tab-dark messagestab dark
+shot 134-add-channel addchannel light
+shot 134b-add-channel-typing addchanneltyping light
+shot 134c-add-channel-typing-dark addchanneltyping dark
+shot 135-channel-preview channelpreview light
+shot 135b-channel-pin channelpin light
+shot 135c-channel-pin-member member-channelpin light
 shot 132-drawer-admin towndrawer light
 shot 132b-drawer-member member-towndrawer light
 shot 132c-drawer-member-dark member-towndrawer dark
@@ -121,12 +129,14 @@ shot 138-pinned pinned light
 # 2026-11-16 round 2: e-mail threads in a channel, a guest's request, the first minutes
 shot 120-mail-feed mailfeed light
 shot 120b-mail-feed-dark mailfeed dark
+# 0.8.0 (g) one shape: the thread pulled (e-mails on top, Cc line, reply-all icon; the draft in the
+# conversation), Reply all (the compose sheet), the thread folded (mailcomment)
 shot 121-mail-thread mailthread light
 shot 121b-mail-thread-dark mailthread dark
 shot 122-mail-reply mailreply light
 shot 122b-mail-reply-dark mailreply dark
-shot 122c-mail-comment mailcomment light
-shot 122d-mail-comment-dark mailcomment dark
+shot 122c-mail-folded mailcomment light
+shot 122d-mail-folded-dark mailcomment dark
 shot 123-full-mail fullmail light
 shot 124-welcome welcome light
 shot 124b-welcome-charter welcomecharter light
@@ -196,6 +206,11 @@ shot 60b-meeting-people meetingpeople light
 shot 61-meeting-form meetingform light
 shot 63-event-dark event dark
 shot 64-event-up eventup light
+# 0.8.0 one shape (boards one-shape/event-default, -online, -tiny, -full)
+shot 64b-event-tiny eventtiny light
+shot 64c-event-tiny-dark eventtiny dark
+shot 64d-event-online eventonline light
+shot 64e-event-online-dark eventonline dark
 shot 65-event-full eventfull light
 shot 65b-event-full-dark eventfull dark
 shot 65c-event-address eventaddress light
@@ -271,6 +286,8 @@ shot 06b-invite-search invitesearch light
 shot 06c-invite-external inviteexternal light
 shot 07-messages messages light
 shot 08-conversation conversation light
+shot 08b-dm-thread dmthread light
+shot 08c-dm-thread-dark dmthread dark
 shot 09-email mail light
 shot 13-pulldown pulldown light
 shot 14-message-menu menu light

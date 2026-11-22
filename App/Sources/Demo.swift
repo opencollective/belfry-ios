@@ -331,7 +331,9 @@ enum Demo {
         let layout: [String: Any] = ["order": ["general", "garden-3f2a", "kitchen-7d10", inbox, "repair-cafe-91bc", "proposals", "website", "requests", "board-5d1e"],
                                      "categories": [["id": "life", "channels": ["garden-3f2a", "kitchen-7d10", inbox]],
                                                     ["id": "making-4b1c", "name": "Making & mending", "channels": ["repair-cafe-91bc"]],
-                                                    ["id": "building", "channels": ["proposals", "website", "requests", "board-5d1e"]]]]
+                                                    ["id": "building", "channels": ["proposals", "website", "requests", "board-5d1e"]]],
+                                     // Navigation v2: pinned for everyone, at the top of every menu
+                                     "pinned": ["general", "kitchen-7d10"]]
         evs.append(ev(you, 30078, now - 14 * day, [["d", Derive.orderD]], JSON.encode(layout)))
         // the same by Ana, who is the belfry's admin in the `-member` demo
         evs.append(ev(ps["ana"]!, 30078, now - 14 * day, [["d", Derive.orderD]], JSON.encode(layout)))
@@ -405,6 +407,10 @@ enum Demo {
             engine.add(evs, verify: false)
             return
         }
+        // (two statements: `channel` appends to evs while the call runs)
+        let oneShape = Demo.oneShapeEvents(now: now, ben: ps["ben"]!, others: [ps["emma"]!, ps["ana"]!], me: you, ev: ev,
+                                       channel: { channel($0, $1, $2, admins: $3, members: $4, at: $5) })
+        evs += oneShape
         // ---- one shape, the to-do (canvas one-shape/todo-*, 2026-11-22) ----
         // the budget to-do gets a due date (its author's 1010 edit) and a comment; the compost one is done
         if let budgetTodo = evs.first(where: { $0.kind == 2100 && $0.content == "Comment on the 2027 budget" }) {
@@ -464,5 +470,60 @@ enum Demo {
         if let i = args.firstIndex(of: "-screen"), i + 1 < args.count, ["sendstill", "sendnotyet"].contains(args[i + 1]) {
             dms.demoPending(conv: "n:" + ps["ana"]!.pubkey, text: "Yes, I'll be there at 9 with the keys.", at: now - 40)
         }
+
+        // ---- 0.8.0 (g), one shape's e-mail thread (boards one-shape/email-*): Lou's e-mail to
+        // hello@ with To and Cc, Ana took it, the team's talk, Sam's internal draft. It is the
+        // oldest thread, so the screenshots' `mailthread` / `mailreply` / `mailcomment` open it.
+        if !reader {
+            let inbox = "hello-79f0"
+            let start = now - 3 * day
+            let lou = ev(groupsKey, 9, start, [["h", inbox], ["client", "belfry-mail"], ["mail-from", "lou@example.org"], ["mail-name", "Lou"],
+                                               ["subject", "Park cleaning on Saturday"], ["message-id", "<park1@example.org>"], ["belfry-auth", "pass"],
+                                               ["to", "hello@demo.belfry.sh", "Riverside Commons"], ["cc", "dev@example.net", "Dev Patel"], ["cc", "park@example.org", ""]],
+                         "Hello! Could Riverside Commons lend us rakes and gloves for the park cleaning on Saturday? We'd be about 15.")
+            let took = ev(ps["ana"]!, 1985, start + 360, Actions.assignCard(inbox, card: lou.id, assignee: ps["ana"]!.pubkey).tags)
+            let t1 = Actions.postThreadReply(inbox, rootId: lou.id, rootPubkey: lou.pubkey, text: "I know Lou, I'll answer. Ben, are the rakes in the shed?")
+            let t2 = Actions.postThreadReply(inbox, rootId: lou.id, rootPubkey: lou.pubkey, text: "Yes, 12 rakes and a box of gloves.")
+            let draftText = "Hi Lou, yes! We can lend you 12 rakes and a box of gloves…"
+            let draft = Actions.mailDraft(inbox, card: lou, text: draftText)
+            engine.add([lou, took, ev(ps["ana"]!, 1111, start + 420, t1.tags, t1.content), ev(ps["ben"]!, 1111, start + 960, t2.tags, t2.content),
+                        ev(you, 1111, start + 1500, draft.tags, draftText)], verify: false)
+        }
+        // ---- one shape, 0.8.0 (canvas one-shape/dm-thread): a thread in the conversation with Ana
+        if let root = try? await dms.demoDM(from: ps["ana"]!, text: "And could you bring the extension cable from the store room?", at: now - 7100) {
+            try? await dms.demoSent(to: ps["ana"]!.pubkey, text: "The long orange one or the reel?", at: now - 6600, root: root)
+            try? await dms.demoDM(from: ps["ana"]!, text: "The reel, the bike stands need two plugs.", at: now - 6480, root: root)
+            try? await dms.demoSent(to: ps["ana"]!.pubkey, text: "Yes to both.", at: now - 6300)
+            await dms.process()
+        }
+    }
+}
+
+// ---- one shape, events (0.8.0, boards one-shape/event-default-online) --------------------------
+extension Demo {
+    /// An online event that has just started (Join is open): Garden planning on Jitsi, hosted by
+    /// Ben; Emma, Ana and Sam going.
+    static func oneShapeEvents(now: Int, ben: LocalSigner, others: [LocalSigner], me: LocalSigner,
+                               ev: (LocalSigner, Int, Int, [Tag], String) -> NostrEvent,
+                               channel: (String, String, String, [String], [String], Int) -> Void) -> [NostrEvent] {
+        var out = [NostrEvent]()
+        let d = "2026-gplan01"
+        var f = EventForm(title: "Garden planning")
+        f.description = "Bring your seed list, we'll plan the beds for spring."
+        f.start = (now / 300) * 300 - 300
+        f.end = f.start + 3600
+        f.tz = TimeZone.current.identifier
+        f.online = "https://meet.jit.si/garden-planning-4c1d2"
+        f.slug = "garden-planning"
+        for (i, dr) in EventActions.create(f, d: d, me: ben.pubkey, groupsRelay: "wss://groups-relay.demo.belfry.sh", mainRelay: "wss://relay.demo.belfry.sh").enumerated() {
+            out.append(ev(ben, dr.kind, now - 2 * 86400 + i, dr.tags, dr.content))
+        }
+        channel("ev-" + d, "Garden planning", f.description, [ben.pubkey], [ben.pubkey, me.pubkey] + others.map(\.pubkey), now - 2 * 86400 + 5)
+        let coord = "31923:\(ben.pubkey):\(d)"
+        for (i, who) in (others + [me]).enumerated() {
+            out.append(ev(who, 31925, now - 86400 + i * 600, [["d", "gp\(i)"], ["a", coord], ["status", "accepted"], ["p", ben.pubkey]], ""))
+        }
+        out.append(ev(ben, 9, now - 3600, [["h", "ev-" + d]], "Bring your seed list, we'll plan the beds for spring."))
+        return out
     }
 }

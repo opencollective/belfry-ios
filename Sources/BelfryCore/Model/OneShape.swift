@@ -17,21 +17,25 @@ public enum MenuChannels {
         let knownSet = Set(known)
         var pinned = [String]()
         var seen = Set<String>()
+        // the main channel is always first when known, pinned or not (the lead, 2026-11-22)
+        if knownSet.contains(generalId) { pinned.append(generalId); seen.insert(generalId) }
         for id in pinsAll + pinsMine where knownSet.contains(id) && !seen.contains(id) {
             seen.insert(id); pinned.append(id)
         }
         let since = now - recentWindow
         var involved = Set<String>()
         var newest = [String: Int]()
-        for e in events where e.kind == 9 || e.kind == 1111 || e.kind == 7 {
+        for e in events where e.kind == 9 || e.kind == 1111 || e.kind == 7 || e.kind == 9007 {
+            // creating a channel counts as posting in it (the lead, 2026-11-22): the creator's 9007
+            // makes me involved; any 9007 is activity for the order
             guard let h = e.tag("h"), knownSet.contains(h) else { continue }
             newest[h] = max(newest[h] ?? Int.min, e.createdAt)
             guard e.createdAt > since, !me.isEmpty else { continue }
             if e.pubkey == me { involved.insert(h); continue }
-            if e.kind != 7, e.tags.contains(where: { $0.count >= 2 && $0[0] == "p" && $0[1] == me }) { involved.insert(h) }
+            if e.kind == 9 || e.kind == 1111, e.tags.contains(where: { $0.count >= 2 && $0[0] == "p" && $0[1] == me }) { involved.insert(h) }
         }
         let recent = involved.subtracting(seen).sorted { a, b in
-            let x = newest[a]!, y = newest[b]!
+            let x = newest[a] ?? 0, y = newest[b] ?? 0
             return x != y ? x > y : a < b
         }
         return (pinned, recent)
@@ -55,7 +59,7 @@ public enum Pins {
         return out
     }
 
-    /// {"v":1,"c":[…]}, keys in this order (vectors/one-shape.json pins).
+    /// Exactly {"v":1,"c":[...]} (v first, as the shared vector writes it).
     public static func serialize(_ ids: [String]) -> String { "{\"v\":1,\"c\":" + JSON.encode(ids) + "}" }
 
     /// "pinned" in the admins' channel-order content (unknown ids skipped by the reader).
@@ -70,7 +74,7 @@ public enum Pins {
 
 /// The one header's second line: items that leave, when the row is too narrow, in this order.
 public enum HeaderRow {
-    public static let dropOrder = ["owner", "files", "todos", "photos", "comments", "pinned"]
+    public static let dropOrder = ["owner", "files", "todos", "photos", "comments", "events", "pinned"]
 
     /// ITEMS (key, width) in display order; the keys kept within BUDGET (items joined by GAP).
     /// The lead item and people never leave; kept items stay in their order.
@@ -97,5 +101,49 @@ public extension Derive {
     func menuChannels(now: Int, pinsMine: [String]) -> (pinned: [String], recent: [String]) {
         MenuChannels.list(events: events, me: me, now: now, known: townChannels().map(\.id),
                           pinsAll: pinnedForEveryone(), pinsMine: pinsMine)
+    }
+}
+
+public extension Derive {
+    /// My newest kind KIND event with d = D (newest wins, ties by the lower id).
+    func myNewest(kind: Int, d: String) -> NostrEvent? {
+        ofKind(kind).filter { $0.pubkey == me && $0.tag("d") == d }
+            .max { ($0.createdAt, $1.id) < ($1.createdAt, $0.id) }
+    }
+
+    /// The admins' latest channel-order content as an object (empty when none), so a writer can
+    /// keep every key it doesn't change.
+    func channelOrderObject() -> [String: Any] {
+        let own = events.filter { $0.kind == 30078 && $0.tag("d") == Derive.orderD && communityAdmins.contains($0.pubkey) }
+            .sorted(by: Derive.byTime)
+        guard let c = own.last?.content, let obj = (try? JSONSerialization.jsonObject(with: Data(c.utf8))) as? [String: Any] else { return [:] }
+        return obj
+    }
+}
+
+public extension Actions {
+    /// Pin for everyone (admins): "pinned" in channel-order with ID added at the end or removed;
+    /// every other key of PREVIOUS stays.
+    static func pinForEveryone(_ id: String, previous: [String: Any]) -> Draft {
+        var obj = previous
+        let now = Pins.pinnedForEveryone(JSON.encode(previous))
+        obj["pinned"] = Pins.toggle(now, id)
+        return Draft(.main, kind: 30078, content: JSON.encode(obj), tags: [["d", Derive.orderD]])
+    }
+
+    /// My pins (content already NIP-44 encrypted to myself).
+    static func myPins(encrypted: String) -> Draft {
+        Draft(.main, kind: 30078, content: encrypted, tags: [["d", Pins.d]])
+    }
+}
+
+public extension Actions {
+    /// A channel-order DRAFT that keeps the keys of PREVIOUS it doesn't set ("pinned" and any
+    /// other: a writer keeps every other key).
+    static func keepingOtherKeys(_ draft: Draft, previous: [String: Any]) -> Draft {
+        guard let new = (try? JSONSerialization.jsonObject(with: Data(draft.content.utf8))) as? [String: Any] else { return draft }
+        var d = draft
+        d.content = JSON.encode(previous.merging(new) { _, n in n })
+        return d
     }
 }
