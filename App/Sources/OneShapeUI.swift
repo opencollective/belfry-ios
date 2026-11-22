@@ -25,30 +25,30 @@ struct HeaderItem: Identifiable, Hashable {
     }
 }
 
-/// The header's second line. Variants with fewer items are tried until one fits.
+/// The header's second line. What fits is worked out from estimated widths (HeaderRow.fit):
+/// no ViewThatFits in a navigation bar, whose children it measures again and again while the bar
+/// and the keyboard move (testKeyboardComposer hung with it, 2026-11-22).
 struct IconRow: View {
     let items: [HeaderItem]
     var font: Font = .caption
+    /// The width the row may take; nil = a header's (the screen minus the bar's side buttons).
+    var budget: CGFloat? = nil
 
     var body: some View {
-        let v = variants
-        ViewThatFits(in: .horizontal) {
-            line(v[0]); line(v[min(1, v.count - 1)]); line(v[min(2, v.count - 1)])
-            line(v[min(3, v.count - 1)]); line(v[min(4, v.count - 1)]); line(v[min(5, v.count - 1)]); line(v[v.count - 1])
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(items.map(\.label).joined(separator: ", "))
+        line(fitted)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(items.map(\.label).joined(separator: ", "))
     }
 
-    /// The full row, then one fewer item each step in the drop order.
-    private var variants: [[HeaderItem]] {
-        var out = [items]
-        var cur = items
-        for k in HeaderRow.dropOrder where cur.contains(where: { $0.key == k }) {
-            cur.removeAll { $0.key == k }
-            out.append(cur)
-        }
-        return out
+    /// Points per character of the row's small type, plus the icon and the chip's padding.
+    static func width(_ it: HeaderItem) -> Double {
+        Double(it.text.count) * 6.6 + (it.icon == nil ? 0 : 15) + (it.chip ? 12 : 0)
+    }
+
+    private var fitted: [HeaderItem] {
+        let room = Double(budget ?? (UIScreen.main.bounds.width - 150))
+        let keep = Set(HeaderRow.fit(items.map { (key: $0.key, width: IconRow.width($0)) }, budget: room, gap: 8))
+        return items.filter { keep.contains($0.key) }
     }
 
     private func line(_ list: [HeaderItem]) -> some View {
