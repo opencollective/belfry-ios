@@ -78,7 +78,9 @@ struct ChannelPlaceView: View {
                 // -todo done: the done one (canvas one-shape/todo-done)
                 let args = ProcessInfo.processInfo.arguments
                 let wantDone = args.firstIndex(of: "-todo").map { $0 + 1 < args.count && args[$0 + 1] == "done" } ?? false
-                if let t = model.derive.tasks(id).first(where: { $0.done == wantDone }) {
+                let list = model.derive.tasks(id)
+                // an open one with a due date shows the mid level (canvas one-shape/todo-mid)
+                if let t = (wantDone ? nil : list.first(where: { !$0.done && $0.due != nil })) ?? list.first(where: { $0.done == wantDone }) {
                     try? await Task.sleep(for: .milliseconds(600))
                     todo = TodoKey(group: id, task: t.id)
                     return

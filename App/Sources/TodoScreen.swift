@@ -126,7 +126,7 @@ struct TodoScreen: View {
         let about = d.todoDescription(key.group, t)
         ScrollViewReader { proxy in
             List {
-                if lv != .folded {
+                if lv == .pulled || (lv == .mid && (t.due != nil || about != nil)) {
                     TodoTop(t: t, group: key.group, about: about, pulled: lv == .pulled, mayEdit: t.author == model.me && !locked, go: go,
                             more: { withAnimation(.snappy) { level = .pulled } }, due: { hideKeyboard(); dueOpen = true })
                         .listRowSeparator(.hidden)
@@ -138,12 +138,15 @@ struct TodoScreen: View {
                 ForEach(Array(TodoDay.group(lines).enumerated()), id: \.offset) { _, day in
                     Text(day.title).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity).listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 4, trailing: 16))
                     ForEach(day.lines) { l in
                         TodoLineRow(line: l, group: key.group).listRowSeparator(.hidden).id(l.id)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     }
                 }
             }
             .listStyle(.plain)
+            .environment(\.defaultMinListRowHeight, 10)
             .scrollDismissesKeyboard(.interactively)
             .onAppear { if let last = lines.last { proxy.scrollTo(last.id, anchor: .bottom) } }
             .onChange(of: lines.count) { _, _ in if let last = lines.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } } }
@@ -362,6 +365,9 @@ struct TodoTop: View {
                     Button("More", action: more).font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
                         .accessibilityIdentifier("todo-more-text")
                 }
+            }
+            if pulled && t.due == nil && about == nil && t.source == nil && !mayEdit {
+                Text("No due date and no description.").font(.subheadline).foregroundStyle(.secondary)
             }
             if pulled, let src = t.source {
                 let who = model.derive.message(group, src).map { model.name($0.ev.pubkey) }

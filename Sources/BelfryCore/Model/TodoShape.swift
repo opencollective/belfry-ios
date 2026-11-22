@@ -58,7 +58,7 @@ public extension Derive {
         var out = [TodoEntry]()
         let fromAuthor = t.source.flatMap { message(groupId, $0)?.ev.pubkey }
         out.append(TodoEntry(id: t.id, author: t.author, at: t.madeAt, what: .made(from: fromAuthor)))
-        for e in sortedEvents where (e.kind == 2101 || e.kind == 2103) && e.tag("e") == taskId && e.tag("t") == listId {
+        for e in inGroupSorted(groupId) where (e.kind == 2101 || e.kind == 2103) && e.tag("e") == taskId && e.tag("t") == listId {
             if e.kind == 2103 {
                 out.append(TodoEntry(id: e.id, author: e.pubkey, at: e.createdAt, what: .comment(e.content.sliceUnits(2000))))
                 continue
