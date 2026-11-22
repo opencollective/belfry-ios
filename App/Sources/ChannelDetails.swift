@@ -343,6 +343,8 @@ struct SettingsTab: View {
             Text(inbox ? "Anyone can e-mail this address. Mails land here as cards and the channel's admins answer as the channel."
                  : "Only members can e-mail this address; their mail shows as their message.")
         }
+        // Pin comes right after E-mail (Xavier's order); it applies at once, apart from Save
+        PinSection(id: id)
         // Save (SPEC 19.37): applied here at once and queued; back to the channel, which shows the
         // new name and description. Only a final refusal shows (the mark by the channel's name).
         Section {

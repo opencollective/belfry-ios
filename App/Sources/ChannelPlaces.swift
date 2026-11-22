@@ -107,7 +107,8 @@ struct ChannelPlaceView: View {
             case .notifications: FollowBell(id: id)
             case .log: LogTab(id: id) { g in go(g) }
             // the order (Xavier, 2026-11-22): what its admins set, then Pin for everyone who is here
-            case .settings: if model.derive.canAdmin(model.group(id)) { SettingsTab(id: id) }; PinSection(id: id)
+            // (an admin's Settings hold the Pin section themselves, before Save and Archive)
+            case .settings: if model.derive.canAdmin(model.group(id)) { SettingsTab(id: id) } else { PinSection(id: id) }
             case .events, .members, .emails: EmptyView()
             }
         }
