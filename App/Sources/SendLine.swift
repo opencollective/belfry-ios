@@ -64,6 +64,15 @@ struct DiagnosticsScreen: View {
                         LabeledContent(s.name, value: s.state + (s.quiet.map { " · quiet \($0) s" } ?? ""))
                     }
                 } header: { Text("Connections") }
+                // why this device did or did not ask to be allowed (the sealed upkeep's last pass)
+                if !model.isDemo, !model.sealed.upkeepLines.isEmpty {
+                    Section {
+                        ForEach(model.sealed.upkeepLines, id: \.self) { l in Text(l).font(.footnote) }
+                        LabeledContent("Messages waiting for a key", value: "\(model.sealed.waitingCount + model.sealed.checkingCount)")
+                    } header: { Text("Encrypted messages on this device") } footer: {
+                        Text("A failed check is tried again by itself, first after 5 s, then less often.")
+                    }
+                }
                 Section {
                     if lines.isEmpty {
                         Text("Nothing sent yet since the app started.").foregroundStyle(.secondary)
@@ -87,6 +96,6 @@ struct DiagnosticsScreen: View {
     private func report(_ sockets: [(name: String, state: String, quiet: Int?)], _ lines: [String]) -> String {
         let head = "Belfry for iPhone \(AboutScreen.version) (\(AboutScreen.build))"
         let s = sockets.map { "\($0.name): \($0.state)" + ($0.quiet.map { ", quiet \($0) s" } ?? "") }
-        return ([head] + s + [""] + lines).joined(separator: "\n")
+        return ([head] + s + [""] + model.sealed.upkeepLines + [""] + lines).joined(separator: "\n")
     }
 }

@@ -196,25 +196,47 @@ struct EncryptionScreen: View {
     }
 }
 
-/// The amber banner at the top of Messages on a new device nobody allowed yet.
+/// The amber banner at the top of Messages on a device that is not allowed yet (the lead,
+/// 2026-11-22, after a phone showed nothing for a mail it could not open): how many messages
+/// wait, what to do. While my devices are still being read from the relay: "Checking your
+/// devices…". (Boards messages/encryption-waiting-list, -waiting-checking, canvas v177: a draft for
+/// Xavier, built on a branch only.)
 struct LockedHereBanner: View {
+    /// Messages kept here for a key this device doesn't have.
+    var waiting = 0
+    /// My devices aren't read yet: no "locked", no Show how.
+    var checking = false
     let showHow: () -> Void
+
+    static func title(waiting: Int, checking: Bool) -> String {
+        if checking { return "Checking your devices…" }
+        if waiting == 1 { return "1 message is waiting for another of your devices" }
+        if waiting > 1 { return "\(waiting) messages are waiting for another of your devices" }
+        return "Messages are locked on this device"
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "lock.fill").foregroundStyle(.orange).padding(.top, 2).accessibilityHidden(true)
+            if checking { ProgressView().controlSize(.small).padding(.top, 2) }
+            else { Image(systemName: "lock.fill").foregroundStyle(.orange).padding(.top, 2).accessibilityHidden(true) }
             VStack(alignment: .leading, spacing: 4) {
-                Text("Messages are locked on this device").font(.subheadline.weight(.semibold))
-                Text("Open Belfry on another device of yours to unlock them.").font(.subheadline)
-                Button("Show how", action: showHow)
-                    .font(.subheadline.weight(.semibold))
-                    .buttonStyle(.borderless)
-                    .padding(.top, 2)
-                    .accessibilityIdentifier("locked-show-how")
+                Text(LockedHereBanner.title(waiting: waiting, checking: checking)).font(.subheadline.weight(.semibold))
+                if checking {
+                    Text(waiting == 1 ? "1 message is waiting." : "\(waiting) messages are waiting.").font(.subheadline)
+                } else {
+                    Text("Open Belfry on a device where you already read your messages and tap Allow.").font(.subheadline)
+                    Button("Show how", action: showHow)
+                        .font(.subheadline.weight(.semibold))
+                        .buttonStyle(.borderless)
+                        .padding(.top, 2)
+                        .accessibilityIdentifier("locked-show-how")
+                }
             }
             Spacer(minLength: 0)
         }
         .padding(12)
         .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityIdentifier("locked-banner")
     }
 }
 

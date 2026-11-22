@@ -16,15 +16,18 @@ struct MessagesView: View {
         let _ = model.version
         let threads = model.dms?.threads() ?? []
         List {
-            // a new device nobody allowed yet (board messages/encryption-new-device); the banner
-            // goes when it is unlocked, or when there is no older conversation
-            // the banner: this device is not allowed yet, or holds messages it has no key for
-            if threads.contains(where: { model.lockedHere($0.conv) }) || model.sealed.missingKeys {
-                LockedHereBanner { how = true }
+            // this device is not allowed yet (whether or not anything arrived), or holds messages
+            // it has no key for: the banner says how many wait. My devices not read yet and
+            // messages kept meanwhile: "Checking your devices…". Never "No messages" under it.
+            let st = model.sealed
+            let locked = st.notAllowed || st.missingKeys || threads.contains(where: { model.lockedHere($0.conv) })
+            let checking = !locked && st.checkingCount > 0
+            if locked || checking {
+                LockedHereBanner(waiting: locked ? st.waitingCount : st.checkingCount, checking: checking) { how = true }
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
             }
-            if threads.isEmpty {
+            if threads.isEmpty && !locked && !checking {
                 ContentUnavailableView("No messages", systemImage: "envelope", description: Text("Write to anyone in the town with the pen."))
             }
             // "Your address: sam@demo.belfry.sh" (board home/messages)

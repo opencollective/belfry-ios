@@ -241,6 +241,9 @@ shot 185-enc-new-device encnewdevice light
 shot 185b-enc-new-device-dark encnewdevice dark
 shot 185c-enc-locked-thread enclocked light
 shot 185d-enc-locked-thread-dark enclocked dark
+shot 185h-enc-waiting-list encwaitinglist light
+shot 185i-enc-waiting-list-dark encwaitinglist dark
+shot 185j-enc-checking encchecking light
 shot 186-enc-how enchow light
 shot 187-enc-allow encallow light
 shot 187b-enc-allow-dark encallow dark

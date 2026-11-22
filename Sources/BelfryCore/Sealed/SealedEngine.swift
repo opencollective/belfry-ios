@@ -133,6 +133,80 @@ public final class SealedEngine: @unchecked Sendable {
     private var rereadPending = false
     /// My own chain was read again while wraps to an unknown letterbox were kept: open them again.
     public var onMineRead: (() -> Void)?
+
+    // ---- why a device did or did not ask (Diagnostics; the lead, 2026-11-22: an iPhone signed in
+    // for eight minutes never sent its request and showed nothing) ---------------------------------
+
+    /// One upkeep pass, step by step: nil = not reached.
+    public struct UpkeepReport: Hashable, Sendable {
+        public var at = 0
+        /// The community relay answered after AUTH on this connection.
+        public var relayAnswered: Bool?
+        /// My anchor and rosters were read completely (an authenticated question, 3 s).
+        public var chainRead: Bool?
+        /// The belfry's session list answered.
+        public var sessions: Bool?
+        /// It lists this device's own chat session.
+        public var listsMe: Bool?
+        /// This device is in my head (false: it must ask).
+        public var inHead: Bool?
+        /// The request (8562) was published in this pass.
+        public var asked: Bool?
+        public var failed: Bool { relayAnswered == false || chainRead == false || sessions == false || listsMe == false || asked == false }
+    }
+
+    private var report = UpkeepReport()
+    private var failures = 0
+    private var retryAt: Int?
+    private var retryTask: Task<Void, Never>?
+    /// Seconds before the next try after 1, 2, 3… failed passes (the last one repeats).
+    var retryDelays: [Double] = [5, 10, 20, 40, 80, 160, 300]
+    /// A pass failed on a precondition and its retry is due: the app runs its upkeep again.
+    public var onRetry: (() -> Void)?
+
+    /// The last pass, when the request last left (0: never), the failed passes in a row, and when
+    /// the next try is due.
+    public var upkeepState: (report: UpkeepReport, lastRequest: Int, failures: Int, retryAt: Int?) {
+        lock.lock(); defer { lock.unlock() }
+        return (report, memory.lastRequest, failures, retryAt)
+    }
+
+    /// My own chain was read completely at least once in this run.
+    public var mineRead: Bool { lock.lock(); defer { lock.unlock() }; return mineReadDone > 0 }
+
+    /// A sealed wrap this device has no secret for whose letterbox it does not know (yet): my
+    /// chain was not read, or the letterbox is newer than what was read.
+    public func isUnknown(_ wrap: NostrEvent) -> Bool {
+        guard let lb = Sealed.lb(of: wrap) else { return false }
+        lock.lock(); let has = keys.secret(lb) != nil; lock.unlock()
+        return !has && !myLetterboxes().contains(lb)
+    }
+
+    private func note(_ change: (inout UpkeepReport) -> Void) {
+        lock.lock(); change(&report); lock.unlock()
+    }
+
+    /// After a pass: a failed precondition is tried again in seconds, not at the next trigger.
+    /// One retry waits at a time (passes that fail meanwhile don't push it back or lengthen it).
+    private func settle(_ r: UpkeepReport) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard r.failed, !closed else {
+            retryTask?.cancel(); retryTask = nil
+            failures = 0; retryAt = nil
+            return
+        }
+        guard retryAt == nil else { return }
+        failures += 1
+        let wait = retryDelays[min(failures, retryDelays.count) - 1]
+        retryAt = Int.now + Int(wait.rounded(.up))
+        retryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            self.lock.lock(); self.retryAt = nil; let closed = self.closed; self.lock.unlock()
+            if !closed { self.onRetry?() }
+        }
+    }
     /// Rosters and anchors were paged from the start on this connection.
     private var pagedOn: String?
     /// The shared-history wraps and other sealed rumors a sender wants kept while they are queued.
@@ -204,7 +278,7 @@ public final class SealedEngine: @unchecked Sendable {
 
     /// This engine's account was switched away from, or signed out: nothing more is saved or
     /// published by whatever it still had under way.
-    public func close() { lock.lock(); closed = true; lock.unlock() }
+    public func close() { lock.lock(); closed = true; retryTask?.cancel(); retryTask = nil; retryAt = nil; lock.unlock() }
 
     public func setLink(_ secret: String?) { lock.lock(); link = secret; lock.unlock() }
 
@@ -882,13 +956,24 @@ public final class SealedEngine: @unchecked Sendable {
     public func maintain(now: Int = .now) async {
         if (engine.localOnly && !runsLocally) || engine.guestMode.reading { return }
         // the head must be known from this connection: nothing is decided mid catch-up
-        guard runsLocally || engine.answeredAfterAuth(.main) else { return }
+        guard runsLocally || engine.answeredAfterAuth(.main) else {
+            // not answered yet (AUTH still asked, or mid catch-up): said, and tried again soon
+            lock.lock()
+            let busy = working || closed
+            if !busy { report = UpkeepReport(at: now, relayAnswered: false) }
+            let r = report
+            lock.unlock()
+            if !busy { settle(r); onChange?() }
+            return
+        }
         lock.lock()
         if working || closed { lock.unlock(); return }
         working = true
+        report = UpkeepReport(at: now, relayAnswered: true)
         lock.unlock()
         let gone = await upkeep(now: now)
-        lock.lock(); working = false; lock.unlock()
+        lock.lock(); working = false; let done = report; lock.unlock()
+        settle(done)
         // a device whose session is gone leaves (5.6): after a random wait, outside the guard so
         // an Allow or a Remove is not held up meanwhile, and a second look at everything
         guard !gone.isEmpty else { return }
@@ -938,13 +1023,16 @@ public final class SealedEngine: @unchecked Sendable {
                 lock.lock(); pagedOn = conn; lock.unlock()
             }
         }
-        guard await refresh([me], now: now) else { return [] }
+        guard await refresh([me], now: now) else { note { $0.chainRead = false }; onChange?(); return [] }
+        note { $0.chainRead = true }
         takeKeys()
         observe([me], now: now)
-        guard let sessions = await sessions?() else { return [] }
+        guard let sessions = await sessions?() else { note { $0.sessions = false }; onChange?(); return [] }
+        note { $0.sessions = true }
         let live = Set(sessions.compactMap(\.clientPubkey))
         lock.lock(); sessionName = sessions.first { $0.clientPubkey == devicePub }?.device; lock.unlock()
-        guard listsMe(sessions) else { return [] }
+        guard listsMe(sessions) else { note { $0.listsMe = false }; onChange?(); return [] }
+        note { $0.listsMe = true }
         guard let c = chain(me) else {
             // members only, and only when the relay itself, after authentication on this
             // connection and complete to EOSE, shows no anchor
@@ -961,12 +1049,16 @@ public final class SealedEngine: @unchecked Sendable {
             // not in my head: ask (5.2), again every 24 h. No fresh start is made here, whoever is
             // live: this device stays locked with the banner until another one allows it.
             lock.lock(); let last = memory.lastRequest, link = self.link; lock.unlock()
-            if now - last >= 86400, (try? publish(Sealed.request(account: me, device: devicePub, link: link, now: now))) != nil {
-                remember { $0.lastRequest = now }
+            note { $0.inHead = false }
+            if now - last >= 86400 {
+                let sent = (try? publish(Sealed.request(account: me, device: devicePub, link: link, now: now))) != nil
+                if sent { remember { $0.lastRequest = now } }
+                note { $0.asked = sent }
             }
             onChange?()
             return []
         }
+        note { $0.inHead = true }
         // a roster of mine past the anchored end (its anchor was lost or refused): anchored now
         await anchorMine(c, now: now)
         // in the head, but without the head letterbox's secret (a hand-over that was lost): this

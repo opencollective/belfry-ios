@@ -82,6 +82,13 @@ struct SealedState: Equatable {
     var notAllowed = false
     /// It holds a wrap for one of my own letterboxes that it has no key for: the banner, nothing else.
     var missingKeys = false
+    /// How many messages wait here for a key (wraps to my own letterboxes this device can't open).
+    var waitingCount = 0
+    /// Messages kept for a letterbox this device does not know yet (my devices are still being
+    /// read from the relay): "Checking your devices…".
+    var checkingCount = 0
+    /// Diagnostics: why this device did or did not ask to be allowed (each step of the last pass).
+    var upkeepLines: [String] = []
     /// In my head, the key not here yet: sealed conversations show "Waiting for another of your
     /// devices" in place of the composer.
     var waitingForKey = false
@@ -194,6 +201,9 @@ extension AppModel {
         se.onChange = { [weak self] in Task { @MainActor in self?.refreshSealed() } }
         // my chain was read again: the wraps kept for a letterbox this device did not know are judged now
         se.onMineRead = { [weak d] in Task { await d?.process() } }
+        // a pass that failed on a precondition (the relay not answered yet, my devices not read,
+        // the session list silent) is run again in seconds
+        se.onRetry = { [weak self] in Task { @MainActor in self?.sealedNews([]) } }
         d.sealed = se
         if let l = pendingLinkSecret { se.setLink(l); pendingLinkSecret = nil }
     }
@@ -258,6 +268,9 @@ extension AppModel {
         }
         st.notAllowed = se.mine == .waiting
         st.missingKeys = dms.lockedWraps > 0
+        st.waitingCount = dms.lockedWraps
+        st.checkingCount = dms.unknownWraps
+        st.upkeepLines = SealedDiagnostics.lines(se.upkeepState, mine: se.mine, now: Int.now)
         st.waitingForKey = se.lacksKey
         st.waitingLong = st.waitingForKey && (se.waitingSince.map { Int.now - $0 > 86400 } ?? false)
         st.signedOutOthers = sealed.signedOutOthers
@@ -403,6 +416,13 @@ extension Demo {
             s.waitingForKey = true
         case "encnewdevice", "enchow", "enclocked":
             s.notAllowed = true
+        // boards messages/encryption-waiting-list, -waiting-checking (canvas v177)
+        case "encwaitinglist":
+            s.notAllowed = true
+            s.missingKeys = true
+            s.waitingCount = 3
+        case "encchecking":
+            s.checkingCount = 3
         case "encallow", "encallowfull", "encallowwaiting":
             s.ask = AllowAsk(id: "mac", device: "Safari on Mac", kind: .computer, at: now - 120)
         default: break
@@ -422,5 +442,28 @@ extension AppModel {
         if launch.screen == "enconlydevice" { return true }
         guard !derive.amGuest, !guestReading, let se = sealedEngine else { return false }
         return se.onlyDevice
+    }
+}
+
+
+/// About → Diagnostics: the sealed upkeep's last pass in words (no keys, no ids).
+enum SealedDiagnostics {
+    static func lines(_ u: (report: SealedEngine.UpkeepReport, lastRequest: Int, failures: Int, retryAt: Int?), mine: SealedEngine.Mine, now: Int) -> [String] {
+        let r = u.report
+        guard r.at > 0 else { return ["No check yet in this run"] }
+        func yn(_ b: Bool?, _ yes: String, _ no: String) -> String? { b.map { $0 ? yes : no } }
+        var out = ["Last check: \(Format.time(r.at))"]
+        out += [yn(r.relayAnswered, "Community relay answered after signing in: yes", "Community relay answered after signing in: not yet"),
+                yn(r.chainRead, "My devices read from the relay: yes", "My devices read from the relay: no answer in 3 s"),
+                yn(r.sessions, "Session list from the belfry: yes", "Session list from the belfry: no answer"),
+                yn(r.listsMe, "This device is in the session list: yes", "This device is in the session list: no"),
+                yn(r.inHead, "This device is allowed: yes", "This device is allowed: not yet"),
+                yn(r.asked, "Asked to be allowed in this check: yes", "Asked to be allowed in this check: could not send")].compactMap { $0 }
+        if mine == .waiting || u.lastRequest > 0 {
+            out.append(u.lastRequest > 0 ? "Last asked to be allowed: \(Format.day(u.lastRequest)) \(Format.time(u.lastRequest))" : "Last asked to be allowed: never")
+        }
+        if u.failures > 0 { out.append("Failed checks in a row: \(u.failures)") }
+        if let at = u.retryAt { out.append("Next try in \(max(0, at - now)) s") }
+        return out
     }
 }

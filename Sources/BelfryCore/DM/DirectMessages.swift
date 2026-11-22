@@ -39,6 +39,9 @@ public final class DirectMessages: @unchecked Sendable {
     public var sealedExpected = false
     /// Wraps kept because this device has no secret for their letterbox (the banner).
     public private(set) var lockedWraps = 0
+    /// Sealed wraps kept for a letterbox this device does not know yet (my chain was not read, or
+    /// not far enough): "Checking your devices…" in Messages.
+    public private(set) var unknownWraps = 0
     /// The rumors of sealed wraps still in the outbox (to seal them again if a head changes).
     private var queued = [String: NostrEvent]()
     /// Old-style reactions and take-backs whose message is not on the device yet: the opened
@@ -139,6 +142,7 @@ public final class DirectMessages: @unchecked Sendable {
         var changed = false
         var done = 0
         var locked = 0
+        var unknown = 0
         for e in todo {
             // a sealed wrap opens on this device, never through the signer; one that can't be
             // opened yet (no key here, its author's chain not loaded) is kept and tried again
@@ -149,7 +153,7 @@ public final class DirectMessages: @unchecked Sendable {
                 switch s.open(e) {
                 case .keep:
                     // the banner: only a wrap to a letterbox of my own chain that this device has no key for
-                    if s.isLocked(e) { locked += 1 }
+                    if s.isLocked(e) { locked += 1 } else if s.isUnknown(e) { unknown += 1 }
                     continue
                 case .drop: break
                 case .rumor(let rumor): take(rumor, sharedBy: nil)
@@ -221,6 +225,8 @@ public final class DirectMessages: @unchecked Sendable {
         if settleWaiting() { changed = true }
         let was = lockedWraps
         lockedWraps = locked
+        let wasUnknown = unknownWraps
+        unknownWraps = unknown
         // a rumor kept for an item that is no longer in the outbox (cancelled, discarded): not kept
         // any longer (two minutes of grace: a send holds its rumor just before it queues its wraps)
         let stale = queued.filter { rid, r in r.createdAt < Int.now - 120 && !engine.outboxItems().contains { $0.dm == rid } }.map(\.key)
@@ -228,7 +234,7 @@ public final class DirectMessages: @unchecked Sendable {
         let left = queued.mapValues(Sealed.json)
         lock.unlock()
         if !stale.isEmpty { db.set("dm-queued", left) }
-        if changed { save() } else if was != locked { onChange?() }
+        if changed { save() } else if was != locked || wasUnknown != unknown { onChange?() }
     }
 
     /// A sealed rumor, opened: a message, a reaction, or (SHAREDBY) a piece of shared history,
