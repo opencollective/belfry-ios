@@ -55,8 +55,7 @@ public enum Pins {
         return out
     }
 
-    /// {"v":1,"c":[…]} with v first, as vectors/one-shape.json writes it.
-    public static func serialize(_ ids: [String]) -> String { #"{"v":1,"c":"# + JSON.encode(ids) + "}" }
+    public static func serialize(_ ids: [String]) -> String { JSON.encode(["v": 1, "c": ids]) }
 
     /// "pinned" in the admins' channel-order content (unknown ids skipped by the reader).
     public static func pinnedForEveryone(_ content: String?) -> [String] {
