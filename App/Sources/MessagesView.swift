@@ -58,7 +58,7 @@ struct MessagesView: View {
             guard !didLaunch else { return }
             didLaunch = true
             let screen = model.launch.screen ?? ""
-            if ["conversation", "mail", "encmail", "encmaildevices", "sendstill", "sendnotyet", "dmfiles", "dmfilessending", "typingdm", "dmthread"].contains(screen) {
+            if ["conversation", "mail", "encmail", "encmaildevices", "sendstill", "sendnotyet", "dmfiles", "dmfilessending", "typingdm"].contains(screen) {
                 // the demo's e-mail may still be on its way in: look a few times
                 Task { @MainActor in
                     for _ in 0..<6 {
@@ -72,6 +72,8 @@ struct MessagesView: View {
             }
             // boards messages/encryption-*: Lina's conversation, the group's, the three steps
             if screen == "encshared" || screen == "encsharedwhy" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("dev").pubkey) } }
+            // board one-shape/dm-thread: Ana's conversation holds the demo's thread
+            if screen == "dmthread" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("ana").pubkey) } }
             if screen == "enclocked" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("ana").pubkey) } }
             if ["encthread", "encdevices", "encshare", "encwaiting", "encheld"].contains(screen) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate("n:" + Demo.signer("lina").pubkey) }
