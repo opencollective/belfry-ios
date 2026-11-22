@@ -54,6 +54,14 @@ shot 131-home-drawer homedrawer light
 shot 131b-home-drawer-dark homedrawer dark
 shot 131c-home-messages homemessages light
 shot 131c-calendar-drawer calendardrawer light
+shot 133-messages-tab messagestab light
+shot 133b-messages-tab-dark messagestab dark
+shot 134-add-channel addchannel light
+shot 134b-add-channel-typing addchanneltyping light
+shot 134c-add-channel-typing-dark addchanneltyping dark
+shot 135-channel-preview channelpreview light
+shot 135b-channel-pin channelpin light
+shot 135c-channel-pin-member member-channelpin light
 shot 132-drawer-admin towndrawer light
 shot 132b-drawer-member member-towndrawer light
 shot 132c-drawer-member-dark member-towndrawer dark

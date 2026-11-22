@@ -150,6 +150,11 @@ struct ChannelView: View {
             .onChange(of: scrollTarget) { _, t in if let t { jump(to: t, proxy); scrollTarget = nil } }
             .onChange(of: model.feedToEnd) { _, _ in if model.visibleChannel == id, !embedded { feedPos.toEnd(animated: true) } }
             .onChange(of: model.openThread) { _, _ in takeThread() }
+            .onAppear {
+                if let g, g.type == .channel, !embedded, !model.guestReading, !model.derive.amGuest, !model.inMenu(id) { model.previewing.insert(id) }
+            }
+            .onChange(of: model.version) { _, _ in model.previewCheck(id) }
+            .onChange(of: model.myPins) { _, _ in model.previewCheck(id) }
             .onDisappear { if model.visibleChannel == id { model.visibleChannel = nil }; if model.missingMessage == id { model.missingMessage = nil } }
             .onUserScroll { if model.missingMessage == id { withAnimation { model.missingMessage = nil } } }
             .bottomBar {
@@ -169,6 +174,8 @@ struct ChannelView: View {
                 } else if let only = d.webPage(g)?.posts, ["thread", "proposal", "event"].contains(only) {
                     OnlyBar(id: id, only: only, isPublic: d.isPublic(g))
                 } else {
+                    // Navigation v2 (nav2/channel-preview): a channel not in my menu
+                    if model.previewing.contains(id) { PreviewBar(label: model.derive.label(id)) }
                     Composer(group: id, placeholder: composerPlaceholder(g), canAnnounce: d.canAdmin(g), topic: topic, draftKey: "c:" + id) { text, attachments, announce in
                         model.post(text, in: id, attachments: attachments, announce: announce, topic: topic)
                         feedPos.toEnd(animated: true)
@@ -255,6 +262,8 @@ struct ChannelView: View {
             }
             if !pushed { ToolbarItem(placement: .topBarLeading) { DrawerButton() } }
             ToolbarItemGroup(placement: .topBarTrailing) {
+                // the bell (one-shape/anatomy, Xavier 2026-11-22): off by default; on = every message
+                if let g, g.type == .channel || g.isPod, !locked, !model.guestReading, !model.derive.amGuest { BellButton(id: id) }
                 Button { search = true } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("Search")
             }
             }
@@ -406,7 +415,7 @@ struct ChannelView: View {
         case "todos", "todo", "todoassign": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .todos }
         case "files": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .photos }
         case "log": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .log }
-        case "chsettings", "chvisibility", "chpublic": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .settings }
+        case "chsettings", "chvisibility", "chpublic", "channelpin": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .settings }
         case "closedrequests": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .members }
         case "settingsfailedalert": DispatchQueue.main.asyncAfter(deadline: .now() + 2) { settingsIssue = true }
         case "pinned": DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { place = .pinned }

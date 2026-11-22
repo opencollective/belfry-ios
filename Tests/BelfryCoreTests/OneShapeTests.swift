@@ -81,3 +81,16 @@ final class OneShapeVectorTests: XCTestCase {
         }
     }
 }
+
+final class PinWriterTests: XCTestCase {
+    func testPinForEveryoneKeepsOtherKeys() throws {
+        let d = Actions.pinForEveryone("b", previous: ["order": ["general", "b"], "categories": [], "pinned": ["a"]])
+        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(d.content.utf8)) as? [String: Any])
+        XCTAssertEqual(obj["pinned"] as? [String], ["a", "b"])
+        XCTAssertEqual(obj["order"] as? [String], ["general", "b"])
+        XCTAssertNotNil(obj["categories"])
+        let off = Actions.pinForEveryone("a", previous: obj)
+        XCTAssertEqual(Pins.pinnedForEveryone(off.content), ["b"])
+        XCTAssertEqual(d.tags, [["d", "belfry:channel-order"]])
+    }
+}

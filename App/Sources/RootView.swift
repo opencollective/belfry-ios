@@ -84,6 +84,7 @@ struct RootView: View {
     @State private var homePath = NavigationPath()
     @State private var calendarPath = NavigationPath()
     @State private var groupsPath = NavigationPath()
+    @State private var messagesPath = NavigationPath()
     @State private var drawer = false
 
     private var phone: Bool { hSize != .regular }
@@ -94,6 +95,7 @@ struct RootView: View {
         case .home: return $homePath
         case .calendar: return $calendarPath
         case .groups: return $groupsPath
+        case .messages: return $messagesPath
         case .town: return $path
         }
     }
@@ -102,6 +104,7 @@ struct RootView: View {
 
     var body: some View {
         withSheets
+            .modifier(ToastOverlay())
             // "Give your new device … access?" over whatever screen is open (board messages/encryption-allow)
             .overlay { if let ask = model.sealed.ask { AllowPrompt(ask: ask) } }
             // board messages/encryption-fresh-elsewhere: over any screen until a button is tapped
@@ -219,9 +222,11 @@ struct RootView: View {
             model.messageAuthor = nil
             let conv = MailThreads.nostrConv(author: pk, pTags: [], me: model.me)
             if phone {
-                // Messages and the conversation, pushed on the place on screen
-                push(PlaceRoute.messages)
-                push(ConvRoute(conv: conv))
+                // Navigation v2: the conversation on the Messages place
+                var p = NavigationPath()
+                p.append(ConvRoute(conv: conv))
+                messagesPath = p
+                model.tab = .messages
                 return
             }
             selection = .messages
@@ -288,9 +293,9 @@ struct RootView: View {
                 if let root = p.thread { model.openThread = ThreadRoute(group: id, root: root) }
                 if selection == .channel(id) { path = NavigationPath() } else { selection = .channel(id) }
             } else if phone {
-                model.tab = .home
-                homePath = NavigationPath()
-                homePath.append(PlaceRoute.messages)
+                // Navigation v2: Messages is a place of the bar
+                model.tab = .messages
+                messagesPath = NavigationPath()
             } else {
                 selection = .messages
             }
@@ -320,7 +325,7 @@ struct RootView: View {
             if !model.isDemo, let t = UserDefaults.standard.string(forKey: AppModel.perAccount("belfry-last-tab")).flatMap(AppTab.init(rawValue:)) {
                 model.tab = t
             }
-            if model.guestReading || model.derive.amGuest, model.tab == .groups { model.tab = .home }
+            if model.guestReading || model.derive.amGuest, model.tab == .groups || model.tab == .messages { model.tab = .home }
             applyLaunchScreen()
             // a guest link's channel, set while the loading screen stood here
             if let id = model.joinedChannel { model.joinedChannel = nil; selection = .channel(id) }
@@ -361,6 +366,13 @@ struct RootView: View {
                         drawerList(inDrawer: true)
                     } main: {
                         NavigationStack(path: $groupsPath) { GroupsView().tabBarInset().placeDestinations() }
+                            .environment(\.openDrawer) { openDrawer() }
+                    }
+                case .messages:
+                    DrawerContainer(open: $drawer, edgeSwipe: messagesPath.isEmpty && model.pushedOverRoot == 0) {
+                        drawerList(inDrawer: true)
+                    } main: {
+                        NavigationStack(path: $messagesPath) { MessagesView().tabBarInset().placeDestinations() }
                             .environment(\.openDrawer) { openDrawer() }
                     }
                 case .town:
@@ -470,7 +482,13 @@ struct RootView: View {
                           focus = target
                           selection = .channel(target.channel)
                           closeDrawer()
-                      })
+                      },
+                      go: { t in
+                          closeDrawer()
+                          if model.tab == t { current.wrappedValue = NavigationPath() } else { model.tab = t }
+                      },
+                      push: { r in closeDrawer(); push(r) },
+                      newGroup: { hideKeyboard(); closeDrawer(); model.createFirst = .group; model.showCreate = true })
     }
 
     private func openDrawer() {
@@ -604,6 +622,13 @@ struct RootView: View {
         case "reqclose", "reqcloseconfirm": selection = .channel("requests")
         case "closedask", "closedpending", "closedrequests": selection = .channel("board-5d1e")
         case "settingsfailed", "settingsfailedalert": selection = .channel("garden-3f2a")
+        // Navigation v2 (2026-11-22)
+        case "messagestab": model.tab = .messages
+        case "addchannel", "addchanneltyping":
+            selection = .channel(generalId)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { path.append(PlaceRoute.addChannel) }
+        case "channelpreview": selection = .channel("tools-2b8e")
+        case "channelpin": selection = .channel("tools-2b8e")
         case "homemessages":
             // Home's Messages tile: Messages pushed on Home (‹ only, no ☰)
             model.tab = .home
@@ -675,22 +700,23 @@ struct DrawerButton: View {
     @Environment(\.openDrawer) private var openDrawer
     var body: some View {
         if let openDrawer {
-            // the town's unread channels only: messages, mentions and requests are on Home
-            let n = model.townUnread
+            // Navigation v2 (board nav2/drawer): the new items across the menu's rows (channels,
+            // groups, messages), a black total; the red count is on Mentions
+            let n = model.menuUnread
             Button(action: openDrawer) {
                 Image(systemName: "line.3.horizontal")
                     .overlay(alignment: .topTrailing) {
                         if n > 0 {
                             Text(n > 99 ? "99+" : "\(n)")
                                 .font(.caption2.weight(.bold)).monospacedDigit()
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Color(uiColor: .systemBackground))
                                 .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16)
-                                .background(Color.red, in: Capsule())
+                                .background(Color.primary, in: Capsule())
                                 .offset(x: 10, y: -8)
                         }
                     }
             }
-            .accessibilityLabel(n > 0 ? "Channels, \(n) new" : "Channels")
+            .accessibilityLabel(n > 0 ? "Menu, \(n) new" : "Menu")
             .accessibilityIdentifier("drawer-button")
         }
     }
@@ -817,11 +843,14 @@ struct ChannelDrawer: View {
     var openMe: () -> Void = {}
     var apply: () -> Void = {}
     let open: (SearchTarget) -> Void
+    var go: (AppTab) -> Void = { _ in }
+    var push: (PlaceRoute) -> Void = { _ in }
+    var newGroup: () -> Void = {}
     @FocusState private var searching: Bool
     @State private var settings = false
 
     var body: some View {
-        if inDrawer { TownDrawer(current: current, onHome: onHome, select: select, today: today, newChannel: newChannelIn, account: account, me: openMe, apply: apply, open: open) } else { sidebar }
+        if inDrawer { TownDrawer(current: current, onHome: onHome, select: select, today: today, newChannel: newChannelIn, account: account, me: openMe, apply: apply, open: open, go: go, push: push, newGroup: newGroup) } else { sidebar }
     }
 
     /// iPad's sidebar: the list as it was before the bottom bar (Members, events, mentions,

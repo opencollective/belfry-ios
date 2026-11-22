@@ -331,7 +331,9 @@ enum Demo {
         let layout: [String: Any] = ["order": ["general", "garden-3f2a", "kitchen-7d10", inbox, "repair-cafe-91bc", "proposals", "website", "requests", "board-5d1e"],
                                      "categories": [["id": "life", "channels": ["garden-3f2a", "kitchen-7d10", inbox]],
                                                     ["id": "making-4b1c", "name": "Making & mending", "channels": ["repair-cafe-91bc"]],
-                                                    ["id": "building", "channels": ["proposals", "website", "requests", "board-5d1e"]]]]
+                                                    ["id": "building", "channels": ["proposals", "website", "requests", "board-5d1e"]]],
+                                     // Navigation v2: pinned for everyone, at the top of every menu
+                                     "pinned": ["general", "kitchen-7d10"]]
         evs.append(ev(you, 30078, now - 14 * day, [["d", Derive.orderD]], JSON.encode(layout)))
         // the same by Ana, who is the belfry's admin in the `-member` demo
         evs.append(ev(ps["ana"]!, 30078, now - 14 * day, [["d", Derive.orderD]], JSON.encode(layout)))

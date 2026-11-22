@@ -1,6 +1,7 @@
 import BelfryCore
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 // The composer: @ picker (marks people who can't read the channel, with Invite / Add as a guest
 // above the field), # picker for channel references (SPEC 19.14), photos, the ＋ menu (a
@@ -42,6 +43,7 @@ struct Composer: View {
     @State private var meeting = false
     /// A drop box link for this channel (its Files screen lists the links; the ＋ menu makes one).
     @State private var dropLink = false
+    @State private var filePicker = false
     @State private var notes = [String: String]()
     /// The field has the keyboard (the field is a UITextView: `MessageField`).
     @State private var focused = false
@@ -213,6 +215,7 @@ struct Composer: View {
         .sheet(isPresented: $recording) { RecorderSheet(group: group) }
         .sheet(isPresented: $meeting) { MeetingFormSheet(channel: group) }
         .sheet(isPresented: $dropLink) { DropLinkSheet(id: group) }
+        .fileImporter(isPresented: $filePicker, allowedContentTypes: [.item]) { r in loadFile(r) }
         .onChange(of: model.launchMeetingForm) { _, on in
             if on, !compact, !threadMode { model.launchMeetingForm = false; meeting = true }
         }
@@ -241,23 +244,29 @@ struct Composer: View {
     /// ＋: a native menu with icons, the same height as the field and on its centre line.
     private var addMenu: some View {
         let guest = model.derive.amGuest
+        // Navigation v2 (board nav2/plus, 2026-11-22): attach first, then "Create in #channel"
+        // (what the bottom bar's Create used to offer)
         return Menu {
             Section {
-                Button { choose(.photo) } label: { Label("Photo", systemImage: "photo.on.rectangle") }
-                Button { choose(.create(.todo)) } label: { Label("To-do", systemImage: "checklist") }
+                Button { choose(.photo) } label: { Label("Photos", systemImage: "photo.on.rectangle") }
+                if !guest {
+                    Button { choose(.file) } label: { Label("File", systemImage: "doc") }
+                    Button { choose(.audio) } label: { Label("Audio recording", systemImage: "mic") }
+                }
             }
-            if !guest {
-                Section {
+            Section(createTitle) {
+                if !guest {
                     Button { choose(.event) } label: { Label("Event", systemImage: "calendar") }
                     Button { choose(.meeting) } label: { Label("Meeting", systemImage: "person.2") }
-                    Button { choose(.create(.proposal)) } label: { Label("Proposal", systemImage: "doc.text") }
-                    Button { choose(.create(.pod)) } label: { Label("Group", systemImage: "hexagon") }
                 }
+                Button { choose(.create(.todo)) } label: { Label("To-do", systemImage: "checklist") }
+                if !guest {
+                    Button { choose(.create(.proposal)) } label: { Label("Proposal", systemImage: "doc.text") }
+                }
+            }
+            if !guest, !threadMode, !group.isEmpty {
                 Section {
-                    Button { choose(.audio) } label: { Label("Audio recording", systemImage: "mic") }
-                    if !threadMode && !group.isEmpty {
-                        Button { choose(.dropLink) } label: { Label("Drop box link", systemImage: "tray.and.arrow.down") }
-                    }
+                    Button { choose(.dropLink) } label: { Label("Drop box link", systemImage: "tray.and.arrow.down") }
                 }
             }
             if canAnnounce {
@@ -274,7 +283,7 @@ struct Composer: View {
                 .padding(3).contentShape(Circle()).padding(-3) // 44 pt target
         }
         .menuOrder(.fixed)
-        .accessibilityLabel("Add a photo, a to-do, an event, a proposal…")
+        .accessibilityLabel("Attach, or create here")
         .accessibilityIdentifier("composer-add")
     }
 
@@ -294,6 +303,7 @@ struct Composer: View {
         case .audio: recording = true
         case .meeting: meeting = true
         case .dropLink: dropLink = true
+        case .file: filePicker = true
         }
     }
 
@@ -340,6 +350,22 @@ struct Composer: View {
         sent += 1
     }
 
+    /// "Create in #hello" (the ＋ menu's second part).
+    private var createTitle: String {
+        let label = model.derive.label(group)
+        return label.isEmpty ? "Create here" : "Create in " + label
+    }
+
+    /// A file from Files: copied into the attachments folder, sent like a photo.
+    func loadFile(_ r: Result<URL, Error>) {
+        guard case .success(let url) = r else { return }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { return }
+        let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+        if let a = model.saveAttachment(data, name: url.lastPathComponent, mime: mime, width: nil, height: nil) { attachments.append(a) }
+    }
+
     func load(_ items: [PhotosPickerItem]) {
         guard !items.isEmpty else { return }
         photos = []
@@ -384,7 +410,7 @@ struct OutsiderNote: View {
 }
 
 enum CreateKind: String, Identifiable { case todo, pod, proposal; var id: String { rawValue } }
-enum AddChoice { case photo, announcement, event, audio, meeting, dropLink, create(CreateKind) }
+enum AddChoice { case photo, file, announcement, event, audio, meeting, dropLink, create(CreateKind) }
 
 /// Unsent text on this phone, per channel and per thread (and per form).
 enum Drafts {

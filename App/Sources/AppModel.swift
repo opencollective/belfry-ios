@@ -96,8 +96,15 @@ final class AppModel: ObservableObject {
     /// screen…): they are not in the place's path, and while one is up the drawer's edge strip
     /// must give way to the system's swipe back (`overRoot()`).
     @Published var pushedOverRoot = 0
-    /// iPhone: the bottom bar's place (Home · Calendar · Groups · Town; Create is a sheet).
+    /// iPhone: the bottom bar's place (Navigation v2: Today · Calendar · Messages · Groups · Town).
     @Published var tab: AppTab = .home
+    /// Pinned for me (kind 30078 d=belfry:pins, NIP-44 to myself; AppModel+Nav).
+    @Published var myPins: [String] = []
+    var pinsState: MyPinsState?
+    var menuCache: (version: Int, pins: [String], value: (pinned: [String], recent: [String]))?
+    /// Channels opened in preview this session (the bar shows; "in your menu" when that changes).
+    @Published var previewing = Set<String>()
+    @Published var toast: String?
     /// The Create sheet (the bar's ＋).
     @Published var showCreate = false
     /// The selected place's bar item tapped again: back to its root.
@@ -352,7 +359,7 @@ final class AppModel: ObservableObject {
 
     private func changed() {
         bump?.cancel()
-        let w = DispatchWorkItem { [weak self] in self?.version += 1; self?.refreshSealed() }
+        let w = DispatchWorkItem { [weak self] in self?.version += 1; self?.refreshSealed(); self?.pinsCheck() }
         bump = w
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: w)
     }
@@ -737,12 +744,13 @@ final class AppModel: ObservableObject {
     }
 
     /// The admins' order of the channel list.
-    func setChannelOrder(_ ids: [String]) { engine?.enqueue(Actions.channelOrder(ids)) }
+    func setChannelOrder(_ ids: [String]) { engine?.enqueue(Actions.keepingOtherKeys(Actions.channelOrder(ids), previous: derive.channelOrderObject())) }
 
     /// The admins' categories (SPEC 19.34): the same event, with `categories` and the flattened order.
     func setChannelLayout(_ cats: [ChannelCategory], extra: Set<String> = []) {
         let d = derive
-        engine?.enqueue(Actions.channelLayout(cats, previous: d.channelLayout(), known: Set(d.townChannels().map(\.id)).union(extra)))
+        // the channel-order writer keeps every key it doesn't set ("pinned", one-shape.md)
+        engine?.enqueue(Actions.keepingOtherKeys(Actions.channelLayout(cats, previous: d.channelLayout(), known: Set(d.townChannels().map(\.id)).union(extra)), previous: d.channelOrderObject()))
     }
 
     /// A post in a threads-only channel: a bold title line and the details, with a `subject` tag

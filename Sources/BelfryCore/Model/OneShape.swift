@@ -98,3 +98,47 @@ public extension Derive {
                           pinsAll: pinnedForEveryone(), pinsMine: pinsMine)
     }
 }
+
+public extension Derive {
+    /// My newest kind KIND event with d = D (newest wins, ties by the lower id).
+    func myNewest(kind: Int, d: String) -> NostrEvent? {
+        ofKind(kind).filter { $0.pubkey == me && $0.tag("d") == d }
+            .max { ($0.createdAt, $1.id) < ($1.createdAt, $0.id) }
+    }
+
+    /// The admins' latest channel-order content as an object (empty when none), so a writer can
+    /// keep every key it doesn't change.
+    func channelOrderObject() -> [String: Any] {
+        let own = events.filter { $0.kind == 30078 && $0.tag("d") == Derive.orderD && communityAdmins.contains($0.pubkey) }
+            .sorted(by: Derive.byTime)
+        guard let c = own.last?.content, let obj = (try? JSONSerialization.jsonObject(with: Data(c.utf8))) as? [String: Any] else { return [:] }
+        return obj
+    }
+}
+
+public extension Actions {
+    /// Pin for everyone (admins): "pinned" in channel-order with ID added at the end or removed;
+    /// every other key of PREVIOUS stays.
+    static func pinForEveryone(_ id: String, previous: [String: Any]) -> Draft {
+        var obj = previous
+        let now = Pins.pinnedForEveryone(JSON.encode(previous))
+        obj["pinned"] = Pins.toggle(now, id)
+        return Draft(.main, kind: 30078, content: JSON.encode(obj), tags: [["d", Derive.orderD]])
+    }
+
+    /// My pins (content already NIP-44 encrypted to myself).
+    static func myPins(encrypted: String) -> Draft {
+        Draft(.main, kind: 30078, content: encrypted, tags: [["d", Pins.d]])
+    }
+}
+
+public extension Actions {
+    /// A channel-order DRAFT that keeps the keys of PREVIOUS it doesn't set ("pinned" and any
+    /// other: a writer keeps every other key).
+    static func keepingOtherKeys(_ draft: Draft, previous: [String: Any]) -> Draft {
+        guard let new = (try? JSONSerialization.jsonObject(with: Data(draft.content.utf8))) as? [String: Any] else { return draft }
+        var d = draft
+        d.content = JSON.encode(previous.merging(new) { _, n in n })
+        return d
+    }
+}

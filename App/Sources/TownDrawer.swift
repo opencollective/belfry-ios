@@ -1,14 +1,14 @@
 import BelfryCore
 import SwiftUI
 
-// Town's drawer (☰ or a swipe from the left, board iOS-Town 2; also Home's ☰ since 2026-11-17):
-// the belfry's cover (when branding has one), its mark, name and member count, a gear for Belfry
-// settings (stewards); Today (Home); The town (Townsquare, Members with their requests,
-// Charter); then the categories (SPEC 19.34: Community life, Building together and the stewards'
-// own), each header with ＋ for a new channel in it (Community life for anyone who may create a
-// channel, every category for stewards); a globe marks a public channel; Archived. Stewards
-// long-press a channel and drag it to move it, within and across categories. At the bottom: you
-// (face, name, name@domain): tap for Me, ⇅ for the accounts and belfries.
+// The menu (☰ or a swipe from the left; Navigation v2, boards nav2/drawer and drawer-unread,
+// approved 2026-11-22): the belfry's cover (when branding has one), its mark, name and member
+// count, a gear for Belfry settings (stewards); Today, Messages, Mentions, Calendar (each opens
+// its place or screen); GROUPS (the groups I'm in, ＋ = new group, anyone); CHANNELS (＋ = Add a
+// channel: pinned for everyone, pinned for me, then recent = mentioned / posted / reacted in the
+// last 30 days, newest activity first; no "All channels", no follow); Archived; you at the
+// bottom (tap for Me, ⇅ for the accounts and belfries). Unread like Discord: a row with new
+// messages is bold with a count; Mentions has a red count.
 // A guest's drawer (board iOS-Town 3): Apply first, the channels they were invited to, the places
 // open to everyone, and their own row.
 
@@ -25,6 +25,11 @@ struct TownDrawer: View {
     let me: () -> Void
     let apply: () -> Void
     let open: (SearchTarget) -> Void
+    /// A place of the bar (Messages, Calendar).
+    var go: (AppTab) -> Void = { _ in }
+    /// A screen pushed on the place on screen (Mentions, Add a channel).
+    var push: (PlaceRoute) -> Void = { _ in }
+    var newGroup: () -> Void = {}
 
     var body: some View {
         let _ = model.version
@@ -78,16 +83,10 @@ struct TownDrawer: View {
 
     private var memberList: some View {
         let d = model.derive
-        let admin = d.isCommunityAdmin
-        let chans = d.townChannels()
-        let general = chans.first { $0.id == generalId }
-        let byId = Dictionary(chans.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        let all = d.channelCategories()
-        let cats = Categories.shown(all, admin: admin, member: true) // never a guest here: Community life shows, empty with its ＋
-        let rows = Categories.flat(cats)
-        let names = Dictionary(all.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+        let m = model.menu
+        let everyone = Set(model.pinnedForEveryone)
+        let groups = model.myGroups
         let archived = d.myArchived()
-        let requests = model.requestCount
         return List {
             Group {
                 if model.access == .denied {
@@ -97,37 +96,27 @@ struct TownDrawer: View {
                     }
                 }
                 Section {
-                    placeRow(icon: "sun.max", title: "Today", note: nil, badge: model.homeCount, on: onHome, action: today)
+                    placeRow(icon: "sun.max", title: "Today", note: nil, badge: 0, on: onHome, action: today)
                         .accessibilityIdentifier("drawer-today")
+                    placeRow(icon: "bubble.left.and.bubble.right", title: "Messages", note: nil, badge: model.unreadDMs, on: model.tab == .messages) { go(.messages) }
+                        .accessibilityIdentifier("drawer-messages")
+                    placeRow(icon: "at", title: "Mentions", note: nil, badge: model.newMentions, red: true, on: current == .mentions) { push(.mentions) }
+                        .accessibilityIdentifier("drawer-mentions")
+                    placeRow(icon: "calendar", title: "Calendar", note: nil, badge: 0, on: model.tab == .calendar) { go(.calendar) }
+                        .accessibilityIdentifier("drawer-calendar")
                 }
                 Section {
-                    // the title is a row, not a header: a plain list's header sticks to the top
-                    // and the rows scrolled under it, showing through (Xavier, 2026-11-20)
-                    sectionTitle(PlaceNames.Section.town.title)
-                    if let general { townRow(general) }
-                    placeRow(icon: "person.2", title: PlaceNames.members, note: nil, badge: requests, on: current == .members || current == .requests) { select(.members) }
-                        .accessibilityIdentifier("drawer-members")
-                    if d.charterGroup != nil || d.isCommunityAdmin {
-                        let left = d.charterToAgree().count
-                        placeRow(icon: "doc.text", title: "Charter", note: nil, badge: left, on: current == .charter) { select(.charter) }
-                            .accessibilityIdentifier("drawer-charter")
-                    }
+                    sectionHeader("Groups", add: "New group", id: "drawer-new-group", action: newGroup)
+                    ForEach(groups) { g in townRow(g, glyph: true) }
                 }
-                // the categories as one flat list (headers are rows) so a channel can be dragged
-                // across them; only the belfry's admins can drag
                 Section {
-                    ForEach(rows, id: \.self) { r in
-                        switch r {
-                        case .header(let cid):
-                            categoryHeader(cid, names[cid] ?? cid, admin: admin)
-                                .moveDisabled(true)
-                        case .channel(let cid):
-                            if let g = byId[cid] {
-                                townRow(g).moveDisabled(!admin)
-                            }
-                        }
+                    sectionHeader("Channels", add: "Add a channel", id: "drawer-add-channel") { push(.addChannel) }
+                    ForEach(m.pinned, id: \.self) { id in
+                        if let g = d.group(id) { townRow(g, pin: everyone.contains(id) || (id == generalId && !model.myPins.contains(id)) ? .everyone : .mine) }
                     }
-                    .onMove(perform: admin ? mover(rows, all) : nil)
+                    ForEach(m.recent, id: \.self) { id in
+                        if let g = d.group(id) { townRow(g) }
+                    }
                 }
                 Section {
                     if !archived.isEmpty {
@@ -144,36 +133,24 @@ struct TownDrawer: View {
         .task { await model.loadRequests() }
     }
 
-    /// A category's title, ＋ on its right for a new channel in it (Community life: anyone who may
-    /// create a channel; every category: the belfry's admins).
-    private func categoryHeader(_ id: String, _ name: String, admin: Bool) -> some View {
+    /// A section's title in small caps, ＋ on its right.
+    private func sectionHeader(_ name: String, add: String, id: String, action: @escaping () -> Void) -> some View {
         HStack {
-            sectionTitle(name)
+            Text(name.uppercased()).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
             Spacer()
-            if admin || id == ChannelCategory.life {
-                Button { newChannel(id) } label: {
-                    Image(systemName: "plus").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                        .frame(width: 32, height: 28).contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("New channel in \(name)")
-                .accessibilityIdentifier("category-add-" + id)
+            Button(action: action) {
+                Image(systemName: "plus").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                    .frame(width: 32, height: 28).contentShape(Rectangle())
             }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(add)
+            .accessibilityIdentifier(id)
         }
         .padding(.top, 10)
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isHeader)
-    }
-
-    /// A drag in the flat list: the categories rebuilt, published at once (latest wins).
-    private func mover(_ rows: [CategoryRow], _ all: [ChannelCategory]) -> (IndexSet, Int) -> Void {
-        { from, to in
-            var flat = rows
-            flat.move(fromOffsets: from, toOffset: to)
-            model.setChannelLayout(Categories.rebuild(all, flat: flat))
-        }
     }
 
     private var guestList: some View {
@@ -222,35 +199,53 @@ struct TownDrawer: View {
             .accessibilityAddTraits(.isHeader)
     }
 
-    /// A channel: #, its name (a globe when public), the unread count.
-    private func townRow(_ g: Channel) -> some View {
+    enum PinMark { case none, everyone, mine }
+
+    /// A channel (#) or group (its glyph): the name (a globe when public), 📌 when pinned, the
+    /// unread count; bold with news.
+    private func townRow(_ g: Channel, pin: PinMark = .none, glyph: Bool = false) -> some View {
         let n = model.unread(g.id)
         let on = current == .channel(g.id)
+        let name = g.named ? g.name : BelfryCore.Group.kindTitle(g.id)
         return Button { select(.channel(g.id)) } label: {
             HStack(spacing: 12) {
-                Image(systemName: "number").font(.body.weight(.medium)).foregroundStyle(.secondary).frame(width: 24)
+                if glyph { ChannelGlyph(group: g, size: 22).frame(width: 24) }
+                else { Image(systemName: "number").font(.body.weight(.medium)).foregroundStyle(.secondary).frame(width: 24) }
                 GroupTitle(group: g, id: g.id).font(.body.weight(n > 0 || on ? .semibold : .regular)).lineLimit(1)
                 if model.derive.isPublic(g) {
                     Image(systemName: "globe").font(.caption).foregroundStyle(.secondary).accessibilityLabel("public")
                 }
+                if pin != .none {
+                    Image(systemName: "pin").font(.caption).foregroundStyle(.secondary)
+                        .accessibilityLabel(pin == .everyone ? "pinned for everyone" : "pinned for you")
+                }
                 Spacer(minLength: 4)
-                if n > 0 { Text(n > 99 ? "99+" : "\(n)").font(.subheadline).monospacedDigit().foregroundStyle(.secondary) }
+                if n > 0 { Text(n > 99 ? "99+" : "\(n)").font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(.primary) }
             }
+            .frame(minHeight: 32)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .listRowBackground(on ? Color.primary.opacity(0.08) : Color.clear)
-        .accessibilityLabel(n > 0 ? "\(g.named ? g.name : BelfryCore.Group.kindTitle(g.id)), \(n) unread" : (g.named ? g.name : BelfryCore.Group.kindTitle(g.id)))
+        .accessibilityLabel(n > 0 ? "\(name), \(n) unread" : name)
+        .accessibilityIdentifier("drawer-channel-" + g.id)
     }
 
-    private func placeRow(icon: String, title: String, note: String?, badge: Int, on: Bool, muted: Bool = false, action: @escaping () -> Void) -> some View {
+    private func placeRow(icon: String, title: String, note: String?, badge: Int, red: Bool = false, on: Bool, muted: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon).font(.body.weight(.medium)).foregroundStyle(.secondary).frame(width: 24)
-                Text(title).font(.body.weight(on ? .semibold : .regular)).foregroundStyle(muted ? .secondary : .primary)
+                Text(title).font(.body.weight(on || (badge > 0 && !red) ? .semibold : .regular)).foregroundStyle(muted ? .secondary : .primary)
                 if let note { Text(note).font(.footnote).foregroundStyle(.secondary) }
                 Spacer(minLength: 4)
-                if badge > 0 { CountBadge(n: badge) }
+                if badge > 0 {
+                    if red {
+                        Text(badge > 99 ? "99+" : "\(badge)").font(.caption.weight(.bold)).monospacedDigit()
+                            .padding(.horizontal, 7).frame(minWidth: 22, minHeight: 22)
+                            .background(Color.red, in: Capsule()).foregroundStyle(.white)
+                            .accessibilityLabel("\(badge) new")
+                    } else { Text(badge > 99 ? "99+" : "\(badge)").font(.subheadline.weight(.semibold)).monospacedDigit() }
+                }
             }
             .contentShape(Rectangle())
         }
