@@ -99,6 +99,8 @@ struct SealedState: Equatable {
     var checkingCount = 0
     /// When this device last asked to be allowed (0: not yet).
     var askedAt = 0
+    /// The devices that can let this one in (my head's devices), by their session names.
+    var unlockers: [String] = []
     /// Diagnostics: why this device did or did not ask to be allowed (each step of the last pass).
     var upkeepLines: [String] = []
     /// In my head, the key not here yet: sealed conversations show "Waiting for another of your
@@ -250,6 +252,11 @@ extension AppModel {
         Task {
             await se.maintain()
             await dms?.process()
+            // not allowed yet: who can let this device in, by name (the session list knows them)
+            if se.mine == .waiting, let head = se.chain(me)?.devices, case .success(let list) = await sessions() {
+                unlockerNames = list.filter { s in s.clientPubkey.map(head.contains) ?? false }
+                    .map { s in (s.device ?? "").isEmpty ? (s.applicationName.isEmpty ? "A device" : s.applicationName) : s.device! }
+            }
             let ask = await se.asks().first { !sealed.dismissed.contains($0.device) }
             let now = ask.map { AllowAsk(id: $0.device, device: $0.name, kind: DeviceKind.of($0.name), at: $0.at) }
             if sealed.ask != now { sealed.ask = now }
@@ -297,6 +304,7 @@ extension AppModel {
         st.waitingCount = dms.lockedWraps
         st.checkingCount = dms.unknownWraps
         st.askedAt = se.upkeepState.lastRequest
+        st.unlockers = st.notAllowed ? unlockerNames : []
         st.upkeepLines = SealedDiagnostics.lines(se.upkeepState, mine: se.mine, now: Int.now)
         st.waitingForKey = se.lacksKey
         st.waitingLong = st.waitingForKey && (se.waitingSince.map { Int.now - $0 > 86400 } ?? false)
@@ -453,6 +461,8 @@ extension Demo {
             // a device that is not allowed is not among my devices: the screen adds its own row
             s.myDevices.removeAll { $0.this }
         case "encwaitinglist":
+            s.askedAt = now - 900
+            s.unlockers = ["Safari on Mac", "Android phone"]
             s.notAllowed = true
             s.missingKeys = true
             s.waitingCount = 3

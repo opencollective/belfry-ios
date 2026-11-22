@@ -1744,6 +1744,58 @@ final class SealedAutoAddTests: XCTestCase {
         XCTAssertEqual(cards.map(\.device), [mac.pub])
     }
 
+    /// "It was me" on one device answers the notice on all of them (5.2 step 2b); the added
+    /// device can't answer for itself.
+    func testItWasMeOnceForEveryDevice() async throws {
+        let b = FakeBelfry()
+        let phone = try await head(b)
+        // a tablet joins (added by the phone), gets the keys, and runs its upkeep in the head
+        let tablet = try b.signIn("alice", "tablet")
+        tablet.sealed.autoAdd = true
+        await b.sync()
+        await tablet.sealed.maintain(now: now + 10)
+        await b.sync()
+        await phone.sealed.maintain(now: now + 20)
+        await b.sync()
+        tablet.sealed.takeKeys()
+        await tablet.sealed.maintain(now: now + 30)
+        await b.sync()
+        XCTAssertEqual(tablet.sealed.mine, .inside)
+        // a mac is added by the phone: both the phone and the tablet show the notice
+        let mac = try b.signIn("alice", "mac")
+        await b.sync()
+        await mac.sealed.maintain(now: now + 100)
+        await b.sync()
+        await phone.sealed.maintain(now: now + 110)
+        await b.sync()
+        mac.sealed.takeKeys()
+        XCTAssertTrue(phone.sealed.addedNotices().map(\.device).contains(mac.pub))
+        XCTAssertEqual(tablet.sealed.addedNotices().map(\.device), [mac.pub])
+        let c = try XCTUnwrap(tablet.sealed.chain(tablet.account))
+        let adding = try XCTUnwrap(AddedConfirm.addedBy(c, mac.pub))
+        // the mac answering for itself is ignored
+        let own = GiftWrap.rumor(kind: AddedConfirm.kind, pubkey: mac.pub, tags: AddedConfirm.tags(account: mac.account, device: mac.pub, roster: adding.id), content: "", createdAt: now + 120)
+        let forged = try Sealed.wrap(own, device: secret("alice/mac"), to: mac.account, lb: c.lb, now: now + 120)
+        _ = tablet.sealed.open(forged)
+        XCTAssertEqual(tablet.sealed.addedNotices().map(\.device), [mac.pub], "the added device can't confirm itself")
+        // "It was me" on the phone: its own notice goes, and the tablet's once the 8563 arrives
+        phone.sealed.ackAdded(mac.pub)
+        XCTAssertFalse(phone.sealed.addedNotices().map(\.device).contains(mac.pub))
+        await b.sync()
+        let sent = b.all().filter { $0.kind == 1059 && Sealed.lb(of: $0) == c.lb && $0.id != forged.id }
+        XCTAssertFalse(sent.isEmpty, "a sealed wrap to my own letterbox went out")
+        for w in sent { _ = tablet.sealed.open(w) }
+        XCTAssertTrue(tablet.sealed.addedNotices().isEmpty, "answered once, for every device")
+        // the pure rule: the wrong roster, or a signer that was not there before, changes nothing
+        let good = GiftWrap.rumor(kind: AddedConfirm.kind, pubkey: phone.pub, tags: AddedConfirm.tags(account: phone.account, device: mac.pub, roster: adding.id), content: "")
+        XCTAssertEqual(AddedConfirm.verdict(good, sealPubkey: phone.pub, chain: c, account: phone.account), .clears(mac.pub))
+        XCTAssertEqual(AddedConfirm.verdict(good, sealPubkey: mac.pub, chain: c, account: phone.account), .no, "the seal is not the rumor's device")
+        let wrongRoster = GiftWrap.rumor(kind: AddedConfirm.kind, pubkey: phone.pub, tags: AddedConfirm.tags(account: phone.account, device: mac.pub, roster: c.root.id), content: "")
+        XCTAssertEqual(AddedConfirm.verdict(wrongRoster, sealPubkey: phone.pub, chain: c, account: phone.account), .no)
+        let unknown = GiftWrap.rumor(kind: AddedConfirm.kind, pubkey: phone.pub, tags: AddedConfirm.tags(account: phone.account, device: mac.pub, roster: String(repeating: "0", count: 64)), content: "")
+        XCTAssertEqual(AddedConfirm.verdict(unknown, sealPubkey: phone.pub, chain: c, account: phone.account), .unknownRoster)
+    }
+
     func testThePureConditions() async throws {
         let b = FakeBelfry()
         let phone = try await head(b)

@@ -168,3 +168,46 @@ public enum AutoAdd {
         return addedLately(c, now: now) < limit
     }
 }
+
+/// "It was me", answered once for every device (sealed.md 5.2 step 2b, 2026-11-22; Xavier: "make
+/// sure we only need to do that once, in case I have more than 2 devices"): the device that was
+/// tapped sends a sealed rumor of kind 8563 to my own head letterbox; every other device of mine
+/// clears its notice for that device when the rule holds.
+public enum AddedConfirm {
+    public static let kind = 8563
+
+    /// The roster of C that added DEVICE: the first one that lists it while the one before does
+    /// not (nil: the root's own device, or not in the chain).
+    public static func addedBy(_ c: RosterChain, _ device: String) -> Roster? {
+        for i in c.rosters.indices.dropFirst() where c.rosters[i].devices.contains(device) && !c.rosters[i - 1].devices.contains(device) {
+            return c.rosters[i]
+        }
+        return nil
+    }
+
+    public static func tags(account: String, device: String, roster: String) -> [Tag] {
+        [["p", account], ["device", device], ["e", roster]]
+    }
+
+    public enum Verdict: Equatable, Sendable {
+        /// The notice for this device is answered.
+        case clears(String)
+        /// The roster it names is not in my chain as this device has it (yet): look again later.
+        case unknownRoster
+        case no
+    }
+
+    /// What an opened 8563 means: it clears the notice for its `device` when its seal signer
+    /// (a) is in the roster BEFORE the one named by `e` (the added device can never confirm
+    /// itself, nor two devices added together each other), (b) is in the head now, and (c) `e`
+    /// names the roster that really added that device. Anything else is ignored.
+    public static func verdict(_ rumor: NostrEvent, sealPubkey: String, chain c: RosterChain?, account: String) -> Verdict {
+        guard rumor.kind == kind, rumor.pubkey == sealPubkey, rumor.tagValues("p") == [account],
+              let device = rumor.tag("device"), isHex64(device), let e = rumor.tag("e"), isHex64(e) else { return .no }
+        guard let c, c.account == account else { return .unknownRoster }
+        guard let i = c.rosters.firstIndex(where: { $0.id == e }) else { return .unknownRoster }
+        guard i > 0, c.rosters[i].devices.contains(device), !c.rosters[i - 1].devices.contains(device) else { return .no }
+        guard c.rosters[i - 1].devices.contains(sealPubkey), c.devices.contains(sealPubkey) else { return .no }
+        return .clears(device)
+    }
+}

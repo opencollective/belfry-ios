@@ -259,6 +259,8 @@ final class AppModel: ObservableObject {
     /// The names of devices that started my account fresh elsewhere, from the session list.
     var freshDeviceNames = [String: String]()
     var freshNameAsked = Set<String>()
+    /// The session names of my head's devices, while this device waits to be allowed.
+    var unlockerNames = [String]()
     func adoptSealed(_ se: SealedEngine) { sealedEngine = se }
     private(set) var session: StoredSession?
     /// (model version, the engine's outbox version, snapshot): the outbox's too, so a screen opened

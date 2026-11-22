@@ -285,7 +285,27 @@ struct LockedHereBanner: View {
     var waiting = 0
     /// My devices aren't read yet: no "locked", no Show how.
     var checking = false
+    /// When this device asked to be allowed (0: not yet), and the devices that can answer.
+    var asked = 0
+    var devices: [String] = []
     let showHow: () -> Void
+
+    /// "Asked 2:26 PM · waiting for one of your devices" (nil before it asked).
+    static func askedLine(_ at: Int) -> String? {
+        guard at > 0 else { return nil }
+        let today = Calendar.current.isDateInToday(Date(timeIntervalSince1970: TimeInterval(at)))
+        return "Asked " + (today ? Format.time(at) : Format.day(at)) + " · waiting for one of your devices"
+    }
+
+    /// "Open Belfry on Safari on Mac or Android phone and tap Allow." (the general sentence when
+    /// the names are not known).
+    static func openLine(_ devices: [String]) -> String {
+        var names = [String]()
+        for d in devices where !names.contains(d) { names.append(d) }
+        guard !names.isEmpty else { return "Open Belfry on a device where you already read your messages and tap Allow." }
+        let list = names.count == 1 ? names[0] : names.dropLast().joined(separator: ", ") + " or " + names.last!
+        return "Open Belfry on \(list) and tap Allow."
+    }
 
     static func title(waiting: Int, checking: Bool) -> String {
         if checking { return "Checking your devices…" }
@@ -303,7 +323,8 @@ struct LockedHereBanner: View {
                 if checking {
                     Text(waiting == 1 ? "1 message is waiting." : "\(waiting) messages are waiting.").font(.subheadline)
                 } else {
-                    Text("Open Belfry on a device where you already read your messages and tap Allow.").font(.subheadline)
+                    Text(LockedHereBanner.openLine(devices)).font(.subheadline)
+                    if let line = LockedHereBanner.askedLine(asked) { Text(line).font(.footnote).foregroundStyle(.secondary) }
                     Button("Show how", action: showHow)
                         .font(.subheadline.weight(.semibold))
                         .buttonStyle(.borderless)

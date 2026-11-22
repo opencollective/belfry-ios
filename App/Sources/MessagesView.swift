@@ -29,7 +29,7 @@ struct MessagesView: View {
             let locked = st.notAllowed || st.missingKeys || threads.contains(where: { model.lockedHere($0.conv) })
             let checking = !locked && st.checkingCount > 0
             if locked || checking {
-                LockedHereBanner(waiting: locked ? st.waitingCount : st.checkingCount, checking: checking) { how = true }
+                LockedHereBanner(waiting: locked ? st.waitingCount : st.checkingCount, checking: checking, asked: st.askedAt, devices: st.unlockers) { how = true }
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
             }

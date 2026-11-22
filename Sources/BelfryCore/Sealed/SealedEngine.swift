@@ -638,6 +638,24 @@ public final class SealedEngine: @unchecked Sendable {
             // a mail from the belfry: kind 1301, author and seal's signer both the belfry's key
             let b = belfryKey
             if let b, seal == b { return Sealed.accepted(rumor, sealPubkey: seal, chain: nil, belfry: b) ? .rumor(rumor) : .drop }
+            // "It was me" from another device of mine (5.2 step 2b): never a message; it clears
+            // this device's notice when the rule holds. Its roster not here yet: kept, tried again
+            // when my chain changes, for 30 days. Anything else: ignored without a word.
+            if rumor.kind == AddedConfirm.kind {
+                switch AddedConfirm.verdict(rumor, sealPubkey: seal, chain: chain(me), account: me) {
+                case .clears(let device):
+                    noticed(device)
+                    onChange?()
+                    return .drop
+                case .unknownRoster:
+                    if old { return .drop }
+                    let stamp = chainsStamp()
+                    lock.lock(); waiting[wrap.id] = stamp; lock.unlock()
+                    return .keep
+                case .no:
+                    return .drop
+                }
+            }
             // it opens, but its author's device is in no chain loaded here yet: kept and tried
             // again when that author's head changes (each new roster, each start), for 30 days
             let c = chain(rumor.pubkey)
@@ -1189,8 +1207,19 @@ public final class SealedEngine: @unchecked Sendable {
         remember { m in if !(m.noticeDone ?? []).contains(device) { m.noticeDone = Array(((m.noticeDone ?? []) + [device]).suffix(200)) } }
     }
 
-    /// "It was me" on the notice.
-    public func ackAdded(_ device: String) { noticed(device); onChange?() }
+    /// "It was me" on the notice: answered here, and once for every device of mine (5.2 step
+    /// 2b): a sealed 8563 to my own head letterbox, naming the roster that added the device.
+    public func ackAdded(_ device: String) {
+        noticed(device)
+        if let c = chain(me), c.devices.contains(devicePub), let r = AddedConfirm.addedBy(c, device) {
+            let rumor = GiftWrap.rumor(kind: AddedConfirm.kind, pubkey: devicePub, tags: AddedConfirm.tags(account: me, device: device, roster: r.id), content: "")
+            lock.lock(); let gone = closed; lock.unlock()
+            if !gone, let w = try? Sealed.wrap(rumor, device: self.device, to: me, lb: c.lb) {
+                _ = engine.enqueueSigned(w, target: .main, dm: nil)
+            }
+        }
+        onChange?()
+    }
 
     /// The devices added to my head without this device having shown a prompt or a link code for
     /// them (5.2 step 2a): each until the person answers here or it leaves the head. Only for
