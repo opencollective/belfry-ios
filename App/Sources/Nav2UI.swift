@@ -193,9 +193,12 @@ struct PinSection: View {
                 Label("Always first in everyone's menu", systemImage: "pin.fill").foregroundStyle(.secondary)
             } else {
             Toggle(isOn: Binding(get: { mine }, set: { _ in toggleMine() })) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Label("Pin for me", systemImage: "pin")
-                    Text("Always in your menu, at the top").font(.footnote).foregroundStyle(.secondary)
+                HStack(spacing: 12) {
+                    Image(systemName: "pin").foregroundStyle(.secondary).frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Pin for me")
+                        Text("Always in your menu, at the top").font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
             }
             .tint(Theme.toggle)
@@ -203,9 +206,12 @@ struct PinSection: View {
             .accessibilityIdentifier("pin-mine")
             if model.derive.isCommunityAdmin && model.derive.group(id)?.type == .channel {
                 Toggle(isOn: Binding(get: { everyone }, set: { _ in model.togglePinEveryone(id) })) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Label("Pin for everyone", systemImage: "pin.fill")
-                        Text("Admins only: at the top of everyone's menu").font(.footnote).foregroundStyle(.secondary)
+                    HStack(spacing: 12) {
+                        Image(systemName: "pin.fill").foregroundStyle(.secondary).frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Pin for everyone")
+                            Text("Admins only: at the top of everyone's menu").font(.footnote).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .tint(Theme.toggle)
