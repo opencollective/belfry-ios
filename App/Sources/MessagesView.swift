@@ -127,6 +127,10 @@ struct ThreadRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text(title).font(.body.weight(thread.unread > 0 ? .semibold : .regular)).lineLimit(1)
+                    // not allowed yet: every conversation and e-mail thread carries the lock (the lead, 2026-11-22)
+                    if model.sealed.notAllowed, !model.lockedHere(thread.conv) {
+                        Image(systemName: "lock.fill").font(.caption2).foregroundStyle(.secondary).accessibilityLabel("This device can't read new messages here yet")
+                    }
                     Spacer()
                     Text(Format.brief(thread.last.at)).font(.caption).foregroundStyle(.secondary)
                 }
@@ -310,7 +314,7 @@ struct ConversationView: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel("Open \(convName(model, conv))’s profile")
                             .accessibilityIdentifier("dm-header")
-                            if sealed != nil { SealedLock { hideKeyboard(); encryption = true }.frame(width: 18, height: 16) }
+                            if sealed != nil || model.sealed.notAllowed { SealedLock { hideKeyboard(); encryption = true }.frame(width: 18, height: 16) }
                             Button { model.openProfile = peer } label: {
                                 Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(.tertiary)
                                     .padding(.leading, 3).frame(height: 16).contentShape(Rectangle())
@@ -320,8 +324,8 @@ struct ConversationView: View {
                         }
                     }
                 }
-            } else if sealed != nil {
-                // a group, an e-mail thread: its title with the lock
+            } else if sealed != nil || model.sealed.notAllowed {
+                // a group, an e-mail thread: its title with the lock (always while this device is not allowed)
                 ToolbarItem(placement: .principal) {
                     HStack(spacing: 0) {
                         Text(mail && !MailThreads.isNewMail(conv) ? (model.dms?.threadName(conv) ?? "") : convName(model, conv))
@@ -570,7 +574,9 @@ struct NewConversation: View {
     @State private var error: String?
 
     var body: some View {
-        let people = model.profiles.filter { $0.key != model.me && ($0.value.name != nil || $0.value.nip05 != nil) }
+        // someone taken out of the belfry is in no list (Derive.removed)
+        let gone = model.derive.removed
+        let people = model.profiles.filter { $0.key != model.me && !gone.contains($0.key) && ($0.value.name != nil || $0.value.nip05 != nil) }
             .map { (pubkey: $0.key, name: $0.value.name ?? "", nip05: $0.value.nip05) }
             .sorted { $0.name < $1.name }
         let q = to.lowercased()
@@ -601,7 +607,8 @@ struct NewConversation: View {
     }
 
     func go() {
-        let people = model.profiles.map { (pubkey: $0.key, name: $0.value.name ?? "", nip05: $0.value.nip05) }
+        let gone = model.derive.removed
+        let people = model.profiles.filter { !gone.contains($0.key) }.map { (pubkey: $0.key, name: $0.value.name ?? "", nip05: $0.value.nip05) }
         Task {
             do {
                 if let c = try await model.dms?.conv(for: to, people: people) { open(c) } else { error = "That's not a member nor an e-mail address." }

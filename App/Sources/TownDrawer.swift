@@ -76,8 +76,9 @@ struct TownDrawer: View {
         .padding(.bottom, 8)
     }
 
+    /// From the belfry's directory (the last answer, kept); nothing until it is known.
     private var memberLine: String {
-        let n = model.memberKeys.count
+        guard let n = model.directoryCount else { return "" }
         return n == 1 ? "1 member" : "\(n) members"
     }
 
@@ -104,6 +105,14 @@ struct TownDrawer: View {
                         .accessibilityIdentifier("drawer-mentions")
                     placeRow(icon: "calendar", title: "Calendar", note: nil, badge: 0, on: model.tab == .calendar) { go(.calendar) }
                         .accessibilityIdentifier("drawer-calendar")
+                    // Members and Charter stay in the menu (they left it in 0.8.0 by mistake: the
+                    // member directory had no other way in; the lead, 2026-11-22)
+                    placeRow(icon: "person.2", title: PlaceNames.members, note: nil, badge: model.requestCount, on: current == .members || current == .requests) { push(.members) }
+                        .accessibilityIdentifier("drawer-members")
+                    if d.charterGroup != nil || d.isCommunityAdmin {
+                        placeRow(icon: "doc.text", title: "Charter", note: nil, badge: d.charterToAgree().count, on: current == .charter) { push(.charter) }
+                            .accessibilityIdentifier("drawer-charter")
+                    }
                 }
                 Section {
                     sectionHeader("Groups", add: "New group", id: "drawer-new-group", action: newGroup)
@@ -130,7 +139,7 @@ struct TownDrawer: View {
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.immediately)
         .refreshable { await model.refresh(); await model.loadRequests(force: true) }
-        .task { await model.loadRequests() }
+        .task { await model.loadRequests(); await model.loadDirectoryCount() }
     }
 
     /// A section's title in small caps, ＋ on its right.

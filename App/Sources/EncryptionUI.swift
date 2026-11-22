@@ -89,6 +89,7 @@ struct EncryptionScreen: View {
     @EnvironmentObject var model: AppModel
     let conv: String
     @State private var mineOpen = true
+    @State private var how = false
 
     var body: some View {
         let s = model.sealedConv(conv) ?? SealedConv(others: [])
@@ -97,6 +98,20 @@ struct EncryptionScreen: View {
         let counted = s.others.contains { $0.mailName == nil }
         let mail = s.others.contains { $0.mailName != nil }
         List {
+            // this device is not allowed yet: said first, with the way out (the lead, 2026-11-22)
+            if model.sealed.notAllowed {
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("This device can't read it yet", systemImage: "lock.fill").font(.subheadline.weight(.semibold))
+                        Text("Open Belfry on a device where you already read your messages and tap Allow.")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                        Button("Show how") { how = true }
+                            .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
+                            .accessibilityIdentifier("encryption-show-how")
+                    }
+                    .listRowBackground(Color.orange.opacity(0.14))
+                }
+            }
             Section {
                 VStack(spacing: 10) {
                     Image(systemName: "lock.fill").font(.title2).foregroundStyle(.secondary)
@@ -158,6 +173,7 @@ struct EncryptionScreen: View {
         .listStyle(.insetGrouped)
         .navigationTitle("Encryption")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $how) { UnlockHowScreen() }
         .accessibilityIdentifier("encryption-screen")
     }
 

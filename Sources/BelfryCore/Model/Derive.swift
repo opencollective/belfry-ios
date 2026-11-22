@@ -637,7 +637,7 @@ public final class Derive {
 
     /// People who can be mentioned or messaged: (pubkey, name) of everyone with a name, me left out.
     public lazy var people: [(pubkey: String, name: String)] = profileMap
-        .filter { $0.key != me && !($0.value.name ?? "").isEmpty && !onlyReading.contains($0.key) }
+        .filter { $0.key != me && !($0.value.name ?? "").isEmpty && !onlyReading.contains($0.key) && !removed.contains($0.key) }
         .map { (pubkey: $0.key, name: $0.value.name!) }
         .sorted { $0.name.lowercased() != $1.name.lowercased() ? $0.name.lowercased() < $1.name.lowercased() : $0.pubkey < $1.pubkey }
 
@@ -1090,10 +1090,8 @@ public final class Derive {
         }
         var out = [GuestJoin]()
         var gone = [String: Int]()
-        var wrote = Set<String>()
         for e in list {
             if e.kind == 9001, let p = e.tag("p"), !p.isEmpty { gone[p] = max(gone[p] ?? 0, e.createdAt) }
-            else if e.kind == 9 || e.kind == 1111 { wrote.insert(e.pubkey) }
             guard e.kind == 9000, let by = e.tag("invited-by"), !by.isEmpty, let p = e.tag("p"), !p.isEmpty else { continue }
             // guest mode: opened the link, not joined: no join line, no guest chip (SPEC 19.26)
             if e.tag("reading") == "1" { continue }
@@ -1106,8 +1104,9 @@ public final class Derive {
             out.append(GuestJoin(id: e.id, pubkey: p, by: by, at: e.createdAt, agent: e.tag("agent") == "1",
                                  unsaved: e.tag("unsaved") == "1" && !saved.contains(p) && !isMember, member: isMember))
         }
-        // taken out again without ever writing here (a cleaned-up double sign-up): no line
-        let result = out.filter { wrote.contains($0.pubkey) || (gone[$0.pubkey] ?? 0) < $0.at }
+        // taken out again after this join: no line, whether or not they wrote (their messages
+        // stay, under their name)
+        let result = out.filter { (gone[$0.pubkey] ?? 0) < $0.at }
             .enumerated().sorted { $0.element.at != $1.element.at ? $0.element.at < $1.element.at : $0.offset < $1.offset }.map(\.element)
         joinsCache[groupId] = result
         return result
@@ -1121,6 +1120,28 @@ public final class Derive {
         var reading = Set<String>(), inSome = Set<String>()
         for g in groupList { reading.formUnion(g.reading); inSome.formUnion(g.members); inSome.formUnion(g.admins) }
         return reading.subtracting(inSome).subtracting([me])
+    }()
+
+    /// People who were taken out: every group that ever put them in (9000) has since removed them
+    /// (the latest of its 9000 / 9001 for them is a 9001) and they are in no group's list now.
+    /// The rule (the lead, 2026-11-22, after a belfry showed seven removed guests of the same
+    /// name): someone removed who never wrote shows nowhere; one who wrote shows only as the
+    /// author of their messages. So they are in no people list, no picker and no join line.
+    public lazy var removed: Set<String> = {
+        var last = [String: (at: Int, id: String, out: Bool)]()   // group + person → the latest decision
+        var who = [String: String]()
+        for e in ofKind(9000) + ofKind(9001) {
+            guard let h = e.tag("h"), let p = e.tag("p"), !p.isEmpty else { continue }
+            let k = h + "|" + p
+            if let o = last[k], o.at > e.createdAt || (o.at == e.createdAt && o.id < e.id) { continue }
+            last[k] = (e.createdAt, e.id, e.kind == 9001)
+            who[k] = p
+        }
+        var out = Set<String>(), kept = Set<String>()
+        for (k, d) in last { if d.out { out.insert(who[k]!) } else { kept.insert(who[k]!) } }
+        var inSome = Set<String>()
+        for g in groupList { inSome.formUnion(g.members); inSome.formUnion(g.admins) }
+        return out.subtracting(kept).subtracting(inSome).subtracting(communityAdmins).subtracting([me])
     }()
 
     /// Am I reading CHANNEL in guest mode, as the events say (the app's own flag comes first).
