@@ -78,7 +78,9 @@ struct TownDrawer: View {
 
     /// From the belfry's directory (the last answer, kept); nothing until it is known.
     private var memberLine: String {
-        guard let n = model.directoryCount else { return "" }
+        // the demo counts its own people, as they arrive
+        let known: Int? = model.isDemo ? Optional(model.memberKeys.count) : model.directoryCount
+        guard let n = known, n > 0 else { return "" }
         return n == 1 ? "1 member" : "\(n) members"
     }
 

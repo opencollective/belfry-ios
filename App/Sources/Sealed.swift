@@ -423,6 +423,8 @@ extension Demo {
         case "encdeviceswaiting":
             s.notAllowed = true
             s.askedAt = now - 1500
+            // a device that is not allowed is not among my devices: the screen adds its own row
+            s.myDevices.removeAll { $0.this }
         case "encwaitinglist":
             s.notAllowed = true
             s.missingKeys = true
