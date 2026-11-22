@@ -101,6 +101,8 @@ final class ModelTests: XCTestCase {
                     XCTAssertEqual(j.by, w.str("by"))
                 case .mailThread(let t):
                     XCTFail("no e-mail thread expected here: \(t.id)")
+                case .action(let a):
+                    XCTFail("no activity line expected here: \(a.id)")
                 case .activity(let root, let last):
                     XCTAssertEqual(w.str("t"), "act")
                     XCTAssertEqual(root.id, w.str("root"))

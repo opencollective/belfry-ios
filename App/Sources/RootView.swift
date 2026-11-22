@@ -537,7 +537,7 @@ struct RootView: View {
         case "addagent":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openProfile = model.me } // ProfileView opens the sheet
-        case "mailfeed": selection = .channel("hello-79f0")
+        case "mailfeed", "inboxpull", "inboxemails": selection = .channel("hello-79f0")
         case "mailthread", "mailreply", "mailcomment":
             selection = .channel("hello-79f0")
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {

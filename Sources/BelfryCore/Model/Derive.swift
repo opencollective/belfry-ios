@@ -300,9 +300,12 @@ public enum FeedItem: Hashable, Sendable, Identifiable {
     case activity(root: Message, last: Message)
     /// An e-mail thread of a shared inbox, where its latest activity is (SPEC 19.33).
     case mailThread(InboxThread)
+    /// An action about an item (one shape: a to-do made or done, an answer to an event, a vote).
+    case action(Activity)
 
     public var at: Int {
         switch self {
+        case .action(let a): return a.at
         case .message(let m): return m.ev.createdAt
         case .join(let j): return j.at
         case .activity(_, let last): return last.ev.createdAt
@@ -316,6 +319,7 @@ public enum FeedItem: Hashable, Sendable, Identifiable {
         case .join(let j): return "join:" + j.id
         case .activity(let root, _): return "act:" + root.id
         case .mailThread(let t): return "mail:" + t.id
+        case .action(let a): return "do:" + a.id
         }
     }
 
@@ -1144,7 +1148,7 @@ public final class Derive {
     // ---- the feed ------------------------------------------------------------------------------
 
     /// A channel's feed: messages, guest joins and resurfaced threads (SPEC 8, 19.7).
-    public func feed(_ groupId: String, topic: String? = nil) -> [FeedItem] {
+    public func feed(_ groupId: String, topic: String? = nil, actions: Bool = false) -> [FeedItem] {
         let g = group(groupId)
         let all = messages(groupId)
         let list: [Message]
@@ -1159,6 +1163,7 @@ public final class Derive {
         if topic == nil {
             items += mt.list.map { .mailThread($0) }
             items += guestJoins(groupId).map { .join($0) }
+            if actions { items += activities(groupId).map { .action($0) } }
             let byId = Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             for (rootId, info) in threadsInOrder(groupId) {
                 guard mt.of[rootId] == nil, let root = byId[rootId] else { continue }
@@ -1188,20 +1193,20 @@ public final class Derive {
     }
 
     /// The feed with layout hints (SPEC 19.7): day separators, blocks.
-    public func feedRows(_ groupId: String, topic: String? = nil, openThreads: Set<String> = []) -> [FeedRow] {
-        let key = groupId + "|" + (topic ?? "") + "|" + openThreads.sorted().joined(separator: ",")
+    public func feedRows(_ groupId: String, topic: String? = nil, openThreads: Set<String> = [], actions: Bool = false) -> [FeedRow] {
+        let key = groupId + "|" + (topic ?? "") + "|" + openThreads.sorted().joined(separator: ",") + (actions ? "|a" : "")
         if let c = feedRowsCache[key] { return c }
-        let rows = computeFeedRows(groupId, topic: topic, openThreads: openThreads)
+        let rows = computeFeedRows(groupId, topic: topic, openThreads: openThreads, actions: actions)
         feedRowsCache[key] = rows
         return rows
     }
     private var feedRowsCache = [String: [FeedRow]]()
 
-    private func computeFeedRows(_ groupId: String, topic: String?, openThreads: Set<String>) -> [FeedRow] {
+    private func computeFeedRows(_ groupId: String, topic: String?, openThreads: Set<String>, actions: Bool) -> [FeedRow] {
         let g = group(groupId)
         var out = [FeedRow]()
         var prev: FeedItem?
-        for item in feed(groupId, topic: topic) {
+        for item in feed(groupId, topic: topic, actions: actions) {
             let newDay = prev == nil || dayKey(prev!.at) != dayKey(item.at)
             if case .message(let m) = item {
                 var p: Message?
@@ -1407,6 +1412,8 @@ public final class Derive {
     public static func listIdFor(_ groupId: String) -> String { String(Crypto.sha256("osv-village:" + groupId).hex.prefix(16)) }
 
     private var tasksCache = [String: [TodoTask]]()
+    /// Activity.swift: each channel's activity lines.
+    var activitiesCache = [String: [Activity]]()
     /// Charter.swift: the agreements, worked out once per snapshot.
     var charterCache: [Agreement]?
     /// MailInbox.swift: each channel's e-mail threads.
@@ -1438,6 +1445,7 @@ public final class Derive {
         keep(prev.joinsCache, &joinsCache)
         keep(prev.pinnedCache, &pinnedCache)
         keep(prev.tasksCache, &tasksCache)
+        keep(prev.activitiesCache, &activitiesCache)
         keep(prev.sortedByH, &sortedByH)
         for (k, v) in prev.feedRowsCache where !touched.contains(String(k.prefix { $0 != "|" })) && feedRowsCache[k] == nil { feedRowsCache[k] = v }
     }
