@@ -19,16 +19,6 @@ final class EventShots: ShotCase {
         shot("81-event-dragged-full")
     }
 
-    /// The event's chat with the keyboard up (the header steps out of the way).
-    /// The app answers within seconds after WHAT: a hang (the main thread never idle) takes the
-    /// whole query timeout, a slow simulator a few seconds.
-    private func answers(_ app: XCUIApplication, after what: String, file: StaticString = #filePath, line: UInt = #line) {
-        let t0 = Date()
-        _ = app.navigationBars.count
-        let took = Date().timeIntervalSince(t0)
-        XCTAssertLessThan(took, 20, "the app did not answer for \(Int(took)) s after \(what): it hangs", file: file, line: line)
-    }
-
     /// The event's chat with the keyboard up (the header steps out of the way), three times: focus,
     /// type, dismiss. The app must answer within seconds after each step (a freeze was seen here).
     func testEventChatTyping() {
