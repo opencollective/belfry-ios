@@ -80,12 +80,6 @@ struct MessageActions: View {
                         if d.canEdit(m) {
                             Button { dismiss(); onEdit() } label: { ActionRow(icon: "pencil", title: "Edit message") }
                         }
-                        if m.pubkey != model.me && !d.isGuest(model.me) {
-                            Button {
-                                dismiss()
-                                model.messageAuthor = m.pubkey
-                            } label: { ActionRow(icon: "envelope", title: "Message \(model.realNameOrKey(m.pubkey))") }
-                        }
                     }
                     if d.canDelete(m) || pending && m.pubkey == model.me {
                         Section {
@@ -320,9 +314,7 @@ struct MessageMenu: View {
             if case .memberMail(let subject, let original?) = m.special {
                 Button { model.fullMail = FullMailRef(subject: subject, original: original) } label: { Label("Full e-mail", systemImage: "envelope.open") }
             }
-            if m.pubkey != model.me && !d.isGuest(model.me) {
-                Button { model.messageAuthor = m.pubkey } label: { Label("Message \(model.realNameOrKey(m.pubkey))", systemImage: "envelope") }
-            }
+            // "Message …" left the menu (canvas v175–v176): a person's profile has it
             if !pending, MessageActions.nsiteRef(m.text) != nil, !d.amGuest, let propose = h.proposeSite {
                 Button { propose(m) } label: { Label("Propose as the website", systemImage: "globe") }
             }
