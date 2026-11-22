@@ -661,10 +661,29 @@ struct DevicesView: View {
     @State private var error: String?
     @State private var asking: SessionInfo?
     @State private var removing: String?
+    @State private var how = false
 
     var body: some View {
         List {
             if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) }
+            // this device is signed in but not allowed yet (the lead, 2026-11-22: Devices listed
+            // the sessions and said nothing about it)
+            if model.sealed.notAllowed || model.launch.screen == "encdevicesnotallowed" {
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("This device can't read sealed messages yet", systemImage: "lock.fill")
+                            .font(.subheadline.weight(.semibold))
+                        Text(LockedHereBanner.title(waiting: model.sealed.waitingCount, checking: false) == "Messages are locked on this device"
+                             ? "Open Belfry on a device where you already read your messages and tap Allow."
+                             : LockedHereBanner.title(waiting: model.sealed.waitingCount, checking: false) + ". Open Belfry on a device where you already read your messages and tap Allow.")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                        Button("Show how") { how = true }
+                            .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
+                            .accessibilityIdentifier("devices-show-how")
+                    }
+                    .listRowBackground(Color.orange.opacity(0.14))
+                }
+            }
             if let list {
                 Section {
                     ForEach(list) { s in
@@ -694,6 +713,7 @@ struct DevicesView: View {
         }
         .navigationTitle("Devices")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $how) { UnlockHowScreen() }
         .alert("Remove \(asking.map(name) ?? "this device")?", isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }), presenting: asking) { s in
             Button("Remove", role: .destructive) { remove(s) }
             Button("Cancel", role: .cancel) {}

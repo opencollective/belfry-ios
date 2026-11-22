@@ -672,7 +672,7 @@ struct RootView: View {
         case "messages", "conversation", "mail", "sendstill", "sendnotyet", "dmfiles", "dmfilessending", "typingdm", "typinglist", "dmthread": selection = .messages
         // boards messages/encryption-*: MessagesView and ConversationView open the rest
         case "encthread", "encdevices", "encgroup", "encmail", "encmaildevices", "encnewdevice", "encwaitinglist", "encchecking", "enchow", "encfresh", "encfreshconfirm", "encallow", "encallowfull", "encallowwaiting", "encwaiting", "encheld", "encshare", "enclocked", "encshared", "encsharedwhy": selection = .messages
-        case "encremove":
+        case "encremove", "encdevicesnotallowed":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { push(PlaceRoute.devices) }
         case "enclinked":
