@@ -111,7 +111,7 @@ private struct OpenArea<Content: View>: View {
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isButton)
             .accessibilityHint("Opens it")
-            .accessibilityAction(open)
+            .accessibilityAction { open() }
     }
 }
 
@@ -139,7 +139,7 @@ private struct QuickAction: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
-        .accessibilityAction(run)
+        .accessibilityAction { run() }
     }
 
     private func run() {
@@ -170,7 +170,7 @@ private struct QuickTick: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(done ? "Reopen" : "Mark done")
             .accessibilityAddTraits(.isButton)
-            .accessibilityAction(run)
+            .accessibilityAction { run() }
             .onChange(of: done) { _, _ in busy = false }
     }
     private func run() {
