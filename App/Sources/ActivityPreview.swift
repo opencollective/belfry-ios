@@ -51,6 +51,7 @@ struct ActivityPreviewRow: View {
             }
         }
         .padding(.horizontal).padding(.vertical, 4)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var who: String {
@@ -90,9 +91,10 @@ struct ActivityPreviewRow: View {
 private struct PreviewBox<Content: View>: View {
     @ViewBuilder let content: () -> Content
     var body: some View {
+        // sized by its content (no flexible frame: the feed's lazy stack measured nested flexible
+        // children again and again while the keyboard moved)
         content()
             .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
@@ -103,7 +105,7 @@ private struct OpenArea<Content: View>: View {
     @ViewBuilder let content: () -> Content
     var body: some View {
         Button(action: open) {
-            content().frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            content().multilineTextAlignment(.leading).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityHint("Opens it")
@@ -190,7 +192,7 @@ struct ProposalPreviewCard: View {
     var body: some View {
         let t = p.tally
         PreviewBox {
-            HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 OpenArea(open: { openChannel(p.groupId, nil) }) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(p.title).font(.subheadline.weight(.semibold)).lineLimit(2)
