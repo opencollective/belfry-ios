@@ -178,8 +178,8 @@ struct PreviewBar: View {
     }
 }
 
-/// A channel's "In your menu" (board nav2/channel-pin): Pin for me; Pin for everyone (the
-/// belfry's admins); then Notify me of everything (the bell).
+/// A channel's Pin section, the last of its Settings (notifications have their own row in the
+/// pull-down and the bell).
 struct PinSection: View {
     @EnvironmentObject var model: AppModel
     let id: String
@@ -188,47 +188,40 @@ struct PinSection: View {
     var body: some View {
         let mine = model.myPins.contains(id)
         let everyone = model.pinnedForEveryone.contains(id)
-        Section("In your menu") {
+        // Pin (board channels/settings; channels/settings-townsquare): for me, and for the
+        // belfry's admins for everyone. The main channel says one line, with no control.
+        Section {
             if id == generalId {
-                Label("Always first in everyone's menu", systemImage: "pin.fill").foregroundStyle(.secondary)
+                Text("Townsquare is always first in everyone's menu.").foregroundStyle(.secondary)
+                    .accessibilityIdentifier("pin-always")
             } else {
-            Toggle(isOn: Binding(get: { mine }, set: { _ in toggleMine() })) {
-                HStack(spacing: 12) {
-                    Image(systemName: "pin").foregroundStyle(.secondary).frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Pin for me")
-                        Text("Always in your menu, at the top").font(.footnote).foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .tint(Theme.toggle)
-            .disabled(busy)
-            .accessibilityIdentifier("pin-mine")
-            if model.derive.isCommunityAdmin && model.derive.group(id)?.type == .channel {
-                Toggle(isOn: Binding(get: { everyone }, set: { _ in model.togglePinEveryone(id) })) {
+                Toggle(isOn: Binding(get: { mine }, set: { _ in toggleMine() })) {
                     HStack(spacing: 12) {
-                        Image(systemName: "pin.fill").foregroundStyle(.secondary).frame(width: 24)
+                        Image(systemName: "pin").foregroundStyle(.secondary).frame(width: 24)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Pin for everyone")
-                            Text("Admins only: at the top of everyone's menu").font(.footnote).foregroundStyle(.secondary)
+                            Text("Pin for me")
+                            Text("Always in your menu, at the top").font(.footnote).foregroundStyle(.secondary)
                         }
                     }
                 }
                 .tint(Theme.toggle)
-                .accessibilityIdentifier("pin-everyone")
-            }
-            }
-        }
-        Section("Notifications") {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Notify me of everything")
-                    Text("Off: you hear about mentions and replies to you only").font(.footnote).foregroundStyle(.secondary)
+                .disabled(busy)
+                .accessibilityIdentifier("pin-mine")
+                if model.derive.isCommunityAdmin && model.derive.group(id)?.type == .channel {
+                    Toggle(isOn: Binding(get: { everyone }, set: { _ in model.togglePinEveryone(id) })) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "pin.fill").foregroundStyle(.secondary).frame(width: 24)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Pin for everyone")
+                                Text("Admins only: at the top of everyone's menu").font(.footnote).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .tint(Theme.toggle)
+                    .accessibilityIdentifier("pin-everyone")
                 }
-                Spacer()
-                BellButton(id: id).buttonStyle(.bordered)
             }
-        }
+        } header: { Text("Pin") }
     }
 
     private func toggleMine() {

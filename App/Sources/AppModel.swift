@@ -1072,6 +1072,12 @@ final class AppModel: ObservableObject {
     }
 
     /// What can be posted in the channel: anything (nil), or one kind of post.
+    /// The kinds of post a channel takes (its Settings' four switches).
+    func setAccepts(_ id: String, _ takes: Set<String>) {
+        guard let g = group(id), let d = Actions.setAccepts(g, takes: takes, derive: derive) else { return }
+        engine?.enqueue(d)
+    }
+
     func setPosts(_ id: String, _ posts: String?) {
         guard let g = group(id), let d = Actions.setPosts(g, posts: posts, derive: derive) else { return }
         engine?.enqueue(d)

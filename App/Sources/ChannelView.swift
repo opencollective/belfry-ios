@@ -174,7 +174,7 @@ struct ChannelView: View {
                 if let g, d.readOnlyClosed(g) {
                     // a closed channel or group I'm not in: read only, the bar above asks to join
                     EmptyView()
-                } else if let only = d.webPage(g)?.posts, ["thread", "proposal", "event"].contains(only) {
+                } else if let only = d.webPage(g)?.only {
                     OnlyBar(id: id, only: only, isPublic: d.isPublic(g))
                 } else {
                     // Navigation v2 (nav2/channel-preview): a channel not in my menu

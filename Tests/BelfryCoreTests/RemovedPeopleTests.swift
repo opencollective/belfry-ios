@@ -142,3 +142,35 @@ final class GroupAccessTests: XCTestCase {
         XCTAssertEqual(g?.applications.count, 0)
     }
 }
+
+/// A channel's Settings: which kinds of post it takes (one-shape.md, 2026-11-22).
+final class AcceptsTests: XCTestCase {
+    func testWhatAChannelTakesAndTheLegacyValue() {
+        func page(posts: String? = nil, accepts: [String]? = nil) -> WebPage { WebPage(on: false, slug: "x", visibility: "members", posts: posts, accepts: accepts) }
+        let all = Set(WebPage.kinds)
+        XCTAssertEqual(page().takes, all, "nothing written: all four")
+        XCTAssertEqual(page(posts: "thread").takes, ["thread"], "an older app's single kind")
+        XCTAssertEqual(page(posts: "request").takes, all)
+        XCTAssertEqual(page(posts: "thread", accepts: ["message", "event"]).takes, ["message", "event"], "accepts wins")
+        XCTAssertEqual(page(accepts: ["nope"]).takes, all, "nothing known in it: as if absent")
+        XCTAssertNil(page(accepts: ["message", "event"]).only)
+        XCTAssertEqual(page(accepts: ["event", "proposal"]).only, "event", "no plain messages: the first kind that is on")
+        XCTAssertEqual(page(posts: "proposal").only, "proposal")
+        // what an older app reads
+        XCTAssertEqual(WebPage.legacyPosts(all), "anything")
+        XCTAssertEqual(WebPage.legacyPosts(["thread"]), "thread")
+        XCTAssertEqual(WebPage.legacyPosts(["message"]), "anything")
+        XCTAssertEqual(WebPage.legacyPosts(["event", "proposal"]), "anything")
+    }
+
+    func testTheAddressTheBelfryGives() {
+        let a = MailAlias.parse(["channel": "hello-79f0", "alias": "hello", "address": "hello@riverside.example", "custom": true, "may_set": false])
+        XCTAssertEqual(a?.address, "hello@riverside.example")
+        XCTAssertEqual(a?.alias, "hello")
+        XCTAssertEqual(a?.custom, true)
+        XCTAssertEqual(a?.maySet, false)
+        XCTAssertNil(MailAlias.parse(["address": "not an address"]))
+        XCTAssertEqual(MailAlias.checkLine("available", address: "bike@riverside.example"), "bike@riverside.example is free.")
+        XCTAssertEqual(MailAlias.checkLine("", address: "x"), "")
+    }
+}

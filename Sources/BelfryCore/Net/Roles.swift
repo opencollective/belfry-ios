@@ -459,6 +459,82 @@ public extension BelfryAPI {
     func resendMailForward(channel: String) async throws -> MailForward? { try await mailForwardCall(["channel": channel, "resend": true]) }
 }
 
+// ---- a channel's e-mail address (collective-belfry docs/mail.md "A channel's address") ------------
+
+/// The address a channel is written to and answers from: the belfry's word, never worked out on
+/// the device when the belfry answers.
+public struct MailAlias: Hashable, Sendable {
+    public let channel: String
+    /// The part before the @.
+    public let alias: String
+    public let address: String
+    /// Somebody chose it (false: the automatic one).
+    public let custom: Bool
+    /// I may change it (the belfry's admins).
+    public let maySet: Bool
+
+    public static func parse(_ b: [String: Any]?) -> MailAlias? {
+        guard let b, let address = b["address"] as? String, address.contains("@"), address.count <= 200,
+              !address.contains(where: { $0.isWhitespace || $0 == "<" || $0 == ">" }) else { return nil }
+        let alias = (b["alias"] as? String) ?? String(address.split(separator: "@").first ?? "")
+        return MailAlias(channel: b["channel"] as? String ?? "", alias: alias, address: address,
+                         custom: b["custom"] as? Bool ?? false, maySet: b["may_set"] as? Bool ?? false)
+    }
+
+    /// What the live check says about a name, in words ("" while nothing is typed).
+    public static func checkLine(_ state: String, address: String) -> String {
+        switch state {
+        case "available": return "\(address) is free."
+        case "taken": return "Another channel or person has this address."
+        case "reserved": return "This name is kept for the belfry."
+        case "invalid": return "Letters, digits, dots and hyphens only."
+        default: return ""
+        }
+    }
+}
+
+public extension BelfryAPI {
+    static let mailAliasErrors = [
+        "unsupported": "This belfry does not have channel addresses yet.",
+        "not_allowed": "Only the belfry's stewards can change a channel's address.",
+        "taken": "Another channel or person has this address.",
+        "reserved": "This name is kept for the belfry.",
+        "archived": "An archived channel has no address.",
+        "invalid": "Letters, digits, dots and hyphens only.",
+        "signer": "The belfry could not save it just now. Try again.",
+    ]
+
+    private func mailAliasCall(_ body: [String: Any]) async throws -> [String: Any] {
+        let a = try await signed(base + "/mail-alias", method: "POST", json: body)
+        if ((a.status == 404 || a.status == 405) && a.error.isEmpty) || a.error == "unsupported" {
+            throw ApiError("unsupported", a.status, BelfryAPI.mailAliasErrors["unsupported"]!)
+        }
+        guard a.ok, let b = a.body else { throw BelfryAPI.fail(a, BelfryAPI.mailAliasErrors, "That did not work. Try again.") }
+        return b
+    }
+
+    /// The channel's address as the belfry has it (any member).
+    func mailAlias(channel: String) async throws -> MailAlias {
+        guard let m = MailAlias.parse(try await mailAliasCall(["channel": channel])) else { throw ApiError("invalid", 200, BelfryAPI.generic) }
+        return m
+    }
+
+    /// Is NAME free for this channel (its admins)? available | taken | invalid | reserved, and the
+    /// name as the belfry would write it.
+    func checkMailAlias(channel: String, name: String) async throws -> (state: String, alias: String) {
+        let b = try await mailAliasCall(["channel": channel, "check": name])
+        return (b["state"] as? String ?? "invalid", b["alias"] as? String ?? name)
+    }
+
+    /// Set it, or with nil go back to the automatic one (the belfry's admins).
+    func setMailAlias(channel: String, alias: String?) async throws -> MailAlias {
+        guard let m = MailAlias.parse(try await mailAliasCall(["channel": channel, "alias": alias.map { $0 as Any } ?? NSNull()])) else {
+            throw ApiError("invalid", 200, BelfryAPI.generic)
+        }
+        return m
+    }
+}
+
 // ---- the invite sheet's choices (SPEC 19.57; boards inviting/sheet-external, -edit, -guest) ------
 
 /// Who an invitation can bring in, as the sheet's "Invite as" rows.

@@ -105,8 +105,8 @@ struct ChannelPlaceView: View {
             case .topics: TopicsSection(id: id, topic: Binding(get: { nil }, set: { if let t = $0 { filter(t) } }), done: {})
             case .notifications: FollowBell(id: id)
             case .log: LogTab(id: id) { g in go(g) }
-            // Navigation v2 (nav2/channel-pin): every member pins here; the rest is the admins'
-            case .settings: PinSection(id: id); if model.derive.canAdmin(model.group(id)) { SettingsTab(id: id) }
+            // the order (Xavier, 2026-11-22): what its admins set, then Pin for everyone who is here
+            case .settings: if model.derive.canAdmin(model.group(id)) { SettingsTab(id: id) }; PinSection(id: id)
             case .events, .members, .emails: EmptyView()
             }
         }
