@@ -178,28 +178,6 @@ struct PreviewBar: View {
     }
 }
 
-/// A short toast at the top ("#bike-repair is in your menu"), gone after 2.5 s.
-struct ToastOverlay: ViewModifier {
-    @EnvironmentObject var model: AppModel
-    func body(content: Content) -> some View {
-        content.overlay(alignment: .top) {
-            if let t = model.toast {
-                Text(t).font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 14).padding(.vertical, 9)
-                    .glass(in: Capsule())
-                    .padding(.top, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .task(id: t) {
-                        try? await Task.sleep(nanoseconds: 2_500_000_000)
-                        withAnimation { model.toast = nil }
-                    }
-                    .accessibilityAddTraits(.updatesFrequently)
-            }
-        }
-        .animation(.snappy, value: model.toast)
-    }
-}
-
 /// A channel's "In your menu" (board nav2/channel-pin): Pin for me; Pin for everyone (the
 /// belfry's admins); then Notify me of everything (the bell).
 struct PinSection: View {

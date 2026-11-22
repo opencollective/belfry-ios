@@ -104,7 +104,6 @@ struct RootView: View {
 
     var body: some View {
         withSheets
-            .modifier(ToastOverlay())
             // "Give your new device … access?" over whatever screen is open (board messages/encryption-allow)
             .overlay { if let ask = model.sealed.ask { AllowPrompt(ask: ask) } }
             // board messages/encryption-fresh-elsewhere: over any screen until a button is tapped

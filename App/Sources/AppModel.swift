@@ -104,7 +104,6 @@ final class AppModel: ObservableObject {
     var menuCache: (version: Int, pins: [String], value: (pinned: [String], recent: [String]))?
     /// Channels opened in preview this session (the bar shows; "in your menu" when that changes).
     @Published var previewing = Set<String>()
-    @Published var toast: String?
     /// The Create sheet (the bar's ＋).
     @Published var showCreate = false
     /// The selected place's bar item tapped again: back to its root.

@@ -99,6 +99,6 @@ extension AppModel {
     func previewCheck(_ id: String) {
         guard previewing.contains(id), inMenu(id) else { return }
         previewing.remove(id)
-        toast = "\(derive.label(id)) is in your menu"
+        showToast("\(derive.label(id)) is in your menu")
     }
 }
