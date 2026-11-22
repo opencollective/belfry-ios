@@ -102,6 +102,7 @@ struct TodoScreen: View {
     @State private var askDelete = false
     @State private var picking = false
     @State private var dueOpen = false
+    @State private var editOpen = false
     /// nil = the default for this to-do (mid while it needs me, else folded).
     @State private var level: TodoLevel?
     @FocusState private var commentFocused: Bool
@@ -128,7 +129,8 @@ struct TodoScreen: View {
             List {
                 if lv == .pulled || (lv == .mid && (t.due != nil || about != nil)) {
                     TodoTop(t: t, group: key.group, about: about, pulled: lv == .pulled, mayEdit: t.author == model.me && !locked, go: go,
-                            more: { withAnimation(.snappy) { level = .pulled } }, due: { hideKeyboard(); dueOpen = true })
+                            more: { withAnimation(.snappy) { level = .pulled } }, due: { hideKeyboard(); dueOpen = true },
+                            edit: { hideKeyboard(); editOpen = true })
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color(uiColor: .secondarySystemBackground))
                 }
@@ -172,6 +174,7 @@ struct TodoScreen: View {
         } message: { Text("It goes for everyone in \(channelName).") }
         .navigationDestination(isPresented: $picking) { AssignPicker(key: key).overRoot() }
         .navigationDestination(isPresented: $dueOpen) { TodoDueScreen(key: key).overRoot() }
+        .navigationDestination(isPresented: $editOpen) { TodoEditScreen(key: key).overRoot() }
         .onAppear {
             if model.launch.screen == "todoassign" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { picking = true } }
             // screenshots: -todo pulled | folded
@@ -340,11 +343,21 @@ struct TodoTop: View {
     var go: ((LogGo) -> Void)?
     let more: () -> Void
     let due: () -> Void
+    var edit: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if pulled {
-                Text("THE TO-DO").font(.caption.weight(.semibold)).foregroundStyle(.secondary).accessibilityAddTraits(.isHeader)
+                HStack {
+                    Text("THE TO-DO").font(.caption.weight(.semibold)).foregroundStyle(.secondary).accessibilityAddTraits(.isHeader)
+                    Spacer()
+                    // its author edits the description (the lead's ruling, docs/one-shape.md)
+                    if mayEdit {
+                        Button("Edit", action: edit).font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
+                            .accessibilityLabel("Edit the description")
+                            .accessibilityIdentifier("todo-edit")
+                    }
+                }
             }
             if let at = t.due {
                 Button(action: due) {
@@ -360,7 +373,7 @@ struct TodoTop: View {
                     .accessibilityIdentifier("todo-due-add")
             }
             if let about {
-                Text(MarkdownText.plainLinks(about)).font(.body).lineLimit(pulled ? nil : 2)
+                if pulled { MarkdownText(text: about) } else { Text(MarkdownText.plainLinks(about)).font(.body).lineLimit(2) }
                 if !pulled {
                     Button("More", action: more).font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
                         .accessibilityIdentifier("todo-more-text")
@@ -452,6 +465,47 @@ struct TodoLineRow: View {
         case .reopened: return "reopened it"
         case .due(let at): return at.map { "set the due date to " + TodoFormat.due($0) } ?? "removed the due date"
         case .comment: return ""
+        }
+    }
+}
+
+/// The description (its author): Markdown, up to 2000 characters; empty removes it.
+struct TodoEditScreen: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    let key: TodoKey
+    @State private var text = ""
+    @State private var loaded = false
+
+    var body: some View {
+        let t = model.derive.tasks(key.group).first { $0.id == key.task }
+        let over = text.jsTrim().utf16.count - TodoDue.descriptionLimit
+        Form {
+            Section {
+                TextField("What needs doing, where, with what", text: $text, axis: .vertical)
+                    .font(.body).lineLimit(6...20)
+                    .accessibilityIdentifier("todo-edit-field")
+            } header: { Text("Description") } footer: {
+                Text(over > 0 ? "\(over) character\(over == 1 ? "" : "s") too long." : "Markdown works: **bold**, lists, links.")
+                    .foregroundStyle(over > 0 ? Color.red : Color.secondary)
+            }
+            Section {
+                BusyButton {
+                    if let t { model.setTodoDescription(t, in: key.group, text) }
+                    dismiss()
+                } label: { Text("Save").frame(maxWidth: .infinity) }
+                .buttonStyle(.brand)
+                .disabled(over > 0 || t == nil)
+                .listRowBackground(Color.clear)
+                .accessibilityIdentifier("todo-edit-save")
+            }
+        }
+        .navigationTitle(t?.title ?? "To-do")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            guard !loaded else { return }
+            loaded = true
+            text = t?.about ?? ""
         }
     }
 }

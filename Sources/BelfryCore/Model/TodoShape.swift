@@ -12,6 +12,15 @@ public enum TodoDue {
         guard let t = tags.first(where: { $0.count >= 2 && $0[0] == "due" }), let n = Int(t[1]), n > 0 else { return nil }
         return n
     }
+
+    public static let descriptionLimit = 2000
+
+    /// The ["description", Markdown] tag, trimmed, ≤ 2000 units; empty = none.
+    public static func description(_ tags: [Tag]) -> String? {
+        guard let t = tags.first(where: { $0.count >= 2 && $0[0] == "description" }) else { return nil }
+        let s = t[1].jsTrim().sliceUnits(descriptionLimit)
+        return s.isEmpty ? nil : s
+    }
 }
 
 /// One quiet line in a to-do's conversation, or a comment.
@@ -87,9 +96,22 @@ public extension Derive {
         return out.sorted { $0.at != $1.at ? $0.at < $1.at : $0.id < $1.id }
     }
 
-    /// What the to-do says beyond its title: the text of the message it was made from, when that
-    /// says more than the title.
+    /// The to-do's tags as they stand: its author's newest 1010 edit (without its own e / k), else the 2100's.
+    func todoCurrentTags(_ taskId: String) -> [Tag] {
+        if let e = todoEdits([taskId])[taskId] {
+            var dropped = Set<String>()
+            return e.tags.filter { t in
+                guard let k = t.first, k == "e" || k == "k", !dropped.contains(k) else { return true }
+                dropped.insert(k); return false
+            }
+        }
+        return todoEvent(taskId)?.tags ?? []
+    }
+
+    /// What the to-do says beyond its title: its description, else the text of the message it was
+    /// made from, when that says more than the title.
     func todoDescription(_ groupId: String, _ t: TodoTask) -> String? {
+        if let a = t.about { return a }
         guard let s = t.source, let m = message(groupId, s) else { return nil }
         let text = plainRefs(m.text, npub: "", links: false).jsTrim()
         return text.isEmpty || text == t.title ? nil : text
@@ -97,11 +119,19 @@ public extension Derive {
 }
 
 public extension Actions {
-    /// The author sets or clears the due date: a kind 1010 naming the 2100, its text and every
-    /// other tag kept, plus ["due", unix seconds] (none = no due date).
-    static func setTaskDue(_ task: NostrEvent, title: String, due: Int?) -> Draft {
-        let kept = task.tags.filter { $0.first != "due" }
+    /// The author edits the to-do: a kind 1010 naming the 2100 with its text, CURRENT tags (as
+    /// they stand) kept except `due` and `description`, then the new ones (nil = none).
+    static func editTask(_ task: NostrEvent, current: [Tag], title: String, due: Int?, description: String?) -> Draft {
+        let kept = current.filter { $0.first != "due" && $0.first != "description" }
+        let about = description.map { $0.jsTrim().sliceUnits(TodoDue.descriptionLimit) }.flatMap { $0.isEmpty ? nil : $0 }
         let tags: [Tag] = kept + [["e", task.id], ["k", "2100"]] + (due.map { [["due", String($0)]] } ?? [])
+            + (about.map { [["description", $0]] } ?? [])
         return Draft(kind: Derive.editKind, content: title, tags: tags)
+    }
+
+    /// The due date only (the description as it stands is kept when it is in CURRENT).
+    static func setTaskDue(_ task: NostrEvent, title: String, due: Int?, current: [Tag]? = nil) -> Draft {
+        let cur = current ?? task.tags
+        return editTask(task, current: cur, title: title, due: due, description: TodoDue.description(cur))
     }
 }

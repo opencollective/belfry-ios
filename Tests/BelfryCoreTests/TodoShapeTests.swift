@@ -47,3 +47,47 @@ final class TodoShapeTests: XCTestCase {
         XCTAssertEqual(d.tasks("g").first?.doneAt, 130)
     }
 }
+
+/// The to-do's description (the lead's ruling, docs/one-shape.md): ["description", Markdown ≤ 2000]
+/// on the 2100, changed by its author's 1010 like the due date; none → the source message's text.
+final class TodoDescriptionTests: XCTestCase {
+    func testTagThenEditThenTheDueKeepsIt() throws {
+        let task = ev(A, 2100, 100, Actions.taskTags("g") + [["description", "  Bring the **reel** "]], "Bring the cable")
+        var d = Derive(events: [task], me: A)
+        XCTAssertEqual(d.tasks("g").first?.about, "Bring the **reel**")
+        // the author changes it; the due date set later keeps it (current tags = the edit's)
+        let e1 = Actions.editTask(task, current: d.todoCurrentTags(task.id), title: task.content, due: nil, description: "From the store room")
+        XCTAssertEqual(e1.tags, Actions.taskTags("g") + [["e", task.id], ["k", "2100"], ["description", "From the store room"]])
+        let ev1 = ev(A, 1010, 110, e1.tags, e1.content)
+        d = Derive(events: [task, ev1], me: A)
+        XCTAssertEqual(d.tasks("g").first?.about, "From the store room")
+        XCTAssertEqual(d.todoCurrentTags(task.id), Actions.taskTags("g") + [["description", "From the store room"]])
+        let e2 = Actions.setTaskDue(task, title: task.content, due: 1795100000, current: d.todoCurrentTags(task.id))
+        let ev2 = ev(A, 1010, 120, e2.tags, e2.content)
+        d = Derive(events: [task, ev1, ev2], me: A)
+        XCTAssertEqual(d.tasks("g").first?.about, "From the store room")
+        XCTAssertEqual(d.tasks("g").first?.due, 1795100000)
+        // emptied: none, and an edit by someone else counts for nothing
+        let e3 = Actions.editTask(task, current: d.todoCurrentTags(task.id), title: task.content, due: 1795100000, description: "  ")
+        XCTAssertFalse(e3.tags.contains { $0.first == "description" })
+        let other = ev(B, 1010, 140, Actions.editTask(task, current: [], title: "x", due: nil, description: "nope").tags, "x")
+        d = Derive(events: [task, ev1, ev2, ev(A, 1010, 130, e3.tags, e3.content), other], me: A)
+        XCTAssertNil(d.tasks("g").first?.about)
+        XCTAssertEqual(d.tasks("g").first?.due, 1795100000)
+    }
+
+    func testLimitAndFallback() throws {
+        let long = String(repeating: "a", count: 2100)
+        XCTAssertEqual(TodoDue.description([["description", long]])?.utf16.count, 2000)
+        XCTAssertNil(TodoDue.description([["description", ""]]))
+        // no description: the message it was made from, when it says more than the title
+        let msg = ev(B, 9, 90, [["h", "g"]], "Bring the extension reel from the store room")
+        let task = ev(A, 2100, 100, Actions.taskTags("g") + [["q", msg.id]], "Bring the reel")
+        let d = Derive(events: [msg, task], me: A)
+        let t = try XCTUnwrap(d.tasks("g").first)
+        XCTAssertEqual(d.todoDescription("g", t), "Bring the extension reel from the store room")
+        let same = ev(A, 2100, 101, Actions.taskTags("g") + [["q", msg.id]], "Bring the extension reel from the store room")
+        let d2 = Derive(events: [msg, same], me: A)
+        XCTAssertNil(d2.todoDescription("g", try XCTUnwrap(d2.tasks("g").first)))
+    }
+}

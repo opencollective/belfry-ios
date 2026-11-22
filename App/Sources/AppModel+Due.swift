@@ -7,6 +7,12 @@ import Foundation
 extension AppModel {
     func setTodoDue(_ t: TodoTask, in group: String, due: Int?) {
         guard t.author == me, let e = derive.todoEvent(t.id) else { return }
-        engine?.enqueue(Actions.setTaskDue(e, title: e.content, due: due))
+        engine?.enqueue(Actions.setTaskDue(e, title: e.content, due: due, current: derive.todoCurrentTags(t.id)))
+    }
+
+    /// The author's description (Markdown, ≤ 2000); empty removes it. The due date stays.
+    func setTodoDescription(_ t: TodoTask, in group: String, _ text: String) {
+        guard t.author == me, let e = derive.todoEvent(t.id) else { return }
+        engine?.enqueue(Actions.editTask(e, current: derive.todoCurrentTags(t.id), title: e.content, due: t.due, description: text))
     }
 }

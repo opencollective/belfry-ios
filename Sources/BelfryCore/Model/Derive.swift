@@ -387,6 +387,8 @@ public struct TodoTask: Hashable, Sendable, Identifiable {
     public var workingSince: Int?
     /// When it is due (one shape: ["due", unix seconds] on the 2100 or its author's newest 1010).
     public var due: Int?
+    /// Its description (Markdown, ≤ 2000): ["description", …] on the 2100 or its author's newest 1010.
+    public var about: String?
     /// The time it was made (its 2100).
     public var madeAt = 0
 
@@ -1467,6 +1469,7 @@ public final class Derive {
                 if tasks[e.id] == nil { order.append(e.id) }
                 var t = TodoTask(id: e.id, title: title, author: e.pubkey, pending: isPending(e.id), source: e.tag("q"))
                 t.due = TodoDue.parse(e.tags)
+                t.about = TodoDue.description(e.tags)
                 t.madeAt = e.createdAt
                 tasks[e.id] = t
             } else if e.kind != 2102 {
@@ -1510,6 +1513,7 @@ public final class Derive {
         for (tid, e) in todoEdits(Set(order)) {
             guard var t = tasks[tid] else { continue }
             t.due = TodoDue.parse(e.tags)
+            t.about = TodoDue.description(e.tags)
             tasks[tid] = t
         }
         let out = order.compactMap { tasks[$0] }
