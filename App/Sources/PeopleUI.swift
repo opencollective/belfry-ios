@@ -298,6 +298,9 @@ struct RoleChoiceList: View {
     let report: (String?) -> Void
     @State private var saving: String?
     @State private var error: String?
+    /// Steward is asked first (the lead, 2026-11-22: it is the only role with powers and it is the
+    /// first row; one tap must never make a Steward).
+    @State private var askSteward = false
 
     var body: some View {
         let d = model.derive
@@ -327,10 +330,18 @@ struct RoleChoiceList: View {
         .navigationTitle("Role")
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.loadRoles() }
+        .alert("Make \(model.name(pubkey)) a Steward?", isPresented: $askSteward) {
+            Button("Make Steward") { pick(Role.admin, current: current) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Stewards change the belfry's settings, let people in and remove them, and give roles.")
+        }
     }
 
     private func roleRow(_ r: Role, current: String?) -> some View {
-        Button { pick(r.id, current: current) } label: {
+        Button {
+            if r.id == Role.admin, r.id != current { askSteward = true } else { pick(r.id, current: current) }
+        } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(r.label).foregroundStyle(.primary)
@@ -666,6 +677,9 @@ struct DevicesView: View {
     var body: some View {
         List {
             if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) }
+            ForEach(model.sealed.added) { n in
+                DeviceAddedCard(notice: n).listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)).listRowBackground(Color.clear)
+            }
             // this device is signed in but not allowed yet (the lead, 2026-11-22: Devices listed
             // the sessions and said nothing about it)
             if model.sealed.notAllowed || model.launch.screen == "encdevicesnotallowed" {

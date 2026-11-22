@@ -72,8 +72,18 @@ struct AllowAsk: Identifiable, Hashable {
     var at: Int
 }
 
+/// "‹device› was added just now · Not you? Remove it" (sealed.md 5.2 step 2a).
+struct AddedNotice: Identifiable, Hashable {
+    let id: String          // the device
+    var name: String
+    var kind: DeviceKind
+    var at: Int
+}
+
 struct SealedState: Equatable {
     var myDevices: [MyDevice] = []
+    /// Devices added to my devices without a prompt here: each until I answer or it is removed.
+    var added: [AddedNotice] = []
     /// The sealed conversations (a conversation that is not in here shows no lock).
     var convs: [String: SealedConv] = [:]
     /// This device is not in my head (a new device nobody allowed yet): it reads no sealed
@@ -268,6 +278,20 @@ extension AppModel {
             return MyDevice(id: d, name: names[d]?.name ?? (this ? UIDevice.current.model : "A device"), kind: kind(d) ?? .computer,
                             added: j?.at ?? 0, from: j?.from.flatMap { names[$0]?.name }, this: this)
         }
+        st.added = se.addedNotices().map { n in
+            AddedNotice(id: n.device, name: names[n.device]?.name ?? freshDeviceNames[n.device] ?? "A new device", kind: kind(n.device) ?? .phone, at: n.at)
+        }
+        // a device just added has no name record this device can read yet: its session's name
+        for n in st.added where names[n.id] == nil && freshDeviceNames[n.id] == nil && !freshNameAsked.contains(n.id) {
+            freshNameAsked.insert(n.id)
+            Task { @MainActor in
+                if case .success(let list) = await sessions(),
+                   let s = list.first(where: { $0.clientPubkey == n.id }), let name = s.device ?? (s.applicationName.isEmpty ? nil : s.applicationName), !name.isEmpty {
+                    freshDeviceNames[n.id] = name
+                    refreshSealed()
+                }
+            }
+        }
         st.notAllowed = se.mine == .waiting
         st.missingKeys = dms.lockedWraps > 0
         st.waitingCount = dms.lockedWraps
@@ -420,6 +444,9 @@ extension Demo {
         case "encnewdevice", "enchow", "enclocked":
             s.notAllowed = true
         // boards messages/encryption-waiting-list, -waiting-checking (canvas v177)
+        // boards messages/encryption-device-added, -devices-added (canvas v183)
+        case "encdeviceadded", "encdevicesadded":
+            s.added = [AddedNotice(id: "mac", name: "Safari on Mac", kind: .computer, at: now - 40)]
         case "encdeviceswaiting":
             s.notAllowed = true
             s.askedAt = now - 1500
@@ -473,5 +500,28 @@ enum SealedDiagnostics {
         if u.failures > 0 { out.append("Failed checks in a row: \(u.failures)") }
         if let at = u.retryAt { out.append("Next try in \(max(0, at - now)) s") }
         return out
+    }
+}
+
+
+extension AppModel {
+    /// "It was me" on the notice.
+    func ackAdded(_ n: AddedNotice) {
+        if isDemo { sealed.added.removeAll { $0.id == n.id }; return }
+        sealedEngine?.ackAdded(n.id)
+        refreshSealed()
+    }
+
+    /// "Remove it": the device is signed out, then leaves my devices and the lock changes
+    /// (sealed.md 5.6). Nil when done, else what to say.
+    func removeAdded(_ n: AddedNotice) async -> String? {
+        if isDemo {
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            sealed.added.removeAll { $0.id == n.id }
+            return nil
+        }
+        guard let se = sealedEngine, await se.remove(n.id) else { return "It couldn't be removed. Check your connection and try again." }
+        refreshSealed()
+        return nil
     }
 }

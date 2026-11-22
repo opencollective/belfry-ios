@@ -16,6 +16,12 @@ struct MessagesView: View {
         let _ = model.version
         let threads = model.dms?.threads() ?? []
         List {
+            // a device added without a prompt here: said on top until answered (sealed.md 5.2 step 2a)
+            ForEach(model.sealed.added) { n in
+                DeviceAddedCard(notice: n)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+            }
             // this device is not allowed yet (whether or not anything arrived), or holds messages
             // it has no key for: the banner says how many wait. My devices not read yet and
             // messages kept meanwhile: "Checking your devices…". Never "No messages" under it.
@@ -27,7 +33,7 @@ struct MessagesView: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
             }
-            if threads.isEmpty && !locked && !checking {
+            if threads.isEmpty && !locked && !checking && model.sealed.added.isEmpty {
                 ContentUnavailableView("No messages", systemImage: "envelope", description: Text("Write to anyone in the town with the pen."))
             }
             // "Your address: sam@demo.belfry.sh" (board home/messages)

@@ -87,6 +87,11 @@ struct SealedMemory: Codable {
     /// The roots whose head this device, coming back from an older root, already gave its old key
     /// chain to (the device that allowed it back; sealed.md 5.4), once each.
     var handedBack: [String]?
+    /// "‹device› was added" notices (sealed.md 5.2 step 2a): only rosters dated from here on
+    /// (when this device first ran with them) raise one; and the devices the person answered
+    /// ("It was me"), or for which this device itself showed the prompt or a link code.
+    var noticeSince: Int?
+    var noticeDone: [String]?
 }
 
 public final class SealedEngine: @unchecked Sendable {
@@ -111,6 +116,11 @@ public final class SealedEngine: @unchecked Sendable {
     private var shownLinks = [(secret: String, at: Int)]()
     private var denied = Set<String>()
     private var working = false
+    /// Devices whose add without a prompt did not go through in this run: the Allow card takes over.
+    private var autoFailed = Set<String>()
+    /// Tests of the Allow card turn the add without a prompt off (they exercise the path that
+    /// stays for the undecidable case).
+    var autoAdd = true
     private var sessionName: String?
     /// The secret of the login link this device signed in from: in memory only, never stored.
     private var link: String?
@@ -1059,6 +1069,9 @@ public final class SealedEngine: @unchecked Sendable {
             return []
         }
         note { $0.inHead = true }
+        // "was added" notices start with what happens from now on (never for what was there before)
+        lock.lock(); let noSince = memory.noticeSince == nil; lock.unlock()
+        if noSince { remember { $0.noticeSince = now } }
         // a roster of mine past the anchored end (its anchor was lost or refused): anchored now
         await anchorMine(c, now: now)
         // in the head, but without the head letterbox's secret (a hand-over that was lost): this
@@ -1113,7 +1126,17 @@ public final class SealedEngine: @unchecked Sendable {
         // a request with the proof of a code this device showed is allowed at once (5.2)
         lock.lock(); let secrets = shownLinks.filter { now - $0.at < 900 }.map(\.secret); lock.unlock()
         for r in requests(c, sessions) where Sealed.linked(r.event, secrets: secrets) {
-            _ = await admit(r.event.pubkey, now: now)
+            // this device showed the code: no "was added" notice here
+            if await admit(r.event.pubkey, now: now) == .done { noticed(r.event.pubkey) }
+            return []
+        }
+        // a new device of mine is added without a prompt (5.2 step 2): its session is live and a
+        // chat client in the list read in this pass (`requests`), the rest is AutoAdd.allowed.
+        // One per pass; one that does not go through is left to the Allow card for this run.
+        for r in requests(c, sessions) where autoAddable(r, c, now: now) {
+            let a = await admit(r.event.pubkey, now: now, byPerson: false)
+            if a != .done { lock.lock(); autoFailed.insert(r.event.pubkey); lock.unlock() }
+            onChange?()
             return []
         }
         if !c.ready, SealedEngine.mayCarryReady(sessions, devices: c.devices, now: now) {
@@ -1134,11 +1157,42 @@ public final class SealedEngine: @unchecked Sendable {
         }
     }
 
+    /// 5.2 step 2 for one request, on what this device holds now.
+    private func autoAddable(_ r: (event: NostrEvent, session: SessionInfo), _ c: RosterChain, now: Int) -> Bool {
+        lock.lock(); let pin = memory.pins[me], failed = autoFailed.contains(r.event.pubkey); lock.unlock()
+        guard autoAdd, !failed, !lacksKey else { return false }
+        return AutoAdd.allowed(chain: c, pin: pin, thisDevice: devicePub, newDevice: r.event.pubkey,
+                               sessionCreatedAt: SessionInfo.time(r.session.createdAt), requestAt: r.event.createdAt, now: now)
+    }
+
+    /// The person answered for DEVICE here (Allow, a link code, "It was me"): no notice for it.
+    private func noticed(_ device: String) {
+        remember { m in if !(m.noticeDone ?? []).contains(device) { m.noticeDone = Array(((m.noticeDone ?? []) + [device]).suffix(200)) } }
+    }
+
+    /// "It was me" on the notice.
+    public func ackAdded(_ device: String) { noticed(device); onChange?() }
+
+    /// The devices added to my head without this device having shown a prompt or a link code for
+    /// them (5.2 step 2a): each until the person answers here or it leaves the head. Only for
+    /// rosters dated since this device first ran with this rule, and after it joined itself;
+    /// never for this device. Oldest first.
+    public func addedNotices() -> [(device: String, at: Int)] {
+        guard let c = chain(me), c.devices.contains(devicePub) else { return [] }
+        lock.lock(); let since = memory.noticeSince, done = Set(memory.noticeDone ?? []); lock.unlock()
+        guard let since else { return [] }
+        let mine = c.joined(devicePub)?.at ?? 0
+        return c.devices.compactMap { d -> (device: String, at: Int)? in
+            guard d != devicePub, !done.contains(d), let j = c.joined(d), j.from != nil, j.at >= since, j.at > mine else { return nil }
+            return (d, j.at)
+        }.sorted { $0.at < $1.at }
+    }
+
     /// The new devices waiting for an answer on this device (the Allow prompt); none unless this
-    /// device is in my head.
-    public func asks() async -> [Ask] {
+    /// device is in my head. Not the ones this device adds by itself (5.2 step 2).
+    public func asks(now: Int = .now) async -> [Ask] {
         guard let c = chain(me), c.devices.contains(devicePub), let sessions = await sessions?() else { return [] }
-        return requests(c, sessions).map { r in
+        return requests(c, sessions).filter { !autoAddable($0, c, now: now) }.map { r in
             let n = r.session.device.flatMap { $0.isEmpty ? nil : $0 } ?? (r.session.applicationName.isEmpty ? "A new device" : r.session.applicationName)
             return Ask(id: r.event.pubkey, device: r.event.pubkey, name: n, at: r.event.createdAt)
         }
@@ -1159,14 +1213,22 @@ public final class SealedEngine: @unchecked Sendable {
     /// Allow: the keys go to the new device, then roster n+1 with it (same letterbox), then the
     /// anchor. Done only when the relay holds both and the chain read back has the device.
     public func allow(_ newDevice: String, now: Int = .now) async -> Answer {
-        await exclusive { await self.admit(newDevice, now: now) }
+        await exclusive {
+            let a = await self.admit(newDevice, now: now)
+            // the person said Allow here: no "was added" notice for it on this device
+            if a == .done { self.noticed(newDevice) }
+            return a
+        }
     }
 
-    private func admit(_ newDevice: String, now: Int) async -> Answer {
+    /// BYPERSON false: added without a prompt (5.2 step 2). A device that is in the head by
+    /// somebody else's roster after a switch is then left to the Allow card.
+    private func admit(_ newDevice: String, now: Int, byPerson: Bool = true) async -> Answer {
         // decided on what the relay holds now, not on what this device last saw
         guard await refresh([me], now: now), let c = chain(me), c.devices.contains(devicePub) else { return .failed }
         // already in (another device answered first, or my own roster went through after all)
         if c.devices.contains(newDevice), unvouched(newDevice, c) {
+            guard byPerson else { return .failed }
             // after a switch: in the head by somebody else's roster; the person said Allow here
             lock.lock(); let no = denied.contains(newDevice), k = keys; lock.unlock()
             guard !no, !lacksKey, let sessions = await sessions?(), listsMe(sessions),

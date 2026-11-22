@@ -261,6 +261,9 @@ shot 189-enc-share encshare light
 shot 189b-enc-share-dark encshare dark
 shot 190-enc-remove encremove light
 shot 190b-enc-devices-not-allowed encdevicesnotallowed light
+shot 190c-enc-device-added encdeviceadded light
+shot 190d-enc-device-added-dark encdeviceadded dark
+shot 190e-enc-devices-added encdevicesadded light
 shot 191-enc-shared encshared light
 shot 191b-enc-shared-dark encshared dark
 shot 192-enc-shared-why encsharedwhy light

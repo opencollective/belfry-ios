@@ -76,6 +76,8 @@ private final class FakeBelfry: @unchecked Sendable {
                                 attachmentsDir: FileManager.default.temporaryDirectory)
         let sealed = try XCTUnwrap(SealedEngine(engine: engine, deviceSecret: key, store: MemoryKeyStore()))
         sealed.runsLocally = true
+        // these tests exercise the Allow card; SealedAutoAddTests turns the add without a prompt on
+        sealed.autoAdd = false
         sealed.followUps = []
         sealed.settleTries = 3
         sealed.settlePause = 20_000_000
@@ -116,6 +118,8 @@ private final class FakeBelfry: @unchecked Sendable {
                                 attachmentsDir: FileManager.default.temporaryDirectory)
         let sealed = try XCTUnwrap(SealedEngine(engine: engine, deviceSecret: key, store: MemoryKeyStore()))
         sealed.runsLocally = true
+        // these tests exercise the Allow card; SealedAutoAddTests turns the add without a prompt on
+        sealed.autoAdd = false
         sealed.followUps = []
         sealed.settleTries = 3
         sealed.settlePause = 20_000_000
@@ -1587,5 +1591,98 @@ final class SealedUpkeepRetryTests: XCTestCase {
         XCTAssertFalse(mac.sealed.isLocked(stray))
         XCTAssertTrue(mac.sealed.isUnknown(stray))
         XCTAssertFalse(phone.sealed.isUnknown(wrap), "the device that holds the secret")
+    }
+}
+
+
+/// A new device of mine is added without a prompt, and every other device says so (sealed.md 5.2
+/// steps 2 and 2a, 2026-11-22).
+final class SealedAutoAddTests: XCTestCase {
+    /// 2026-11-20 12:00 UTC: two hours after every session of these tests was created.
+    let now = 1795176000
+
+    private func head(_ b: FakeBelfry) async throws -> FakeBelfry.Device {
+        let phone = try b.signIn("alice", "phone")
+        phone.sealed.autoAdd = true
+        await phone.sealed.maintain(now: now)
+        await b.sync()
+        return phone
+    }
+
+    func testANewDeviceIsAddedAndGetsTheKeysWithoutAPrompt() async throws {
+        let b = FakeBelfry()
+        let phone = try await head(b)
+        let mac = try b.signIn("alice", "mac")
+        mac.sealed.autoAdd = true
+        await b.sync()
+        await mac.sealed.maintain(now: now + 10)       // it asks (8562)
+        await b.sync()
+        await phone.sealed.maintain(now: now + 20)     // the phone adds it by itself
+        await b.sync()
+        let c = try XCTUnwrap(phone.sealed.chain(phone.account))
+        XCTAssertEqual(Set(c.devices), [phone.pub, mac.pub])
+        let cards = await phone.sealed.asks(now: now + 21)
+        XCTAssertTrue(cards.isEmpty, "no Allow card")
+        mac.sealed.takeKeys()
+        XCTAssertEqual(mac.sealed.mine, .inside)
+        XCTAssertFalse(mac.sealed.lacksKey, "the keys were handed over")
+        // the notice on the device that did the adding; none on the added device about itself
+        XCTAssertEqual(phone.sealed.addedNotices().map(\.device), [mac.pub])
+        XCTAssertTrue(mac.sealed.addedNotices().isEmpty)
+        // "It was me": gone, and it stays gone
+        phone.sealed.ackAdded(mac.pub)
+        XCTAssertTrue(phone.sealed.addedNotices().isEmpty)
+    }
+
+    func testTheFourthDeviceInADayAsksAndAnOldOrEarlyRequestAsks() async throws {
+        let b = FakeBelfry()
+        let phone = try await head(b)
+        // three devices added without a prompt within the day
+        for (i, name) in ["mac", "pad", "web"].enumerated() {
+            let d = try b.signIn("alice", name)
+            await b.sync()
+            await d.sealed.maintain(now: now + 100 * (i + 1))
+            await b.sync()
+            await phone.sealed.maintain(now: now + 100 * (i + 1) + 10)
+            await b.sync()
+        }
+        var c = try XCTUnwrap(phone.sealed.chain(phone.account))
+        XCTAssertEqual(c.devices.count, 4)
+        XCTAssertEqual(AutoAdd.addedLately(c, now: now + 400), 3)
+        // the fourth asks
+        let fourth = try b.signIn("alice", "tv")
+        await b.sync()
+        await fourth.sealed.maintain(now: now + 500)
+        await b.sync()
+        await phone.sealed.maintain(now: now + 510)
+        await b.sync()
+        c = try XCTUnwrap(phone.sealed.chain(phone.account))
+        XCTAssertFalse(c.devices.contains(fourth.pub), "not added by itself")
+        let cards = await phone.sealed.asks(now: now + 511)
+        XCTAssertEqual(cards.map(\.device), [fourth.pub], "the Allow card instead")
+        // a day later the count is back under the limit
+        XCTAssertEqual(AutoAdd.addedLately(c, now: now + 86400 + 400), 0)
+    }
+
+    func testThePureConditions() async throws {
+        let b = FakeBelfry()
+        let phone = try await head(b)
+        let c = try XCTUnwrap(phone.sealed.chain(phone.account))
+        let pin = SealedPin(root: c.root.id, head: c.head.id, path: [c.root.id], anchored: true)
+        let new = String(repeating: "7", count: 64)
+        func ok(session: Int?, request: Int, at: Int, pin p: SealedPin? = nil, this: String? = nil) -> Bool {
+            AutoAdd.allowed(chain: c, pin: p ?? pin, thisDevice: this ?? phone.pub, newDevice: new, sessionCreatedAt: session, requestAt: request, now: at)
+        }
+        XCTAssertTrue(ok(session: now, request: now + 5, at: now + 10))
+        XCTAssertTrue(ok(session: now, request: now - 120, at: now + 10), "up to 120 s before its session")
+        XCTAssertFalse(ok(session: now, request: now - 121, at: now + 10), "dated before its session")
+        XCTAssertFalse(ok(session: now, request: now + 5, at: now + 5 + 30 * 86400 + 1), "older than 30 days")
+        XCTAssertFalse(ok(session: nil, request: now + 5, at: now + 10), "the session's start is not known")
+        XCTAssertFalse(ok(session: now, request: now + 5, at: now + 10, this: new), "this device is not in the head")
+        var other = pin; other.head = "x"
+        XCTAssertFalse(ok(session: now, request: now + 5, at: now + 10, pin: other), "not the head this device holds")
+        var untrusted = pin; untrusted.trusted = []
+        XCTAssertFalse(ok(session: now, request: now + 5, at: now + 10, pin: untrusted), "this device is not trusted after a switch")
+        XCTAssertFalse(AutoAdd.allowed(chain: nil, pin: pin, thisDevice: phone.pub, newDevice: new, sessionCreatedAt: now, requestAt: now, now: now))
     }
 }

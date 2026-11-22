@@ -678,8 +678,8 @@ struct RootView: View {
         case "membersinvite": selection = .members
         case "messages", "conversation", "mail", "mailpictures", "sendstill", "sendnotyet", "dmfiles", "dmfilessending", "typingdm", "typinglist", "dmthread": selection = .messages
         // boards messages/encryption-*: MessagesView and ConversationView open the rest
-        case "encthread", "encdevices", "encgroup", "encmail", "encmaildevices", "encnewdevice", "encdeviceswaiting", "encwaitinglist", "encchecking", "enchow", "encfresh", "encfreshconfirm", "encallow", "encallowfull", "encallowwaiting", "encwaiting", "encheld", "encshare", "enclocked", "encshared", "encsharedwhy": selection = .messages
-        case "encremove", "encdevicesnotallowed":
+        case "encthread", "encdevices", "encgroup", "encmail", "encmaildevices", "encnewdevice", "encdeviceadded", "encdeviceswaiting", "encwaitinglist", "encchecking", "enchow", "encfresh", "encfreshconfirm", "encallow", "encallowfull", "encallowwaiting", "encwaiting", "encheld", "encshare", "enclocked", "encshared", "encsharedwhy": selection = .messages
+        case "encremove", "encdevicesnotallowed", "encdevicesadded":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { push(PlaceRoute.devices) }
         case "enclinked":
