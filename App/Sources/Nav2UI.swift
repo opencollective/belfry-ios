@@ -211,6 +211,9 @@ struct PinSection: View {
         let mine = model.myPins.contains(id)
         let everyone = model.pinnedForEveryone.contains(id)
         Section("In your menu") {
+            if id == generalId {
+                Label("Always first in everyone's menu", systemImage: "pin.fill").foregroundStyle(.secondary)
+            } else {
             Toggle(isOn: Binding(get: { mine }, set: { _ in toggleMine() })) {
                 VStack(alignment: .leading, spacing: 2) {
                     Label("Pin for me", systemImage: "pin")
@@ -229,6 +232,7 @@ struct PinSection: View {
                 }
                 .tint(Theme.toggle)
                 .accessibilityIdentifier("pin-everyone")
+            }
             }
         }
         Section("Notifications") {

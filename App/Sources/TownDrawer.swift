@@ -112,7 +112,7 @@ struct TownDrawer: View {
                 Section {
                     sectionHeader("Channels", add: "Add a channel", id: "drawer-add-channel") { push(.addChannel) }
                     ForEach(m.pinned, id: \.self) { id in
-                        if let g = d.group(id) { townRow(g, pin: everyone.contains(id) || (id == generalId && !model.myPins.contains(id)) ? .everyone : .mine) }
+                        if let g = d.group(id) { townRow(g, pin: everyone.contains(id) || id == generalId ? .everyone : .mine) }
                     }
                     ForEach(m.recent, id: \.self) { id in
                         if let g = d.group(id) { townRow(g) }
