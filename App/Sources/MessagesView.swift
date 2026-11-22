@@ -139,7 +139,7 @@ struct NotesRow: View {
 
     var body: some View {
         let conv = Notes.conv(model.me)
-        let sealed = model.sealedConv(conv) != nil
+        let sealed = model.notesLocked
         HStack(alignment: .top, spacing: 12) {
             Avatar(pubkey: model.me, size: 40)
                 .overlay(alignment: .bottomTrailing) {
@@ -334,7 +334,7 @@ struct ConversationView: View {
             LazyVStack(alignment: .leading, spacing: 10) {
                 // Notes: one fixed first line, sealed or not (boards one-shape/notes-empty, notes-unsealed)
                 if notes, !locked {
-                    Label(sealed != nil ? Notes.sealedLine : Notes.plainLine, systemImage: sealed != nil ? "lock.fill" : "person.crop.circle")
+                    Label(model.notesLocked ? Notes.sealedLine : Notes.plainLine, systemImage: model.notesLocked ? "lock.fill" : "person.crop.circle")
                         .font(.footnote).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 8)
@@ -408,7 +408,7 @@ struct ConversationView: View {
                         }
                     }
                 }
-            } else if sealed != nil || model.sealed.notAllowed {
+            } else if sealed != nil || model.sealed.notAllowed || (notes && model.notesLocked) {
                 // a group, an e-mail thread: its title with the lock (always while this device is not allowed)
                 ToolbarItem(placement: .principal) {
                     HStack(spacing: 0) {
@@ -440,6 +440,8 @@ struct ConversationView: View {
         }
         .onAppear { model.markConversationRead(conv); model.visibleConversation = conv }
         // a sealed conversation opened: its people's device lists as the relay has them now
+        // Notes on an account that can seal and has no lock yet: the first-device path runs now
+        .task { if notes, sealed == nil, let se = model.sealedEngine, se.mayStart { await se.maintain(); model.refreshSealed() } }
         .task { if sealed != nil, let se = model.sealedEngine { await se.refresh(MailThreads.peers(conv)); model.refreshSealed() } }
         .onChange(of: text) { old, t in
             guard !mail else { return }
@@ -472,7 +474,7 @@ struct ConversationView: View {
             VStack(spacing: 6) {
                 if !mail, !notes, model.sealedConv(conv) == nil { TypingLine(center: model.typing, place: Typing.place(conv: conv)).padding(.horizontal, -12) }
                 // a refusal to send unlocked is a quiet grey line, the text stays in the box; a failure is red
-                if let error { Text(error).font(.caption).foregroundStyle([DirectMessages.cantCheck, Sealed.tooLong].contains(error) ? Color.secondary : Color.red).multilineTextAlignment(.center) }
+                if let error { Text(error).font(.caption).foregroundStyle([DirectMessages.cantCheck, Sealed.tooLong, Notes.notYet].contains(error) ? Color.secondary : Color.red).multilineTextAlignment(.center) }
                 if MailThreads.isNewMail(conv) {
                     TextField("Subject", text: $subject).font(.body)
                         .padding(.horizontal, 14).frame(minHeight: 38)

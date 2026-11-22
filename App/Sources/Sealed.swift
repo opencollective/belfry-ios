@@ -190,6 +190,12 @@ extension Keychain {
 extension AppModel {
     func sealedConv(_ conv: String) -> SealedConv? { sealed.convs[conv] }
 
+    /// Notes to myself shows the lock: sealed already, or on an account that can seal (the first
+    /// note makes the lock; never the old way there). Not for an agent or an account with its own key.
+    var notesLocked: Bool {
+        sealed.convs[Notes.conv(me)] != nil || (!isDemo && sealedEngine?.mayStart == true)
+    }
+
     /// "Locked on this device": a sealed conversation on a device nobody allowed yet.
     func lockedHere(_ conv: String) -> Bool { sealed.notAllowed && sealed.convs[conv] != nil }
 

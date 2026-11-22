@@ -37,6 +37,8 @@ public final class DirectMessages: @unchecked Sendable {
     /// when the session opens, BEFORE the engine starts. Until the sealed engine is attached, no
     /// queued gift wrap leaves: the first flush of a launch must not send one unchecked.
     public var sealedExpected = false
+    /// How long a first note waits for my chain to be made and anchored.
+    public var notesWait = 12.0
     /// Wraps kept because this device has no secret for their letterbox (the banner).
     public private(set) var lockedWraps = 0
     /// Sealed wraps kept for a letterbox this device does not know yet (my chain was not read, or
@@ -331,6 +333,19 @@ public final class DirectMessages: @unchecked Sendable {
         if sealed == nil, sealedExpected, conv != nil || mail { throw BelfryError.invalid(DirectMessages.cantCheck) }
         // the people's heads as the relay has them now (at most 3 s), then:
         // sealed (docs/sealed.md): made on this device, no signer call, never the old way again
+        // Notes to myself on an account that can seal: never the old way because my chain does not
+        // exist yet (the lead, 2026-11-23: the lock is there from the first note). The first-device
+        // path runs now (the upkeep, with all its gates); the note keeps its sending state until
+        // my chain is anchored, at most `notesWait` seconds; then it is refused and the text kept.
+        if let s = sealed, let conv, Notes.isNotes(conv, me: me), s.mayStart, !s.isSealed(conv) {
+            await s.maintain()
+            var waited = 0.0
+            while !s.isSealed(conv), waited < notesWait {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                waited += 0.5
+            }
+            if !s.isSealed(conv) { throw BelfryError.invalid(Notes.notYet) }
+        }
         if let s = sealed, conv != nil || mail {
             await s.refresh(conv.map(MailThreads.peers) ?? [])
             // the old way only on knowledge, never on silence (sealed.md 6): refused, the text is kept

@@ -14,6 +14,9 @@ public enum Notes {
     /// key, a device that cannot seal): never the "nobody else" sentence there.
     public static let plainLine = "Private to your account. Not end-to-end encrypted on this account."
 
+    /// A note written before my devices' lock exists and it could not be made now: kept in the box.
+    public static let notYet = "Can't save it yet: your notes are being locked for your devices. Try again in a moment."
+
     /// The conversation id: the DM id of {me}.
     public static func conv(_ me: String) -> String { MailThreads.nostrConv(author: me, pTags: [me], me: me) }
 

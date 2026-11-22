@@ -409,6 +409,18 @@ final class SealedEngineTests: XCTestCase {
         let b = FakeBelfry()
         let fresh = try b.signIn("carol", "phone")
         XCTAssertFalse(fresh.sealed.isSealed(Notes.conv(fresh.account)), "no chain yet: not sealed")
+        // an account that can seal and has no chain yet: the first note makes it, never the old way
+        fresh.sealed.mayStart = true
+        let first = DirectMessages(engine: fresh.engine)
+        first.sealed = fresh.sealed
+        first.notesWait = 3
+        let was = Set(b.all().map(\.id))
+        try await first.send("First", in: Notes.conv(fresh.account))
+        await b.sync()
+        XCTAssertNotNil(fresh.sealed.chain(fresh.account), "the first note made my chain")
+        let firsts = b.all().filter { !was.contains($0.id) && $0.kind == 1059 }
+        XCTAssertEqual(firsts.count, 1)
+        XCTAssertNotNil(firsts.first?.tag("lb"), "sealed, not the old way")
         let (phone, mac) = try await pair(b, "alice")
         mac.sealed.takeKeys()
         let conv = Notes.conv(phone.account)
