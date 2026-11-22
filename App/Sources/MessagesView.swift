@@ -14,7 +14,10 @@ struct MessagesView: View {
 
     var body: some View {
         let _ = model.version
-        let threads = model.dms?.threads() ?? []
+        // Notes to myself is its own first row, always (one-shape.md; boards messages/notes-list)
+        let all = model.dms?.threads() ?? []
+        let notes = Notes.conv(model.me)
+        let threads = all.filter { $0.conv != notes }
         List {
             // a device added without a prompt here: said on top until answered (sealed.md 5.2 step 2a)
             ForEach(model.sealed.added) { n in
@@ -33,8 +36,16 @@ struct MessagesView: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
             }
+            if !model.me.isEmpty {
+                Button { navigate(notes) } label: { NotesRow(last: all.first { $0.conv == notes }?.last).contentShape(Rectangle()) }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("notes-row")
+            }
             if threads.isEmpty && !locked && !checking && model.sealed.added.isEmpty {
-                ContentUnavailableView("No messages", systemImage: "envelope", description: Text("Write to anyone in the town with the pen."))
+                Text("No other messages yet. Write to anyone in the town with the pen.")
+                    .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity).padding(.vertical, 24)
+                    .listRowSeparator(.hidden)
             }
             // "Your address: sam@demo.belfry.sh" (board home/messages)
             if let a = model.dms?.myAddress, !a.isEmpty {
@@ -95,6 +106,8 @@ struct MessagesView: View {
             if screen == "encshared" || screen == "encsharedwhy" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("dev").pubkey) } }
             // board one-shape/dm-thread: Ana's conversation holds the demo's thread
             if screen == "dmthread" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("ana").pubkey) } }
+            // boards one-shape/notes-empty, notes-unsealed
+            if ["notesempty", "notesunsealed"].contains(screen) { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { navigate(Notes.conv(model.me)) } }
             if screen == "enclocked" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("ana").pubkey) } }
             if ["encthread", "encdevices", "encdeviceswaiting", "encshare", "encwaiting", "encheld"].contains(screen) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate("n:" + Demo.signer("lina").pubkey) }
@@ -115,6 +128,49 @@ extension EnvironmentValues {
     var openConversation: (String) -> Void {
         get { self[OpenConversationKey.self] }
         set { self[OpenConversationKey.self] = newValue }
+    }
+}
+
+/// "Notes to myself": the first row of Messages, pinned for good, never unread (boards
+/// messages/notes-list). My own face with a small lock when the notes are sealed.
+struct NotesRow: View {
+    @EnvironmentObject var model: AppModel
+    let last: Dm?
+
+    var body: some View {
+        let conv = Notes.conv(model.me)
+        let sealed = model.sealedConv(conv) != nil
+        HStack(alignment: .top, spacing: 12) {
+            Avatar(pubkey: model.me, size: 40)
+                .overlay(alignment: .bottomTrailing) {
+                    if sealed {
+                        Image(systemName: "lock.fill").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
+                            .frame(width: 18, height: 18)
+                            .background(Color(.systemBackground), in: Circle())
+                            .offset(x: 3, y: 3)
+                            .accessibilityHidden(true)
+                    }
+                }
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(Notes.title).font(.body.weight(.semibold)).lineLimit(1)
+                    Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.secondary).accessibilityLabel("Pinned")
+                    Spacer()
+                    if let last { Text(Format.brief(last.at)).font(.caption).foregroundStyle(.secondary) }
+                }
+                if model.lockedHere(conv) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "lock.fill").font(.caption)
+                        Text("Locked on this device").font(.subheadline)
+                    }
+                    .foregroundStyle(.secondary)
+                } else {
+                    Text(last.map { $0.kind == DmFiles.kind ? DmFiles.lastLine([$0.file].compactMap { $0 }) : $0.text } ?? Notes.emptyLine)
+                        .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -196,6 +252,7 @@ struct ThreadRow: View {
         let named = model.dms?.threads().flatMap { model.dms?.thread($0.conv) ?? [] }.first { !$0.mine && $0.fromName != nil && MailThreads.isMail($0.conv) && MailThreads.address($0.conv) == a }?.fromName
         return named ?? a
     }
+    if Notes.isNotes(conv, me: model.me) { return Notes.title }
     return MailThreads.peers(conv).map(model.name).joined(separator: ", ")
 }
 
@@ -271,10 +328,18 @@ struct ConversationView: View {
         // replies sit under their root (one-shape.md §3); one whose root isn't here shows in line
         let split = DmThreads.split(list)
         let canThread = !mail && !locked
+        let notes = Notes.isNotes(conv, me: model.me)
         ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
-                if list.isEmpty, !locked {
+                // Notes: one fixed first line, sealed or not (boards one-shape/notes-empty, notes-unsealed)
+                if notes, !locked {
+                    Label(sealed != nil ? Notes.sealedLine : Notes.plainLine, systemImage: sealed != nil ? "lock.fill" : "person.crop.circle")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 8)
+                        .accessibilityIdentifier("notes-line")
+                } else if list.isEmpty, !locked {
                     Text(mail ? "A new e-mail to \(MailThreads.address(conv)): its subject names the thread. It goes out from \(model.dms?.myAddress ?? "your address here"); answers land in the thread."
                          : "No messages yet. Only you two can read them.")
                         .font(.callout).foregroundStyle(.secondary).padding()
@@ -317,7 +382,7 @@ struct ConversationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             // a person: their face and name, a tap pushes their profile (board home/conversation)
-            if !mail, MailThreads.peers(conv).count == 1, let peer = MailThreads.peers(conv).first, isHex64(peer) {
+            if !mail, !notes, MailThreads.peers(conv).count == 1, let peer = MailThreads.peers(conv).first, isHex64(peer) {
                 ToolbarItem(placement: .principal) {
                     // the face and the name push the profile; the small lock by the name of a sealed
                     // conversation pushes the Encryption screen (board messages/encryption-thread)
@@ -405,7 +470,7 @@ struct ConversationView: View {
                     .composerBackground(compact: false)
             } else {
             VStack(spacing: 6) {
-                if !mail, model.sealedConv(conv) == nil { TypingLine(center: model.typing, place: Typing.place(conv: conv)).padding(.horizontal, -12) }
+                if !mail, !notes, model.sealedConv(conv) == nil { TypingLine(center: model.typing, place: Typing.place(conv: conv)).padding(.horizontal, -12) }
                 // a refusal to send unlocked is a quiet grey line, the text stays in the box; a failure is red
                 if let error { Text(error).font(.caption).foregroundStyle([DirectMessages.cantCheck, Sealed.tooLong].contains(error) ? Color.secondary : Color.red).multilineTextAlignment(.center) }
                 if MailThreads.isNewMail(conv) {
@@ -418,7 +483,7 @@ struct ConversationView: View {
                 HStack(alignment: .bottom, spacing: 8) {
                 if !mail { DmAddMenu(conv: conv, error: $error) }
                 HStack(alignment: .bottom, spacing: 0) {
-                    TextField(mail ? (MailThreads.isNewMail(conv) ? "Write an e-mail" : "Reply by e-mail") : "Message", text: $text, axis: .vertical)
+                    TextField(mail ? (MailThreads.isNewMail(conv) ? "Write an e-mail" : "Reply by e-mail") : (notes ? "Note to myself" : "Message"), text: $text, axis: .vertical)
                         .font(.body)
                         .lineLimit(1...8)
                         .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 8)

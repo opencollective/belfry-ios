@@ -403,6 +403,38 @@ final class SealedEngineTests: XCTestCase {
         return (phone, mac)
     }
 
+    /// Notes to myself (one-shape.md): the conversation with only me. One wrap, to my own head
+    /// letterbox, its rumor naming my account in its one p tag; my other device reads it.
+    func testNotesToMyself() async throws {
+        let b = FakeBelfry()
+        let fresh = try b.signIn("carol", "phone")
+        XCTAssertFalse(fresh.sealed.isSealed(Notes.conv(fresh.account)), "no chain yet: not sealed")
+        let (phone, mac) = try await pair(b, "alice")
+        mac.sealed.takeKeys()
+        let conv = Notes.conv(phone.account)
+        XCTAssertEqual(conv, "n:" + phone.account)
+        XCTAssertTrue(phone.sealed.isSealed(conv), "sealed as soon as I have a chain")
+        let dms = DirectMessages(engine: phone.engine)
+        dms.sealed = phone.sealed
+        let before = Set(b.all().map(\.id))
+        try await dms.send("Buy nails", in: conv)
+        await b.sync()
+        let new = b.all().filter { !before.contains($0.id) && $0.kind == 1059 }
+        XCTAssertEqual(new.count, 1, "self as the only recipient: one wrap")
+        XCTAssertEqual(new.first?.tagValues("p"), [phone.account])
+        XCTAssertNotNil(new.first?.tag("lb"), "sealed by the device")
+        let note = try XCTUnwrap(dms.thread(conv).first)
+        XCTAssertTrue(note.mine)
+        XCTAssertEqual(dms.threads().first { $0.conv == conv }?.unread, 0, "never unread")
+        let rumor = try XCTUnwrap(note.rumor.flatMap { try? JSONDecoder().decode(NostrEvent.self, from: Data($0.utf8)) })
+        XCTAssertEqual(rumor.tags.filter { $0.first == "p" }, [["p", phone.account]], "exactly one p: my account")
+        XCTAssertEqual(rumor.kind, 14)
+        let macDms = DirectMessages(engine: mac.engine)
+        macDms.sealed = mac.sealed
+        await macDms.process()
+        XCTAssertEqual(macDms.thread(conv).map(\.text), ["Buy nails"])
+    }
+
     func testRemoveRevokesFirstAndChangesNothingWhenThatFails() async throws {
         let b = FakeBelfry()
         let (phone, mac) = try await pair(b, "alice")

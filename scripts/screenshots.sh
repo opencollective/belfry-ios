@@ -235,6 +235,9 @@ shot 72-members-invite membersinvite light
 shot 178-link-boxes linkboxes light
 shot 178b-link-boxes-dark linkboxes dark
 # 2026-11-20: end-to-end encrypted conversations (boards messages/encryption-*), demo data only
+shot 179-notes-empty notesempty light
+shot 179b-notes-empty-dark notesempty dark
+shot 179c-notes-unsealed notesunsealed light
 shot 180-enc-thread encthread light
 shot 180b-enc-thread-dark encthread dark
 shot 181-enc-devices encdevices light

@@ -326,7 +326,10 @@ extension AppModel {
                 }
             }
         }
-        for t in dms.threads() {
+        // Notes to myself: sealed as soon as I have a chain, also before the first note
+        let notes = Notes.conv(me)
+        if se.isSealed(notes) { st.convs[notes] = SealedConv(since: se.sealedSince(notes), others: []) }
+        for t in dms.threads() where t.conv != notes {
             let conv = t.conv
             if MailThreads.isMail(conv) {
                 // my e-mail is sealed as soon as my chain is ready; the correspondent is not on this belfry
@@ -428,6 +431,7 @@ extension Demo {
             MyDevice(id: "this", name: "iPhone", kind: .phone, added: now - 100 * day, this: true),
             MyDevice(id: "mac", name: "Safari on Mac", kind: .computer, added: now - 49 * day, from: "iPhone"),
         ]
+        if screen != "notesunsealed" { s.convs[Notes.conv(me)] = SealedConv(others: []) }
         let lina = "n:" + pk("lina")
         s.convs[lina] = SealedConv(
             others: [SealedPerson(id: pk("lina"), devices: 2, changeAdded: false, changeAt: now - 3 * 3600)],

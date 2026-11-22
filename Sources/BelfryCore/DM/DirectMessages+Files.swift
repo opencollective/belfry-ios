@@ -58,7 +58,7 @@ extension DirectMessages {
         let limit = guest ? DmFiles.guestMaxBytes : DmFiles.maxBytes
         guard files.allSatisfy({ $0.data.count <= limit }) else { throw BelfryError.invalid(DmFiles.tooLarge(guest: guest)) }
         let to = MailThreads.peers(conv).filter { $0 != me }
-        guard !files.isEmpty, !to.isEmpty, to.allSatisfy(isHex64) else { throw BelfryError.invalid("This is not a valid Nostr key.") }
+        guard !files.isEmpty, !to.isEmpty || Notes.isNotes(conv, me: me), to.allSatisfy(isHex64) else { throw BelfryError.invalid("This is not a valid Nostr key.") }
         onSend?()
         let text = caption?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let group = files.count > 1 || !text.isEmpty ? DmFiles.freshGroup() : nil
@@ -132,7 +132,7 @@ extension DirectMessages {
                     updateQueue { $0[id] = done }
                 }
                 let to = MailThreads.peers(q.conv).filter { $0 != me }
-                let rumor = GiftWrap.rumor(kind: DmFiles.kind, pubkey: me, tags: DmFiles.tags(others: to, file: q.file), content: q.file.url, createdAt: q.createdAt)
+                let rumor = GiftWrap.rumor(kind: DmFiles.kind, pubkey: me, tags: DmFiles.tags(others: tagged(q.conv), file: q.file), content: q.file.url, createdAt: q.createdAt)
                 if q.rid == nil {
                     q.rid = rumor.id
                     let named = q

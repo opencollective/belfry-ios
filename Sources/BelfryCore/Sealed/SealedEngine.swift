@@ -528,7 +528,14 @@ public final class SealedEngine: @unchecked Sendable {
     public func isSealed(_ conv: String, now: Int = .now) -> Bool {
         lock.lock(); let known = memory.sealed[conv] != nil; lock.unlock()
         if known { return true }
-        guard let people = SealedEngine.people(conv, me: me), people.allSatisfy({ chain($0)?.ready == true }) else { return false }
+        guard let people = SealedEngine.people(conv, me: me) else { return false }
+        if people == [me] {
+            // Notes to myself (one-shape.md): sealed as soon as I have a chain, WITHOUT waiting for
+            // `ready`: the only reader is me. A device of mine outside the head waits to be added.
+            guard chain(me) != nil else { return false }
+        } else {
+            guard people.allSatisfy({ chain($0)?.ready == true }) else { return false }
+        }
         remember { $0.sealed[conv] = now }
         observe(people, now: now)
         return true

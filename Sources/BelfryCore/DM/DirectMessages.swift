@@ -447,7 +447,8 @@ public final class DirectMessages: @unchecked Sendable {
         try engine.guestMode.check()
         guard d.kind == 14 || d.kind == DmFiles.kind, d.pending != true else { return }
         let others = MailThreads.peers(d.conv).filter { $0 != me }
-        guard !others.isEmpty, others.allSatisfy(isHex64) else { return }
+        // (in Notes there is nobody else: the reaction goes to me alone)
+        guard !others.isEmpty || Notes.isNotes(d.conv, me: me), others.allSatisfy(isHex64) else { return }
         lock.lock()
         let mine = reactions.mine(d.rid, emoji: emoji, viewer: me)
         lock.unlock()
@@ -507,6 +508,13 @@ public final class DirectMessages: @unchecked Sendable {
         return (conv, r.pubkey, r.createdAt, Typing.isStop(r.tags))
     }
 
+    /// The accounts a rumor of CONV names in its `p` tags: the others; in Notes (the conversation
+    /// whose only participant is me) exactly one, my own account. It is still wrapped once, to me.
+    func tagged(_ conv: String) -> [String] {
+        let others = MailThreads.peers(conv).filter { $0 != me }
+        return others.isEmpty && Notes.isNotes(conv, me: me) ? [me] : others
+    }
+
     /// A NIP-17 message in a Nostr conversation. GROUP: the caption of files sent with it.
     /// ROOT: a reply in that message's thread (["e", root, "", "root"]), wrapped like any other.
     public func send(_ text: String, in conv: String, group: String? = nil, root: String? = nil) async throws {
@@ -514,7 +522,7 @@ public final class DirectMessages: @unchecked Sendable {
         onSend?()
         let to = MailThreads.peers(conv).filter { $0 != me }
         guard to.allSatisfy(isHex64) else { throw BelfryError.invalid("This is not a valid Nostr key.") }
-        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: to.map { ["p", $0] } + (group.map { [["group", $0]] } ?? []) + (root.map { [DmThreads.rootTag($0)] } ?? []),
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: tagged(conv).map { ["p", $0] } + (group.map { [["group", $0]] } ?? []) + (root.map { [DmThreads.rootTag($0)] } ?? []),
                                    content: text, createdAt: group == nil ? .now : engine.nextCreatedAt())
         var d = Dm(rid: rumor.id, conv: conv, from: me, mine: true, at: rumor.createdAt, kind: 14, text: text)
         d.group = group
@@ -645,7 +653,9 @@ public final class DirectMessages: @unchecked Sendable {
     }
 
     public func outboxFailed(_ item: OutboxItem) {
-        guard let rid = item.dm, item.tags.contains(where: { $0.first == "p" && $0.count > 1 && $0[1] != me }) else { return }
+        // (a wrap to me alone only counts for a note: there it is the one wrap)
+        lock.lock(); let note = item.dm.flatMap { items[$0] }.map { Notes.isNotes($0.conv, me: me) } ?? false; lock.unlock()
+        guard let rid = item.dm, note || item.tags.contains(where: { $0.first == "p" && $0.count > 1 && $0[1] != me }) else { return }
         lock.lock()
         items[rid]?.failed = item.error ?? "The relay refused it."
         if let e = items[rid]?.emailId { reports[e] = DeliveryReport(status: "failed", details: "The relay refused it.") }
