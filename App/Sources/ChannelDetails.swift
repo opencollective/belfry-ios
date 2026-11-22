@@ -289,6 +289,15 @@ struct SettingsTab: View {
                     .accessibilityAddTraits(join == a ? .isSelected : [])
                 }
             }
+            // who can read its page on the web is another setting; a private group has none
+            if join != .private {
+                Section {
+                    accessRow(.members, icon: "lock", title: "Members only", line: "Everyone with a pass in this belfry")
+                    accessRow(.public, icon: "globe", title: "Public", line: "Anyone on the web can read it. Only members write.")
+                } header: { Text("Who can read it") } footer: {
+                    Text("A change counts from now on. Messages keep the visibility they were posted with.")
+                }
+            }
         } else if g?.type == .channel { whoReads(g) }
         if g?.isPod == true && join == .closed {
             // a closed group's question and how requests are accepted (web ClosedFields)
@@ -352,6 +361,7 @@ struct SettingsTab: View {
                     model.editGroupMeta(id, name: n, about: a, closed: access == .closed, prompt: g.prompt ?? "")
                 } else { model.editChannel(id, name: n, about: a, inbox: nil) }
                 if g?.type == .channel { model.setVisibility(id, public: access == .public) }
+                else if g?.isPod == true { model.setVisibility(id, public: access == .public && join != .private) }
                 if g?.type == .channel { model.setPosts(id, posts.isEmpty ? nil : posts) }
                 if Actions.inboxToSend(chosen: inbox, reads: model.derive.isInbox(g), touched: inboxTouched) { model.editChannelInbox(id, inbox) }
                 dismiss()
@@ -382,6 +392,8 @@ struct SettingsTab: View {
             vouches = g.vouches
             access = model.derive.channelAccess(g)
             join = g.isPrivate ? .private : g.closed ? .closed : .open
+            // a group's page: public or members only (closed or not is "Who can join")
+            if g.isPod { access = model.derive.isPublic(g) ? .public : .members }
             posts = model.derive.webPage(g)?.posts ?? ""
             if model.launch.screen == "chpublic" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { askPublic = true } }
         }

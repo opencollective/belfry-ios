@@ -1664,6 +1664,54 @@ final class SealedAutoAddTests: XCTestCase {
         XCTAssertEqual(AutoAdd.addedLately(c, now: now + 86400 + 400), 0)
     }
 
+    /// Two devices of mine see the same request (5.2 step 2): the new device ends in the head
+    /// once, and holds the keys, whether the second one looks after the first one's roster
+    /// arrived or both act before seeing each other.
+    func testTwoHeadsOneRequest() async throws {
+        for together in [false, true] {
+            let b = FakeBelfry()
+            let phone = try await head(b)
+            let mac = try b.signIn("alice", "mac")
+            mac.sealed.autoAdd = true
+            await b.sync()
+            await mac.sealed.maintain(now: now + 10)
+            await b.sync()
+            await phone.sealed.maintain(now: now + 20)   // the phone adds the mac
+            await b.sync()
+            mac.sealed.takeKeys()
+            await mac.sealed.maintain(now: now + 30)
+            await b.sync()
+            XCTAssertEqual(mac.sealed.mine, .inside)
+            // a third device asks; both heads see it
+            let pad = try b.signIn("alice", "pad")
+            await b.sync()
+            await pad.sealed.maintain(now: now + 100)
+            await b.sync()
+            if together {
+                await phone.sealed.maintain(now: now + 110)
+                await mac.sealed.maintain(now: now + 110)   // before the phone's roster reached it
+                await b.sync()
+            } else {
+                await phone.sealed.maintain(now: now + 110)
+                await b.sync()
+                await mac.sealed.maintain(now: now + 120)
+                await b.sync()
+            }
+            // a round of upkeep for whatever was left open (a roster that lost, keys still to hand)
+            for d in [phone, mac] { await d.sealed.maintain(now: now + 200); await b.sync() }
+            pad.sealed.takeKeys()
+            for d in [phone, mac, pad] {
+                let c = try XCTUnwrap(d.sealed.chain(d.account), "together=\(together)")
+                XCTAssertEqual(c.devices.filter { $0 == pad.pub }.count, 1, "together=\(together): in the head once")
+                XCTAssertEqual(Set(c.devices), [phone.pub, mac.pub, pad.pub], "together=\(together)")
+            }
+            XCTAssertEqual(pad.sealed.mine, .inside, "together=\(together)")
+            XCTAssertFalse(pad.sealed.lacksKey, "together=\(together): the keys reached it")
+            let cards = await phone.sealed.asks(now: now + 201)
+            XCTAssertTrue(cards.isEmpty, "together=\(together): no Allow card left")
+        }
+    }
+
     func testThePureConditions() async throws {
         let b = FakeBelfry()
         let phone = try await head(b)
