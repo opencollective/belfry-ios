@@ -26,6 +26,8 @@ def args(screen):
     if screen.startswith("signin-"): return ["-signin", screen[7:]]
     if screen.startswith("guest-"): return ["-guest", screen[6:]]
     if screen.startswith("member-"): return ["-demo", "-member", "-screen", screen[7:]]
+    # a to-do's levels (one shape): todo-pulled, todo-folded, todo-done
+    if screen.startswith("todo-"): return ["-demo", "-screen", "todo", "-todo", screen[5:]]
     if screen == "join": return ["-join"]
     if screen == "join-member": return ["-join", "member"]
     return ["-demo", "-screen", screen]

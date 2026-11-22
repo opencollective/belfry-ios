@@ -75,7 +75,10 @@ struct ChannelPlaceView: View {
             guard place == .todos, ["todo", "todoassign"].contains(model.launch.screen ?? "") else { return }
             for _ in 0..<40 {
                 if todo != nil { return }
-                if let t = model.derive.tasks(id).first(where: { !$0.done }) {
+                // -todo done: the done one (canvas one-shape/todo-done)
+                let args = ProcessInfo.processInfo.arguments
+                let wantDone = args.firstIndex(of: "-todo").map { $0 + 1 < args.count && args[$0 + 1] == "done" } ?? false
+                if let t = model.derive.tasks(id).first(where: { $0.done == wantDone }) {
                     try? await Task.sleep(for: .milliseconds(600))
                     todo = TodoKey(group: id, task: t.id)
                     return

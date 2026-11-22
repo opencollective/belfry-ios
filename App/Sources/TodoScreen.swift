@@ -64,14 +64,16 @@ struct TodoTick: View {
     @EnvironmentObject var model: AppModel
     let t: TodoTask
     let group: String
+    /// The tap target (the header's tick is smaller: the navigation bar is 44 pt high).
+    var size: CGFloat = 44
     var body: some View {
         BusyButton {
             model.todo(t, in: group, t.done ? "undone" : "done")
         } label: {
             Image(systemName: t.done ? "checkmark.circle.fill" : t.assignee != nil ? "circle.dotted.circle" : "circle")
-                .font(.title2)
+                .font(size < 44 ? .title3 : .title2)
                 .foregroundStyle(t.done ? Color.green : t.assignee != nil ? Color.orange : Color.secondary)
-                .frame(width: 44, height: 44)
+                .frame(width: size, height: size)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -81,8 +83,15 @@ struct TodoTick: View {
     }
 }
 
-/// One to-do: what it is, who is on it (claim, assign to someone, unassign), done or not, where it
-/// came from, and its discussion (2103 comments). The ⋯ menu deletes it (its author only).
+/// One to-do in one shape (canvas one-shape/todo-mid, todo-conversation, todo-pulled, todo-done,
+/// 2026-11-22). The header is the tick and the title, then one icon row: who is on it (a person
+/// icon and a name, or "Unassigned"), comments, files, photos; no due date. Three levels: folded
+/// (the header, then the conversation), mid (the default while it needs me, i.e. open and on me
+/// or on nobody: the due line and two lines of the description + More) and pulled (tap the
+/// header or More: the due line, the whole description, the message it came from). The
+/// conversation weaves the quiet lines (made, took it, assigned, done, set the due date) into the
+/// comments; "Comment" is at the bottom. Done = the tick, no Done button. Claim, assign, the due
+/// date and delete are in •••.
 struct TodoScreen: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
@@ -92,6 +101,9 @@ struct TodoScreen: View {
     @State private var comment = ""
     @State private var askDelete = false
     @State private var picking = false
+    @State private var dueOpen = false
+    /// nil = the default for this to-do (mid while it needs me, else folded).
+    @State private var level: TodoLevel?
     @FocusState private var commentFocused: Bool
 
     var body: some View {
@@ -109,120 +121,45 @@ struct TodoScreen: View {
 
     @ViewBuilder private func content(_ t: TodoTask, _ d: Derive) -> some View {
         let locked = model.locked(key.group) || model.guestReading
-        let mine = t.assignee == model.me
-        List {
-            Section {
-                HStack(alignment: .top, spacing: 6) {
-                    TodoTick(t: t, group: key.group)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(MarkdownText.plainLinks(t.title)).font(.title3.weight(.semibold)).strikethrough(t.done)
-                            .accessibilityIdentifier("todo-title")
-                        Text("In \(channelName) · made by \(t.author == model.me ? "you" : model.name(t.author))")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 10)
+        let lv = level ?? TodoLevel.start(t, me: model.me)
+        let lines = d.todoLines(key.group, t.id)
+        let about = d.todoDescription(key.group, t)
+        ScrollViewReader { proxy in
+            List {
+                if lv != .folded {
+                    TodoTop(t: t, group: key.group, about: about, pulled: lv == .pulled, mayEdit: t.author == model.me && !locked, go: go,
+                            more: { withAnimation(.snappy) { level = .pulled } }, due: { hideKeyboard(); dueOpen = true })
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color(uiColor: .secondarySystemBackground))
                 }
-                if t.pending { Label("Not sent yet", systemImage: "clock").font(.footnote).foregroundStyle(.secondary) }
-            }
-
-            Section("Who is on it") {
-                HStack(spacing: 12) {
-                    if let a = t.assignee { Avatar(pubkey: a, size: 32) } else {
-                        Image(systemName: "person.crop.circle.badge.questionmark").font(.title2).foregroundStyle(.secondary).frame(width: 32, height: 32)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(d.todoWho(t)).font(.body)
-                        if t.isWorking(now: Int.now), let since = t.workingSince {
-                            HStack(spacing: 6) { WorkingRing(since: since); Text("Working on it now").font(.footnote).foregroundStyle(.secondary) }
-                        }
-                    }
+                if t.pending {
+                    Label("Not sent yet", systemImage: "clock").font(.footnote).foregroundStyle(.secondary).listRowSeparator(.hidden)
                 }
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("todo-who")
-                if !locked && !t.done {
-                    if !mine {
-                        ActionButtonRow(icon: "hand.raised", title: t.assignee == nil ? "Claim it" : "Take it over",
-                                        detail: t.assignee == nil ? "Put it on you" : nil) {
-                            model.assignTodo(t, in: key.group, to: model.me)
-                        }
-                        .accessibilityIdentifier("todo-claim")
-                    }
-                    Button { hideKeyboard(); picking = true } label: {
-                        HStack { ActionRow(icon: "person.badge.plus", title: "Assign to…"); Spacer(); Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary) }
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("todo-assign")
-                    if t.assignee != nil {
-                        ActionButtonRow(icon: "person.crop.circle.badge.minus", title: mine ? "Let it go" : "Unassign",
-                                        detail: mine ? "Nobody is on it then" : "Take it off \(model.name(t.assignee!))") {
-                            model.assignTodo(t, in: key.group, to: nil)
-                        }
-                        .accessibilityIdentifier("todo-unassign")
+                ForEach(Array(TodoDay.group(lines).enumerated()), id: \.offset) { _, day in
+                    Text(day.title).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity).listRowSeparator(.hidden)
+                    ForEach(day.lines) { l in
+                        TodoLineRow(line: l, group: key.group).listRowSeparator(.hidden).id(l.id)
                     }
                 }
             }
-
-            if let src = t.source {
-                Section {
-                    if let go {
-                        Button { go(.thread(src)) } label: { ActionRow(icon: "bubble.left.and.bubble.right", title: "Open its thread", detail: "Made from a message") }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("todo-thread")
-                    } else {
-                        NavigationLink(value: ChatRoute(id: key.group, focus: src)) {
-                            ActionRow(icon: "bubble.left.and.bubble.right", title: "Open its message", detail: "Made from a message")
-                        }
-                        .accessibilityIdentifier("todo-thread")
-                    }
-                }
-            }
-
-            Section {
-                if t.comments.isEmpty { Text("No comments yet. Ask, plan or report here.").foregroundStyle(.secondary) }
-                ForEach(Array(t.comments.enumerated()), id: \.offset) { _, c in
-                    HStack(alignment: .top, spacing: 10) {
-                        Avatar(pubkey: c.author, size: 28)
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 6) {
-                                Text(c.author == model.me ? "You" : model.name(c.author)).font(.subheadline.weight(.semibold))
-                                Text(Format.ago(c.at)).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Text(MarkdownText.plainLinks(c.text)).font(.body)
-                        }
-                    }
-                }
-                if !locked {
-                    HStack(alignment: .bottom, spacing: 8) {
-                        TextField("Add a comment", text: $comment, axis: .vertical).font(.body).lineLimit(1...5)
-                            .focused($commentFocused)
-                            .accessibilityIdentifier("todo-comment")
-                        BusyButton {
-                            let text = comment.jsTrim()
-                            guard !text.isEmpty else { return }
-                            model.commentTodo(t, in: key.group, text: text)
-                            comment = ""
-                        } label: { Image(systemName: "arrow.up.circle.fill").font(.title2) }
-                        .buttonStyle(.borderless)
-                        .disabled(comment.jsTrim().isEmpty)
-                        .accessibilityLabel("Send the comment")
-                    }
-                }
-            } header: { Text(t.comments.isEmpty ? "Discussion" : "Discussion · \(t.comments.count)") }
+            .listStyle(.plain)
+            .scrollDismissesKeyboard(.interactively)
+            .onAppear { if let last = lines.last { proxy.scrollTo(last.id, anchor: .bottom) } }
+            .onChange(of: lines.count) { _, _ in if let last = lines.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } } }
         }
-        .listStyle(.insetGrouped)
-        .navigationTitle("To-do")
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !locked { commentBar(t) }
+        }
+        .navigationTitle(t.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if t.author == model.me && !locked {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button(role: .destructive) { askDelete = true } label: { Label("Delete the to-do", systemImage: "trash") }
-                    } label: { Image(systemName: "ellipsis.circle") }
-                    .accessibilityLabel("More")
-                    .accessibilityIdentifier("todo-more")
+            ToolbarItem(placement: .principal) {
+                TodoHeader(t: t, group: key.group, open: lv == .pulled) {
+                    withAnimation(.snappy) { level = lv == .pulled ? (TodoLevel.start(t, me: model.me) == .mid ? .mid : .folded) : .pulled }
                 }
             }
+            if !locked { ToolbarItem(placement: .topBarTrailing) { moreMenu(t) } }
         }
         .confirmationDialog("Delete this to-do?", isPresented: $askDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
@@ -231,13 +168,334 @@ struct TodoScreen: View {
             }
         } message: { Text("It goes for everyone in \(channelName).") }
         .navigationDestination(isPresented: $picking) { AssignPicker(key: key).overRoot() }
+        .navigationDestination(isPresented: $dueOpen) { TodoDueScreen(key: key).overRoot() }
         .onAppear {
             if model.launch.screen == "todoassign" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { picking = true } }
+            // screenshots: -todo pulled | folded
+            let args = ProcessInfo.processInfo.arguments
+            if let i = args.firstIndex(of: "-todo"), i + 1 < args.count, level == nil {
+                level = args[i + 1] == "pulled" ? .pulled : args[i + 1] == "folded" ? .folded : nil
+            }
         }
+    }
+
+    /// Claim / take over, assign, unassign, the due date (its author), delete (its author).
+    private func moreMenu(_ t: TodoTask) -> some View {
+        let mine = t.assignee == model.me
+        return Menu {
+            if !t.done {
+                if !mine {
+                    Button { model.assignTodo(t, in: key.group, to: model.me) } label: {
+                        Label(t.assignee == nil ? "Claim it" : "Take it over", systemImage: "hand.raised")
+                    }
+                }
+                Button { hideKeyboard(); picking = true } label: { Label("Assign to…", systemImage: "person.badge.plus") }
+                if t.assignee != nil {
+                    Button { model.assignTodo(t, in: key.group, to: nil) } label: {
+                        Label(mine ? "Let it go" : "Unassign", systemImage: "person.crop.circle.badge.minus")
+                    }
+                }
+            }
+            if t.author == model.me {
+                Button { hideKeyboard(); dueOpen = true } label: {
+                    Label(t.due == nil ? "Add a due date" : "Change the due date", systemImage: "calendar")
+                }
+                Divider()
+                Button(role: .destructive) { askDelete = true } label: { Label("Delete the to-do", systemImage: "trash") }
+            }
+        } label: { Image(systemName: "ellipsis.circle") }
+        .accessibilityLabel("More")
+        .accessibilityIdentifier("todo-more")
+    }
+
+    private func commentBar(_ t: TodoTask) -> some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            TextField("Comment", text: $comment, axis: .vertical).font(.body).lineLimit(1...5)
+                .focused($commentFocused)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .accessibilityIdentifier("todo-comment")
+            BusyButton {
+                let text = comment.jsTrim()
+                guard !text.isEmpty else { return }
+                model.commentTodo(t, in: key.group, text: text)
+                comment = ""
+            } label: { Image(systemName: "arrow.up.circle.fill").font(.title) }
+            .buttonStyle(.borderless)
+            .disabled(comment.jsTrim().isEmpty)
+            .accessibilityLabel("Send the comment")
+        }
+        .padding(.horizontal).padding(.vertical, 8)
+        .background(.bar)
     }
 
     private var channelName: String {
         model.derive.label(key.group)
+    }
+}
+
+enum TodoLevel {
+    case folded, mid, pulled
+    /// Mid while it needs me (open, on me or on nobody), else folded.
+    static func start(_ t: TodoTask, me: String) -> TodoLevel {
+        !t.done && (t.assignee == nil || t.assignee == me) ? .mid : .folded
+    }
+}
+
+/// "Due Sat 28 Nov, 9 AM", "Done Sat 28 Nov", the feed's day titles.
+enum TodoFormat {
+    static func day(_ at: Int) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_GB")
+        f.setLocalizedDateFormatFromTemplate("EEEdMMM")
+        return f.string(from: Date(timeIntervalSince1970: TimeInterval(at))).replacingOccurrences(of: ",", with: "")
+    }
+
+    static func time(_ at: Int) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(at))
+        let min = Calendar.current.component(.minute, from: date)
+        return date.formatted(min == 0 ? .dateTime.hour() : .dateTime.hour().minute())
+    }
+
+    static func due(_ at: Int) -> String { day(at) + ", " + time(at) }
+
+    /// The spoken date: "Saturday 28 November, 9 AM".
+    static func spoken(_ at: Int) -> String {
+        Date(timeIntervalSince1970: TimeInterval(at)).formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute())
+    }
+}
+
+/// The lines of one day.
+struct TodoDay {
+    let title: String
+    let lines: [TodoEntry]
+
+    static func group(_ lines: [TodoEntry]) -> [TodoDay] {
+        var out = [TodoDay]()
+        let cal = Calendar.current
+        for l in lines {
+            let date = Date(timeIntervalSince1970: TimeInterval(l.at))
+            let title = cal.isDateInToday(date) ? "Today" : cal.isDateInYesterday(date) ? "Yesterday" : TodoFormat.day(l.at)
+            if let last = out.last, last.title == title { out[out.count - 1] = TodoDay(title: title, lines: last.lines + [l]) }
+            else { out.append(TodoDay(title: title, lines: [l])) }
+        }
+        return out
+    }
+}
+
+/// The header in the navigation bar: the tick (its own button) and the title, then the icon row.
+/// A tap on the title opens or closes the pulled level.
+struct TodoHeader: View {
+    @EnvironmentObject var model: AppModel
+    let t: TodoTask
+    let group: String
+    let open: Bool
+    let tap: () -> Void
+
+    var body: some View {
+        HStack(spacing: 2) {
+            TodoTick(t: t, group: group, size: 30)
+            Button(action: tap) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(MarkdownText.plainLinks(t.title)).font(.headline).strikethrough(t.done).foregroundStyle(.primary).lineLimit(1)
+                        .accessibilityIdentifier("todo-title")
+                    IconRow(items: items, font: .caption2)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(open ? "Shows less" : "Shows the to-do")
+            .accessibilityIdentifier("todo-header")
+        }
+    }
+
+    private var items: [HeaderItem] {
+        var out = [HeaderItem]()
+        let who = t.assignee.map { $0 == model.me ? "You" : model.name($0) }
+        if t.done {
+            let at = t.doneAt ?? Int.now
+            out.append(HeaderItem(key: "lead", icon: "checkmark", text: "Done " + TodoFormat.day(at), label: "Done on " + TodoFormat.spoken(at), tint: .green))
+            if let who { out.append(HeaderItem(key: "owner", icon: "person", text: who, label: "Done by " + who)) }
+        } else if let who {
+            out.append(HeaderItem(key: "lead", icon: "person", text: who, label: "Assigned to " + who, tint: .primary))
+        } else {
+            out.append(HeaderItem(key: "lead", icon: "person", text: "Unassigned", label: "Unassigned"))
+        }
+        if let c = HeaderItem.count("comments", "bubble.left", t.comments.count, "comment", "comments") { out.append(c) }
+        return out
+    }
+}
+
+/// Mid: the due line, two lines of the description and More. Pulled: the due line (or "Add a due
+/// date" for its author), the whole description, the message it came from.
+struct TodoTop: View {
+    @EnvironmentObject var model: AppModel
+    let t: TodoTask
+    let group: String
+    let about: String?
+    let pulled: Bool
+    let mayEdit: Bool
+    var go: ((LogGo) -> Void)?
+    let more: () -> Void
+    let due: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if pulled {
+                Text("THE TO-DO").font(.caption.weight(.semibold)).foregroundStyle(.secondary).accessibilityAddTraits(.isHeader)
+            }
+            if let at = t.due {
+                Button(action: due) {
+                    Label("Due " + TodoFormat.due(at), systemImage: "calendar").font(.subheadline).foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .disabled(!mayEdit)
+                .accessibilityLabel("Due " + TodoFormat.spoken(at))
+                .accessibilityIdentifier("todo-due")
+            } else if pulled && mayEdit {
+                Button(action: due) { Label("Add a due date", systemImage: "calendar.badge.plus").font(.subheadline) }
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("todo-due-add")
+            }
+            if let about {
+                Text(MarkdownText.plainLinks(about)).font(.body).lineLimit(pulled ? nil : 2)
+                if !pulled {
+                    Button("More", action: more).font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
+                        .accessibilityIdentifier("todo-more-text")
+                }
+            }
+            if pulled, let src = t.source {
+                let who = model.derive.message(group, src).map { model.name($0.ev.pubkey) }
+                let title = who.map { "From \($0)'s message" } ?? "From a message"
+                if let go {
+                    Button { go(.thread(src)) } label: { sourceLabel(title) }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("todo-thread")
+                } else {
+                    NavigationLink(value: ChatRoute(id: group, focus: src)) { sourceLabel(title) }
+                        .accessibilityIdentifier("todo-thread")
+                }
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func sourceLabel(_ title: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "bubble.left.and.bubble.right")
+            Text(title)
+            Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+        }
+        .font(.footnote).foregroundStyle(Color.brand)
+    }
+}
+
+/// A comment (face, name, time, text) or a quiet line (icon, bold name, what happened, time).
+struct TodoLineRow: View {
+    @EnvironmentObject var model: AppModel
+    let line: TodoEntry
+    let group: String
+
+    var body: some View {
+        if case .comment(let text) = line.what {
+            HStack(alignment: .top, spacing: 10) {
+                Avatar(pubkey: line.author, size: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(who(line.author)).font(.subheadline.weight(.semibold))
+                        Text(TodoFormat.time(line.at)).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text(MarkdownText.plainLinks(text)).font(.body)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: icon).font(.footnote).foregroundStyle(tint).frame(width: 20)
+                (Text(who(line.author)).fontWeight(.semibold) + Text(" " + words) + Text("  " + TodoFormat.time(line.at)).foregroundColor(.secondary))
+                    .font(.footnote)
+            }
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func who(_ pk: String) -> String { pk == model.me ? "You" : model.name(pk) }
+
+    private var icon: String {
+        switch line.what {
+        case .made: return "checklist"
+        case .claimed, .assigned: return "person"
+        case .unassigned, .letGo: return "person.crop.circle.badge.minus"
+        case .done: return "checkmark.circle.fill"
+        case .reopened: return "arrow.uturn.backward.circle"
+        case .due: return "calendar"
+        case .comment: return "bubble.left"
+        }
+    }
+
+    private var tint: Color { if case .done = line.what { return .green }; return .secondary }
+
+    private var words: String {
+        switch line.what {
+        case .made(let from): return from.map { "made this to-do from " + ($0 == model.me ? "your" : model.name($0) + "'s") + " message" } ?? "made this to-do"
+        case .claimed: return "took it"
+        case .assigned(let to): return "assigned it to " + (to == model.me ? "you" : model.name(to))
+        case .unassigned(let p): return "took it off " + (p == model.me ? "you" : model.name(p))
+        case .letGo: return "let it go"
+        case .done: return "marked it done"
+        case .reopened: return "reopened it"
+        case .due(let at): return at.map { "set the due date to " + TodoFormat.due($0) } ?? "removed the due date"
+        case .comment: return ""
+        }
+    }
+}
+
+/// The due date (its author): a date and time, Save, Remove.
+struct TodoDueScreen: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    let key: TodoKey
+    @State private var date = Date()
+    @State private var loaded = false
+
+    var body: some View {
+        let t = model.derive.tasks(key.group).first { $0.id == key.task }
+        Form {
+            Section {
+                DatePicker("Due", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                    .datePickerStyle(.graphical)
+                    .accessibilityIdentifier("todo-due-picker")
+            }
+            Section {
+                BusyButton {
+                    if let t { model.setTodoDue(t, in: key.group, due: Int(date.timeIntervalSince1970)) }
+                    dismiss()
+                } label: { Text("Save").frame(maxWidth: .infinity) }
+                .buttonStyle(.brand)
+                .listRowBackground(Color.clear)
+                .accessibilityIdentifier("todo-due-save")
+                if t?.due != nil {
+                    BusyButton(role: .destructive) {
+                        if let t { model.setTodoDue(t, in: key.group, due: nil) }
+                        dismiss()
+                    } label: { Text("Remove the due date").frame(maxWidth: .infinity) }
+                    .accessibilityIdentifier("todo-due-remove")
+                }
+            }
+        }
+        .navigationTitle("Due date")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            guard !loaded else { return }
+            loaded = true
+            if let at = t?.due { date = Date(timeIntervalSince1970: TimeInterval(at)) }
+            else {
+                // tomorrow at 9
+                let cal = Calendar.current
+                let tomorrow = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: Date())) ?? Date()
+                date = cal.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) ?? tomorrow
+            }
+        }
     }
 }
 

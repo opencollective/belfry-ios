@@ -27,7 +27,7 @@ MAP = [
     (r"App/Sources/MessageActions", "menu|delete|edit|feed|thread|threadscreen", "testMessageMenu"),
     (r"App/Sources/ThreadView", "thread|threadscreen|mentions", ""),
     (r"App/Sources/(PullDown|ChannelPlaces|ChannelDetails|NotifySheet)", "pull.*|member-pulldown|pinned|chsettings|chvisibility|chpublic|notify|members|membersinvitech|todos|files|log|closedrequests", ""),
-    (r"App/Sources/TodoScreen", "todo.*|mytodos", "testTodoAssign"),
+    (r"App/Sources/(TodoScreen|AppModel\+Due)", "todo.*|mytodos", "testTodoAssign"),
     (r"App/Sources/(TownDrawer|Tabs)", ".*drawer|home|town|calendar|groups", "testDrawerSwipe testDrawerDrag testHomeDrawer testCalendarAndGroupsDrawer"),
     (r"App/Sources/(HomeView|AppModel\+Home)", "home|homedrawer|guest-home|guest-applied|mytodos", "testHomeDrawer"),
     (r"App/Sources/CalendarView", "calendar.*|guest-calendar", ""),

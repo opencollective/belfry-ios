@@ -385,6 +385,10 @@ public struct TodoTask: Hashable, Sendable, Identifiable {
     public var beat: Int?
     /// When the current working stretch began (the ring fills with its minutes).
     public var workingSince: Int?
+    /// When it is due (one shape: ["due", unix seconds] on the 2100 or its author's newest 1010).
+    public var due: Int?
+    /// The time it was made (its 2100).
+    public var madeAt = 0
 
     public static let beatFresh = 300
     /// Someone is on it now: not done, a heartbeat in the last 5 minutes (web isWorking).
@@ -1461,7 +1465,10 @@ public final class Derive {
                 let title = e.content.jsTrim().sliceUnits(300)
                 guard !title.isEmpty else { continue }
                 if tasks[e.id] == nil { order.append(e.id) }
-                tasks[e.id] = TodoTask(id: e.id, title: title, author: e.pubkey, pending: isPending(e.id), source: e.tag("q"))
+                var t = TodoTask(id: e.id, title: title, author: e.pubkey, pending: isPending(e.id), source: e.tag("q"))
+                t.due = TodoDue.parse(e.tags)
+                t.madeAt = e.createdAt
+                tasks[e.id] = t
             } else if e.kind != 2102 {
                 guard let tid = e.tag("e"), var t = tasks[tid] else { continue }
                 if e.kind == 2103 { t.comments.append(TaskComment(author: e.pubkey, text: e.content.sliceUnits(2000), at: e.createdAt)) }
@@ -1498,6 +1505,12 @@ public final class Derive {
             t.beat = b.at
             t.workingSince = stretch[b.task + p]?.start ?? b.at
             tasks[b.task] = t
+        }
+        // the author's newest 1010 edit replaces the tags: its due wins, none clears it
+        for (tid, e) in todoEdits(Set(order)) {
+            guard var t = tasks[tid] else { continue }
+            t.due = TodoDue.parse(e.tags)
+            tasks[tid] = t
         }
         let out = order.compactMap { tasks[$0] }
         tasksCache[groupId] = out

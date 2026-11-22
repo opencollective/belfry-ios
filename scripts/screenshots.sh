@@ -46,6 +46,10 @@ shot 140-todos todos light
 shot 141-todo todo light
 shot 141b-todo-dark todo dark
 shot 142-todo-assign todoassign light
+shot 141c-todo-pulled todo-pulled light
+shot 141d-todo-pulled-dark todo-pulled dark
+shot 141e-todo-done todo-done light
+shot 141f-todo-folded todo-folded light
 shot 143-member-invite join-member light
 shot 143b-member-invite-dark join-member dark
 shot 130-home home light
