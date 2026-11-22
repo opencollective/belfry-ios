@@ -626,8 +626,8 @@ struct RootView: View {
         case "addchannel", "addchanneltyping":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { path.append(PlaceRoute.addChannel) }
-        case "channelpreview": selection = .channel("tools-2b8e")
-        case "channelpin": selection = .channel("tools-2b8e")
+        case "channelpreview": selection = .channel("repair-cafe-91bc")
+        case "channelpin": selection = .channel("repair-cafe-91bc")
         case "homemessages":
             // Home's Messages tile: Messages pushed on Home (‹ only, no ☰)
             model.tab = .home
