@@ -371,7 +371,13 @@ public struct CardState: Hashable, Sendable {
     }
 }
 
-public struct TaskComment: Hashable, Sendable { public let author: String; public let text: String; public let at: Int }
+public struct TaskComment: Hashable, Sendable {
+    public let author: String
+    public let text: String
+    public let at: Int
+    /// Its pictures and files (imeta).
+    public var media: [Media] = []
+}
 
 public struct TodoTask: Hashable, Sendable, Identifiable {
     public let id: String
@@ -1488,7 +1494,10 @@ public final class Derive {
                 tasks[e.id] = t
             } else if e.kind != 2102 {
                 guard let tid = e.tag("e"), var t = tasks[tid] else { continue }
-                if e.kind == 2103 { t.comments.append(TaskComment(author: e.pubkey, text: e.content.sliceUnits(2000), at: e.createdAt)) }
+                if e.kind == 2103 {
+                    let c = Derive.parseMedia(e)
+                    t.comments.append(TaskComment(author: e.pubkey, text: c.text.sliceUnits(2000), at: e.createdAt, media: c.media))
+                }
                 switch e.tag("action") ?? "" {
                 case "claim": t.assignee = e.pubkey; t.assignedBy = nil; t.claimed = true; t.idle = false
                 case "unclaim": if t.assignee == e.pubkey { t.assignee = nil; t.assignedBy = nil; t.claimed = false; t.idle = false }

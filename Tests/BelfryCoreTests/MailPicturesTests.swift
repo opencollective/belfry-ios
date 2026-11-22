@@ -58,3 +58,15 @@ final class MailPicturesTests: XCTestCase {
         XCTAssertFalse(Media(url: "https://b.example.org/abc.pdf", mime: "application/pdf", name: "a.pdf").isImage)
     }
 }
+
+final class TodoPicturesTests: XCTestCase {
+    func testACommentThatIsOnlyAPictureSaysSo() {
+        let pic = Media(url: "https://b.example.org/a.jpg", mime: "image/jpeg")
+        let pdf = Media(url: "https://b.example.org/a.pdf", mime: "application/pdf", name: "a.pdf")
+        XCTAssertEqual(TodoEntry.addedLine([pic]), "added a picture")
+        XCTAssertEqual(TodoEntry.addedLine([pic, pic]), "added 2 pictures")
+        XCTAssertEqual(TodoEntry.addedLine([pdf]), "added a file")
+        XCTAssertEqual(TodoEntry.addedLine([pic, pdf]), "added 2 files")
+        XCTAssertNil(TodoEntry.addedLine([]))
+    }
+}
