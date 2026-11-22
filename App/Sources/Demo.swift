@@ -451,6 +451,7 @@ enum Demo {
                                 text: "Hi Sam,\n\nHere are the pictures from Saturday, and the parts list.\n\nLou", at: now - 26 * 3600,
                                 files: shots + [MailPart(name: "parts-list.pdf", type: "application/pdf", data: Data("%PDF-1.4 demo".utf8))])
         await dms.process()
+        await dms.openLargeMails()
         // board messages/encryption-shared-history: Dev shared the earlier messages with this device
         dms.demoShared(conv: "n:" + ps["dev"]!.pubkey, by: ps["dev"]!.pubkey)
         // board messages/encryption-thread: one message that came without the lock ("Not sealed")

@@ -732,9 +732,27 @@ public final class DirectMessages: @unchecked Sendable {
             }
             raw += "--demo-b--\r\n"
         }
-        let rumor = GiftWrap.rumor(kind: 1301, pubkey: bridgeSigner.pubkey, tags: [["email-id", UUID().uuidString], ["mail-from", MIME.address(sender).address], ["p", me], ["subject", subject], ["belfry-auth", "pass"]], content: raw, createdAt: at)
+        var tags: [Tag] = [["email-id", UUID().uuidString], ["mail-from", MIME.address(sender).address], ["p", me], ["subject", subject], ["belfry-auth", "pass"]]
+        // with files it is a large e-mail (too big for a gift wrap): the rumor is empty and names
+        // the stored copy, which the demo keeps on the device instead of a file server
+        let large = !files.isEmpty
+        if large {
+            tags += [["x", Crypto.sha256(Data(raw.utf8)).hex], ["url", "https://blossom.demo.belfry.sh/" + Crypto.sha256(Data(raw.utf8)).hex],
+                     ["decryption-key", Data(repeating: 1, count: 32).base64EncodedString()], ["decryption-nonce", Data(repeating: 2, count: 12).base64EncodedString()]]
+        }
+        let rumor = GiftWrap.rumor(kind: 1301, pubkey: bridgeSigner.pubkey, tags: tags, content: large ? "" : raw, createdAt: at)
+        if large { keepMail(raw, for: rumor.id) }
         let w = try await GiftWrap.wrap(rumor, to: me, signer: bridgeSigner)
         engine.add([w], verify: false)
+    }
+
+    /// The large e-mails not opened yet (the newest ten): fetched and opened, so the list shows
+    /// their text and they open offline afterwards.
+    public func openLargeMails() async {
+        lock.lock()
+        let list = items.values.filter { $0.large != nil && $0.raw == nil && $0.attachments == nil }.sorted { $0.at > $1.at }.prefix(10)
+        lock.unlock()
+        for d in list { _ = await mail(d) }
     }
 
     /// Demo mode: a message of mine in CONV that is not out yet (the send line's screenshots).

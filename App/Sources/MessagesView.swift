@@ -44,6 +44,8 @@ struct MessagesView: View {
             }
         }
         .listStyle(.plain)
+        // large e-mails (kept on the file server) are fetched and opened when the list shows
+        .task(id: threads.count) { await model.dms?.openLargeMails() }
         .navigationTitle("Messages")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.refresh() }
