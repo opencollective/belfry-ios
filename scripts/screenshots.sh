@@ -202,6 +202,11 @@ shot 60b-meeting-people meetingpeople light
 shot 61-meeting-form meetingform light
 shot 63-event-dark event dark
 shot 64-event-up eventup light
+# 0.8.0 one shape (boards one-shape/event-default, -online, -tiny, -full)
+shot 64b-event-tiny eventtiny light
+shot 64c-event-tiny-dark eventtiny dark
+shot 64d-event-online eventonline light
+shot 64e-event-online-dark eventonline dark
 shot 65-event-full eventfull light
 shot 65b-event-full-dark eventfull dark
 shot 65c-event-address eventaddress light

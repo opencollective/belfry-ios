@@ -655,9 +655,10 @@ struct RootView: View {
         case "eventform":
             selection = .channel(generalId)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.launchEventForm = true }
-        case "event", "eventup", "eventfull", "eventaddress", "eventphotos", "eventpeople", "ticket", "checkin", "eventrole":
+        case "event", "eventup", "eventtiny", "eventfull", "eventaddress", "eventphotos", "eventpeople", "ticket", "checkin", "eventrole", "eventonline":
             selection = .channel(generalId)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openEvent = "repair-cafe" }
+            // eventonline: the demo's online event (0.8.0, one-shape/event-default-online)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openEvent = model.launch.screen == "eventonline" ? "garden-planning" : "repair-cafe" }
         case "checkincard":
             // a ticket link opened by Sam (the café's steward): the check-in card for Chloé's ticket
             selection = .channel(generalId)
