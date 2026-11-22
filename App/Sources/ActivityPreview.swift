@@ -30,28 +30,29 @@ struct ActivityPreviewRow: View {
     var body: some View {
         let d = model.derive
         let isOpen = open ?? PreviewMemory.get(a.id) ?? d.activityNeedsMe(a, groupId: group, now: Int.now)
-        VStack(alignment: .leading, spacing: 6) {
-            Button { toggle(isOpen) } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: a.icon).font(.footnote).foregroundStyle(.secondary).frame(width: 20)
-                    line(isOpen).font(.footnote).lineLimit(1).truncationMode(.tail)
-                    Spacer(minLength: 4)
-                    Text(Format.time(a.at)).font(.caption).foregroundStyle(.secondary)
-                    Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isOpen ? 180 : 0))
+        // MessageRow's shape (an HStack: a fixed column, then a VStack), which the feed's lazy
+        // stack measures without trouble while the keyboard moves
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: a.icon).font(.footnote).foregroundStyle(.secondary).frame(width: 20, height: 18)
+            VStack(alignment: .leading, spacing: 6) {
+                Button { toggle(isOpen) } label: {
+                    HStack(spacing: 8) {
+                        line(isOpen).font(.footnote).lineLimit(1).truncationMode(.tail)
+                        Spacer(minLength: 4)
+                        Text(Format.time(a.at)).font(.caption).foregroundStyle(.secondary)
+                        Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isOpen ? 180 : 0))
+                    }
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(spoken)
-            .accessibilityHint(isOpen ? "Hides the details" : "Shows the details")
-            .accessibilityIdentifier("activity-line")
-            if isOpen {
-                card.padding(.leading, 28)
+                .buttonStyle(.plain)
+                .accessibilityLabel(spoken)
+                .accessibilityHint(isOpen ? "Hides the details" : "Shows the details")
+                .accessibilityIdentifier("activity-line")
+                if isOpen { card }
             }
         }
         .padding(.horizontal).padding(.vertical, 4)
-        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var who: String {
@@ -85,16 +86,13 @@ struct ActivityPreviewRow: View {
     }
 }
 
-/// The small card's frame: a rounded box. Its parts answer taps with tap gestures, not Buttons:
-/// an open card holding Buttons (any style) in the feed's lazy stack kept the main thread laying
-/// out when the keyboard came up (testKeyboardComposer hung, 2026-11-22; a card of text and tap
-/// gestures did not).
+/// The small card's frame: a rounded box sized by its content. (testKeyboardComposer hung, 2026-11-22,
+/// while an open card held its quick actions in an HStack, with Buttons or tap gestures alike;
+/// collapsed lines and a card of text alone did not.)
 private struct PreviewBox<Content: View>: View {
     @ViewBuilder let content: () -> Content
     var body: some View {
-        // sized by its content (no flexible frame: the feed's lazy stack measured nested flexible
-        // children again and again while the keyboard moved)
-        content()
+        VStack(alignment: .leading, spacing: 8) { content() }
             .padding(10)
             .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
@@ -105,80 +103,42 @@ private struct OpenArea<Content: View>: View {
     let open: () -> Void
     @ViewBuilder let content: () -> Content
     var body: some View {
-        content().multilineTextAlignment(.leading).contentShape(Rectangle())
-            .frame(minHeight: 44)
-            .onTapGesture(perform: open)
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isButton)
+        Button(action: open) { content().multilineTextAlignment(.leading).contentShape(Rectangle()) }
+            .buttonStyle(.plain)
             .accessibilityHint("Opens it")
-            .accessibilityAction { open() }
     }
 }
 
-/// A quick action on the card: a small capsule, filled when it is my answer. It behaves like
-/// BusyButton: the first tap locks it and shows progress until the work is done (no double
-/// send); 44 pt hit area; a button to VoiceOver.
+/// A quick action on the card (BusyButton: locks on the first tap and shows progress until the
+/// work is done): a small capsule like a reaction chip, filled when it is my answer.
 private struct QuickAction: View {
     let title: String
     var on = false
     let action: () async -> Void
-    @State private var busy = false
-
     var body: some View {
-        HStack(spacing: 6) {
+        BusyButton(action: action) {
             Text(title).font(.footnote.weight(.semibold))
-            if busy { ProgressView().controlSize(.mini) }
+                .padding(.horizontal, 12).padding(.vertical, 5)
+                .frame(minHeight: 32)
+                .foregroundStyle(on ? Theme.onAccent : Color.primary)
+                .background(on ? Color.brand : Color.secondary.opacity(0.15), in: Capsule())
         }
-        .padding(.horizontal, 12).padding(.vertical, 6)
-        .foregroundStyle(on ? Theme.onAccent : Color.primary)
-        .background(on ? Color.brand : Color.secondary.opacity(0.15), in: Capsule())
-        .frame(minWidth: 44, minHeight: 44)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: run)
-        .opacity(busy ? 0.6 : 1)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
-        .accessibilityAction { run() }
-    }
-
-    private func run() {
-        guard !busy else { return }
-        busy = true
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        Task { @MainActor in
-            await action()
-            // held a moment at least, so a quick second tap never sends again (BusyButton's 0.6 s)
-            try? await Task.sleep(for: .milliseconds(600))
-            busy = false
-        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 
-/// The to-do's tick on the card, as a button (locks on the first tap, 44 pt, VoiceOver).
+/// The to-do's tick on the card.
 private struct QuickTick: View {
     let done: Bool
-    let action: () -> Void
-    @State private var busy = false
+    let action: () async -> Void
     var body: some View {
-        Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.title3)
-            .foregroundStyle(done ? Color.green : Color.secondary)
-            .opacity(busy ? 0.5 : 1)
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: run)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(done ? "Reopen" : "Mark done")
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { run() }
-            .onChange(of: done) { _, _ in busy = false }
-    }
-    private func run() {
-        guard !busy else { return }
-        busy = true
-        action()
-        // the snapshot follows the outbox at once; unlock if nothing changed after a moment
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { busy = false }
+        BusyButton(action: action) {
+            Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.title3)
+                .foregroundStyle(done ? Color.green : Color.secondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(done ? "Reopen" : "Mark done")
     }
 }
 
@@ -216,7 +176,9 @@ struct EventPreviewCard: View {
                     }
                 }
                 if (e.end ?? e.start) > Int.now {
-                    HStack(spacing: 8) {
+                    // a FlowRow, as the reaction chips: an HStack of them here kept the feed's lazy stack
+                    // laying out when the keyboard came up
+                    FlowRow(spacing: 6) {
                         QuickAction(title: Rsvp.accepted.label, on: mine == .accepted) { model.rsvp(e, .accepted) }
                         QuickAction(title: Rsvp.tentative.label, on: mine == .tentative) { model.rsvp(e, .tentative) }
                         QuickAction(title: Rsvp.declined.label, on: mine == .declined) { model.rsvp(e, .declined) }
