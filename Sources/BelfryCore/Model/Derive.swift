@@ -173,7 +173,13 @@ public struct Media: Hashable, Sendable, Codable {
     public let name: String?
     public let w: Int?
     public let h: Int?
-    public var isImage: Bool { mime.hasPrefix("image/") }
+    public init(url: String, mime: String, name: String? = nil, w: Int? = nil, h: Int? = nil) {
+        self.url = url; self.mime = mime; self.name = name; self.w = w; self.h = h
+    }
+    /// A picture: by its type, or (no type, or a generic one) by the extension of its name or URL.
+    public var isImage: Bool {
+        mime.hasPrefix("image/") || MailPictures.isPicture(type: mime, name: name) || MailPictures.isPicture(type: mime, name: URL(string: url)?.path)
+    }
 }
 
 /// A member's e-mail kept whole on the file server (AES-256-GCM; key and nonce base64).
@@ -365,7 +371,13 @@ public struct CardState: Hashable, Sendable {
     }
 }
 
-public struct TaskComment: Hashable, Sendable { public let author: String; public let text: String; public let at: Int }
+public struct TaskComment: Hashable, Sendable {
+    public let author: String
+    public let text: String
+    public let at: Int
+    /// Its pictures and files (imeta).
+    public var media: [Media] = []
+}
 
 public struct TodoTask: Hashable, Sendable, Identifiable {
     public let id: String
@@ -1482,7 +1494,10 @@ public final class Derive {
                 tasks[e.id] = t
             } else if e.kind != 2102 {
                 guard let tid = e.tag("e"), var t = tasks[tid] else { continue }
-                if e.kind == 2103 { t.comments.append(TaskComment(author: e.pubkey, text: e.content.sliceUnits(2000), at: e.createdAt)) }
+                if e.kind == 2103 {
+                    let c = Derive.parseMedia(e)
+                    t.comments.append(TaskComment(author: e.pubkey, text: c.text.sliceUnits(2000), at: e.createdAt, media: c.media))
+                }
                 switch e.tag("action") ?? "" {
                 case "claim": t.assignee = e.pubkey; t.assignedBy = nil; t.claimed = true; t.idle = false
                 case "unclaim": if t.assignee == e.pubkey { t.assignee = nil; t.assignedBy = nil; t.claimed = false; t.idle = false }

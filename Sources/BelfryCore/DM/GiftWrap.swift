@@ -70,6 +70,8 @@ public struct Dm: Codable, Hashable, Sendable, Identifiable {
     public var group: String?
     /// A reply in the thread of this rumor id (["e", root, "", "root"], one-shape.md §3).
     public var root: String?
+    /// A large e-mail kept on the file server: fetched and opened on this device when it is shown.
+    public var large: LargeMail?
 
     public var id: String { rid }
 
@@ -118,6 +120,7 @@ public enum DmReader {
         d.verified = bridged ? rumor.tag("belfry-auth") == "pass" : true
         let raw = rumor.content
         if raw.isEmpty, rumor.tag("x") != nil {
+            d.large = LargeMail(tags: rumor.tags)
             d.text = "(This e-mail is stored on the file server.)"
         } else {
             d.raw = raw

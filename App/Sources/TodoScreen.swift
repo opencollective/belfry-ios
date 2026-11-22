@@ -327,6 +327,10 @@ struct TodoHeader: View {
             out.append(HeaderItem(key: "lead", icon: "person", text: "Unassigned", label: "Unassigned"))
         }
         if let c = HeaderItem.count("comments", "bubble.left", t.comments.count, "comment", "comments") { out.append(c) }
+        // a picture counts as a photo, not as a file (canvas v180)
+        let media = t.comments.flatMap(\.media)
+        if let f = HeaderItem.count("files", "doc", media.filter { !$0.isImage }.count, "file", "files") { out.append(f) }
+        if let p = HeaderItem.count("photos", "photo", media.filter(\.isImage).count, "photo", "photos") { out.append(p) }
         return out
     }
 }
@@ -423,10 +427,16 @@ struct TodoLineRow: View {
                         Text(who(line.author)).font(.subheadline.weight(.semibold))
                         Text(TodoFormat.time(line.at)).font(.caption).foregroundStyle(.secondary)
                     }
-                    Text(MarkdownText.plainLinks(text)).font(.body)
+                    // only attachments: "added a picture", then the picture itself (canvas v180)
+                    if text.isEmpty, let added = TodoEntry.addedLine(line.media) {
+                        Text(added).font(.footnote).foregroundStyle(.secondary)
+                    } else {
+                        Text(MarkdownText.plainLinks(text)).font(.body)
+                    }
+                    MediaBlock(media: line.media)
                 }
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
         } else {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: icon).font(.footnote).foregroundStyle(tint).frame(width: 20)

@@ -669,7 +669,7 @@ struct RootView: View {
                 model.openEvent = "repair-cafe"
             }
         case "membersinvite": selection = .members
-        case "messages", "conversation", "mail", "sendstill", "sendnotyet", "dmfiles", "dmfilessending", "typingdm", "typinglist", "dmthread": selection = .messages
+        case "messages", "conversation", "mail", "mailpictures", "sendstill", "sendnotyet", "dmfiles", "dmfilessending", "typingdm", "typinglist", "dmthread": selection = .messages
         // boards messages/encryption-*: MessagesView and ConversationView open the rest
         case "encthread", "encdevices", "encgroup", "encmail", "encmaildevices", "encnewdevice", "encwaitinglist", "encchecking", "enchow", "encfresh", "encfreshconfirm", "encallow", "encallowfull", "encallowwaiting", "encwaiting", "encheld", "encshare", "enclocked", "encshared", "encsharedwhy": selection = .messages
         case "encremove", "encdevicesnotallowed":

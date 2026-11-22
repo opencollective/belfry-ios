@@ -3,7 +3,12 @@ import Foundation
 // Just enough MIME (RFC 2045-2047) for Nostr Mail (kind 1301): read the text, subject, sender and
 // attachments; write a plain-text + HTML answer. From src/core/mime.ts; vectors/mime.json.
 
-public struct MailPart: Hashable, Sendable { public let name: String; public let type: String; public let data: Data }
+public struct MailPart: Hashable, Sendable {
+    public let name: String
+    public let type: String
+    public let data: Data
+    public init(name: String, type: String, data: Data) { self.name = name; self.type = type; self.data = data }
+}
 
 public struct ParsedMail: Sendable {
     public var headers: [String: String]

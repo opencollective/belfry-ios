@@ -718,10 +718,20 @@ public final class DirectMessages: @unchecked Sendable {
     }
 
     /// Demo mode: an e-mail arrives from SENDER as the belfry would deliver it.
-    public func demoMail(bridgeSecret: Data, sender: String, subject: String, text: String, at: Int) async throws {
+    public func demoMail(bridgeSecret: Data, sender: String, subject: String, text: String, at: Int, files: [MailPart] = []) async throws {
         let bridgeSigner = try LocalSigner(secret: bridgeSecret)
         bridge = bridgeSigner.pubkey
-        let raw = "From: \(sender)\r\nTo: \(myAddress ?? "me@demo")\r\nSubject: \(subject)\r\nMessage-ID: <\(UUID().uuidString)@example.org>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n\(text)\r\n"
+        let head = "From: \(sender)\r\nTo: \(myAddress ?? "me@demo")\r\nSubject: \(subject)\r\nMessage-ID: <\(UUID().uuidString)@example.org>\r\n"
+        var raw = head + "Content-Type: text/plain; charset=utf-8\r\n\r\n\(text)\r\n"
+        if !files.isEmpty {
+            // attachments: a multipart/mixed, each file base64
+            raw = head + "MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"demo-b\"\r\n\r\n--demo-b\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n\(text)\r\n"
+            for f in files {
+                raw += "--demo-b\r\nContent-Type: \(f.type); name=\"\(f.name)\"\r\nContent-Disposition: attachment; filename=\"\(f.name)\"\r\nContent-Transfer-Encoding: base64\r\n\r\n"
+                raw += f.data.base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn, .endLineWithLineFeed]) + "\r\n"
+            }
+            raw += "--demo-b--\r\n"
+        }
         let rumor = GiftWrap.rumor(kind: 1301, pubkey: bridgeSigner.pubkey, tags: [["email-id", UUID().uuidString], ["mail-from", MIME.address(sender).address], ["p", me], ["subject", subject], ["belfry-auth", "pass"]], content: raw, createdAt: at)
         let w = try await GiftWrap.wrap(rumor, to: me, signer: bridgeSigner)
         engine.add([w], verify: false)

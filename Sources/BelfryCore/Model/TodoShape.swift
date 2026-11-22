@@ -48,6 +48,17 @@ public struct TodoEntry: Hashable, Sendable, Identifiable {
     public let author: String
     public let at: Int
     public let what: What
+    /// A comment's pictures and files (its imeta tags): pictures show under it, not as file lines.
+    public var media: [Media] = []
+
+    /// "added a picture" / "added 3 pictures" / "added a file": a comment that is only attachments.
+    public static func addedLine(_ media: [Media]) -> String? {
+        guard !media.isEmpty else { return nil }
+        let pics = media.filter(\.isImage).count
+        if pics == media.count { return pics == 1 ? "added a picture" : "added \(pics) pictures" }
+        if pics == 0 { return media.count == 1 ? "added a file" : "added \(media.count) files" }
+        return "added \(media.count) files"
+    }
 }
 
 public extension Derive {
@@ -77,7 +88,8 @@ public extension Derive {
         out.append(TodoEntry(id: t.id, author: t.author, at: t.madeAt, what: .made(from: fromAuthor)))
         for e in inGroupSorted(groupId) where (e.kind == 2101 || e.kind == 2103) && e.tag("e") == taskId && e.tag("t") == listId {
             if e.kind == 2103 {
-                out.append(TodoEntry(id: e.id, author: e.pubkey, at: e.createdAt, what: .comment(e.content.sliceUnits(2000))))
+                let c = Derive.parseMedia(e)
+                out.append(TodoEntry(id: e.id, author: e.pubkey, at: e.createdAt, what: .comment(c.text.sliceUnits(2000)), media: c.media))
                 continue
             }
             let w: TodoEntry.What?
