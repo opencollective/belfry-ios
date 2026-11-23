@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import BelfryCore
 
-// vectors/sealed.json = belfry-android branch self-join 2d69652 (sha256 a79b71d1…650e), byte for byte: the
+// vectors/sealed.json = belfry-android main 41f34a8 (sha256 c4492f3f…42c7), byte for byte: the
 // lead's docs/sealed-vectors.json (32f97764…b09a) plus the sections `confirm` (kind 8563),
 // `notes` (Notes to myself) and `silent` (silent wraps): the roster chain, opening and acceptance, the ceiling and the packing of a shared
 // history, the key hand-over, the link proof, shared history, `ready`. Not reproduced here:
@@ -450,16 +450,23 @@ final class SealedVectorTests: XCTestCase {
             XCTAssertEqual(accepted, exp["accepted"] as? Bool, name)
             XCTAssertEqual(got == .later || got == .unknownRoster, exp["judged_again_later"] as? Bool, name)
         }
-        // the roster the tapped device publishes: the head's devices and lb, then the endorse tag
-        let e = dict(j["endorsement"])
-        let before = try XCTUnwrap(try chain(events: dict(e["before"]), account: alice))
-        let want = try event(e["roster"])
-        let joiner = e["joiner"] as? String ?? ""
-        XCTAssertEqual(before.unendorsed, [joiner])
-        let t = RosterChain.template(account: alice, n: before.head.n + 1, prev: before.head.id, lb: before.lb, devices: before.devices,
-                                     ready: want.tags.contains(["ready"]), endorse: before.unendorsed, now: want.createdAt)
-        XCTAssertEqual(t.tags, want.tags)
-        XCTAssertEqual(Roster(want)?.endorses, e["endorses"] as? [String])
+        // the roster the tapped device publishes ("It was me", and Allow on the card): the head's
+        // devices and lb, then the endorse tag; and the 8563 that goes with it
+        for name in ["endorsement", "endorsement_by_allow"] {
+            let e = dict(j[name])
+            let before = try XCTUnwrap(try chain(events: dict(e["before"]), account: alice), name)
+            let want = try event(e["roster"])
+            let joiner = e["joiner"] as? String ?? ""
+            XCTAssertTrue(before.unendorsed.contains(joiner), name)
+            let t = RosterChain.template(account: alice, n: before.head.n + 1, prev: before.head.id, lb: before.lb, devices: before.devices,
+                                         ready: want.tags.contains(["ready"]), endorse: e["endorses"] as? [String] ?? [], now: want.createdAt)
+            XCTAssertEqual(t.tags, want.tags, name)
+            XCTAssertEqual(want.pubkey, e["tapped_device"] as? String, name)
+            XCTAssertEqual(Roster(want)?.endorses, e["endorses"] as? [String], name)
+            let conf = dict(e["confirmation"])
+            let join = try XCTUnwrap(AddedConfirm.addedBy(before, joiner), name)
+            XCTAssertEqual(conf["tags"] as? [[String]], AddedConfirm.tags(account: alice, device: joiner, roster: join.id), name)
+        }
     }
 
     func testTrust() throws {
