@@ -113,6 +113,12 @@ enum Demo {
             evs.append(e)
             return e
         }
+        // the screenshots of a link's preview (SPEC 19.69): the tool library, otherwise empty, gets
+        // two messages (the demo's preview is made up on the device: nothing is asked)
+        if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-screen"), i + 1 < ProcessInfo.processInfo.arguments.count, ProcessInfo.processInfo.arguments[i + 1].hasPrefix("og") {
+            msg(ps["ben"]!, "tools-2b8e", now - 3000, "Who has the long ladder this week?")
+            msg(ps["emma"]!, "tools-2b8e", now - 2800, "This is what we could become: https://toolshare.example/stories/street-library")
+        }
         let y = now - day
         let welcome = msg(ps["ana"]!, "general", y - 7200, "Welcome to our belfry! Everything we say here stays on **our own server**.")
         msg(ps["ben"]!, "general", y - 7000, "Finally 🎉 No more group chat in someone else's app.")
@@ -458,12 +464,6 @@ enum Demo {
         dms.demoShared(conv: "n:" + ps["dev"]!.pubkey, by: ps["dev"]!.pubkey)
         // board messages/encryption-thread: one message that came without the lock ("Not sealed")
         dms.demoUnsealed(conv: "n:" + lina.pubkey, text: "Thanks! The key is under the blue pot.")
-        // the screenshots of a link's preview (SPEC 19.69): the tool library, otherwise empty, gets
-        // two messages (the demo's preview is made up on the device: nothing is asked)
-        if let i = args.firstIndex(of: "-screen"), i + 1 < args.count, args[i + 1].hasPrefix("og") {
-            msg(ps["ben"]!, "tools-2b8e", now - 3000, "Who has the long ladder this week?")
-            msg(ps["emma"]!, "tools-2b8e", now - 2800, "This is what we could become: https://toolshare.example/stories/street-library")
-        }
         // the screenshots of a send that is not out yet (SPEC 19.50): my last message to Ana waits
         let args = ProcessInfo.processInfo.arguments
         // pictures, files and a recording in the conversation with Ana (boards messages/attach-*)
