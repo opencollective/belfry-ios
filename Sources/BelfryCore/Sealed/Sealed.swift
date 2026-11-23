@@ -85,7 +85,9 @@ public enum Sealed {
     /// Only the exact two-element tag counts (another value, a third element, another case: absent).
     public static func isSilent(_ tags: [Tag]) -> Bool { tags.contains(silentTag) }
 
-    public static func wrap(_ rumor: NostrEvent, device: Data, to account: String, lb: String, now: Int = .now, silent: Bool? = nil) throws -> NostrEvent {
+    public static func wrap(_ rumor: NostrEvent, device: Data, to account: String, lb: String, now: Int = .now, silent: Bool? = nil, keyTag: String = "lb") throws -> NostrEvent {
+        // (KEYTAG: "lb" for a letterbox, version 1; "d" for one device, version 2: the same
+        // envelope, the key it is sealed to named by another tag)
         let json = Sealed.json(rumor)
         // a sealed rumor's JSON is at most 40 000 bytes: a sender never seals a larger one
         guard json.utf8.count <= maxRumorBytes else { throw BelfryError.invalid(tooLong) }
@@ -93,7 +95,7 @@ public enum Sealed {
         let seal = try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 13, tags: [], content: sealContent).signed(with: device)
         let one = Keys.generateSecret()
         let content = try NIP44.encrypt(seal.json, conversationKey: conv(one, lb))
-        return try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 1059, tags: [["p", account], ["lb", lb]] + ((silent ?? (account == rumor.pubkey)) ? [silentTag] : []), content: content).signed(with: one)
+        return try NostrEvent(pubkey: "", createdAt: GiftWrap.backdate(now: now), kind: 1059, tags: [["p", account], [keyTag, lb]] + ((silent ?? (account == rumor.pubkey)) ? [silentTag] : []), content: content).signed(with: one)
     }
 
     public enum Opening: Sendable {
