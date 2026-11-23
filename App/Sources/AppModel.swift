@@ -242,6 +242,8 @@ final class AppModel: ObservableObject {
     var signUpForMember = false
     /// The domain to suggest on the sign-in screen (after "Sign in instead").
     @Published var signInDomainHint: String?
+    /// An event link opened signed out: checked, then the members screen (or the browser, or nothing).
+    @Published var pendingEvent: PendingEvent?
     /// A fixed line on the sign-in screen after "Sign in instead" (no address to prefill).
     @Published var signInNote: String?
     var openingToken: String?
@@ -300,6 +302,10 @@ final class AppModel: ObservableObject {
         } else if launch.signin == "code" {
             pendingInvite = nil
             pendingCode = PendingCode(address: "maya@riverside.example", to: "m\u{2022}\u{2022}\u{2022}@example.org")
+        } else if launch.signin == "members" {
+            // a members-only event link opened signed out (board events/members-only-join)
+            pendingInvite = nil
+            pendingEvent = PendingEvent(domain: "riverside.example", link: "repair-cafe", answer: .membersOnly, community: .shot)
         } else if launch.signin != nil {
             // a screenshot of screen 1
             pendingInvite = nil

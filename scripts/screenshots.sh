@@ -340,6 +340,8 @@ shot 40-guest-code guest-code light
 shot 41-guest-mode-dark guest-feed dark
 shot 35-sign-in-code signin-code light
 shot 36-sign-in-older-belfry signin-older light
+shot 38-members-event signin-members light
+shot 38b-members-event-dark signin-members dark
 shot 37-sign-in-code-dark signin-code dark
 shot 150-welcome-belfry signin-welcome light
 shot 150b-welcome-belfry-dark signin-welcome dark

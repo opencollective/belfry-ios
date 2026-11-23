@@ -202,4 +202,16 @@ final class MeetingsTests: XCTestCase {
         let admin = Derive(events: made(), me: ME, communityAdmins: [BEN])
         XCTAssertEqual(admin.invitedLine(byOther, in: chat), [LOU], "a belfry admin's line counts")
     }
+
+    /// An event link asked with no session: 200 open, 403 members_only, 404 nothing, else can't check.
+    func testEventGate() {
+        XCTAssertEqual(EventGate.url(domain: "Example.org", link: "repair-cafe")?.absoluteString, "https://belfry.example.org/api/v1/events/repair-cafe")
+        XCTAssertNil(EventGate.url(domain: "example.org", link: "../x"))
+        XCTAssertNil(EventGate.url(domain: "nope", link: "repair-cafe"))
+        XCTAssertEqual(EventGate.read(status: 200, body: Data("{}".utf8)), .open)
+        XCTAssertEqual(EventGate.read(status: 403, body: Data(#"{"error":"members_only"}"#.utf8)), .membersOnly)
+        XCTAssertEqual(EventGate.read(status: 403, body: Data(#"{"error":"forbidden"}"#.utf8)), .cantCheck)
+        XCTAssertEqual(EventGate.read(status: 404, body: Data(#"{"error":"not_found"}"#.utf8)), .notFound)
+        XCTAssertEqual(EventGate.read(status: 503, body: Data()), .cantCheck)
+    }
 }

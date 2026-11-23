@@ -219,6 +219,9 @@ extension AppModel {
             openEvent = x.link
         } else if phase == .ready {
             website = "This event is in another community."
+        } else if pendingCode == nil {
+            // signed out: public, for members, or nothing (boards events/members-only-join, -login)
+            openEventSignedOut(domain: x.domain, link: x.link, code: x.code)
         }
         return true
     }

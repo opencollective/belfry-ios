@@ -25,6 +25,9 @@ struct SignInView: View {
             page {
                 if let pending = model.pendingCode {
                     CodeScreen(pending: pending)
+                } else if let ev = model.pendingEvent {
+                    // a members-only event link: its two ways in, straight to the log-in or the application
+                    MembersEventScreen(pending: ev, path: $path)
                 } else if finds {
                     FindScreen(path: $path)
                 } else {

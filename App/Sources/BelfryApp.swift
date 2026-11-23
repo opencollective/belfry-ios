@@ -52,6 +52,8 @@ struct BelfryApp: App {
             .environmentObject(model)
             .tint(Theme.accent)
             .onOpenURL { model.handle(url: $0) }
+            // signed in after a members-only event link: the event opens
+            .onChange(of: model.phase) { _, p in if p == .ready { model.openRememberedEvent() } }
             .onAppear {
                 AppDelegate.model = model
                 if let t = AppDelegate.pendingTap { AppDelegate.pendingTap = nil; model.openPush(t) }
