@@ -253,7 +253,9 @@ final class SettingsQueueTests: XCTestCase {
         await settle(e) { (e.outboxItems().first?.tries ?? 0) > 0 }
         XCTAssertEqual(e.outboxItems().count, 1)
         XCTAssertEqual(e.outboxItems()[0].status, .queued)
-        XCTAssertEqual(e.outboxItems()[0].tries, 1)
+        // (at least once: on a slow runner a second try may have happened by now; runs
+        // 45074106220 and 45142517783 read 2 here)
+        XCTAssertGreaterThanOrEqual(e.outboxItems()[0].tries, 1)
         status = 200
         await settle(e) { e.outboxItems().isEmpty }
         XCTAssertTrue(e.outboxItems().isEmpty)
