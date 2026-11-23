@@ -478,8 +478,20 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertEqual(dms.thread(conv).map(\.text), ["Kept"], "it stays on the screen")
         XCTAssertEqual(dms.thread(conv).first?.pending, true, "as waiting")
         XCTAssertTrue(b.all().filter { !before.contains($0.id) && $0.kind == 1059 }.isEmpty, "nothing leaves while the device is outside")
-        XCTAssertTrue(mac.engine.outboxItems().contains { $0.dm == dms.thread(conv).first?.rid }, "its wrap waits in the outbox")
-        _ = phone
+        XCTAssertFalse(mac.engine.outboxItems().contains { $0.kind == 1059 }, "nothing is sealed before the device is in")
+        await dms.sendHeldNotes()
+        XCTAssertEqual(dms.thread(conv).map(\.text), ["Kept"], "still waiting")
+        // the phone adds the mac: the note is dated then, sealed and sent
+        let ok = await phone.sealed.allow(mac.pub, now: now + 10)
+        XCTAssertEqual(ok, .done)
+        await b.sync()
+        mac.sealed.takeKeys()
+        XCTAssertEqual(mac.sealed.mine, .inside)
+        await dms.sendHeldNotes()
+        await b.sync()
+        let sent = b.all().filter { !before.contains($0.id) && $0.kind == 1059 && $0.tag("lb") != nil && $0.tags.contains(["silent", "1"]) }
+        XCTAssertFalse(sent.isEmpty, "sealed and sent once the device is in my head")
+        XCTAssertEqual(dms.thread(conv).map(\.text), ["Kept"], "one note, not two")
     }
 
     func testRemoveRevokesFirstAndChangesNothingWhenThatFails() async throws {

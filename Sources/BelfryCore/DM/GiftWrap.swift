@@ -57,6 +57,8 @@ public struct Dm: Codable, Hashable, Sendable, Identifiable {
     public var attachments: [AttachmentInfo]?
     public var raw: String?
     public var pending: Bool?
+    /// A note written while this device was not among my devices: only on this phone until it is.
+    public var held: Bool?
     public var failed: String?
     /// An earlier message someone shared with this device after I started fresh (sealed.md 8):
     /// who shared it. It is not proven to be authentic; the mark stays on this device.

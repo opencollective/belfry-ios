@@ -355,6 +355,8 @@ extension AppModel {
             st.convs[conv] = SealedConv(since: se.sealedSince(conv), others: others, notices: notices)
         }
         if st != sealed { sealed = st }
+        // the notes written while this device was not added: sealed and sent now that it is
+        if se.mine == .inside { Task { await dms.sendHeldNotes() } }
     }
 
     /// Allow / Not me on the prompt. The first device to answer wins: the prompt goes either way.

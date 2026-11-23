@@ -37,6 +37,7 @@ public final class DirectMessages: @unchecked Sendable {
     /// when the session opens, BEFORE the engine starts. Until the sealed engine is attached, no
     /// queued gift wrap leaves: the first flush of a launch must not send one unchecked.
     public var sealedExpected = false
+    private var flushingHeld = false
     /// How long a first note waits for my chain to be made and anchored.
     public var notesWait = 12.0
     /// Wraps kept because this device has no secret for their letterbox (the banner).
@@ -354,9 +355,10 @@ public final class DirectMessages: @unchecked Sendable {
             case .waitForDevice:
                 // this device is not among my devices yet (Xavier, 2026-11-23: his first note went
                 // and vanished): the note is kept, shown as waiting, and leaves once it is added
-                hold(rumor)
-                do { engine.enqueueSigned(try s.heldWrap(rumor), target: .main, dm: rumor.id) } catch { unhold(rumor.id); throw error }
-                return
+                // Nothing is sealed or sent now (the lead, 2026-11-23: a wrap sealed by a device that
+                // was not in the chain at the rumor's time is the back-dating case): only the text
+                // stays, on this phone; `sendHeldNotes` dates and seals it once this device is in.
+                throw BelfryError.relay(DirectMessages.heldNote)
             case .seal, .oldWay:
                 break
             }
@@ -564,10 +566,52 @@ public final class DirectMessages: @unchecked Sendable {
         do {
             try await deliver(rumor, to: to, conv: conv)
         } catch {
+            // a note on a device that is not added yet: kept as it is, shown as waiting
+            if (error as? BelfryError)?.relayMessage == DirectMessages.heldNote {
+                lock.lock(); items[rumor.id]?.held = true; items[rumor.id]?.pending = true; lock.unlock()
+                save()
+                return
+            }
             lock.lock(); items[rumor.id] = nil; lock.unlock()
             save()
             throw error
         }
+    }
+
+    static let heldNote = "hold: this device is not added yet"
+
+    /// The notes written while this device was not among my devices: once it is, each is dated
+    /// now, sealed and sent (its text and its place in a thread kept). Called when the sealed
+    /// state changes; does nothing while the device is outside.
+    public func sendHeldNotes() async {
+        guard let s = sealed, s.mine == .inside else { return }
+        let conv = Notes.conv(me)
+        lock.lock()
+        if flushingHeld { lock.unlock(); return }
+        let busy = Set(engine.outboxItems().compactMap(\.dm))
+        let held = items.values.filter { $0.held == true && $0.conv == conv && $0.mine && $0.kind == 14 && !busy.contains($0.rid) && queued[$0.rid] == nil }
+            .sorted { $0.at < $1.at }
+        flushingHeld = !held.isEmpty
+        lock.unlock()
+        guard !held.isEmpty else { return }
+        defer { lock.lock(); flushingHeld = false; lock.unlock() }
+        for old in held {
+            let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: [["p", me]] + (old.root.map { [DmThreads.rootTag($0)] } ?? []),
+                                       content: old.text, createdAt: engine.nextCreatedAt())
+            var d = Dm(rid: rumor.id, conv: conv, from: me, mine: true, at: rumor.createdAt, kind: 14, text: old.text)
+            d.root = old.root
+            d.pending = true
+            d.rumor = Sealed.json(rumor)
+            lock.lock(); items[old.rid] = nil; items[rumor.id] = d; lock.unlock()
+            save()
+            do { try await deliver(rumor, to: [], conv: conv) } catch {
+                // not this time: the text goes back to waiting under its own id
+                lock.lock(); items[rumor.id] = nil; items[old.rid] = old; lock.unlock()
+                save()
+                return
+            }
+        }
+        onChange?()
     }
 
     /// An e-mail through the belfry's bridge. Returns the thread it lands in.

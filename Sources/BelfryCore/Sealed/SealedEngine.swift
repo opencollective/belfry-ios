@@ -579,15 +579,6 @@ public final class SealedEngine: @unchecked Sendable {
         }
     }
 
-    /// A note to myself written on a device that is not in my head yet: sealed now to my head
-    /// letterbox by this device and KEPT (the outbox holds any sealed wrap while this device is
-    /// outside, `reseal`); it leaves, sealed again if the letterbox changed, once the device is
-    /// added. Never lost, never the old way. Only for my own account.
-    public func heldWrap(_ rumor: NostrEvent) throws -> NostrEvent {
-        guard let c = chain(me) else { throw BelfryError.invalid("This conversation can't be locked for everyone yet. Try again.") }
-        return try Sealed.wrap(rumor, device: device, to: me, lb: c.lb)
-    }
-
     /// One sealed wrap of RUMOR for ACCOUNT's letterbox as it is now.
     public func wrapOne(_ rumor: NostrEvent, to account: String) throws -> NostrEvent {
         guard mine == .inside, let lb = letterbox(account) else { throw BelfryError.invalid("This conversation can't be locked for everyone yet. Try again.") }
