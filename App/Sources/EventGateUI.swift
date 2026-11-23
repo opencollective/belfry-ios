@@ -27,7 +27,8 @@ extension AppModel {
         guard var p = pendingEvent else { return }
         p.answer = nil
         pendingEvent = p
-        let answer = launch.signin == "members" ? EventGate.membersOnly : await EventGate.check(domain: p.domain, link: p.link)
+        var answer = EventGate.membersOnly
+        if launch.signin != "members" { answer = await EventGate.check(domain: p.domain, link: p.link) }
         guard pendingEvent?.link == p.link, pendingEvent?.domain == p.domain else { return }
         switch answer {
         case .open:
@@ -38,7 +39,10 @@ extension AppModel {
             showToast("This link doesn’t lead anywhere.")
         case .membersOnly:
             p.answer = .membersOnly
-            p.community = launch.signin == "members" ? .shot : (try? await Discovery.fetch(domain: p.domain)) ?? .defaults(domain: p.domain)
+            if launch.signin == "members" { p.community = .shot } else {
+                let fetched = try? await Discovery.fetch(domain: p.domain)
+                p.community = fetched ?? .defaults(domain: p.domain)
+            }
             pendingEvent = p
             // remembered through the log-in or the application: opened after the code
             UserDefaults.standard.set(["domain": p.domain, "link": p.link, "at": String(Int.now)], forKey: AppModel.pendingEventKey)
