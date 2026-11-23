@@ -93,9 +93,23 @@ final class MeetingsTests: XCTestCase {
         XCTAssertEqual(dv.attendance(cal), [ANA: true])
         let p = dv.meetingPeople(cal)
         XCTAssertEqual(p.map(\.pubkey), [ME, ANA, LOU, BEN])
-        XCTAssertEqual(p.map(\.state), ["Host", "There", "Invited", "Maybe"])
+        XCTAssertEqual(p.map(\.state), ["Host · Confirmed", "Checked in", "Invited", "Maybe"])
+        XCTAssertEqual(p.map(\.status), [.confirmed, .checkedIn, .invited, .maybe])
         XCTAssertEqual(p.first { $0.pubkey == LOU }?.heldByMe, true)
-        XCTAssertEqual(dv.meetingPeopleLine(cal), "People · 4 · 1 there")
+        XCTAssertEqual(dv.meetingPeopleLine(cal), "1 checked in · 1 confirmed · 1 maybe · 1 invited")
+        // the maker takes Lou off before the start: out of the chat, no longer invited, not among the people
+        XCTAssertTrue(dv.mayRemoveFromMeeting(cal, now: cal.start - 60))
+        XCTAssertFalse(dv.mayRemoveFromMeeting(cal, now: cal.start))
+        let off = Meetings.remove(cal, pubkey: LOU)
+        XCTAssertEqual(off.first?.kind, 9001)
+        XCTAssertEqual(off.first?.tags, [["h", "ev-" + d], ["p", LOU]])
+        XCTAssertEqual(off.count, 2)
+        XCTAssertFalse(off[1].tags.contains(["p", LOU, "", "invited"]))
+        XCTAssertTrue(Meetings.remove(cal, pubkey: ME).isEmpty, "the maker is never removed")
+        let after = Derive(events: evs + events(off, at: 3500), me: ME)
+        XCTAssertEqual(after.meetingPeople(after.calendar[0]).map(\.pubkey), [ME, ANA, BEN])
+        XCTAssertFalse(Meetings.checkInOpen(cal, now: cal.start - 1))
+        XCTAssertTrue(Meetings.checkInOpen(cal, now: cal.start))
         XCTAssertEqual(dv.lastMeetingPlace(), "The shed")
         XCTAssertEqual(dv.meetingPlaces(), ["The shed"])
     }
@@ -147,5 +161,22 @@ final class MeetingsTests: XCTestCase {
             XCTAssertEqual(e.message, BelfryAPI.meetingErrors["invalid"])
         }
         XCTAssertEqual(StubBelfry.count, 1)
+    }
+
+    /// vectors/meetings.json `removal` (belfry-android, sha256 b3baa15a…25bd, copied byte for byte).
+    func testRemovalVectors() throws {
+        let v = try vector("meetings")
+        let r = v.dict("removal")
+        let maker = try XCTUnwrap(r.str("maker"))
+        let admins = Set(r["admins"] as? [String] ?? [])
+        let cases = r.list("cases")
+        XCTAssertEqual(cases.count, 8)
+        for c in cases {
+            let evs = (c["events"] as? [[String: Any]] ?? []).map { e in
+                NostrEvent(id: e["id"] as? String ?? "", pubkey: e["pubkey"] as? String ?? "", createdAt: e["created_at"] as? Int ?? 0,
+                           kind: e["kind"] as? Int ?? 0, tags: e["tags"] as? [[String]] ?? [], content: "")
+            }
+            XCTAssertEqual(Meetings.removed(evs, maker: maker, admins: admins), Set(c["removed"] as? [String] ?? []), c.str("name") ?? "")
+        }
     }
 }

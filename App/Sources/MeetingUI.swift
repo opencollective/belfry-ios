@@ -241,28 +241,44 @@ struct MeetingPeopleSection: View {
     @State private var adding = false
     @State private var handing: String?
     @State private var error: String?
+    @State private var removing: String?
 
     var body: some View {
         let d = model.derive
         let host = d.isHost(e)
         let people = d.meetingPeople(e)
-        let soon = Int.now >= e.start - 3600
+        // check-in opens at the start; before it the maker (or a belfry admin) can take someone off
+        let started = Meetings.checkInOpen(e)
+        let mayRemove = d.mayRemoveFromMeeting(e)
         Section {
             ForEach(people) { p in
                 HStack(spacing: 10) {
                     Avatar(pubkey: p.pubkey, size: 32)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(model.name(p.pubkey))
-                        Text(p.heldByMe ? p.state + " · account held by you" : p.state).font(.footnote).foregroundStyle(p.there ? Color.green : Color.secondary)
+                        // the status has its own mark, never colour alone
+                        HStack(spacing: 4) {
+                            Image(systemName: p.status.symbol).font(.caption2.weight(.semibold))
+                            Text(p.heldByMe ? p.state + " · account held by you" : p.state)
+                        }
+                        .font(.footnote).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 4)
-                    if host {
+                    if host, started {
                         if p.there {
-                            BusyButton { model.checkIn(e, p.pubkey, on: false) } label: { Label("There", systemImage: "checkmark") }
+                            BusyButton { model.checkIn(e, p.pubkey, on: false) } label: { Label("Checked in", systemImage: "checkmark") }
                                 .buttonStyle(.bordered).tint(.green)
                         } else {
-                            BusyButton(soon ? "Check in" : "Confirm") { model.checkIn(e, p.pubkey, on: true) }.buttonStyle(.bordered)
+                            BusyButton("Check in") { model.checkIn(e, p.pubkey, on: true) }.buttonStyle(.bordered)
                         }
+                    } else if mayRemove, p.pubkey != e.creator {
+                        Button { removing = p.pubkey } label: {
+                            Image(systemName: "xmark").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                                .frame(width: 32, height: 32).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Remove \(model.name(p.pubkey))")
+                        .accessibilityIdentifier("meeting-remove")
                     }
                 }
                 .controlSize(.small)
@@ -276,6 +292,10 @@ struct MeetingPeopleSection: View {
             }
             if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red).font(.footnote) }
         } header: { Text(d.meetingPeopleLine(e)) }
+        .alert("Remove \(removing.map(model.name) ?? "") from this meeting?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
+            Button("Remove", role: .destructive) { if let k = removing { model.removeFromMeeting(e, k) }; removing = nil }
+            Button("Cancel", role: .cancel) { removing = nil }
+        } message: { Text("They leave its chat and are no longer invited.") }
         // "add one" is an icon top right, never a row (Xavier, 2026-11-22)
         .toolbar {
             if host {

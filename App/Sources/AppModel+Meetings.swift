@@ -73,5 +73,10 @@ extension AppModel {
         catch let x as ApiError { return x.message } catch { return BelfryAPI.network }
     }
 
+    /// The maker (or a belfry admin) takes someone off a meeting before it starts.
+    func removeFromMeeting(_ e: CalEvent, _ pubkey: String) {
+        for dr in Meetings.remove(e, pubkey: pubkey) { engine?.enqueue(dr) }
+    }
+
     func checkIn(_ e: CalEvent, _ pubkey: String, on: Bool) { engine?.enqueue(Meetings.checkIn(e, pubkey: pubkey, on: on)) }
 }

@@ -33,10 +33,41 @@ public struct NamedPerson: Hashable, Sendable {
     }
 }
 
+/// Where a person stands for a meeting (Android SPEC 19.63, Xavier 2026-11-22: "show the status
+/// of each person (invited / confirmed / checked in)"). Never told by colour alone: each has its
+/// own mark.
+public enum MeetingStatus: String, Sendable, CaseIterable {
+    case checkedIn, confirmed, maybe, cantCome, invited
+    public var label: String {
+        switch self {
+        case .checkedIn: return "Checked in"
+        case .confirmed: return "Confirmed"
+        case .maybe: return "Maybe"
+        case .cantCome: return "Can't come"
+        case .invited: return "Invited"
+        }
+    }
+    /// In the counts: "1 checked in · 1 confirmed · 2 invited".
+    public var word: String { label.lowercased() }
+    /// SF Symbol of its mark.
+    public var symbol: String {
+        switch self {
+        case .checkedIn: return "checkmark.circle.fill"
+        case .confirmed: return "checkmark"
+        case .maybe: return "questionmark"
+        case .cantCome: return "xmark"
+        case .invited: return "clock"
+        }
+    }
+}
+
 /// One person on a meeting's page and what is said under their name.
 public struct MeetingPerson: Hashable, Sendable, Identifiable {
     public let pubkey: String
-    /// There / Going / Maybe / Can't go / Host / Invited
+    public var status: MeetingStatus = .invited
+    /// "Host" (the maker only), "Co-host" (an admin by role), or nil.
+    public var role: String?
+    /// "Host · Confirmed", "Invited"…
     public let state: String
     /// A host marked them there.
     public let there: Bool
@@ -98,6 +129,46 @@ public enum Meetings {
         Draft(.main, kind: e.ev.kind, content: e.ev.content, tags: e.ev.tags.filter { $0.first != "client" } + more)
     }
 
+    /// How long before its start a meeting's check-in opens: at the start (Xavier's words, the
+    /// lead's ruling 2026-11-23; one constant in case it becomes 15 minutes).
+    public static let checkInOpensBefore = 0
+
+    public static func checkInOpen(_ e: CalEvent, now: Int = .now) -> Bool { now >= e.start - checkInOpensBefore }
+
+    /// Who is no longer among a meeting's people (vectors/meetings.json `removal`): of the chat's
+    /// 9000 / 9001 signed by the MAKER or a belfry admin, the latest per `p` decides (9001 =
+    /// removed, a later 9000 brings back); anyone else's are ignored; the maker is never removed.
+    public static func removed(_ events: [NostrEvent], maker: String, admins: Set<String>) -> Set<String> {
+        var last = [String: (at: Int, out: Bool)]()
+        for e in events where (e.kind == 9000 || e.kind == 9001) && (e.pubkey == maker || admins.contains(e.pubkey)) {
+            for p in e.tagValues("p") where p != maker {
+                if let had = last[p], had.at > e.createdAt { continue }
+                last[p] = (e.createdAt, e.kind == 9001)
+            }
+        }
+        return Set(last.filter { $0.value.out }.keys)
+    }
+
+    /// The maker (or a belfry admin) takes PUBKEY off meeting E before it starts: out of its chat,
+    /// and a new version of the event without their `p … invited`.
+    public static func remove(_ e: CalEvent, pubkey: String) -> [Draft] {
+        guard pubkey != e.creator, isHex64(pubkey) else { return [] }
+        var out = [Draft(kind: 9001, tags: [["h", e.groupId], ["p", pubkey]])]
+        if e.invited.contains(pubkey) {
+            let tags = e.ev.tags.filter { t in t.first != "client" && !(t.count >= 4 && t[0] == "p" && t[1] == pubkey && t[3] == "invited") }
+            out.append(Draft(.main, kind: e.ev.kind, content: e.ev.content, tags: tags))
+        }
+        return out
+    }
+
+    /// "1 checked in · 1 confirmed · 2 invited": the counts in words, in that order, none at 0.
+    public static func counts(_ people: [MeetingPerson]) -> String {
+        MeetingStatus.allCases.compactMap { s in
+            let n = people.filter { $0.status == s }.count
+            return n > 0 ? "\(n) \(s.word)" : nil
+        }.joined(separator: " · ")
+    }
+
     /// A host marks PUBKEY there (ON) or not.
     public static func checkIn(_ e: CalEvent, pubkey: String, on: Bool) -> Draft {
         Draft(kind: 1985, tags: [["h", e.groupId], ["L", attendanceNS], ["l", on ? "attended" : "absent", attendanceNS], ["p", pubkey], ["a", e.coord]])
@@ -127,20 +198,35 @@ public extension Derive {
         e.goingKeys.forEach(add)
         let marks = attendance(e)
         let held = Set(guestJoins(e.groupId).filter { $0.unsaved && $0.by == me }.map(\.pubkey))
-        return keys.map { k in
+        let gone = meetingRemoved(e)
+        return keys.filter { !gone.contains($0) }.map { k in
             let there = marks[k] == true
-            let state: String
-            if there { state = "There" } else if let r = e.rsvps[k] { state = r.label } else if e.hosts.contains(k) { state = "Host" } else { state = "Invited" }
-            return MeetingPerson(pubkey: k, state: state, there: there, heldByMe: held.contains(k))
+            let status: MeetingStatus
+            if there { status = .checkedIn } else if let r = e.rsvps[k] {
+                status = r == .accepted ? .confirmed : r == .tentative ? .maybe : .cantCome
+            } else if k == e.creator { status = .confirmed } else { status = .invited }
+            // only the maker is "Host"; "Co-host" = an admin by role; the belfry's admins listed in
+            // the chat's 39001 are not hosts
+            let r = eventRole(e, k)
+            let role: String? = r == .host ? "Host" : r == .cohost ? "Co-host" : nil
+            return MeetingPerson(pubkey: k, status: status, role: role, state: (role.map { $0 + " · " } ?? "") + status.label,
+                                 there: there, heldByMe: held.contains(k))
         }
     }
 
-    /// "People · N · M there".
-    func meetingPeopleLine(_ e: CalEvent) -> String {
-        let p = meetingPeople(e)
-        let there = p.filter(\.there).count
-        return "People · \(p.count)" + (there > 0 ? " · \(there) there" : "")
+    /// The people taken off meeting E (the maker's or a belfry admin's latest 9000 / 9001 per person).
+    func meetingRemoved(_ e: CalEvent) -> Set<String> {
+        Meetings.removed(inGroup(e.groupId).filter { $0.kind == 9000 || $0.kind == 9001 }, maker: e.creator, admins: communityAdmins)
     }
+
+    /// Whether I may take someone off meeting E: its maker or a belfry admin, never a co-host
+    /// (readers ignore a co-host's 9001), and only before it starts.
+    func mayRemoveFromMeeting(_ e: CalEvent, now: Int = .now) -> Bool {
+        (me == e.creator || communityAdmins.contains(me)) && now < e.start
+    }
+
+    /// "1 checked in · 1 confirmed · 2 invited".
+    func meetingPeopleLine(_ e: CalEvent) -> String { Meetings.counts(meetingPeople(e)) }
 
     /// People to suggest first: the most recently active in CHANNEL, then in its parent, then
     /// their members; me left out (web suggestions()).

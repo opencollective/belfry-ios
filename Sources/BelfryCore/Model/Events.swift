@@ -353,12 +353,12 @@ extension Derive {
                 visibility: Visibility.of(e.tag("visibility")), slug: (e.tag("slug") ?? "").isEmpty ? nil : e.tag("slug"),
                 status: status, statusReason: reason, versions: hostVersions)
             base.meeting = e.hasTag("t", "meeting")
-            if base.meeting {
-                var inv = [String]()
-                for t in e.tags where t.count >= 4 && t[0] == "p" && t[3] == "invited" && isHex64(t[1]) && !inv.contains(t[1]) { inv.append(t[1]) }
-                base.invited = inv
-                base.originChannel = e.tag("channel")
-            }
+            // invited people: on ANY event that carries `p … invited`, not only a meeting (the
+            // lead's ruling, 2026-11-22; Android SPEC 19.65)
+            var inv = [String]()
+            for t in e.tags where t.count >= 4 && t[0] == "p" && t[3] == "invited" && isHex64(t[1]) && !inv.contains(t[1]) { inv.append(t[1]) }
+            base.invited = inv
+            if base.meeting { base.originChannel = e.tag("channel") }
             if isNew {
                 base.goingKeys = goingList(base, EventLinks.people(inGroupSorted(groupId)))
             } else {
