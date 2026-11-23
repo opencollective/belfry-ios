@@ -331,7 +331,12 @@ struct RootView: View {
             if model.guestReading || model.derive.amGuest, model.tab == .groups || model.tab == .messages { model.tab = .home }
             applyLaunchScreen()
             // a guest link's channel, set while the loading screen stood here
-            if let id = model.joinedChannel { model.joinedChannel = nil; if phone { model.tab = .town }; selection = .channel(id) }
+            if let id = model.joinedChannel {
+                model.joinedChannel = nil
+                // from a printed card: straight to its topic or group (anyone else starts on Home)
+                if phone, model.guestCardTopic == id || model.cardWelcome == id { model.tab = .town }
+                selection = .channel(id)
+            }
         }
         .onChange(of: model.version) { _, _ in if selection == nil { selection = firstChannel() } }
     }
