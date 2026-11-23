@@ -160,7 +160,8 @@ public final class SyncEngine: @unchecked Sendable {
 
     @discardableResult
     public func enqueue(_ d: Draft, attachments: [Attachment] = []) -> String {
-        if guestMode.refuse() { return "" } // guest mode: nothing is sent; the Join sheet opens
+        // guest mode: nothing is sent and the Join sheet opens (but a card topic's plain post)
+        if d.target != .groups ? guestMode.refuse() : guestMode.refuse(kind: d.kind, tags: d.tags, fileTypes: attachments.map(\.mime)) { return "" }
         lock.lock(); let locked = lockedGroups; lock.unlock()
         if GroupLock.refuses(d, locked: locked) { return "" }
         let item = OutboxItem(target: d.target, kind: d.kind, content: d.content, tags: d.tags + [SyncEngine.clientTag],
@@ -407,7 +408,7 @@ public final class SyncEngine: @unchecked Sendable {
     // ---- Blossom, NIP-98 -------------------------------------------------------------------------
 
     public func upload(_ data: Data, name: String, mime: String, sha: String, progress: ((Int64, Int64) -> Void)? = nil) async throws -> String {
-        try guestMode.check()
+        try guestMode.checkUpload(mime: mime)
         let auth = try await signer.sign(Actions.blossomAuth(sha256: sha, name: name))
         guard let url = URL(string: config.blossom + "/upload") else { throw BelfryError.network("upload failed (no file server)") }
         var req = URLRequest(url: url, timeoutInterval: 120)

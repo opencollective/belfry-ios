@@ -18,6 +18,9 @@ struct StoredSession: Codable, Equatable {
     var guestChannel: String? = nil
     /// The link was a belfry member link (SPEC 19.43): joining makes this key a member.
     var memberLink: MemberLinkInfo? = nil
+    /// The topic this guest reached through a printed card (docs/cards.md §3): while reading
+    /// they may post a plain message with photos there.
+    var cardTopic: String? = nil
 }
 
 @MainActor
@@ -38,6 +41,17 @@ final class AppModel: ObservableObject {
     @Published var openTodo: TodoKey?
     /// The channel a guest link just brought me into (opened once).
     @Published var joinedChannel: String?
+    /// A printed card scanned (https://chat.<domain>/g/<id>): only its domain and id are kept.
+    @Published var pendingCard: PendingCard? = (UserDefaults.standard.data(forKey: "belfry-card")).flatMap { try? JSONDecoder().decode(PendingCard.self, from: $0) } {
+        didSet { UserDefaults.standard.set(pendingCard.flatMap { try? JSONEncoder().encode($0) }, forKey: "belfry-card") }
+    }
+    /// The demo's cards claimed in this run (id → group).
+    var demoCards = [String: String]()
+    /// The guest links of the cards opened in this run (token → what the card started): an older
+    /// belfry's join answer does not say `card`.
+    var cardInvites = [String: CardKind]()
+    /// The group or topic I just started from a card: its first open welcomes me (once).
+    @Published var cardWelcome: String?
     /// A co-host link used by someone new: once their e-mail is proven, the link is used again.
     @Published var coHostToken: String?
     var demoFollows = [String: String]()
@@ -290,15 +304,23 @@ final class AppModel: ObservableObject {
 
     init() {
         if LoopWatch.on { watchChanges = objectWillChange.sink { _ in LoopWatch.tick("model.objectWillChange") } }
+        // screenshots and tests start clean: a card left from another launch never shows
+        if launch.card == nil, launch.demo || launch.guest != nil || launch.signin != nil || ProcessInfo.processInfo.arguments.contains("-join") { pendingCard = nil }
         if let g = launch.guest {
             pendingInvite = nil
             if g == "opening" { opening = Opening(channel: "garden-3f2a", name: "Garden") } else { startDemo(reader: true) }
             if g == "join" || g == "code" { DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { self.joinAsked = true } }
+        } else if let c = launch.card, !launch.demo {
+            // a printed card scanned signed out (screenshots: `-card K7Q2MX`, `-card T9PC4H`, …)
+            pendingInvite = nil
+            pendingCard = PendingCard(domain: "demo.belfry.sh", id: c)
         } else if ProcessInfo.processInfo.arguments.contains("-join") {
             pendingInvite = PendingInvite(domain: "demo.belfry.sh", token: "demoinvite0123456789abcd")
         } else if launch.demo {
             pendingInvite = nil
             startDemo()
+            // `-demo -card <id>`: a printed card scanned while signed in
+            if let c = launch.card { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.pendingCard = PendingCard(domain: AppModel.demoDomain, id: c) } }
         } else if launch.signin == "code" {
             pendingInvite = nil
             pendingCode = PendingCode(address: "maya@riverside.example", to: "m\u{2022}\u{2022}\u{2022}@example.org")
@@ -489,6 +511,7 @@ final class AppModel: ObservableObject {
         d.onSend = { Push.markSent() }
         // guest mode: nothing is sent until joining; a refused write opens the Join sheet
         e.guestMode.reading = s.reading == true
+        e.guestMode.cardTopic = s.cardTopic
         e.guestMode.onRefused = { [weak self] in DispatchQueue.main.async { self?.joinAsked = true } }
         guestReading = s.reading == true
         if let ch = UserDefaults.standard.string(forKey: AppModel.openAfterSignInKey) {
@@ -1189,6 +1212,8 @@ struct LaunchOptions {
     let member: Bool
     /// `-join member`: the demo invite is a belfry member link (SPEC 19.43).
     let joinMember: Bool
+    /// `-card <id>`: a printed card scanned (the demo's cards, `AppModel+Cards`).
+    let card: String?
 
     init() {
         let args = ProcessInfo.processInfo.arguments
@@ -1198,6 +1223,7 @@ struct LaunchOptions {
         if let i = args.firstIndex(of: "-screen"), i + 1 < args.count { screen = args[i + 1] } else { screen = nil }
         if let i = args.firstIndex(of: "-signin"), i + 1 < args.count { signin = args[i + 1] } else { signin = nil }
         if let i = args.firstIndex(of: "-guest"), i + 1 < args.count { guest = args[i + 1] } else { guest = nil }
+        if let i = args.firstIndex(of: "-card"), i + 1 < args.count { card = args[i + 1] } else { card = nil }
     }
 }
 

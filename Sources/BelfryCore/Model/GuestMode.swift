@@ -19,7 +19,33 @@ public struct GuestModeRefused: Error, Equatable, LocalizedError {
 public final class GuestModeGate: @unchecked Sendable {
     private let lock = NSLock()
     private var on = false
+    private var topic: String?
     public var onRefused: (() -> Void)?
+
+    /// The topic this guest reached through a printed card (docs/cards.md §3, `"card": "topic"`):
+    /// while reading they may post a plain message with photos there, and nothing else.
+    public var cardTopic: String? {
+        get { lock.lock(); defer { lock.unlock() }; return topic }
+        set { lock.lock(); topic = newValue; lock.unlock() }
+    }
+
+    /// True (and the Join sheet asked for) when this event must not go out: anything while
+    /// reading, but the approved post in the card's topic (`Cards.guestTopicPost`).
+    @discardableResult
+    public func refuse(kind: Int, tags: [[String]], fileTypes: [String]) -> Bool {
+        guard reading else { return false }
+        if Cards.guestTopicPost(kind: kind, tags: tags, topic: cardTopic, fileTypes: fileTypes) { return false }
+        onRefused?()
+        return true
+    }
+
+    /// Throws for an upload while reading, but a picture for the card's topic.
+    public func checkUpload(mime: String) throws {
+        guard reading else { return }
+        if cardTopic != nil, mime.lowercased().hasPrefix("image/") { return }
+        onRefused?()
+        throw GuestModeRefused()
+    }
 
     public init(reading: Bool = false) { on = reading }
 

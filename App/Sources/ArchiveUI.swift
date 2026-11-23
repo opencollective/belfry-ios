@@ -86,8 +86,7 @@ struct GroupCard: View {
     }
 
     private func membersLine(_ g: Channel) -> String {
-        let n = g.members.count
-        return "\(n) \(n == 1 ? "member" : "members")"
+        g.peopleCount(g.members.count)
     }
 
     private func openLine(_ g: Channel) -> String {

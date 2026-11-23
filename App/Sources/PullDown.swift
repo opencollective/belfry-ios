@@ -329,7 +329,7 @@ struct PullDownList: View {
                     PDDivider()
                 }
                 ForEach(places(c, g), id: \.place) { item in
-                    PDRow(symbol: item.place.symbol, title: item.place.title, subtitle: item.subtitle, value: item.value) { openPlace(item.place) }
+                    PDRow(symbol: item.place.symbol, title: item.place == .members ? (g?.peopleTitle ?? item.place.title) : item.place.title, subtitle: item.subtitle, value: item.value) { openPlace(item.place) }
                         .accessibilityIdentifier("pd-" + item.place.rawValue)
                     PDDivider()
                 }

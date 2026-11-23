@@ -159,6 +159,15 @@ public struct Group: Identifiable, Hashable, Sendable {
     public var isPod: Bool { type == .pod }
     public var isEvent: Bool { type == .event }
     public var isProposal: Bool { type == .proposal }
+    /// A channel (a topic) has followers; groups, events and proposals keep members (Xavier,
+    /// 2026-11-23; web model.ts followsIt). The belfry's own members stay members everywhere.
+    public var followsIt: Bool { type == .channel }
+    /// "Followers" / "Members": the title of its people.
+    public var peopleTitle: String { followsIt ? "Followers" : "Members" }
+    /// "12 followers" in a channel, "8 members" elsewhere.
+    public func peopleCount(_ n: Int) -> String {
+        followsIt ? "\(n) \(n == 1 ? "follower" : "followers")" : "\(n) \(n == 1 ? "member" : "members")"
+    }
 
     public var icon: String {
         switch type {
@@ -195,6 +204,9 @@ public enum Special: Hashable, Sendable {
     case eventCard(coord: String)
     case podCard(podId: String)
     case proposalCard(groupId: String)
+    /// A topic started from a printed card, announced in the Townsquare (`["t","new-topic"]`,
+    /// `["channel", <hashtag>]`): the topic's card.
+    case topicCard(channel: String)
     /// A member's e-mail to `<channel>@domain`, posted as their message: "via e-mail".
     case memberMail(subject: String, original: MailOriginal?)
     /// Shared inbox: an e-mail from anyone, posted by the groups key as a card.
@@ -224,9 +236,12 @@ public struct Message: Identifiable, Hashable, Sendable {
     public var viaDropBox = false
     /// The events it shows as cards under its text (at most three).
     public var eventRefs: [EventRef] = []
+    /// The person the groups key signed this for (a printed card's group, docs/cards.md): `by`.
+    public var by: String?
 
     public init(ev: NostrEvent, text: String, media: [Media], topics: [String], edited: Int? = nil, special: Special = .none,
-                viaDropBox: Bool = false, eventRefs: [EventRef] = []) {
+                viaDropBox: Bool = false, eventRefs: [EventRef] = [], by: String? = nil) {
+        self.by = by
         self.ev = ev
         self.text = text
         self.media = media
@@ -238,7 +253,8 @@ public struct Message: Identifiable, Hashable, Sendable {
     }
 
     public var id: String { ev.id }
-    public var pubkey: String { ev.pubkey }
+    /// Its author: the person behind it when the groups key signed for them.
+    public var pubkey: String { by ?? ev.pubkey }
     public var at: Int { ev.createdAt }
 
     /// Text to show: for e-mails, without the leading `**<subject>**` line the bridge adds.
@@ -259,6 +275,7 @@ public struct Message: Identifiable, Hashable, Sendable {
         switch special {
         case .eventCard: return "an event"
         case .podCard: return "a group"
+        case .topicCard: return "a topic"
         case .proposalCard: return "a proposal"
         default: return nil
         }
@@ -730,7 +747,7 @@ public final class Derive {
                     m["vouches"] = e.createdAt
                 }
             }
-            if e.kind == 9007, creatorOf[id] == nil { creatorOf[id] = e.pubkey }
+            if e.kind == 9007, creatorOf[id] == nil { creatorOf[id] = authorOf(e) }
             // admins (SPEC 19.29, web checkin model.ts): the relay's latest 39001 (zooid lists only
             // its own keys, the belfry's admins and the creator), the creator, and admins by role
             if e.kind == 39000, (m["extra"] ?? 0) <= e.createdAt {
@@ -941,7 +958,8 @@ public final class Derive {
             }
         }
         return Message(ev: e, text: shown, media: media, topics: Derive.topicsOf(src), edited: x?.createdAt,
-                       special: specialOf(e, legacy: legacy), viaDropBox: e.hasTag("client", "belfry-drop"), eventRefs: Array(refs.prefix(3)))
+                       special: specialOf(e, legacy: legacy), viaDropBox: e.hasTag("client", "belfry-drop"), eventRefs: Array(refs.prefix(3)),
+                       by: signedFor(e))
     }
 
     /// Calendar hooks (filled in by the calendar views; plain lookups here).
@@ -954,6 +972,41 @@ public final class Derive {
         for c in calendar { out[c.d] = c.d; if let s = c.slug { out[s] = c.d } }
         return out
     }()
+
+    // ---- who really made it (docs/cards.md "Who created it"; web model.ts authorOf) -----------------
+    // The groups key signs a card's group or topic (9007, 9002, the "New group" post, the first
+    // line) and names the person in ["by", <pubkey>]. Honoured only on events whose author is
+    // exactly the groups key. Groups claimed before the server wrote `by`: the ["p", …] of the
+    // group's kind 9 tagged ["card", "1"] by the groups key.
+
+    /// Group id → the person who claimed its card.
+    private lazy var claimers: [String: String] = {
+        guard let gk = ctx.groupsKey, !gk.isEmpty else { return [:] }
+        var out = [String: String]()
+        for e in ofKind(9).sorted(by: Derive.byTime) where e.pubkey == gk && e.hasTag("card", "1") {
+            guard let h = e.tag("h"), out[h] == nil, let p = e.tags.first(where: { $0.count > 1 && $0[0] == "p" && isHex64($0[1]) })?[1] else { continue }
+            out[h] = p
+        }
+        return out
+    }()
+
+    /// The person an event of the groups key was signed for; nil for anyone's own event.
+    public func signedFor(_ e: NostrEvent) -> String? {
+        guard let gk = ctx.groupsKey, !gk.isEmpty, e.pubkey == gk else { return nil }
+        if let by = e.tags.first(where: { $0.count > 1 && $0[0] == "by" && isHex64($0[1]) })?[1] { return by }
+        // older cards: only what the card itself wrote (never the belfry's e-mail posts)
+        guard e.tag("client") == nil, let group = e.tag("pod") ?? e.tag("h") else { return nil }
+        return claimers[group]
+    }
+
+    /// E's real author.
+    public func authorOf(_ e: NostrEvent) -> String { signedFor(e) ?? e.pubkey }
+
+    /// The topic a Townsquare post announces.
+    public static func newTopicOf(_ e: NostrEvent) -> String? {
+        guard e.kind == 9, e.hasTag("t", "new-topic"), let c = e.tag("channel"), !c.isEmpty, c.count <= 120 else { return nil }
+        return c
+    }
 
     private func specialOf(_ e: NostrEvent, legacy: Bool) -> Special {
         var mail: Special?
@@ -978,6 +1031,7 @@ public final class Derive {
         if legacy, let c = Derive.eventCoordOf(e) { return .eventCard(coord: c) }
         if let p = Derive.podOf(e) { return .podCard(podId: p) }
         if let p = Derive.proposalOf(e) { return .proposalCard(groupId: p) }
+        if mail == nil, let t = Derive.newTopicOf(e) { return .topicCard(channel: t) }
         return mail ?? .none
     }
 
@@ -996,8 +1050,8 @@ public final class Derive {
     }
 
     /// My own plain message or reply, already sent, with text (SPEC 19.1).
-    public func canEdit(_ m: Message) -> Bool { m.pubkey == me && !isPending(m.id) && !m.text.isEmpty && m.special == .none }
-    public func canDelete(_ m: Message) -> Bool { m.pubkey == me && !isPending(m.id) }
+    public func canEdit(_ m: Message) -> Bool { m.ev.pubkey == me && !isPending(m.id) && !m.text.isEmpty && m.special == .none }
+    public func canDelete(_ m: Message) -> Bool { m.ev.pubkey == me && !isPending(m.id) }
 
     /// What the delete confirmation shows of the message (240 units, mentions hidden; SPEC 19.2).
     public func deletePreview(_ m: Message) -> String {

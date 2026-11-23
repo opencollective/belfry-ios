@@ -24,7 +24,7 @@ enum ChannelPlace: String, Hashable, Identifiable {
         case .topics: return "Topics"
         case .members: return "Members"
         case .notifications: return "Notifications"
-        case .log: return "Log"
+        case .log: return "Activity log"
         case .settings: return "Settings"
         }
     }
@@ -69,7 +69,7 @@ struct ChannelPlaceView: View {
             default: list
             }
         }
-        .navigationTitle(place.title)
+        .navigationTitle(place == .members ? (model.group(id)?.peopleTitle ?? place.title) : place.title)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $todo) { k in TodoScreen(key: k, go: go).overRoot() }
         .task {
@@ -202,7 +202,7 @@ struct GroupsSection: View {
             PlaceGlyph(group: p)
             VStack(alignment: .leading, spacing: 1) {
                 GroupTitle(group: p, id: p.id).font(.body.weight(.medium))
-                Text(p.members.count == 1 ? "1 member" : "\(p.members.count) members").font(.subheadline).foregroundStyle(.secondary)
+                Text(p.peopleCount(p.members.count)).font(.subheadline).foregroundStyle(.secondary)
             }
         }
     }
@@ -251,7 +251,7 @@ struct ChannelMembersScreen: View {
                 if !reqs.isEmpty {
                     Section {
                         ForEach(reqs, id: \.id) { a in GroupRequestRow(group: g, pubkey: a.pubkey, answer: a.answer) }
-                    } header: { Text("Asking to join · \(reqs.count)") }
+                    } header: { Text((model.group(id)?.followsIt == true ? "Asking to follow · " : "Asking to join · ") + "\(reqs.count)") }
                     .accessibilityIdentifier("members-requests")
                 }
             }
@@ -272,10 +272,10 @@ struct ChannelMembersScreen: View {
                         if g.applications.contains(where: { $0.pubkey == model.me }) {
                             Section { Label("Pending: the channel's stewards will answer.", systemImage: "clock").foregroundStyle(.secondary) }
                         } else {
-                            Section { Button { asking = true } label: { Label("Ask to join", systemImage: "person.crop.circle.badge.questionmark") } }
+                            Section { Button { asking = true } label: { Label(g.followsIt ? "Ask to follow" : "Ask to join", systemImage: "person.crop.circle.badge.questionmark") } }
                         }
                     } else {
-                        Section { ActionButtonRow(icon: "person.crop.circle.badge.plus", title: "Join") { model.join(id) } }
+                        Section { ActionButtonRow(icon: "person.crop.circle.badge.plus", title: g.followsIt ? "Follow" : "Join") { model.join(id) } }
                     }
                 }
                 if g.isPod, g.members.contains(model.me) {
@@ -283,7 +283,7 @@ struct ChannelMembersScreen: View {
                 }
             }
         }
-        .navigationTitle("Members")
+        .navigationTitle(model.group(id)?.peopleTitle ?? "Members")
         .navigationBarTitleDisplayMode(.inline)
         // "add one" is an icon top right, never a first row (Xavier, 2026-11-22)
         .toolbar {

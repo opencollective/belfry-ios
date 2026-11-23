@@ -275,8 +275,12 @@ struct RootView: View {
             closeDrawer()
             push(k)
         }
-        .sheet(item: Binding(get: { model.guestReading ? nil : model.pendingInvite }, set: { if $0 == nil { model.pendingInvite = nil } })) { inv in
+        .sheet(item: Binding(get: { model.guestReading || model.pendingCard != nil ? nil : model.pendingInvite }, set: { if $0 == nil { model.pendingInvite = nil } })) { inv in
             JoinWithAccountSheet(invite: inv)
+        }
+        // a printed card scanned while signed in: start its group or topic (a short task: a sheet)
+        .sheet(isPresented: Binding(get: { model.pendingCard != nil }, set: { if !$0 { model.cardDone() } })) {
+            if let c = model.pendingCard { CardScreen(card: c) }
         }
     }
 

@@ -27,7 +27,7 @@ struct LogTab: View {
                         HStack(alignment: .top, spacing: 10) {
                             Text(it.icon).frame(width: 24)
                             VStack(alignment: .leading, spacing: 2) {
-                                (Text(d.logWho(id, it.ev.pubkey)).fontWeight(.semibold) + Text(" " + it.text)).font(.subheadline)
+                                (Text(d.logWho(id, d.authorOf(it.ev))).fontWeight(.semibold) + Text(" " + it.text)).font(.subheadline)
                                 if let detail = it.detail {
                                     Text(verbatim: detail).font(.footnote).foregroundStyle(.secondary).lineLimit(open == it.id ? nil : 1)
                                 }
@@ -253,6 +253,8 @@ struct SettingsTab: View {
     @State private var prompt = ""
     @State private var loaded = false
     @State private var saved = false
+    /// The printed card this group or topic was started from (its stewards and the belfry's admins).
+    @State private var card: CardOfGroup?
     /// Who reads it (channels: members only / public / closed; SPEC 19.38)
     @State private var access = ChannelAccess.members
     /// The kinds of post the channel takes (the four switches).
@@ -266,7 +268,9 @@ struct SettingsTab: View {
 
     var body: some View {
         let g = model.group(id)
-        Section("Name") { TextField("Name", text: $name).font(.body) }
+        // started from a printed card: the card, for its stewards (cards/steward)
+        if let card { CardSettingsSection(group: id, card: card) }
+        Section("Name") { TextField("Name", text: $name).font(.body).task(id: id) { card = await model.groupCard(id) } }
         Section("Description") { TextField("What is it about? (Markdown)", text: $about, axis: .vertical).lineLimit(3...8).font(.body) }
         // a private group stays private: only invited people, nothing to choose and no question
         // (one-shape.md "Groups: open, closed, private")

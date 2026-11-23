@@ -33,13 +33,13 @@ struct MessageRow: View {
         let pending = model.pending(m.id)
         HStack(alignment: .top, spacing: 10) {
             if first {
-                Avatar(pubkey: m.ev.pubkey, size: 36).onTapGesture { model.openProfile = m.ev.pubkey }
+                Avatar(pubkey: m.pubkey, size: 36).onTapGesture { model.openProfile = m.pubkey }
             } else { Color.clear.frame(width: 36, height: 1) }
             VStack(alignment: .leading, spacing: 4) {
                 if first {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(d.nameOver(m)).font(.subheadline.weight(.semibold)).lineLimit(1).onTapGesture { model.openProfile = m.ev.pubkey }
-                        AgentTag(pubkey: m.ev.pubkey)
+                        Text(d.nameOver(m)).font(.subheadline.weight(.semibold)).lineLimit(1).onTapGesture { model.openProfile = m.pubkey }
+                        AgentTag(pubkey: m.pubkey)
                         Text(Format.time(m.ev.createdAt)).font(.caption).foregroundStyle(.secondary)
                         if case .memberMail = m.special { Text("via e-mail").font(.caption2).foregroundStyle(.secondary) }
                         if announce { Label("Announcement", systemImage: "megaphone").font(.caption2.weight(.semibold)).foregroundStyle(Color.brand) }
@@ -162,6 +162,8 @@ struct SpecialBody: View {
                     }
                 }
             }.buttonStyle(.plain)
+        case .topicCard(let channel):
+            TopicCardView(channel: channel, by: m.pubkey, text: m.text)
         case .eventCard(let coord):
             EventCardView(ref: EventRef(coord: coord))
         case .memberMail(let subject, _):

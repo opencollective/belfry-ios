@@ -28,6 +28,11 @@ def args(screen):
     if screen.startswith("member-"): return ["-demo", "-member", "-screen", screen[7:]]
     # a to-do's levels (one shape): todo-pulled, todo-folded, todo-done
     if screen.startswith("todo-"): return ["-demo", "-screen", "todo", "-todo", screen[5:]]
+    # printed cards: card-<ID> scanned signed out, card-in-<ID> signed in, card-code / card-taken (steps)
+    if screen == "card-code": return ["-card", "K7Q2MX", "-screen", "cardcode"]
+    if screen == "card-taken": return ["-card", "K7Q2MX", "-screen", "cardtaken"]
+    if screen.startswith("card-in-"): return ["-demo", "-card", screen[8:]]
+    if screen.startswith("card-"): return ["-card", screen[5:]]
     if screen == "join": return ["-join"]
     if screen == "join-member": return ["-join", "member"]
     return ["-demo", "-screen", screen]

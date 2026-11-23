@@ -28,6 +28,9 @@ struct Composer: View {
     /// border and the Send button; ON TINT = the arrow on it.
     var tint: Color? = nil
     var onTint: Color = .white
+    /// A reading guest in a topic reached by a printed card (docs/cards.md §3): text and photos
+    /// only: no pickers, no ＋ menu, nothing said about typing.
+    var plain = false
     let onSend: (String, [Attachment], Bool) -> Void
     @State private var text = ""
     @State private var picked = [(name: String, pubkey: String)]()
@@ -57,7 +60,7 @@ struct Composer: View {
         let d = model.derive
         let g = model.group(group)
         VStack(spacing: 6) {
-            if let q = Mentions.query(beforeCaret: text) {
+            if !plain, let q = Mentions.query(beforeCaret: text) {
                 let list = people(q)
                 if !list.isEmpty {
                     VStack(spacing: 0) {
@@ -79,7 +82,7 @@ struct Composer: View {
                     }
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
                 }
-            } else if !threadMode, let q = ChannelRefs.query(beforeCaret: text) {
+            } else if !plain, !threadMode, let q = ChannelRefs.query(beforeCaret: text) {
                 let list = d.channelCandidates(q)
                 if !list.isEmpty {
                     VStack(spacing: 0) {
@@ -124,7 +127,7 @@ struct Composer: View {
                 }
             }
             HStack(alignment: .bottom, spacing: 8) {
-                if !compact && !threadMode { addMenu }
+                if plain { photoButton } else if !compact && !threadMode { addMenu }
                 // iMessage's shape: a capsule that grows with the lines, Send inside its trailing edge
                 HStack(alignment: .bottom, spacing: 0) {
                     // picked @names and #channels are marked in the text as it is typed
@@ -204,7 +207,7 @@ struct Composer: View {
         .onChange(of: text) { old, t in
             if let k = draftKey { Drafts.set(k, t); Drafts.setPicks(k, text: t, people: picked, refs: refs) }
             // typing (SPEC 19.66): never for a draft put back
-            if !compact, !group.isEmpty {
+            if !plain, !compact, !group.isEmpty {
                 let place = Typing.place(group: group, root: typingRoot)
                 if restoring { restoring = false }
                 else if t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { if !old.isEmpty, sending == false { model.typing.cleared(place: place) } }
@@ -241,6 +244,21 @@ struct Composer: View {
         .disabled(!canSend)
         .animation(.easeOut(duration: 0.15), value: canSend)
         .accessibilityLabel("Send")
+    }
+
+    /// A reading guest's one attachment: photos.
+    private var photoButton: some View {
+        Button { choose(.photo) } label: {
+            Image(systemName: "photo.on.rectangle")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: h, height: h)
+                .glass(in: Circle(), interactive: true)
+                .padding(3).contentShape(Circle()).padding(-3)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add photos")
+        .accessibilityIdentifier("composer-photos")
     }
 
     /// ＋: a native menu with icons, the same height as the field and on its centre line.

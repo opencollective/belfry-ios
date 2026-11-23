@@ -53,6 +53,7 @@ extension AppModel {
             await pause(300)
             pendingInvite = nil
             startDemo(reader: true)
+            if cardTopicKind(invite.token) == .topic { updateSession { $0.cardTopic = generalId }; engine?.guestMode.cardTopic = generalId }
             if let known { updateSession { $0.memberLink = known } }
             await pause(600)
             opening = nil
@@ -86,6 +87,8 @@ extension AppModel {
             var s = StoredSession(domain: invite.domain, bunkerURL: j.bunkerURL, clientSecret: secret, pubkey: j.pubkey,
                                   reading: j.reading ? true : nil, guestChannel: j.channel)
             s.memberLink = link
+            // a topic card's link: this guest may post there before giving an e-mail
+            if j.reading, (j.card ?? cardTopicKind(invite.token)) == .topic { s.cardTopic = j.channel }
             store(s)
             pendingInvite = nil
             if link == nil { joinedChannel = j.channel }

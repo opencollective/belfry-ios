@@ -53,6 +53,8 @@ public struct InviteInfo: Hashable, Sendable {
     /// A belfry member link (`"as": "member"`, docs/roles.md): joining makes them a member, with
     /// this role. Nil for a guest link (SPEC 19.43).
     public var member: MemberLinkInfo?
+    /// A printed card's link: what the card started (nil on every other invite).
+    public var card: CardKind?
     public init(community: String, channel: String, channelName: String, about: String, inviter: String, state: String, days: Int, member: MemberLinkInfo? = nil) {
         self.community = community; self.channel = channel; self.channelName = channelName; self.about = about
         self.inviter = inviter; self.state = state; self.days = days; self.member = member
@@ -116,6 +118,8 @@ public struct JoinedNew: Hashable, Sendable {
     public var reading = false
     /// A member link (SPEC 19.43).
     public var member: MemberLinkInfo?
+    /// A printed card's link (docs/cards.md §3): what the card started.
+    public var card: CardKind?
 }
 public struct JoinedAccount: Hashable, Sendable {
     public let channel: String; public let already: Bool; public let guest: Bool
@@ -332,10 +336,12 @@ public struct BelfryAPI: Sendable {
         guard a.ok, let b = a.body, let channel = b["channel"] as? String else {
             throw ApiError(a.error.isEmpty ? "http" : a.error, a.status, "The invite could not be read just now. Try again.")
         }
-        return InviteInfo(community: (b["community"] as? String ?? "").sliceUnits(100), channel: channel,
+        var info = InviteInfo(community: (b["community"] as? String ?? "").sliceUnits(100), channel: channel,
                           channelName: (b["channel_name"] as? String ?? channel).sliceUnits(80), about: (b["about"] as? String ?? "").sliceUnits(300),
                           inviter: (b["inviter"] as? String ?? "").sliceUnits(100), state: b["state"] as? String ?? "used", days: BelfryAPI.int(b["days"]) ?? 30,
                           member: MemberLinkInfo.parse(b))
+        info.card = (b["card"] as? String).flatMap(CardKind.init(rawValue:))
+        return info
     }
 
     /// A new guest: this device's fresh session key signs the request; the belfry answers with
@@ -362,6 +368,7 @@ public struct BelfryAPI: Sendable {
                           pubkey: (b["pubkey"] as? String).flatMap { isHex64($0) ? $0 : nil }, emailNeeded: b["email_needed"] as? Bool ?? false)
         j.reading = name == nil && b["reading"] as? Bool != false && b["guest"] as? Bool != false
         j.member = MemberLinkInfo.parse(b)
+        j.card = (b["card"] as? String).flatMap(CardKind.init(rawValue:))
         return j
     }
 

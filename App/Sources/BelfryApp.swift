@@ -18,6 +18,10 @@ struct BelfryApp: App {
                 if let o = model.opening {
                     // a guest link: one loading screen until its channel can be drawn (SPEC 19.26)
                     OpeningScreen(opening: o)
+                } else if model.phase == .signedOut, model.pendingCode == nil, let c = model.pendingCard {
+                    // a printed card scanned signed out: start its group or topic, or a dead end
+                    // (a claimed card became a guest link at once: the loading screen above)
+                    CardScreen(card: c)
                 } else if model.phase == .signedOut, let mi = model.memberInvite {
                     // a member link, not used yet: sign up or log in, no channel behind it (SPEC 19.43)
                     MemberInviteScreen(invite: mi)

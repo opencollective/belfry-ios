@@ -2831,3 +2831,39 @@ lanes `OutboxPass.lane`; `SendState` / `SendTrace` in `Outbox/SendTrace.swift`; 
 - **Preview**: a channel not in my menu opens with a bar above the composer; writing, reacting, a mention or Pin for me brings it in (the bar goes, a toast says "#x is in your menu").
 - **Bell** (a channel's top right, off by default) = push level `all` for that channel; off = `default`.
 - **Header**: two lines (title, icon row); drop order vectors `headerRow`.
+
+### 19.72 Printed cards, who made a group, followers (iOS, 2026-11-23; Xavier via the lead; contract collective-belfry docs/cards.md @7eaa563; web chat-source f10e6b2; canvas "Belfry · Group cards" boards cards/*)
+
+- **The address.** `https://chat.<domain>/g/<id>` (a universal link; also `…/#/g/<id>`): `<id>` is 6 of
+  `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, lower case read as upper case. Anything else after `/g/` is a
+  card nobody knows. Nothing of the address is shown.
+- **What a card is.** `GET /cards/<id>` (no auth): `unclaimed` → "Start this group" / "Start this
+  topic"; `claimed` → its `invite` is a guest link and takes the guest-link path (19.26; signed in:
+  "Join with your account"); `retired`, `archived`, 404 → a screen that says so. Answers are kept
+  only when every field has its shape (`group` `[A-Za-z0-9_-]{1,120}`, `invite` 20–200 of the same).
+- **Starting.** Signed in: `POST /cards/<id>/claim` (NIP-98 by the account) `{title, about,
+  hashtag?}` → `{group}`. Not signed in: `POST /cards/<id>/claim-start {email}` then
+  `POST /cards/<id>/claim-verify {email, code, name, title, about, hashtag?, client}`, both signed
+  by ONE key this device made for the card (kept until the claim works; `key_taken` → a new key);
+  the answer `{signed_in, bunker_url, pubkey, nip05?, group}` is a session whose client key is that
+  key. A topic: the hashtag is suggested from the topic's words (lower case, runs of anything but
+  `a–z 0–9 -` → one dash, dashes cut at both ends, 30) until edited; `GET /cards/hashtag/<name>`
+  checks it live (350 ms after the last key); a suggestion that is taken moves to `-2` … `-9`.
+  Refusals are the app's own words per `error` code; `409 claimed` + `group`, `invite` offers theirs.
+- **Who made it.** On an event signed by the belfry's groups key, `["by", <pubkey>]` names its
+  author (a card's 9007, 9002, the "New group" post, its first line). Without `by`: the `p` of that
+  group's kind 9 tagged `["card","1"]` by the groups key (never for an event with a `client` tag).
+  Anyone else's `by` is ignored. The group's creator, a message's name and face, and the log use it;
+  edit and delete still go by the event's own key.
+- **New topic.** A kind 9 with `["t","new-topic"]` and `["channel", <id>]` draws the topic's card
+  (New topic · #hashtag · topic · description · Started by … · N following · Open); the topic's
+  about is "<topic> · <description>".
+- **A guest in a card's topic.** A reading guest (19.26) whose guest link said `"card": "topic"`
+  may send, in that topic only, a kind 9 whose tags are exactly `[["h", <topic>]]` plus `imeta` of
+  images; every other write is still refused on the device. Under the composer: "Sending as a
+  guest · Log in"; after their first post: "Shared. Don't lose your account" (Save = the Join sheet).
+- **Stewards.** `GET /groups/<group>/card` (NIP-98; 403 / 404 = nothing to show) → Settings →
+  "The card": its number, who started it, how many joined by scanning, its QR again, Retire
+  (`POST /cards/<id>/retire`, asked first).
+- **Followers.** A channel's people are its followers ("N followers", Followers, Follow, Ask to
+  follow); groups, events and proposals keep members; the belfry's members stay members.

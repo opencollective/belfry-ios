@@ -170,12 +170,16 @@ struct ChannelView: View {
             .onUserScroll { if model.missingMessage == id { withAnimation { model.missingMessage = nil } } }
             .bottomBar {
                 VStack(spacing: 0) {
-                if model.guestReading {
+                if model.guestReading, model.guestCardTopic == id, !embedded, !locked {
+                    // a topic reached through a printed card: share at once, save the account after
+                    GuestTopicComposer(group: id) { feedPos.toEnd(animated: true) }
+                } else if model.guestReading {
                     // guest mode: reading only; Join opens the sheet (SPEC 19.26)
                     GuestBar(group: id)
                 } else if locked {
                     if !embedded { ArchivedFooter() }
                 } else {
+                if model.cardWelcome == id { CardWelcome(group: id) }
                 if model.unsavedGuest && d.messages(id).contains(where: { $0.pubkey == model.me }) {
                     SaveAccountCard(compact: true).padding(.horizontal).padding(.vertical, 8).background(.bar)
                 }
@@ -709,9 +713,9 @@ struct PodJoinBar: View {
             Spacer()
             if !asked {
                 if group.closed {
-                    Button("Ask to join", action: ask).buttonStyle(.brand).controlSize(.small).accessibilityIdentifier("ask-to-join")
+                    Button(group.followsIt ? "Ask to follow" : "Ask to join", action: ask).buttonStyle(.brand).controlSize(.small).accessibilityIdentifier("ask-to-join")
                 } else {
-                    BusyButton("Join") { model.join(group.id) }.buttonStyle(.brand).controlSize(.small)
+                    BusyButton(group.followsIt ? "Follow" : "Join") { model.join(group.id) }.buttonStyle(.brand).controlSize(.small)
                 }
             } else {
                 Image(systemName: "clock").foregroundStyle(.secondary).accessibilityHidden(true)
@@ -737,7 +741,7 @@ struct PodApplySheet: View {
                     TextField("Your answer", text: $answer, axis: .vertical).lineLimit(3...8).font(.body)
                 } footer: { Text(group.vouches > 0 ? "Its members see your answer and vouch for you, or a steward lets you in." : "The \(group.isPod ? "group" : "channel")'s stewards see your answer and let you in, or not.") }
             }
-            .navigationTitle("Ask to join " + group.label)
+            .navigationTitle((group.followsIt ? "Ask to follow " : "Ask to join ") + group.label)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

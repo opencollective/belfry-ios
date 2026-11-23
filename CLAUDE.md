@@ -408,3 +408,14 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   on a release branch at the same commit, then fast-forward main (a dispatch on main would upload
   a second build). Screens `sendstill`, `sendnotyet`, `diagnostics`, `dmfiles`, `dmfilessending`,
   `eventaddress`.
+
+- 2026-11-23 printed cards (SPEC 19.72; collective-belfry docs/cards.md; canvas "Belfry · Group
+  cards"): `Net/Cards.swift` (`CardLink`, `CardInfo`, `CardFailure`, `Cards`, the API calls,
+  `CardTopicWords`), `AppModel+Cards` (`pendingCard`, the demo's cards K7Q2MX / T9PC4H free,
+  CXAWMS / TPCHAT claimed, RETRDX, ARCH9V; demo code 123456), `CardUI.swift` (`CardScreen`: the
+  root signed out, a sheet signed in; `GuestTopicComposer`; `TopicCardView`; `CardSettingsSection`).
+  `Derive.signedFor / authorOf` + `Message.pubkey` = the person the groups key signed for (`by`);
+  use `m.ev.pubkey` only for what the relay checks (edit, delete, reactions' `p`).
+  `GuestModeGate.cardTopic` lets exactly `Cards.guestTopicPost` through while reading.
+  `Group.followsIt / peopleTitle / peopleCount`: followers in a channel, members elsewhere.
+  `-card <id>` (with or without `-demo`); screens `card-<ID>`, `card-in-<ID>`, `card-code`, `card-taken`.
