@@ -14,6 +14,9 @@ public enum Notes {
     /// key, a device that cannot seal): never the "nobody else" sentence there.
     public static let plainLine = "Private to your account. Not end-to-end encrypted on this account."
 
+    /// Under the fixed line while there is no note (the lead, 2026-11-23; Messages canvas v7).
+    public static let emptyHint = "Write anything you want to keep: ideas, lists, pictures, files."
+
     /// A note written before my devices' lock exists and it could not be made now: kept in the box.
     public static let notYet = "Can't save it yet: your notes are being locked for your devices. Try again in a moment."
 
