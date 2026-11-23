@@ -41,10 +41,21 @@ public enum SealedFollow {
     /// One roster after a switch: a device it drops is no longer trusted; a device it adds is
     /// trusted only when its signer is (as the signer stood before this roster); a device it
     /// merely keeps: nothing.
-    private static func trustStep(_ trusted: inout Set<String>, _ before: Roster, _ r: Roster) {
+    /// A device that added itself (5.7) is trusted here only once a device that IS trusted here
+    /// has endorsed it: an ["endorse", <device>] on a roster signed by a trusted device that was
+    /// in the roster before that join.
+    private static func trustStep(_ trusted: inout Set<String>, _ c: RosterChain, _ i: Int) {
+        let before = c.rosters[i - 1], r = c.rosters[i]
         let vouches = trusted.contains(r.signer)
         trusted.subtract(before.devices.filter { !r.devices.contains($0) })
-        if vouches { trusted.formUnion(r.devices.filter { !before.devices.contains($0) }) }
+        guard vouches, before.devices.contains(r.signer) else { return }
+        trusted.formUnion(r.devices.filter { !before.devices.contains($0) })
+        for d in r.endorses where r.devices.contains(d) {
+            // the join of D before this roster, and its signer's place before that join
+            guard let j = c.rosters[..<i].lastIndex(where: { $0.signer == d && $0.devices.last == d }), j > 0,
+                  !c.rosters[j - 1].devices.contains(d), c.rosters[j - 1].devices.contains(r.signer) else { continue }
+            trusted.insert(d)
+        }
     }
 
     /// PIN moved onto chain C (same root, no switch): the new head and path, and, after a switch,
@@ -60,7 +71,7 @@ public enum SealedFollow {
             while known < min(ids.count, p.path.count), ids[known] == p.path[known] { known += 1 }
             var i = max(known, at + 1)
             while i < ids.count {
-                trustStep(&t, c.rosters[i - 1], c.rosters[i])
+                trustStep(&t, c, i)
                 i += 1
             }
             trusted = t
@@ -80,6 +91,21 @@ public enum SealedFollow {
             return (c, pin(c, seen: c.anchored, trusted: .some(nil), switchHead: .some(nil), prevRoot: .some(p.root)), .freshStart)
         }
         let path = p.path, seen = p.anchoredHead ?? p.root
+        // a pin that holds a join past what it saw anchored (stored by an earlier look, or a join
+        // that lost its anchor): cut back to before it; a join counts only once seen anchored
+        if let at = path.firstIndex(of: seen), at < path.count - 1 {
+            let byId = Dictionary(rosters.compactMap { e in Roster(e).map { ($0.id, $0) } }, uniquingKeysWith: { a, _ in a })
+            let join = ((at + 1)..<path.count).contains { i in
+                guard let r = byId[path[i]], let prev = byId[path[i - 1]] else { return false }
+                return !prev.devices.contains(r.signer)
+            }
+            if join {
+                let cut = SealedPin(root: p.root, head: seen, path: Array(path.prefix(at + 1)), anchored: true, anchoredHead: seen,
+                                    trusted: p.trusted, switchHead: p.switchHead, prevRoot: p.prevRoot)
+                let r = follow(account: account, anchor: anchor, rosters: rosters, pin: cut, verify: verify)
+                return (r.chain, r.pin, r.event == .none ? .moved : r.event)
+            }
+        }
         let ids = c.rosters.map(\.id)
         if let at = path.dropLast().firstIndex(of: c.anchored) {
             // the anchor names an ancestor of the pinned head: the pinned head is kept (with what
@@ -125,7 +151,10 @@ public enum SealedFollow {
         guard let end = c.rosters.first(where: { $0.id == c.anchored }), end.devices.contains(device), c.devices.contains(device) else { return false }
         if let t = p.trusted, !t.contains(device) { return false }
         guard liveChatDevices.contains(device) else { return false }
-        guard let added = addedAt ?? c.joined(device)?.at, requestAt > added else { return false }
+        // newer (strictly) than the roster that added it; a device that added ITSELF asks in the
+        // same breath: its request counts from its own join's second (5.7)
+        let own = AddedConfirm.addedBy(c, device)?.signer == device
+        guard let added = addedAt ?? c.joined(device)?.at, own ? requestAt >= added : requestAt > added else { return false }
         return lastHandoverAt.map { requestAt > $0 } ?? true
     }
 }
