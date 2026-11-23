@@ -626,10 +626,16 @@ struct EventStatusControl: View {
     let showTicket: () -> Void
     let getTickets: () -> Void
     let checkIn: () -> Void
+    @State private var applying: Ticket?
 
     var body: some View {
         let d = model.derive
         let now = Int.now
+        content(d, now)
+            .sheet(item: $applying) { t in ApplySheet(e: e, t: t, full: (d.eventPeople(e).placesLeft(t) ?? 1) <= 0) }
+    }
+
+    private func content(_ d: Derive, _ now: Int) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if e.status == .cancelled {
                 Label("Cancelled" + (e.statusReason.map { ": " + $0 } ?? ""), systemImage: "xmark.octagon").foregroundStyle(.red)
@@ -663,6 +669,8 @@ struct EventStatusControl: View {
         let real = (api.map { $0.tickets.map(\.ticket) } ?? d.tickets(e)).filter { !$0.implicit }
         // a meeting has no ticket to show and no door to scan at (Xavier, 2026-11-22)
         if model.viewer(e)?.ticketCode != nil, !e.meeting {
+            // "Show my ticket" UNDER Going / Maybe / Can't go (Xavier, 2026-11-22; board events/event-mid-ticket)
+            RsvpControl(e: e)
             wide("Show my ticket", symbol: "ticket", action: showTicket)
         } else if e.hosts.contains(model.me) || (d.isHost(e) && !e.meeting) {
             let asking = people.applications.count
@@ -687,7 +695,19 @@ struct EventStatusControl: View {
                     Label("You have a place · " + (real.first { $0.d == held }?.title ?? "Ticket"), systemImage: "ticket")
                         .font(.subheadline.weight(.semibold))
                 } else if !real.isEmpty {
-                    wide("Get tickets", symbol: "ticket", action: getTickets)
+                    // the tickets themselves, each with its button, in mid too (board
+                    // events/event-tickets); more than three: the rest behind one row
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(real.prefix(3)) { t in
+                            TicketRow(e: e, t: t, people: people, held: false) { applying = t }
+                        }
+                        if real.count > 3 {
+                            Button(action: getTickets) { Text("All \(real.count) tickets").font(.subheadline.weight(.semibold)) }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("event-all-tickets")
+                        }
+                    }
+                    .accessibilityIdentifier("event-tickets")
                 } else {
                     RsvpControl(e: e)
                 }
