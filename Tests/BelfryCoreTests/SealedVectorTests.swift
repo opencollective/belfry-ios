@@ -388,6 +388,34 @@ final class SealedVectorTests: XCTestCase {
         for c in cases { _ = try run(c, account: alice, check: true) }
     }
 
+    /// The pin and trust around a join and a switch (belfry-android's `join.follow`, 8 cases) and
+    /// the joiner's own request (`join.requests`, 9 cases).
+    func testJoinFollow() throws {
+        let v = try vector("sealed")
+        let alice = key(v, "alice").pub
+        let cases = list(dict(v["join"])["follow"])
+        XCTAssertEqual(cases.count, 8)
+        for c in cases { _ = try run(c, account: alice, check: true) }
+    }
+
+    func testJoinRequests() throws {
+        let v = try vector("sealed")
+        let alice = key(v, "alice").pub
+        let cases = list(dict(v["join"])["requests"])
+        XCTAssertEqual(cases.count, 9)
+        for c in cases {
+            let name = c["name"] as? String ?? ""
+            let (chain, p) = try run(c, account: alice, check: true)
+            for a in list(c["asks"]) {
+                let got = SealedFollow.answerWithoutPrompt(chain: chain, pin: p, device: a["device"] as? String ?? "",
+                                                           liveChatDevices: Set(a["live_chat_devices"] as? [String] ?? []),
+                                                           requestAt: a["request_created_at"] as? Int ?? 0,
+                                                           addedAt: a["added_at"] as? Int, lastHandoverAt: a["last_handover_at"] as? Int)
+                XCTAssertEqual(got, a["expected"] as? Bool, "\(name): \(a["device_name"] as? String ?? "")")
+            }
+        }
+    }
+
     func testTrust() throws {
         let v = try vector("sealed")
         let alice = key(v, "alice").pub
