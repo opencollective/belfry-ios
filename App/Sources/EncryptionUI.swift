@@ -374,10 +374,15 @@ struct LockedThreadBlock: View {
         .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
+    /// The device(s) that can add this one, by session name (Messages canvas v5: the named words
+    /// everywhere; never "once another device of yours allows this one").
+    var devices: [String] = []
+
     private var line: String {
-        guard let since else { return "Messages can be read once another device of yours allows this one." }
+        let open = LockedHereBanner.openLine(devices)
+        guard let since else { return open }
         let day = SealedWords.dayWord(since, now: Int.now)
-        return "Messages from \(day.hasPrefix("on ") ? String(day.dropFirst(3)) : day) on can be read once another device of yours allows this one."
+        return "Messages from \(day.hasPrefix("on ") ? String(day.dropFirst(3)) : day) on open here then. " + open
     }
 }
 

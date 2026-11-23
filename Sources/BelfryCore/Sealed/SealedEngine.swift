@@ -166,6 +166,20 @@ public final class SealedEngine: @unchecked Sendable {
         public var requestWaiting: Bool?
         /// The relay refused this device's request for good: what it said (asked again at once).
         public var requestRefused: String?
+        /// The session list as it answered: how many sessions, how many are the belfry's chat
+        /// clients, how many carry a device key, and whether this device's key is among them
+        /// (one screenshot tells why "in the session list" says no).
+        public var sessionCount: Int?
+        public var chatSessions: Int?
+        public var keyedSessions: Int?
+        public var keyListed: Bool?
+        /// My head as this device reads it: how many devices.
+        public var headDevices: Int?
+        /// The waiting request in the outbox: how often it was tried and what the relay last said.
+        public var requestTries: Int?
+        public var requestError: String?
+        /// A request was made earlier and is no longer in the outbox: the relay took it.
+        public var requestLeft: Bool?
         public var failed: Bool {
             relayAnswered == false || chainRead == false || sessions == false || listsMe == false || asked == false || requestWaiting == true
         }
@@ -563,6 +577,15 @@ public final class SealedEngine: @unchecked Sendable {
             guard let lb = letterbox(p) else { throw BelfryError.invalid("This conversation can't be locked for everyone yet. Try again.") }
             return try Sealed.wrap(rumor, device: device, to: p, lb: lb)
         }
+    }
+
+    /// A note to myself written on a device that is not in my head yet: sealed now to my head
+    /// letterbox by this device and KEPT (the outbox holds any sealed wrap while this device is
+    /// outside, `reseal`); it leaves, sealed again if the letterbox changed, once the device is
+    /// added. Never lost, never the old way. Only for my own account.
+    public func heldWrap(_ rumor: NostrEvent) throws -> NostrEvent {
+        guard let c = chain(me) else { throw BelfryError.invalid("This conversation can't be locked for everyone yet. Try again.") }
+        return try Sealed.wrap(rumor, device: device, to: me, lb: c.lb)
     }
 
     /// One sealed wrap of RUMOR for ACCOUNT's letterbox as it is now.
@@ -1069,7 +1092,13 @@ public final class SealedEngine: @unchecked Sendable {
         takeKeys()
         observe([me], now: now)
         guard let sessions = await sessions?() else { note { $0.sessions = false }; onChange?(); return [] }
-        note { $0.sessions = true }
+        note {
+            $0.sessions = true
+            $0.sessionCount = sessions.count
+            $0.chatSessions = sessions.filter(\.chat).count
+            $0.keyedSessions = sessions.filter { !($0.clientPubkey ?? "").isEmpty }.count
+            $0.keyListed = sessions.contains { $0.clientPubkey == self.devicePub }
+        }
         let live = Set(sessions.compactMap(\.clientPubkey))
         lock.lock(); sessionName = sessions.first { $0.clientPubkey == devicePub }?.device; lock.unlock()
         guard listsMe(sessions) else { note { $0.listsMe = false }; onChange?(); return [] }
@@ -1090,7 +1119,7 @@ public final class SealedEngine: @unchecked Sendable {
             // not in my head: ask (5.2), again every 24 h. No fresh start is made here, whoever is
             // live: this device stays locked with the banner until another one allows it.
             lock.lock(); var last = memory.lastRequest; let link = self.link; lock.unlock()
-            note { $0.inHead = false }
+            note { $0.inHead = false; $0.headDevices = c.devices.count }
             // "asked" means the relay has it: a request the relay refused for good is asked again
             // now, and one still waiting in the outbox is pushed and looked at again in seconds
             // (it used to count as asked for 24 hours from the moment it was queued)
@@ -1102,7 +1131,9 @@ public final class SealedEngine: @unchecked Sendable {
                 note { $0.requestRefused = String((refused.error ?? "refused").prefix(120)) }
             } else if !queued.isEmpty {
                 engine.flushSoon()
-                note { $0.requestWaiting = true }
+                note { $0.requestWaiting = true; $0.requestTries = queued.map(\.tries).max(); $0.requestError = queued.compactMap(\.error).last.map { String($0.prefix(120)) } }
+            } else if last > 0 {
+                note { $0.requestLeft = true }
             }
             if now - last >= 86400 {
                 let sent = (try? publish(Sealed.request(account: me, device: devicePub, link: link, now: now))) != nil

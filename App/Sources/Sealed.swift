@@ -518,7 +518,12 @@ enum SealedDiagnostics {
                 yn(r.listsMe, "This device is in the session list: yes", "This device is in the session list: no"),
                 yn(r.inHead, "This device is allowed: yes", "This device is allowed: not yet"),
                 yn(r.asked, "Asked to be allowed in this check: yes", "Asked to be allowed in this check: could not send"),
-                r.requestWaiting == true ? "The request is still waiting to be sent" : nil,
+                r.sessionCount.map { "Sessions listed: \($0) · chat apps: \(r.chatSessions ?? 0) · with a device key: \(r.keyedSessions ?? 0)" },
+                yn(r.keyListed, "This device's key is in the session list: yes", "This device's key is in the session list: NO"),
+                r.headDevices.map { "Devices already allowed (not this one): \($0)" },
+                r.requestWaiting == true ? "The request is still waiting to be sent" + (r.requestTries.map { " · tried \($0) times" } ?? "") : nil,
+                r.requestError.map { "What the relay last said: \($0)" },
+                r.requestLeft == true ? "An earlier request left this phone (the relay took it)" : nil,
                 r.requestRefused.map { "The relay refused the request (asked again): \($0)" }].compactMap { $0 }
         if mine == .waiting || u.lastRequest > 0 {
             out.append(u.lastRequest > 0 ? "Last asked to be allowed: \(Format.day(u.lastRequest)) \(Format.time(u.lastRequest))" : "Last asked to be allowed: never")

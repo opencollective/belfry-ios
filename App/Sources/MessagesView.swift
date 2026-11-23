@@ -158,16 +158,9 @@ struct NotesRow: View {
                     Spacer()
                     if let last { Text(Format.brief(last.at)).font(.caption).foregroundStyle(.secondary) }
                 }
-                if model.lockedHere(conv) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "lock.fill").font(.caption)
-                        Text("Locked on this device").font(.subheadline)
-                    }
-                    .foregroundStyle(.secondary)
-                } else {
-                    Text(last.map { $0.kind == DmFiles.kind ? DmFiles.lastLine([$0.file].compactMap { $0 }) : $0.text } ?? Notes.emptyLine)
-                        .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                }
+                // (never "Locked on this device" for Notes)
+                Text(last.map { $0.kind == DmFiles.kind ? DmFiles.lastLine([$0.file].compactMap { $0 }) : $0.text } ?? Notes.emptyLine)
+                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             }
         }
         .accessibilityElement(children: .combine)
@@ -317,7 +310,9 @@ struct ConversationView: View {
         let _ = model.version
         // a device nobody allowed yet reads no sealed message, old or new: what was written before
         // the conversation was sealed, then the amber block; no composer
-        let locked = model.lockedHere(conv)
+        // (Notes is never "locked": on a device that is not added yet, what it wrote is kept and
+        // shown as waiting, and it can go on writing; Xavier, 2026-11-23)
+        let locked = model.lockedHere(conv) && !Notes.isNotes(conv, me: model.me)
         let since = model.sealedConv(conv)?.since
         // (my own messages held while locked stay, with the locked line's words: never sent, never lost)
         let list = (model.dms?.thread(conv) ?? []).filter { d in !locked || (d.mine && d.pending == true) || since.map { d.at < $0 } ?? false }
@@ -339,6 +334,13 @@ struct ConversationView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 8)
                         .accessibilityIdentifier("notes-line")
+                    // this device is not among my devices yet: said plainly, nothing is locked away
+                    if model.sealed.notAllowed {
+                        Text("This device isn’t added to your devices yet. What you write here is kept on this phone and joins your notes as soon as it is. " + LockedHereBanner.openLine(model.sealed.unlockers))
+                            .font(.footnote).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityIdentifier("notes-waiting")
+                    }
                     if list.isEmpty {
                         Text(Notes.emptyHint).font(.footnote).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .center)
@@ -371,7 +373,7 @@ struct ConversationView: View {
                         DeviceNoticeLine(notice: n) { hideKeyboard(); if n.what == .locked { sharing = n } else { encryption = true } }
                     }
                 }
-                if locked { LockedThreadBlock(since: since) { how = true } }
+                if locked { LockedThreadBlock(since: since, showHow: { how = true }, devices: model.sealed.unlockers) }
             }
             .padding()
             // the end, outside the lazy stack: what arrives after the screen opened (files, my

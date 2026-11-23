@@ -351,7 +351,13 @@ public final class DirectMessages: @unchecked Sendable {
                 if !s.isSealed(conv) { throw BelfryError.invalid(Notes.notYet) }
             case .hold:
                 throw BelfryError.invalid(DirectMessages.cantCheck)
-            case .seal, .waitForDevice, .oldWay:
+            case .waitForDevice:
+                // this device is not among my devices yet (Xavier, 2026-11-23: his first note went
+                // and vanished): the note is kept, shown as waiting, and leaves once it is added
+                hold(rumor)
+                do { engine.enqueueSigned(try s.heldWrap(rumor), target: .main, dm: rumor.id) } catch { unhold(rumor.id); throw error }
+                return
+            case .seal, .oldWay:
                 break
             }
         }

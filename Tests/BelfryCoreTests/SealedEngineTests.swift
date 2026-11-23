@@ -457,6 +457,29 @@ final class SealedEngineTests: XCTestCase {
         XCTAssertEqual(macDms.thread(conv).map(\.text), ["Buy nails"])
     }
 
+    /// A note written on a device that is not in my head yet is kept, shown, and leaves once the
+    /// device is added (Xavier, 2026-11-23: his first note went and vanished).
+    func testANoteOnADeviceNotAddedYetIsKept() async throws {
+        let b = FakeBelfry()
+        let phone = try await head(b)
+        let mac = try b.signIn("alice", "mac")
+        await b.sync()
+        await mac.sealed.maintain(now: now + 5)
+        await b.sync()
+        XCTAssertEqual(mac.sealed.mine, .waiting)
+        let conv = Notes.conv(mac.account)
+        let dms = DirectMessages(engine: mac.engine)
+        dms.sealed = mac.sealed
+        let before = Set(b.all().map(\.id))
+        try await dms.send("Kept", in: conv)
+        await b.sync()
+        XCTAssertEqual(dms.thread(conv).map(\.text), ["Kept"], "it stays on the screen")
+        XCTAssertEqual(dms.thread(conv).first?.pending, true, "as waiting")
+        XCTAssertTrue(b.all().filter { !before.contains($0.id) && $0.kind == 1059 }.isEmpty, "nothing leaves while the device is outside")
+        XCTAssertTrue(mac.engine.outboxItems().contains { $0.dm == dms.thread(conv).first?.rid }, "its wrap waits in the outbox")
+        _ = phone
+    }
+
     func testRemoveRevokesFirstAndChangesNothingWhenThatFails() async throws {
         let b = FakeBelfry()
         let (phone, mac) = try await pair(b, "alice")
