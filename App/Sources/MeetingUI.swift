@@ -275,27 +275,31 @@ struct MeetingPeopleSection: View {
                 }
             }
             if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red).font(.footnote) }
-        } header: { Text(d.meetingPeopleLine(e)) }
-        // "add one" is an icon top right, never a row (Xavier, 2026-11-22)
-        .toolbar {
-            if host {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { hideKeyboard(); adding = true } label: { Image(systemName: "person.badge.plus") }
-                        .accessibilityLabel("Add someone")
-                        .accessibilityIdentifier("meeting-add-person")
+        } header: {
+            // the toolbar item and the sheets hang on the header: ONE view. On the Section they
+            // were applied once per row (run 45088437538: five "add" icons in the bar).
+            Text(d.meetingPeopleLine(e))
+            // "add one" is an icon top right, never a row (Xavier, 2026-11-22)
+            .toolbar {
+                if host {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { hideKeyboard(); adding = true } label: { Image(systemName: "person.badge.plus") }
+                            .accessibilityLabel("Add someone")
+                            .accessibilityIdentifier("meeting-add-person")
+                    }
                 }
             }
-        }
-        .sheet(isPresented: $adding) {
-            AddPersonSheet(channel: e.originChannel ?? e.groupId, exclude: people.map(\.pubkey)) { pick in
-                switch pick {
-                case .member(let k): model.inviteToMeeting(e, [k])
-                case .named(let n): Task { error = await model.addByName(e, n) }
+            .sheet(isPresented: $adding) {
+                AddPersonSheet(channel: e.originChannel ?? e.groupId, exclude: people.map(\.pubkey)) { pick in
+                    switch pick {
+                    case .member(let k): model.inviteToMeeting(e, [k])
+                    case .named(let n): Task { error = await model.addByName(e, n) }
+                    }
                 }
             }
-        }
-        .sheet(item: Binding(get: { handing.map { ProfileKey(pubkey: $0) } }, set: { handing = $0?.pubkey })) { k in
-            HandOverSheet(e: e, pubkey: k.pubkey)
+            .sheet(item: Binding(get: { handing.map { ProfileKey(pubkey: $0) } }, set: { handing = $0?.pubkey })) { k in
+                HandOverSheet(e: e, pubkey: k.pubkey)
+            }
         }
     }
 }
