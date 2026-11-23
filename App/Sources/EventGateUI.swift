@@ -33,7 +33,7 @@ extension AppModel {
         switch answer {
         case .open:
             pendingEvent = nil
-            if let u = URL(string: "https://\(p.domain)/events/\(p.link)") { UIApplication.shared.open(u) }
+            if let u = URL(string: "https://\(p.domain)/events/\(p.link)") { _ = await UIApplication.shared.open(u) }
         case .notFound:
             pendingEvent = nil
             showToast("This link doesn’t lead anywhere.")
