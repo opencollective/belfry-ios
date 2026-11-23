@@ -35,7 +35,7 @@ MAP = [
     (r"App/Sources/(HomeView|AppModel\+Home)", "home|homedrawer|guest-home|guest-applied|mytodos", "testHomeDrawer"),
     (r"App/Sources/CalendarView", "calendar.*|guest-calendar", ""),
     (r"App/Sources/(GroupsView|GroupPage|NewGroupUI|ArchiveUI|AppModel\+Archive)", "groups.*|group.*|pod|archivedlist", ""),
-    (r"App/Sources/(EventScreen|EventsUI|Tickets|AppModel\+Events|AppModel\+Checkin|GroupRoles)", "event.*|events|ticket|checkin.*|calendar", "testEventHeaderDrag testEventChatTyping"),
+    (r"App/Sources/(EventScreen|EventInviteUI|EventsUI|Tickets|AppModel\+Events|AppModel\+Checkin|GroupRoles)", "event.*|events|ticket|checkin.*|calendar", "testEventHeaderDrag testEventChatTyping"),
     (r"Sources/BelfryCore/Model/EventShape", "event.*", ""),
     (r"App/Sources/(MeetingUI|AppModel\+Meetings)", "meeting.*", ""),
     (r"App/Sources/(GuestUI|JoinUI|AppModel\+Guest|AppModel\+MemberLink|AppModel\+Apply)", "guest-.*|join-member", "testMemberLinkSignUp"),

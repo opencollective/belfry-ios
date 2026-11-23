@@ -222,6 +222,7 @@ shot 64e-event-online-dark eventonline dark
 shot 65-event-full eventfull light
 shot 65b-event-full-dark eventfull dark
 shot 65c-event-address eventaddress light
+shot 65d-event-invite eventinvite light
 shot 66-event-photos eventphotos light
 shot 67-event-people eventpeople light
 shot 67b-event-people-dark eventpeople dark

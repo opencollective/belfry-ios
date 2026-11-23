@@ -179,4 +179,27 @@ final class MeetingsTests: XCTestCase {
             XCTAssertEqual(Meetings.removed(evs, maker: maker, admins: admins), Set(c["removed"] as? [String] ?? []), c.str("name") ?? "")
         }
     }
+
+    /// Inviting members to an event: a new version with p … invited, and one marked chat line
+    /// drawn as "‹host› invited ‹names›" only for the maker, a co-host or a belfry admin.
+    func testEventInvites() {
+        let mark: Tag = ["invited", "event"]
+        XCTAssertEqual(EventInvites.mark, mark)
+        XCTAssertTrue(EventInvites.content([ANA, BEN]).hasPrefix("invited nostr:npub1"))
+        XCTAssertEqual(EventInvites.content([ANA, BEN]).components(separatedBy: " nostr:npub1").count, 3)
+        let dv = Derive(events: made(), me: ME)
+        let meeting = dv.calendar[0]
+        XCTAssertTrue(EventInvites.invite(meeting, [ANA]).isEmpty, "not for a meeting")
+        // the marked line is read only from who may invite
+        let chat = meeting.groupId
+        let byMaker = ev(ME, 9, 5000, [["h", chat], ["p", LOU], mark], "invited x")
+        let byOther = ev(BEN, 9, 5001, [["h", chat], ["p", LOU], mark], "invited x")
+        let plain = ev(ME, 9, 5002, [["h", chat], ["p", LOU]], "hello")
+        XCTAssertEqual(dv.invitedLine(byMaker, in: chat), [LOU])
+        XCTAssertNil(dv.invitedLine(byOther, in: chat))
+        XCTAssertNil(dv.invitedLine(plain, in: chat))
+        XCTAssertNil(dv.invitedLine(byMaker, in: "general"))
+        let admin = Derive(events: made(), me: ME, communityAdmins: [BEN])
+        XCTAssertEqual(admin.invitedLine(byOther, in: chat), [LOU], "a belfry admin's line counts")
+    }
 }

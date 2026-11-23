@@ -71,6 +71,9 @@ struct ChannelView: View {
                     if rows.isEmpty {
                         if (model.guestReading || locked) && topic == nil {
                             Text("No messages here yet.").foregroundStyle(.secondary).padding(32).frame(maxWidth: .infinity)
+                        } else if topic == nil, let ev = model.derive.eventOfChat(id), !ev.meeting {
+                            // an event's chat with nothing said yet: the short menu
+                            EventQuickMenu(e: ev)
                         } else {
                             EmptyChannel(name: g?.named == true ? g!.name : BelfryCore.Group.neutral(id, capital: true), filtered: topic != nil) { invite = true }
                         }
@@ -79,6 +82,10 @@ struct ChannelView: View {
                         if row.newDay { DaySeparator(at: row.item.at) }
                         switch row.item {
                         case .message(let m):
+                            if let invited = model.derive.invitedLine(m.ev, in: id) {
+                                // "‹host› invited ‹names›": a system line, when its author may invite
+                                InvitedLine(by: m.ev.pubkey, people: invited, at: m.ev.createdAt).id(m.id)
+                            } else {
                             MessageRow(m: m, group: id, first: row.first, reactions: reactions[m.id] ?? [], thread: threads[m.id],
                                        threadOpen: openThreads.contains(m.id), announce: row.announcement,
                                        todo: todos[m.id], pinned: pinnedIds.contains(m.id), openTopic: topic, flash: flash == m.id,
@@ -89,6 +96,7 @@ struct ChannelView: View {
                             if openThreads.contains(m.id) {
                                 InlineThread(group: id, root: m, onOpen: { thread = ThreadRoute(group: id, root: m.id) },
                                              onHold: { hold($0) }) { toggle(m.id) }
+                            }
                             }
                         case .join(let j):
                             JoinLine(join: j)

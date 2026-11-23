@@ -91,6 +91,7 @@ struct EventScreenBody: View {
     @State private var cancelSheet = false
     @State private var confirmDelete = false
     @State private var coHost: String?
+    @State private var invitingPeople = false
     @State private var profile: ProfileKey?
     @State private var error: String?
     @State private var launched = false
@@ -151,6 +152,7 @@ struct EventScreenBody: View {
         .environment(\.showProfile) { pk in openProfile(pk) }
         .fullScreenCover(isPresented: $showTicket) { MyTicketView(e: e) }
         .fullScreenCover(isPresented: $checkingIn) { CheckInScreen(e: e) }
+        .navigationDestination(isPresented: $invitingPeople) { EventInviteScreen(e: e) }
         .sheet(isPresented: $getTickets) { GetTicketsSheet(e: e, api: api) }
         .sheet(isPresented: $editing) { EventFormSheet(editing: e, channel: nil) }
         .sheet(isPresented: $ticketsSheet) { TicketsSheet(e: e) }
@@ -505,6 +507,7 @@ struct EventScreenBody: View {
             // no animation: the picture is taken at a fixed time after launch
             case "eventtiny": level = .up
             case "eventfull", "eventaddress": withAnimation { level = .full }
+            case "eventinvite": DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { invitingPeople = true }
             case "eventphotos": sub = .photos
             case "eventpeople", "meetingpeople": sub = .people
             case "ticket": showTicket = true
@@ -890,6 +893,12 @@ struct EventFullPart: View {
             }
             .buttonStyle(.plain)
             PDDivider()
+            // members only, search and ticks, no roles (not for a meeting: its people list invites)
+            if !e.meeting {
+                PDRow(symbol: "person.2", title: "Invite people") { hideKeyboard(); invitingPeople = true }
+                    .accessibilityIdentifier("event-invite-people")
+                PDDivider()
+            }
             if e.status == .cancelled {
                 BusyButton { model.setEventStatus(e, .scheduled) } label: { PDRowLabel(symbol: "arrow.uturn.backward", title: "Reopen the event") }
                     .buttonStyle(.plain)
