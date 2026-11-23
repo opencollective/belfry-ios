@@ -568,7 +568,7 @@ public final class DirectMessages: @unchecked Sendable {
         } catch {
             // a note on a device that is not added yet: kept as it is, shown as waiting
             if (error as? BelfryError)?.relayMessage == DirectMessages.heldNote {
-                lock.lock(); items[rumor.id]?.held = true; lock.unlock()
+                lock.lock(); items[rumor.id]?.held = true; items[rumor.id]?.pending = true; lock.unlock()
                 save()
                 return
             }
