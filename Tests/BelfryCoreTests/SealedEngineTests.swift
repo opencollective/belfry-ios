@@ -461,7 +461,9 @@ final class SealedEngineTests: XCTestCase {
     /// device is added (Xavier, 2026-11-23: his first note went and vanished).
     func testANoteOnADeviceNotAddedYetIsKept() async throws {
         let b = FakeBelfry()
-        let phone = try await head(b)
+        let phone = try b.signIn("alice", "phone")
+        await phone.sealed.maintain(now: now)
+        await b.sync()
         let mac = try b.signIn("alice", "mac")
         await b.sync()
         await mac.sealed.maintain(now: now + 5)
