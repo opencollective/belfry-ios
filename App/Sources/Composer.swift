@@ -215,7 +215,7 @@ struct Composer: View {
         .sheet(item: $create) { k in CreateSheet(kind: k, parent: group) }
         .sheet(isPresented: $makeEvent) { EventFormSheet(editing: nil, channel: group) }
         .sheet(isPresented: $recording) { RecorderSheet(group: group) }
-        .sheet(isPresented: $meeting) { MeetingFormSheet(channel: group) }
+        .sheet(isPresented: $meeting) { MeetingFormSheet(channel: group, post: true) }
         .sheet(isPresented: $dropLink) { DropLinkSheet(id: group) }
         .fileImporter(isPresented: $filePicker, allowedContentTypes: [.item]) { r in loadFile(r) }
         .onChange(of: model.launchMeetingForm) { _, on in

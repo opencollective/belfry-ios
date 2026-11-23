@@ -243,6 +243,9 @@ struct EventFormSheet: View {
                 Section {
                     Toggle("All day", isOn: $allDay).tint(Theme.toggle)
                     DatePicker("Starts", selection: $start, displayedComponents: allDay ? [.date] : [.date, .hourAndMinute])
+                        // the end follows the start: moved by as much, so the length stays
+                        // (Xavier, 2026-11-22; a whole-day event keeps its number of days)
+                        .onChange(of: start) { old, new in end = end.addingTimeInterval(new.timeIntervalSince(old)) }
                     Toggle("Ends", isOn: $hasEnd).tint(Theme.toggle)
                     if hasEnd { DatePicker("Ends", selection: $end, in: start..., displayedComponents: allDay ? [.date] : [.date, .hourAndMinute]) }
                 }

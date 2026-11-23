@@ -12,6 +12,7 @@ struct CalendarView: View {
     @State private var list: CalendarList?
     @State private var week = 0
     @State private var newEvent = false
+    @State private var newMeeting = false
 
     var body: some View {
         let _ = model.version
@@ -60,12 +61,18 @@ struct CalendarView: View {
         .toolbar {
             if !guest {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { hideKeyboard(); newEvent = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("New event")
+                    // + asks: a public event or a meeting (Xavier, 2026-11-22; board events/calendar-new)
+                    Menu {
+                        Button { hideKeyboard(); newEvent = true } label: { Label("Event", systemImage: "calendar.badge.plus") }
+                        Button { hideKeyboard(); newMeeting = true } label: { Label("Meeting", systemImage: "person.2") }
+                    } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("New event or meeting")
+                    .accessibilityIdentifier("calendar-new")
                 }
             }
         }
         .sheet(isPresented: $newEvent) { EventFormSheet(editing: nil, channel: generalId) }
+        .sheet(isPresented: $newMeeting) { MeetingFormSheet(channel: generalId) }
         .refreshable { await model.refresh(); if guest { await model.loadPublicEvents() } }
         .task { if guest { await model.loadPublicEvents() } }
     }

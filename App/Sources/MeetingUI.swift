@@ -10,6 +10,10 @@ struct MeetingFormSheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let channel: String
+    /// Made from a channel: its URL is SENT there as a message at once (Xavier, 2026-11-22: "instead
+    /// of creating the url and adding it in the input text, just send it in current channel").
+    /// Made from the Calendar or Create: nothing is posted and the meeting opens.
+    var post = false
     @State private var topic = ""
     @State private var people = [String]()
     @State private var named = [NamedPerson]()
@@ -65,10 +69,24 @@ struct MeetingFormSheet: View {
                     ForEach(d.meetingPlaces().filter { $0 != place }, id: \.self) { p in
                         Button { place = p } label: { Label(p, systemImage: "mappin") }
                     }
-                    Toggle(isOn: Binding(get: { !online.isEmpty }, set: { on in online = on ? Actions.jitsiLink(topic.isEmpty ? "meeting" : topic) : "" })) {
-                        Label(online.isEmpty ? "Add a video link" : "Video link added", systemImage: "video")
+                    // the link itself once added, with ✕ to take it off (Xavier: "When adding a video
+                    // link, it should show the link")
+                    if online.isEmpty {
+                        Button { online = Actions.jitsiLink(topic.isEmpty ? "meeting" : topic) } label: { Label("Add a video link", systemImage: "video") }
+                            .accessibilityIdentifier("meeting-video-add")
+                    } else {
+                        HStack(spacing: 8) {
+                            Image(systemName: "video").foregroundStyle(.secondary)
+                            Text(online).font(.subheadline).lineLimit(1).truncationMode(.middle)
+                            Spacer(minLength: 4)
+                            Button { online = "" } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary).frame(width: 32, height: 32).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Remove the video link")
+                        }
+                        .accessibilityIdentifier("meeting-video-link")
                     }
-                    .tint(Theme.toggle)
                 } header: { Text("Where") }
                 if let error { Section { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red) } }
             }
@@ -166,9 +184,10 @@ struct MeetingFormSheet: View {
         m.tz = TimeZone.current.identifier
         let (d, x) = await model.createMeeting(m, named: named, channel: channel)
         Drafts.setForm(formKey, [:])
-        model.composerPrefill[channel] = EventLinks.url(domain: model.config.domain, link: d)
+        if post { model.post(EventLinks.url(domain: model.config.domain, link: d), in: channel) }
         if let x { error = x; return }
         dismiss()
+        if !post { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { model.openEvent = d } }
     }
 }
 
