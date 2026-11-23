@@ -2867,3 +2867,24 @@ lanes `OutboxPass.lane`; `SendState` / `SendTrace` in `Outbox/SendTrace.swift`; 
   (`POST /cards/<id>/retire`, asked first).
 - **Followers.** A channel's people are its followers ("N followers", Followers, Follow, Ask to
   follow); groups, events and proposals keep members; the belfry's members stay members.
+
+### 19.69 Link previews of outside pages (iOS, 2026-11-23; Xavier via the lead; contract collective-belfry docs/link-previews.md @9a7d29e; canvas Channels, boards channels/og-*)
+
+- **Which link.** The first `https://` link of a message's text that is not the belfry's own
+  (its domain and every subdomain: those keep their own cards), has a dotted host that is no IP
+  literal, no credentials and no port but 443, and is not one of the message's own files. One
+  preview per message. None when the message carries `["preview","none"]` (the composer's ✕),
+  none on a card message (event, group, proposal, e-mail), none in private messages (sealed or
+  not, Notes included) and none in a private group: asking tells the belfry which link was sent.
+- **Asking.** `GET <api>/link-preview?url=<the link, percent-encoded>`, NIP-98 with `u` = the whole
+  address, when the message comes on screen; two at a time. The app never contacts the page.
+  200 `{url, title, description, site_name, image, image_width?, image_height?}`: text as plain
+  words (spaces collapsed; 200 / 300 / 100). `image` is used only when it is `https` on the API's
+  own host and port. No title and no description, 404, 422: nothing to show, kept for an hour.
+  A preview is kept for a day (the newest 500 per belfry, on the device). 429, 503, no connection:
+  nothing kept, nothing asked for a minute, asked again when the message is next on screen.
+- **Drawing.** Under the text, the link staying in it: the picture (150 pt, cropped) if any,
+  "‹site name› · ‹host›", the title, two lines of description; the whole box opens the link.
+  While asking: a grey box. Nothing found: just the link.
+- **Before sending.** The preview of the link being typed stands above the field (asked 0.7 s
+  after the link last changed) with ✕; a message sent after ✕ carries `["preview","none"]`.

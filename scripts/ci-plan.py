@@ -40,6 +40,7 @@ MAP = [
     (r"App/Sources/(MeetingUI|AppModel\+Meetings)", "meeting.*", ""),
     (r"App/Sources/(GuestUI|JoinUI|AppModel\+Guest|AppModel\+MemberLink|AppModel\+Apply)", "guest-.*|join-member|card-TPCHAT", "testMemberLinkSignUp"),
     (r"App/Sources/(CardUI|AppModel\+Cards)", "card-.*|feed|chsettings", ""),
+    (r"App/Sources/LinkPreviewUI", "og.*|feed|thread", "testKeyboardComposer"),
     (r"App/Sources/(SignInView|EventGateUI|AppModel\+SignIn|NoLinkUI|WayInUI|AppModel\+WayIn)", "signin.*", ""),
     (r"App/Sources/(PeopleUI|MembersDirectory|RequestsView|AppModel\+People)", "profile|guestprofile|guestagentprofile|editprofile|me|meplace|enconlydevice|mycard|myprofile|members.*|directory|requests|rolepicker|eventrole", ""),
     (r"App/Sources/(BelfrySettings|RolesSettings|ChannelEnd)", "settings.*|channelend.*|channelarchive|rolepicker", "testDeleteEmptyChannel"),

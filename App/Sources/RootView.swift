@@ -638,6 +638,7 @@ struct RootView: View {
         case "chsettingsend": selection = .channel("garden-3f2a")
         case "website", "websitethread", "notify", "chvisibility", "chpublic": selection = .channel("website")
         case "reqclose", "reqcloseconfirm": selection = .channel("requests")
+        case "ogpreview", "ogcomposer": selection = .channel("tools-2b8e")
         case "closedask", "closedpending", "closedrequests": selection = .channel("board-5d1e")
         case "settingsfailed", "settingsfailedalert": selection = .channel("garden-3f2a")
         // Navigation v2 (2026-11-22)

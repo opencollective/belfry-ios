@@ -50,6 +50,10 @@ final class AppModel: ObservableObject {
     /// The guest links of the cards opened in this run (token → what the card started): an older
     /// belfry's join answer does not say `card`.
     var cardInvites = [String: CardKind]()
+    /// Link previews of outside pages, asked of the belfry (SPEC 19.69).
+    lazy var linkPreviews: LinkPreviewCenter = { let c = LinkPreviewCenter(); c.model = self; return c }()
+    /// The composer's ✕ on a preview: the next message sent in this channel carries ["preview","none"].
+    var noPreviewFor: String?
     /// The group or topic I just started from a card: its first open welcomes me (once).
     @Published var cardWelcome: String?
     /// A co-host link used by someone new: once their e-mail is proven, the link is used again.
@@ -778,7 +782,10 @@ final class AppModel: ObservableObject {
 
     func post(_ text: String, in group: String, attachments: [Attachment] = [], announce: Bool = false, topic: String? = nil) {
         let tags = derive.eventTagsFor(text, mainRelay: config.mainRelay)
-        engine?.enqueue(Actions.postMessage(group, text: text, topic: topic, announce: announce, eventTags: tags), attachments: attachments)
+        var d = Actions.postMessage(group, text: text, topic: topic, announce: announce, eventTags: tags)
+        if noPreviewFor == group { d.tags.append(LinkPreviews.noneTag) }
+        noPreviewFor = nil
+        engine?.enqueue(d, attachments: attachments)
     }
 
     /// The admins' order of the channel list.
@@ -1059,7 +1066,10 @@ final class AppModel: ObservableObject {
     }
 
     func reply(_ text: String, in group: String, to root: Message) {
-        engine?.enqueue(Actions.postThreadReply(group, rootId: root.ev.id, rootPubkey: root.ev.pubkey, rootKind: root.ev.kind, text: text))
+        var d = Actions.postThreadReply(group, rootId: root.ev.id, rootPubkey: root.ev.pubkey, rootKind: root.ev.kind, text: text)
+        if noPreviewFor == group { d.tags.append(LinkPreviews.noneTag) }
+        noPreviewFor = nil
+        engine?.enqueue(d)
     }
 
     func toggleReaction(_ emoji: String, on m: Message, in group: String) {

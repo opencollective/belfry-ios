@@ -458,6 +458,12 @@ enum Demo {
         dms.demoShared(conv: "n:" + ps["dev"]!.pubkey, by: ps["dev"]!.pubkey)
         // board messages/encryption-thread: one message that came without the lock ("Not sealed")
         dms.demoUnsealed(conv: "n:" + lina.pubkey, text: "Thanks! The key is under the blue pot.")
+        // the screenshots of a link's preview (SPEC 19.69): the tool library, otherwise empty, gets
+        // two messages (the demo's preview is made up on the device: nothing is asked)
+        if let i = args.firstIndex(of: "-screen"), i + 1 < args.count, args[i + 1].hasPrefix("og") {
+            msg(ps["ben"]!, "tools-2b8e", now - 3000, "Who has the long ladder this week?")
+            msg(ps["emma"]!, "tools-2b8e", now - 2800, "This is what we could become: https://toolshare.example/stories/street-library")
+        }
         // the screenshots of a send that is not out yet (SPEC 19.50): my last message to Ana waits
         let args = ProcessInfo.processInfo.arguments
         // pictures, files and a recording in the conversation with Ana (boards messages/attach-*)

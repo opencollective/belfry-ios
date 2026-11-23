@@ -40,6 +40,8 @@ struct Composer: View {
     @State private var announce = false
     @State private var restoring = false
     @State private var sending = false
+    /// The link whose preview was closed with ✕ (sent with ["preview","none"]).
+    @State private var previewOff: String?
     @State private var sent = 0
     @State private var photoPicker = false
     @State private var create: CreateKind?
@@ -112,6 +114,10 @@ struct Composer: View {
                     Spacer()
                     Button { announce = false } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Not an announcement")
                 }.foregroundStyle(Color.brand)
+            }
+            // the link being typed: its preview, with ✕ to send it without (channels/og-composer)
+            if let link = previewLink, link != previewOff {
+                ComposerLinkPreview(link: link, center: model.linkPreviews) { previewOff = link }
             }
             if !attachments.isEmpty {
                 FlowRow(spacing: 6) {
@@ -188,6 +194,10 @@ struct Composer: View {
         .task {
             // screenshots: a picked name with spaces, marked in the field (the demo's people may
             // not be derived yet when the field appears: wait for them)
+            if model.launch.screen == "ogcomposer", !compact, !threadMode, group == "tools-2b8e" {
+                text = "This is what we could become: https://toolshare.example/stories/street-library"
+                return
+            }
             guard model.launch.screen == "composermention", !compact, !threadMode else { return }
             for _ in 0..<40 {
                 if let p = model.derive.people.first(where: { $0.name.contains(" ") }) {
@@ -227,6 +237,13 @@ struct Composer: View {
     }
 
     static let height: CGFloat = 38
+
+    /// The outside link of what is typed that would get a preview once sent (channels and open
+    /// groups; not an e-mail's answer, not a guest's plain post).
+    private var previewLink: String? {
+        guard !plain, tint == nil, text.contains("https://"), model.previewsIn(group) else { return nil }
+        return LinkPreviews.link(in: text, domain: model.config.domain)
+    }
 
     private var canSend: Bool { !(text.jsTrim().isEmpty && attachments.isEmpty) }
 
@@ -357,6 +374,8 @@ struct Composer: View {
         guard !typed.isEmpty || !attachments.isEmpty else { return }
         let t = ChannelRefs.substitute(Mentions.substitute(typed, picked: picked), picked: refs)
         sending = true
+        if let off = previewOff, off == previewLink { model.noPreviewFor = group }
+        previewOff = nil
         model.typing.sent(place: Typing.place(group: group, root: typingRoot))
         onSend(t, attachments, canAnnounce && announce)
         text = ""

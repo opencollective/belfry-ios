@@ -174,7 +174,10 @@ struct SpecialBody: View {
         case .inboxCard, .sentAsChannel:
             InboxCardView(m: m, group: group)
         case .none:
-            if !m.text.isEmpty { MessageText(text: m.text, shownEvents: m.eventRefs) }
+            if !m.text.isEmpty {
+                MessageText(text: m.text, shownEvents: m.eventRefs)
+                LinkPreviewSlot(m: m, group: group)
+            }
         }
     }
 }
