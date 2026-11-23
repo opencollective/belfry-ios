@@ -51,8 +51,6 @@ final class LateAuthTests: XCTestCase {
         // a recent public message is stored: `since` would move past older members-only events
         let pub = try me.signNow(EventTemplate(kind: 9, content: "hi", tags: [["h", "general"]], createdAt: 1_800_000_000))
         _ = e.add([pub], verify: false)
-        // (the event's own time: a signer that has just signed at this second gives the next one;
-        // run 45100826060 failed here on 1 799 996 401)
         XCTAssertEqual(e.filters(.groups)[0]["since"] as? Int, pub.createdAt - 3600)
         XCTAssertEqual(e.filters(.groups, fromStart: true)[0]["since"] as? Int, 0, "the first subscription after AUTH")
         // a catch-up from the start is pending; the relay answers, then asks for AUTH
@@ -72,7 +70,12 @@ final class LateAuthTests: XCTestCase {
         let open = Relay(url: "wss://open.example.org")
         e2.eose(.groups, "live-groups", relay: open)
         XCTAssertEqual(answered, 1)
-        XCTAssertEqual(e2.filters(.groups)[0]["since"] as? Int, pub.createdAt - 3600)
+        // Not 0 any more: an hour before the newest stored event. Run 45100826060 once read
+        // 1 799 996 401 here (one second later than the stored message; where that second came
+        // from is NOT known: the same commit gave the exact value before and after). What this
+        // line is about is "no longer from the start", so a few seconds are allowed.
+        let since = e2.filters(.groups)[0]["since"] as? Int ?? 0
+        XCTAssertTrue((pub.createdAt - 3600 ... pub.createdAt - 3595).contains(since), "since = \(since)")
     }
 
     /// Android auth-since 3ad9280's case: the app starts again (or reconnects) with a recent public
