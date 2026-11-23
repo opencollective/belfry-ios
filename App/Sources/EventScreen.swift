@@ -322,7 +322,7 @@ struct EventScreenBody: View {
                 if let hosted = hostedLine(d) {
                     Text(hosted).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-                goingLine(d, access: access)
+                if e.meeting { meetingFaces(d, access: access) } else { goingLine(d, access: access) }
                 EventStatusControl(e: e, api: api, showTicket: { showTicket = true }, getTickets: { getTickets = true },
                                    checkIn: { checkingIn = true })
             }
@@ -338,6 +338,42 @@ struct EventScreenBody: View {
         let hosts = d.eventPeopleList(e).hosts.filter { d.eventRole(e, $0) != .steward }
         let names = hosts.map { pk in api?.hosts.first { $0.first == pk }?.last.flatMap { $0.isEmpty ? nil : $0 } ?? model.name(pk) }
         return EventShape.hostedBy(names)
+    }
+
+    /// A meeting: one row of faces, each with the mark of its status, and the counts in words
+    /// ("1 checked in · 1 confirmed · 2 invited"); it opens the people (board events/meeting-mid).
+    private func meetingFaces(_ d: Derive, access: Bool) -> some View {
+        let people = d.meetingPeople(e)
+        let text = Meetings.counts(people)
+        return Button {
+            hideKeyboard()
+            if access { sub = .people } else { withAnimation(.snappy(duration: 0.28)) { level = .full } }
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    ForEach(people.prefix(7)) { p in
+                        Avatar(pubkey: p.pubkey, size: 30)
+                            .overlay(alignment: .bottomTrailing) {
+                                Image(systemName: p.status.symbol).font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(p.status == .checkedIn ? Color.green : Color.secondary)
+                                    .frame(width: 15, height: 15)
+                                    .background(PDSurface.color, in: Circle())
+                                    .offset(x: 3, y: 3)
+                            }
+                            .frame(width: 30, height: 30)
+                    }
+                    if people.count > 7 { Text("+\(people.count - 7)").font(.footnote).foregroundStyle(.secondary) }
+                    Spacer(minLength: 0)
+                }
+                .frame(height: 34)
+                Text(text).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(text + ". Show the people.")
+        .accessibilityIdentifier("meeting-faces")
     }
 
     private func goingLine(_ d: Derive, access: Bool) -> some View {
@@ -610,7 +646,7 @@ struct EventStatusControl: View {
             } else {
                 Text("This event is over.").font(.subheadline).foregroundStyle(.secondary)
             }
-            if model.mayCheckIn(e) && d.onEventDays(e, now: now) && e.status != .cancelled {
+            if model.mayCheckIn(e) && d.onEventDays(e, now: now) && e.status != .cancelled && !e.meeting {
                 Button(action: checkIn) {
                     Label("Check people in", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity)
                 }
@@ -625,7 +661,8 @@ struct EventStatusControl: View {
         let people = d.eventPeople(e)
         let state = api?.myState ?? d.myState(e, people)
         let real = (api.map { $0.tickets.map(\.ticket) } ?? d.tickets(e)).filter { !$0.implicit }
-        if model.viewer(e)?.ticketCode != nil {
+        // a meeting has no ticket to show and no door to scan at (Xavier, 2026-11-22)
+        if model.viewer(e)?.ticketCode != nil, !e.meeting {
             wide("Show my ticket", symbol: "ticket", action: showTicket)
         } else if e.hosts.contains(model.me) || (d.isHost(e) && !e.meeting) {
             let asking = people.applications.count
