@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import BelfryCore
 
-// vectors/sealed.json = belfry-android branch notes (sha256 e5e623a5…f96a), byte for byte: the
+// vectors/sealed.json = belfry-android branch self-join 4ae8244 (sha256 f137b15a…8a0b), byte for byte: the
 // lead's docs/sealed-vectors.json (32f97764…b09a) plus the sections `confirm` (kind 8563),
 // `notes` (Notes to myself) and `silent` (silent wraps): the roster chain, opening and acceptance, the ceiling and the packing of a shared
 // history, the key hand-over, the link proof, shared history, `ready`. Not reproduced here:
@@ -169,6 +169,26 @@ final class SealedVectorTests: XCTestCase {
             }
         }
         XCTAssertEqual(list(s["carries"]).count, 10)
+    }
+
+    /// A device that signed in adds itself (sealed.md 5.7 as tightened, belfry-sh 88a27b9):
+    /// belfry-android's `join.chains` (branch self-join 4ae8244), 32 cases.
+    func testJoinChains() throws {
+        let v = try vector("sealed")
+        let j = dict(v["join"])
+        let alice = key(v, "alice").pub
+        let cases = list(j["chains"])
+        XCTAssertEqual(cases.count, 32)
+        for c in cases {
+            let name = c["name"] as? String ?? ""
+            let exp = dict(c["expected"])
+            let got = RosterChain.resolve(account: alice, anchor: try? event(c["anchor"]), rosters: try events(c["rosters"]),
+                                          pinnedHead: c["pinned_head"] as? String)
+            XCTAssertEqual(got?.rosters.map(\.id) ?? [], exp["valid_ids"] as? [String] ?? [], name)
+            XCTAssertEqual(got?.head.id, exp["head"] as? String, name)
+            XCTAssertEqual(got?.devices ?? [], exp["devices"] as? [String] ?? [], name)
+            XCTAssertEqual(got?.lb, exp["lb"] as? String, name)
+        }
     }
 
     func testWraps() throws {

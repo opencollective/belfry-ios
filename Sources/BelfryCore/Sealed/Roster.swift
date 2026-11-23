@@ -82,21 +82,45 @@ public struct RosterChain: Hashable, Sendable {
             if let p = r.prev { byPrev[p, default: []].append(r) }
         }
         guard let root = byId[rootId], root.n == 1, root.prev == nil, root.devices.contains(root.signer) else { return nil }
-        /// NEXT is a valid step after CUR, given the letterboxes the chain had so far.
-        /// JOIN: on the anchored path a device may add ITSELF (sealed.md 5.7, 2026-11-23): its
-        /// signer is NOT in prev's devices; its devices are exactly prev's, same order, plus the
-        /// signer last; its letterbox is one the chain never had. Not anchored, it is nothing
-        /// (anyone can sign one): never past the anchor.
-        func valid(_ next: Roster, after cur: Roster, _ lbs: Set<String>, join: Bool = false) -> Bool {
-            guard next.prev == cur.id, next.n == cur.n + 1 else { return false }
-            guard cur.devices.contains(next.signer) else {
-                return join && next.devices == cur.devices + [next.signer] && !lbs.contains(next.lb)
+        /// The walk along the chain: the rosters taken, the letterboxes and the devices the chain
+        /// ever had, and the devices that added themselves and that no older device has signed
+        /// after yet (sealed.md 5.7, tightened 2026-11-23).
+        struct Walk {
+            var chain: [Roster]
+            var lbs: Set<String>
+            var ever: Set<String>
+            var unendorsed: Set<String> = []
+
+            /// NEXT is a valid step after the last roster. JOIN (only on the anchored path: not
+            /// anchored it is nothing, anyone can sign one): a roster signed by a device the
+            /// chain NEVER had, not dated before its prev, with prev's devices in their order plus
+            /// the signer last, and a letterbox the chain never had. A normal roster signed by
+            /// a device that added itself is invalid until a roster of an older device (one in
+            /// the head before that join, or a joiner endorsed since) has come after the join.
+            mutating func step(_ next: Roster, join: Bool) -> Bool {
+                let cur = chain[chain.count - 1]
+                guard next.prev == cur.id, next.n == cur.n + 1 else { return false }
+                if cur.devices.contains(next.signer) {
+                    guard !unendorsed.contains(next.signer) else { return false }
+                    let missing = cur.devices.contains { !next.devices.contains($0) }
+                    guard missing ? !lbs.contains(next.lb) : next.lb == cur.lb else { return false }
+                    // any roster of an older device after the join(s) endorses them
+                    unendorsed = []
+                } else {
+                    guard join, !ever.contains(next.signer), next.createdAt >= cur.createdAt,
+                          next.devices == cur.devices + [next.signer], !lbs.contains(next.lb) else { return false }
+                    unendorsed.insert(next.signer)
+                }
+                chain.append(next)
+                lbs.insert(next.lb)
+                ever.formUnion(next.devices)
+                // a joiner that left the head has nothing left to endorse
+                unendorsed = unendorsed.filter(next.devices.contains)
+                return true
             }
-            let missing = cur.devices.contains { !next.devices.contains($0) }
-            return missing ? !lbs.contains(next.lb) : next.lb == cur.lb
         }
-        /// The rosters from the root to ID when every step is valid; nil otherwise.
-        func path(to id: String) -> [Roster]? {
+        /// The walk from the root to ID when every step is valid; nil otherwise.
+        func path(to id: String) -> Walk? {
             var back = [Roster]()
             var cur = byId[id]
             while let c = cur, c.id != root.id {
@@ -105,31 +129,29 @@ public struct RosterChain: Hashable, Sendable {
                 cur = byId[p]
             }
             guard cur?.id == root.id else { return nil }
-            var chain = [root]
-            var lbs: Set<String> = [root.lb]
-            for r in back.reversed() {
-                guard valid(r, after: chain[chain.count - 1], lbs, join: true) else { return nil }
-                chain.append(r)
-                lbs.insert(r.lb)
-            }
-            return chain
+            var w = Walk(chain: [root], lbs: [root.lb], ever: Set(root.devices))
+            for r in back.reversed() { guard w.step(r, join: true) else { return nil } }
+            return w
         }
         // one well-formed head tag; none, several or a malformed one = absent (the root alone)
         let heads = anchor.tags.filter { $0.first == "head" }
         let named = heads.count == 1 && heads[0].count >= 2 && isHex64(heads[0][1]) ? heads[0][1] : nil
-        var chain = named.flatMap(path(to:)) ?? [root]
-        let anchored = chain[chain.count - 1].id
+        var walk = named.flatMap(path(to:)) ?? Walk(chain: [root], lbs: [root.lb], ever: Set(root.devices))
+        let anchored = walk.chain[walk.chain.count - 1].id
         // no going back: the anchor's head is an ancestor of the head already accepted
-        if let pinnedHead, let pinned = path(to: pinnedHead), pinned.count > chain.count, pinned[chain.count - 1].id == chain[chain.count - 1].id {
-            chain = pinned
+        let at = walk.chain.count - 1
+        if let pinnedHead, let pinned = path(to: pinnedHead), pinned.chain.count > walk.chain.count, pinned.chain[at].id == walk.chain[at].id {
+            walk = pinned
         }
-        var lbs = Set(chain.map(\.lb))
-        while let cur = chain.last {
-            // published, not anchored yet: the lower id wins for now
-            guard let next = (byPrev[cur.id] ?? []).filter({ valid($0, after: cur, lbs) }).min(by: { $0.id.lowercased() < $1.id.lowercased() }) else { break }
-            chain.append(next)
-            lbs.insert(next.lb)
+        while let cur = walk.chain.last {
+            // published, not anchored yet: the lower id wins for now (never a join)
+            let next = (byPrev[cur.id] ?? []).sorted { $0.id.lowercased() < $1.id.lowercased() }.first { r in
+                var probe = walk
+                return probe.step(r, join: false)
+            }
+            guard let next, walk.step(next, join: false) else { break }
         }
+        let chain = walk.chain
         return RosterChain(account: account, rosters: chain, anchored: anchored)
     }
 
