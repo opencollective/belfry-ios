@@ -37,6 +37,10 @@ public struct BelfryConfig: Codable, Hashable, Sendable {
     /// belfry.json `groups_key.pubkey`: the groups key (it posts e-mail cards, guest joins and the
     /// answers to `belfry:` buttons). Nil = an older belfry: `_groups@domain` in nostr.json instead.
     public var groupsKeyHex: String?
+    /// belfry.json `sealed` (docs/sealed-v2.md 8): the belfry writes device lists (`lists`, or
+    /// `version` 2), and whether anything is still sent the version 1 way (`version` 1).
+    public var sealedLists = false
+    public var sealedVersion = 1
 
     public var agents: [String: String] { agentsMap ?? [:] }
 
@@ -89,6 +93,10 @@ public struct BelfryConfig: Codable, Hashable, Sendable {
         c.charter = doc["charter"] as? Bool
         if let k = (doc["nostr"] as? [String: Any])?["pubkey"] as? String, isHex64(k) { c.belfryKey = k }
         if let k = (doc["groups_key"] as? [String: Any])?["pubkey"] as? String, isHex64(k) { c.groupsKeyHex = k }
+        if let s = doc["sealed"] as? [String: Any] {
+            c.sealedVersion = (s["version"] as? Int) == 2 ? 2 : 1
+            c.sealedLists = c.sealedVersion == 2 || (s["lists"] as? Bool) == true
+        }
         if let b = doc["branding"] as? [String: Any] {
             let clean = Branding.clean(b)
             c.branding = clean.isEmpty ? nil : clean

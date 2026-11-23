@@ -77,4 +77,48 @@ final class SealedV2Tests: XCTestCase {
         XCTAssertEqual(SealedV2.state(participants: [A, bob], lists: [A: la], read: [A, bob], seenNonEmpty: [bob]), .hold, "seen once, missing now: hold, never the old way")
         XCTAssertEqual(SealedV2.listTags([lb, la]).map { $0[1] }, [A, bob].sorted())
     }
+
+    /// The lists a device knows: read from the belfry, remembered across runs, and what a message
+    /// between two people becomes: a wrap per device, opened and accepted on the other side.
+    func testDeviceListsEndToEnd() async throws {
+        let path = NSTemporaryDirectory() + "belfry-v2-\(UUID().uuidString).sqlite"
+        let bob = pub("bob")
+        let events = [list("alice", ["phone", "mac"], at: 100), list("bob", ["bobphone"], at: 100)]
+        let phone = try XCTUnwrap(DeviceLists(me: A, belfry: B, deviceSecret: key("phone"), db: try Database(path: path)))
+        phone.ask = { _ in events }
+        XCTAssertEqual(phone.state([A, bob], now: 1000), .hold, "nothing read yet: hold")
+        XCTAssertEqual(await phone.refresh([A, bob], now: 1000), [A, bob])
+        XCTAssertTrue(phone.listed)
+        XCTAssertEqual(phone.state([A, bob], now: 1000), .sealed)
+        XCTAssertEqual(phone.addedDevices(), [], "the first list ever seen raises nothing")
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: A, tags: [["p", bob]] + phone.listTags([A, bob]), content: "Hi", createdAt: 900)
+        let wraps = try phone.wraps(rumor, participants: [A, bob])
+        XCTAssertEqual(wraps.count, 3, "one per device of every participant, this device included")
+        XCTAssertEqual(Set(wraps.compactMap(SealedV2.device(of:))), [pub("phone"), pub("mac"), pub("bobphone")])
+        // Bob's phone opens its own and accepts it once it has read Alice's list
+        let bobPhone = try XCTUnwrap(DeviceLists(me: bob, belfry: B, deviceSecret: key("bobphone"), db: try Database(path: path + "b")))
+        let his = try XCTUnwrap(wraps.first { SealedV2.device(of: $0) == pub("bobphone") })
+        if case .unjudged = bobPhone.open(his) {} else { XCTFail("before the list is read it is kept, not accepted") }
+        bobPhone.take(events, now: 1000)
+        guard case .accepted(let got, let seal) = bobPhone.open(his) else { return XCTFail("not accepted") }
+        XCTAssertEqual(got.id, rumor.id)
+        XCTAssertEqual(seal, pub("phone"))
+        if case .no = bobPhone.open(wraps[0]) {} else if SealedV2.device(of: wraps[0]) != pub("bobphone") { XCTFail("another device's wrap") }
+        // a list from another key changes nothing; a new device raises the notice; memory survives
+        phone.take([list("alice", ["phone", "mallory"], at: 300, by: "mallory")], now: 1100)
+        XCTAssertEqual(phone.list(A)?.devices.count, 2)
+        phone.take([list("alice", ["phone", "mac", "tablet"], at: 200)], now: 1200)
+        XCTAssertEqual(phone.addedDevices(), [pub("tablet")])
+        let again = try XCTUnwrap(DeviceLists(me: A, belfry: B, deviceSecret: key("phone"), db: try Database(path: path)))
+        XCTAssertEqual(again.list(A)?.devices.count, 3)
+        XCTAssertEqual(again.state([A, bob], now: 1300), .hold, "a new run reads the lists again before it seals")
+    }
+
+    func testBelfryJsonSealed() {
+        XCTAssertFalse(BelfryConfig.from(domain: "example.org", document: [:]).sealedLists)
+        let v1 = BelfryConfig.from(domain: "example.org", document: ["sealed": ["version": 1, "lists": true]])
+        XCTAssertTrue(v1.sealedLists); XCTAssertEqual(v1.sealedVersion, 1)
+        let v2 = BelfryConfig.from(domain: "example.org", document: ["sealed": ["version": 2]])
+        XCTAssertTrue(v2.sealedLists); XCTAssertEqual(v2.sealedVersion, 2)
+    }
 }
