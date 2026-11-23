@@ -26,6 +26,9 @@ public struct Roster: Hashable, Sendable {
     public let devices: [String]
     public let ready: Bool
     public let createdAt: Int
+    /// ["endorse", <device>]: the devices that added themselves and that this roster's signer
+    /// answers for ("It was me", sealed.md 5.7).
+    public let endorses: [String]
 
     /// nil for anything that is not a well-formed roster (the signature is the caller's check).
     public init?(_ e: NostrEvent) {
@@ -43,6 +46,7 @@ public struct Roster: Hashable, Sendable {
         self.devices = devices
         ready = e.tags.contains { $0.first == "ready" }
         createdAt = e.createdAt
+        endorses = e.tags.filter { $0.first == "endorse" && $0.count >= 2 && isHex64($0[1]) }.map { $0[1] }
     }
 }
 
@@ -54,6 +58,9 @@ public struct RosterChain: Hashable, Sendable {
     /// The end of the anchored path, as the anchor gives it (the root when it names no usable
     /// head); what comes after it in `rosters` is not anchored yet.
     public let anchored: String
+    /// The head's devices that added themselves and are still limited (no "It was me" yet), in
+    /// the head's order: they read and write, and can neither add nor remove a device.
+    public var unendorsed: [String] = []
 
     public var root: Roster { rosters[0] }
     public var head: Roster { rosters[rosters.count - 1] }
@@ -89,7 +96,8 @@ public struct RosterChain: Hashable, Sendable {
             var chain: [Roster]
             var lbs: Set<String>
             var ever: Set<String>
-            var unendorsed: Set<String> = []
+            /// A device that added itself, still limited → the devices of the roster before its join.
+            var unendorsed: [String: Set<String>] = [:]
 
             /// NEXT is a valid step after the last roster. JOIN (only on the anchored path: not
             /// anchored it is nothing, anyone can sign one): a roster signed by a device the
@@ -101,21 +109,22 @@ public struct RosterChain: Hashable, Sendable {
                 let cur = chain[chain.count - 1]
                 guard next.prev == cur.id, next.n == cur.n + 1 else { return false }
                 if cur.devices.contains(next.signer) {
-                    guard !unendorsed.contains(next.signer) else { return false }
+                    guard unendorsed[next.signer] == nil else { return false }
                     let missing = cur.devices.contains { !next.devices.contains($0) }
                     guard missing ? !lbs.contains(next.lb) : next.lb == cur.lb else { return false }
-                    // any roster of an older device after the join(s) endorses them
-                    unendorsed = []
+                    // only an explicit ["endorse", <device>] lifts a joiner's limits, and only
+                    // from a device that was in the roster before that join (1440e79)
+                    for d in next.endorses where unendorsed[d]?.contains(next.signer) == true { unendorsed[d] = nil }
                 } else {
                     guard join, !ever.contains(next.signer), next.createdAt >= cur.createdAt,
                           next.devices == cur.devices + [next.signer], !lbs.contains(next.lb) else { return false }
-                    unendorsed.insert(next.signer)
+                    unendorsed[next.signer] = Set(cur.devices)
                 }
                 chain.append(next)
                 lbs.insert(next.lb)
                 ever.formUnion(next.devices)
-                // a joiner that left the head has nothing left to endorse
-                unendorsed = unendorsed.filter(next.devices.contains)
+                // a joiner that left the head is no longer waiting
+                unendorsed = unendorsed.filter { next.devices.contains($0.key) }
                 return true
             }
         }
@@ -152,7 +161,8 @@ public struct RosterChain: Hashable, Sendable {
             guard let next, walk.step(next, join: false) else { break }
         }
         let chain = walk.chain
-        return RosterChain(account: account, rosters: chain, anchored: anchored)
+        let limited = chain[chain.count - 1].devices.filter { walk.unendorsed[$0] != nil }
+        return RosterChain(account: account, rosters: chain, anchored: anchored, unendorsed: limited)
     }
 
     /// Whether a seal signed by DEVICE counts for a rumor of this account written at RUMORAT:
