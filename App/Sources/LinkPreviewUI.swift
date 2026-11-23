@@ -106,7 +106,9 @@ struct LinkPreviewBox: View {
             switch center.state(link) {
             case .found(let p): Button { if let u = URL(string: link) { openURL(u) } } label: { LinkPreviewCard(link: link, p: p) }.buttonStyle(.plain)
             case .loading: LinkPreviewLoading()
-            case .some(.none), nil: EmptyView()
+            // not asked yet, or nothing to show: no height, but a view (an empty one never
+            // appears, and the question would never be asked)
+            case .some(.none), nil: Color.clear.frame(height: 0)
             }
         }
         .onAppear { center.ask(link) }
