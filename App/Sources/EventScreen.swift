@@ -280,6 +280,7 @@ struct EventScreenBody: View {
                     EventFullPart(e: e, api: api, error: $error, coHost: $coHost, open: openProfile,
                                   showPeople: { hideKeyboard(); sub = .people }, push: { hideKeyboard(); sub = $0 },
                                   edit: { editing = true }, tickets: { ticketsSheet = true }, cancel: { cancelSheet = true },
+                                  invite: { hideKeyboard(); invitingPeople = true },
                                   delete: { confirmDelete = true })
                         .background(PDSurface.color)
                 }
@@ -777,6 +778,7 @@ struct EventFullPart: View {
     let edit: () -> Void
     let tickets: () -> Void
     let cancel: () -> Void
+    var invite: () -> Void = {}
     let delete: () -> Void
 
     var body: some View {
@@ -895,7 +897,7 @@ struct EventFullPart: View {
             PDDivider()
             // members only, search and ticks, no roles (not for a meeting: its people list invites)
             if !e.meeting {
-                PDRow(symbol: "person.2", title: "Invite people") { hideKeyboard(); invitingPeople = true }
+                PDRow(symbol: "person.2", title: "Invite people", action: invite)
                     .accessibilityIdentifier("event-invite-people")
                 PDDivider()
             }
