@@ -103,10 +103,12 @@ final class SealedVectorTests: XCTestCase {
             XCTAssertEqual(conv, "n:" + (exp["participants"] as? [String] ?? []).sorted().joined(separator: ","), name)
             XCTAssertEqual(Notes.isNotes(conv, me: me), exp["notes"] as? Bool ?? false, name)
         }
-        // the single wrap: p = me, my head letterbox, silent; accepted on a chain without `ready`
+        // the single wrap: p = me, my head letterbox; accepted on a chain without `ready`. (This
+        // case was generated before silent wraps: it carries no tag. That a note written today
+        // does is in `silent.carries` and in SealedEngineTests.testNotesToMyself.)
         let w = dict(n["wrap"])
         let wrap = try event(w["wrap"])
-        XCTAssertTrue(Sealed.isSilent(wrap.tags))
+        XCTAssertEqual(wrap.tagValues("p"), [me])
         let secret = try XCTUnwrap(Data(hex: w["letterbox_secret"] as? String ?? ""))
         guard case .opened(let rumor, let seal) = Sealed.open(wrap, secret: secret) else { return XCTFail("the note's wrap does not open") }
         let exp = dict(w["expected"])
