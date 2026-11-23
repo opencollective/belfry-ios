@@ -108,6 +108,14 @@ extension Derive {
     public func lineDay(_ at: Int, now: Int) -> String { dayKey(at) == dayKey(now) ? "Today" : fmt("EEE d MMM", at) }
     public func lineTime(_ at: Int) -> String { fmt("HH:mm", at) }
 
+    /// Whole days over several days: "Thu 12 Nov → Sat 14 Nov", never "All day" (Xavier,
+    /// 2026-11-22; Android SPEC 19.65: an all-day event's end date is its last day). Nil: one
+    /// whole day, or an event with hours.
+    public func lineDays(_ e: CalEvent, now: Int) -> String? {
+        guard e.allDay, let end = e.end, end > e.start, dayKey(end) != dayKey(e.start) else { return nil }
+        return lineDay(e.start, now: now) + " → " + lineDay(end, now: now)
+    }
+
     /// "18:00 – 21:00", "18:00" or "All day".
     public func lineWhen(_ e: CalEvent) -> String {
         if e.allDay { return "All day" }

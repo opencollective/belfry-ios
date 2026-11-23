@@ -227,6 +227,28 @@ struct EventScreenBody: View {
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { withAnimation { level = level == .full ? .half : .full } }
             .accessibilityAction(named: "Show the chat") { withAnimation { level = .up } }
+            // ⌃ and ⌄ at its ends (Xavier, 2026-11-22: "When pulling down fully, there should be a
+            // way to push back up mid way, then all the way"); drag and tap stay. Overlays: they
+            // take no part in the handle's fixed frame.
+            .overlay(alignment: .leading) {
+                handleArrow("chevron.up", "Show less", "event-handle-up", off: level == .up) { level = level == .full ? .half : .up }
+            }
+            .overlay(alignment: .trailing) {
+                handleArrow("chevron.down", "Show more", "event-handle-down", off: level == .full) { level = level == .up ? .half : .full }
+            }
+    }
+
+    private func handleArrow(_ symbol: String, _ label: String, _ id: String, off: Bool, _ step: @escaping () -> Void) -> some View {
+        Button { withAnimation(.snappy(duration: 0.28)) { step() } } label: {
+            Image(systemName: symbol).font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary)
+                .frame(width: 56, height: EventScreenBody.handleH)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .opacity(off ? 0.25 : 1)
+        .disabled(off)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
     }
 
     // ---- the header ------------------------------------------------------------------------------
@@ -536,7 +558,7 @@ struct EventInfoRows: View {
     }
 
     private func when(_ d: Derive) -> String {
-        var s = d.lineDay(e.start, now: .now) + " · " + d.lineWhen(e)
+        var s = d.lineDays(e, now: .now) ?? (d.lineDay(e.start, now: .now) + " · " + d.lineWhen(e))
         if let tz = e.tz, let zone = TimeZone(identifier: tz), zone.secondsFromGMT() != TimeZone.current.secondsFromGMT() {
             s += " (your time)"
         }
