@@ -49,6 +49,18 @@ def blank(path, name):
     print(f"WARNING {name}: a blank frame ({size} bytes); sampling the app", flush=True)
     pid = subprocess.run(["pgrep", "-n", "-f", "Belfry.app/Belfry"], capture_output=True, text=True).stdout.strip()
     if pid: subprocess.run(["sample", pid, "3", "-file", os.path.join(out, f"sample-blank-{name}.txt")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Run 45092295271: both blank frames were an app still inside AppModel.init when sampled, a
+    # launch that took over 6 s on a slow simulator, not a hang. The sample took 3 s: take the
+    # picture again, and twice more 4 s apart while it stays blank.
+    for _ in range(3):
+        frame(path)
+        try: size = os.path.getsize(path)
+        except OSError: return
+        if size > 90_000:
+            print(f"{name}: drawn on a later frame ({size} bytes)", flush=True)
+            return
+        time.sleep(4)
+    print(f"WARNING {name}: STILL blank after 15 s", flush=True)
 
 
 def settle(path):
