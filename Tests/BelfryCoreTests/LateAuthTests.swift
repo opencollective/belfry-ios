@@ -51,7 +51,9 @@ final class LateAuthTests: XCTestCase {
         // a recent public message is stored: `since` would move past older members-only events
         let pub = try me.signNow(EventTemplate(kind: 9, content: "hi", tags: [["h", "general"]], createdAt: 1_800_000_000))
         _ = e.add([pub], verify: false)
-        XCTAssertEqual(e.filters(.groups)[0]["since"] as? Int, 1_800_000_000 - 3600)
+        // (the event's own time: a signer that has just signed at this second gives the next one;
+        // run 45100826060 failed here on 1 799 996 401)
+        XCTAssertEqual(e.filters(.groups)[0]["since"] as? Int, pub.createdAt - 3600)
         XCTAssertEqual(e.filters(.groups, fromStart: true)[0]["since"] as? Int, 0, "the first subscription after AUTH")
         // a catch-up from the start is pending; the relay answers, then asks for AUTH
         db.set("full-sync", ["groups"])
@@ -70,7 +72,7 @@ final class LateAuthTests: XCTestCase {
         let open = Relay(url: "wss://open.example.org")
         e2.eose(.groups, "live-groups", relay: open)
         XCTAssertEqual(answered, 1)
-        XCTAssertEqual(e2.filters(.groups)[0]["since"] as? Int, 1_800_000_000 - 3600)
+        XCTAssertEqual(e2.filters(.groups)[0]["since"] as? Int, pub.createdAt - 3600)
     }
 
     /// Android auth-since 3ad9280's case: the app starts again (or reconnects) with a recent public
