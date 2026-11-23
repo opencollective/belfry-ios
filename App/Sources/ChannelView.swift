@@ -164,6 +164,13 @@ struct ChannelView: View {
             .onAppear {
                 if let g, g.type == .channel, !embedded, !model.guestReading, !model.derive.amGuest, !model.inMenu(id) { model.previewing.insert(id) }
             }
+            // the first open after starting it from a printed card: half pulled down, with the
+            // welcome over the composer (canvas cards/claim-done)
+            .task(id: model.cardWelcome) {
+                guard model.cardWelcome == id, !embedded, pull == .closed else { return }
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                if model.cardWelcome == id { withAnimation(.snappy(duration: 0.3)) { pull = .short } }
+            }
             .onChange(of: model.version) { _, _ in model.previewCheck(id) }
             .onChange(of: model.myPins) { _, _ in model.previewCheck(id) }
             .onDisappear { if model.visibleChannel == id { model.visibleChannel = nil }; if model.missingMessage == id { model.missingMessage = nil } }

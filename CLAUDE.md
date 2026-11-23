@@ -409,7 +409,7 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   a second build). Screens `sendstill`, `sendnotyet`, `diagnostics`, `dmfiles`, `dmfilessending`,
   `eventaddress`.
 
-- 2026-11-23 printed cards (SPEC 19.72; collective-belfry docs/cards.md; canvas "Belfry · Group
+- 2026-11-23 printed cards (SPEC 19.68; collective-belfry docs/cards.md; canvas "Belfry · Group
   cards"): `Net/Cards.swift` (`CardLink`, `CardInfo`, `CardFailure`, `Cards`, the API calls,
   `CardTopicWords`), `AppModel+Cards` (`pendingCard`, the demo's cards K7Q2MX / T9PC4H free,
   CXAWMS / TPCHAT claimed, RETRDX, ARCH9V; demo code 123456), `CardUI.swift` (`CardScreen`: the

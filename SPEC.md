@@ -2832,7 +2832,7 @@ lanes `OutboxPass.lane`; `SendState` / `SendTrace` in `Outbox/SendTrace.swift`; 
 - **Bell** (a channel's top right, off by default) = push level `all` for that channel; off = `default`.
 - **Header**: two lines (title, icon row); drop order vectors `headerRow`.
 
-### 19.72 Printed cards, who made a group, followers (iOS, 2026-11-23; Xavier via the lead; contract collective-belfry docs/cards.md @7eaa563; web chat-source f10e6b2; canvas "Belfry · Group cards" boards cards/*)
+### 19.68 Printed cards, who made a group, followers (iOS, 2026-11-23; Xavier via the lead; contract collective-belfry docs/cards.md @7eaa563; web chat-source f10e6b2; canvas "Belfry · Group cards" boards cards/*)
 
 - **The address.** `https://chat.<domain>/g/<id>` (a universal link; also `…/#/g/<id>`): `<id>` is 6 of
   `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, lower case read as upper case. Anything else after `/g/` is a
