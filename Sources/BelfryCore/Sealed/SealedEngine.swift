@@ -663,12 +663,12 @@ public final class SealedEngine: @unchecked Sendable {
             // this device's notice when the rule holds. Its roster not here yet: kept, tried again
             // when my chain changes, for 30 days. Anything else: ignored without a word.
             if rumor.kind == AddedConfirm.kind {
-                switch AddedConfirm.verdict(rumor, sealPubkey: seal, chain: chain(me), account: me) {
+                switch AddedConfirm.verdict(rumor, sealPubkey: seal, chain: chain(me), account: me, unanswered: Set(addedNotices().map(\.device))) {
                 case .clears(let device):
                     noticed(device)
                     onChange?()
                     return .drop
-                case .unknownRoster:
+                case .unknownRoster, .later:
                     if old { return .drop }
                     let stamp = chainsStamp()
                     lock.lock(); waiting[wrap.id] = stamp; lock.unlock()
@@ -1249,8 +1249,28 @@ public final class SealedEngine: @unchecked Sendable {
             if !gone, let w = try? Sealed.wrap(rumor, device: self.device, to: me, lb: c.lb, silent: true) {
                 _ = engine.enqueueSigned(w, target: .main, dm: nil)
             }
+            // a device that added itself (5.7): "It was me" also endorses it, which is what lifts
+            // its limits for every reader
+            if c.unendorsed.contains(device) { Task { await self.endorse(device) } }
         }
         onChange?()
+    }
+
+    /// The endorsement: roster n+1 = the head's devices in their order, the head's letterbox,
+    /// `ready` by the usual rule, then ["endorse", <device>]; anchored at once. Only by a device
+    /// that was in the roster before that join and is not limited itself, on an anchored head.
+    func endorse(_ device: String, now: Int = .now) async {
+        await exclusive {
+            guard await self.refresh([self.me], now: now), let c = self.chain(self.me), c.anchored == c.head.id,
+                  c.unendorsed.contains(device), !c.unendorsed.contains(self.devicePub), c.devices.contains(self.devicePub),
+                  let join = AddedConfirm.addedBy(c, device), let i = c.rosters.firstIndex(where: { $0.id == join.id }), i > 0,
+                  c.rosters[i - 1].devices.contains(self.devicePub), let sessions = await self.sessions?() else { return }
+            let ready = SealedEngine.mayCarryReady(sessions, devices: c.devices, now: now)
+            let t = RosterChain.template(account: self.me, n: c.head.n + 1, prev: c.head.id, lb: c.lb, devices: c.devices, ready: ready,
+                                         endorse: [device], now: max(now, c.head.createdAt))
+            _ = await self.publishRoster(t, root: c.root.id, now: now)
+            self.onChange?()
+        }
     }
 
     /// The devices added to my head without this device having shown a prompt or a link code for

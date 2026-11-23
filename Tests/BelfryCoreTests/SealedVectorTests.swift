@@ -416,6 +416,52 @@ final class SealedVectorTests: XCTestCase {
         }
     }
 
+    /// A joiner's earlier keys (`join.older_keys`, 9), the 8563 around a joiner (`join.confirm`, 4)
+    /// and the endorsement roster "It was me" publishes (`join.endorsement`).
+    func testJoinKeysConfirmEndorsement() throws {
+        let v = try vector("sealed")
+        let alice = key(v, "alice").pub
+        let j = dict(v["join"])
+        let older = list(j["older_keys"])
+        XCTAssertEqual(older.count, 9)
+        for c in older {
+            let g = dict(c["given"])
+            let got = JoinKeys.decide(now: g["now"] as? Int ?? 0, requestAt: g["request_created_at"] as? Int ?? 0, sessionCreatedAt: g["session_created_at"] as? Int,
+                                      sessionFresh: g["session_live_chat_read_fresh"] as? Bool ?? false,
+                                      thisDeviceOnPinnedAnchoredHead: g["this_device_in_pinned_anchored_head"] as? Bool ?? false,
+                                      thisDeviceTrusted: g["this_device_trusted"] as? Bool ?? false, askerTrusted: g["asker_trusted"] as? Bool ?? false,
+                                      askerInChainBeforeItsJoin: g["asker_in_chain_before_its_join"] as? Bool ?? true,
+                                      othersLetIn24h: g["others_let_in_last_24h"] as? Int ?? 99)
+            XCTAssertEqual(got.rawValue, c["expected"] as? String, c["name"] as? String ?? "")
+        }
+        let confirms = list(j["confirm"])
+        XCTAssertEqual(confirms.count, 4)
+        for c in confirms {
+            let name = c["name"] as? String ?? ""
+            let ch = try chain(events: dict(c["chain"]), account: alice)
+            let r = dict(c["rumor"])
+            let rumor = NostrEvent(id: r["id"] as? String ?? "", pubkey: r["pubkey"] as? String ?? "", createdAt: r["created_at"] as? Int ?? 0,
+                                   kind: r["kind"] as? Int ?? 0, tags: r["tags"] as? [[String]] ?? [], content: r["content"] as? String ?? "")
+            let got = AddedConfirm.verdict(rumor, sealPubkey: c["seal_pubkey"] as? String ?? "", chain: ch, account: alice,
+                                           unanswered: Set(c["unanswered_on_this_device"] as? [String] ?? []))
+            let exp = dict(c["expected"])
+            var accepted = false
+            if case .clears = got { accepted = true }
+            XCTAssertEqual(accepted, exp["accepted"] as? Bool, name)
+            XCTAssertEqual(got == .later || got == .unknownRoster, exp["judged_again_later"] as? Bool, name)
+        }
+        // the roster the tapped device publishes: the head's devices and lb, then the endorse tag
+        let e = dict(j["endorsement"])
+        let before = try XCTUnwrap(try chain(events: dict(e["before"]), account: alice))
+        let want = try event(e["roster"])
+        let joiner = e["joiner"] as? String ?? ""
+        XCTAssertEqual(before.unendorsed, [joiner])
+        let t = RosterChain.template(account: alice, n: before.head.n + 1, prev: before.head.id, lb: before.lb, devices: before.devices,
+                                     ready: want.tags.contains(["ready"]), endorse: before.unendorsed, now: want.createdAt)
+        XCTAssertEqual(t.tags, want.tags)
+        XCTAssertEqual(Roster(want)?.endorses, e["endorses"] as? [String])
+    }
+
     func testTrust() throws {
         let v = try vector("sealed")
         let alice = key(v, "alice").pub

@@ -214,12 +214,15 @@ public struct RosterChain: Hashable, Sendable {
     // ---- what a device publishes ---------------------------------------------------------------
 
     /// A roster to sign with a device key.
-    public static func template(account: String, n: Int, prev: String?, lb: String, devices: [String], ready: Bool, now: Int = .now) -> EventTemplate {
+    /// ENDORSE: the devices that added themselves and that this roster's signer answers for
+    /// ("It was me" / Allow, sealed.md 5.7): one ["endorse", <device>] each, last, after `ready`.
+    public static func template(account: String, n: Int, prev: String?, lb: String, devices: [String], ready: Bool, endorse: [String] = [], now: Int = .now) -> EventTemplate {
         var tags: [Tag] = [["p", account], ["n", String(n)]]
         if let prev { tags.append(["prev", prev]) }
         tags.append(["lb", lb])
         tags += devices.map { ["device", $0] }
         if ready { tags.append(["ready"]) }
+        tags += endorse.map { ["endorse", $0] }
         return EventTemplate(kind: SealedKind.roster, content: "", tags: tags, createdAt: now)
     }
 

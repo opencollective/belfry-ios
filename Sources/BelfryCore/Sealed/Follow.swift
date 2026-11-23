@@ -198,6 +198,22 @@ public enum AutoAdd {
     }
 }
 
+/// A device that added itself asks for the earlier letterboxes (sealed.md 5.7, "Older keys"):
+/// handed over without a prompt only under exactly step 2's conditions; otherwise the Allow card.
+public enum JoinKeys {
+    public enum Answer: String, Sendable { case keys, card }
+
+    /// SESSIONFRESH: its row was in a session list read for this request, live and a chat client.
+    /// OTHERS: the OTHER devices let in within 24 hours (joins counted; the asker not counted).
+    public static func decide(now: Int, requestAt: Int, sessionCreatedAt: Int?, sessionFresh: Bool, thisDeviceOnPinnedAnchoredHead: Bool,
+                              thisDeviceTrusted: Bool, askerTrusted: Bool, askerInChainBeforeItsJoin: Bool, othersLetIn24h: Int) -> Answer {
+        guard sessionFresh, let s = sessionCreatedAt, requestAt >= s - AutoAdd.skew, now - requestAt <= AutoAdd.maxAge,
+              thisDeviceOnPinnedAnchoredHead, thisDeviceTrusted, askerTrusted, !askerInChainBeforeItsJoin,
+              othersLetIn24h < AutoAdd.limit else { return .card }
+        return .keys
+    }
+}
+
 /// "It was me", answered once for every device (sealed.md 5.2 step 2b, 2026-11-22; Xavier: "make
 /// sure we only need to do that once, in case I have more than 2 devices"): the device that was
 /// tapped sends a sealed rumor of kind 8563 to my own head letterbox; every other device of mine
@@ -225,6 +241,9 @@ public enum AddedConfirm {
         case clears(String)
         /// The roster it names is not in my chain as this device has it (yet): look again later.
         case unknownRoster
+        /// Its signer is a device whose own added-notice is unanswered on this device: it does
+        /// not count yet (kept, judged again once that notice is answered; 5.7).
+        case later
         case no
     }
 
@@ -232,7 +251,7 @@ public enum AddedConfirm {
     /// (a) is in the roster BEFORE the one named by `e` (the added device can never confirm
     /// itself, nor two devices added together each other), (b) is in the head now, and (c) `e`
     /// names the roster that really added that device. Anything else is ignored.
-    public static func verdict(_ rumor: NostrEvent, sealPubkey: String, chain c: RosterChain?, account: String) -> Verdict {
+    public static func verdict(_ rumor: NostrEvent, sealPubkey: String, chain c: RosterChain?, account: String, unanswered: Set<String> = []) -> Verdict {
         // the shape, read strictly (vectors/sealed.json `confirm`): the rumor's key is the key
         // that signed its seal, content "", p / device / e exactly once
         func once(_ name: String) -> String? {
@@ -246,6 +265,7 @@ public enum AddedConfirm {
         // the roster that LAST added the device, never the root
         guard i > 0, addedBy(c, device)?.id == e else { return .no }
         guard c.rosters[i - 1].devices.contains(sealPubkey), c.devices.contains(sealPubkey) else { return .no }
+        if unanswered.contains(sealPubkey) { return .later }
         return .clears(device)
     }
 }
