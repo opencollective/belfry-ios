@@ -266,11 +266,32 @@ struct SettingsTab: View {
     /// What can be posted: "" = anything, else thread / event / proposal (/ request when it is set so).
     @State private var posts = ""
 
+    /// The fields as the channel is now, once. Called from the first row too: the list is lazy,
+    /// and its last section (where this used to hang alone) is off screen on a phone.
+    private func load() {
+        let g = model.group(id)
+            guard !loaded, let g else { return }
+            loaded = true
+            name = g.name
+            about = g.about
+            inbox = model.derive.isInbox(g)
+            closed = g.closed
+            prompt = g.prompt ?? ""
+            vouches = g.vouches
+            access = model.derive.channelAccess(g)
+            join = g.isPrivate ? .private : g.closed ? .closed : .open
+            // a group's page: public or members only (closed or not is "Who can join")
+            if g.isPod { access = model.derive.isPublic(g) ? .public : .members }
+            posts = model.derive.webPage(g)?.posts ?? ""
+            takes = model.derive.webPage(g)?.takes ?? Set(WebPage.kinds)
+            if model.launch.screen == "chpublic" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { askPublic = true } }
+    }
+
     var body: some View {
         let g = model.group(id)
         // started from a printed card: the card, for its stewards (cards/steward)
         if let card { CardSettingsSection(group: id, card: card) }
-        Section("Name") { TextField("Name", text: $name).font(.body).task(id: id) { card = await model.groupCard(id) } }
+        Section("Name") { TextField("Name", text: $name).font(.body).onAppear { load() }.task(id: id) { card = await model.groupCard(id) } }
         Section("Description") { TextField("What is it about? (Markdown)", text: $about, axis: .vertical).lineLimit(3...8).font(.body) }
         // a private group stays private: only invited people, nothing to choose and no question
         // (one-shape.md "Groups: open, closed, private")
@@ -387,23 +408,7 @@ struct SettingsTab: View {
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 4, trailing: 0))
             }
         }
-        .onAppear {
-            guard !loaded, let g else { return }
-            loaded = true
-            name = g.name
-            about = g.about
-            inbox = model.derive.isInbox(g)
-            closed = g.closed
-            prompt = g.prompt ?? ""
-            vouches = g.vouches
-            access = model.derive.channelAccess(g)
-            join = g.isPrivate ? .private : g.closed ? .closed : .open
-            // a group's page: public or members only (closed or not is "Who can join")
-            if g.isPod { access = model.derive.isPublic(g) ? .public : .members }
-            posts = model.derive.webPage(g)?.posts ?? ""
-            takes = model.derive.webPage(g)?.takes ?? Set(WebPage.kinds)
-            if model.launch.screen == "chpublic" { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { askPublic = true } }
-        }
+        .onAppear { load() }
         .alert("Make \(label(g)) public?", isPresented: $askPublic) {
             Button("Make it public") { access = .public }
             Button("Keep it for members", role: .cancel) {}
