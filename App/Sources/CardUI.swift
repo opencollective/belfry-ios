@@ -169,7 +169,7 @@ struct CardStartForm: View {
                     if signedIn {
                         HStack(spacing: 8) {
                             Avatar(pubkey: model.me, size: 24)
-                            Text("Signed in as ").foregroundStyle(.secondary) + Text(model.name(model.me)).bold()
+                            Text("Signed in as ").foregroundStyle(.secondary) + Text(model.myName).bold()
                         }
                         .font(.subheadline)
                     }
@@ -216,7 +216,7 @@ struct CardStartForm: View {
                     TextField("Your name", text: Binding(get: { f.name }, set: { f.name = String($0.prefix(100)) }))
                         .font(.body).textContentType(.name)
                         .accessibilityIdentifier("card-name")
-                    TextField("you@example.org", text: $f.email)
+                    TextField("E-mail", text: $f.email, prompt: Text(verbatim: "you@example.org"))
                         .font(.body).textContentType(.emailAddress).keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .accessibilityIdentifier("card-email")

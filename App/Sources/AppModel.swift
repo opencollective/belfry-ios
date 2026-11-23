@@ -320,6 +320,7 @@ final class AppModel: ObservableObject {
             pendingInvite = nil
             startDemo()
             // `-demo -card <id>`: a printed card scanned while signed in
+            pendingCard = nil
             if let c = launch.card { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.pendingCard = PendingCard(domain: AppModel.demoDomain, id: c) } }
         } else if launch.signin == "code" {
             pendingInvite = nil

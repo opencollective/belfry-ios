@@ -280,7 +280,7 @@ struct RootView: View {
         }
         // a printed card scanned while signed in: start its group or topic (a short task: a sheet)
         .sheet(isPresented: Binding(get: { model.pendingCard != nil }, set: { if !$0 { model.cardDone() } })) {
-            if let c = model.pendingCard { CardScreen(card: c) }
+            if let c = model.pendingCard { CardScreen(card: c).id(c.key) }
         }
     }
 
@@ -331,7 +331,7 @@ struct RootView: View {
             if model.guestReading || model.derive.amGuest, model.tab == .groups || model.tab == .messages { model.tab = .home }
             applyLaunchScreen()
             // a guest link's channel, set while the loading screen stood here
-            if let id = model.joinedChannel { model.joinedChannel = nil; selection = .channel(id) }
+            if let id = model.joinedChannel { model.joinedChannel = nil; if phone { model.tab = .town }; selection = .channel(id) }
         }
         .onChange(of: model.version) { _, _ in if selection == nil { selection = firstChannel() } }
     }
