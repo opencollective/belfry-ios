@@ -100,7 +100,10 @@ final class SealedVectorTests: XCTestCase {
             let r = dict(c["rumor"])
             let conv = MailThreads.nostrConv(author: r["pubkey"] as? String ?? "", pTags: (r["tags"] as? [[String]] ?? []).filter { $0.first == "p" && $0.count > 1 }.map { $0[1] }, me: me)
             let exp = dict(c["expected"])
-            XCTAssertEqual(conv, "n:" + (exp["participants"] as? [String] ?? []).sorted().joined(separator: ","), name)
+            // the file lists every participant, me included; the iPhone's id names the others
+            // (and me alone for Notes)
+            let others = (exp["participants"] as? [String] ?? []).filter { $0 != me }.sorted()
+            XCTAssertEqual(conv, "n:" + (others.isEmpty ? me : others.joined(separator: ",")), name)
             XCTAssertEqual(Notes.isNotes(conv, me: me), exp["notes"] as? Bool ?? false, name)
         }
         // the single wrap: p = me, my head letterbox; accepted on a chain without `ready`. (This
