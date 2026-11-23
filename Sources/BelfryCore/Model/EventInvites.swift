@@ -44,10 +44,11 @@ public extension Derive {
     }
 
     /// The members a host can invite to E, by name: members only (no guests, no agents), not me,
-    /// not already invited or going.
+    /// not its hosts, not already invited or going.
     func invitable(_ e: CalEvent, _ q: String) -> [String] {
         let s = q.jsTrim().lowercased()
-        let out = Set(e.invited).union(e.goingKeys).union([me])
+        // (its hosts are there already)
+        let out = Set(e.invited).union(e.goingKeys).union(e.hosts).union([me, e.creator])
         return profiles().keys
             .filter { !out.contains($0) && !isGuest($0) && !isAgent($0) }
             .filter { s.isEmpty || displayName($0).lowercased().contains(s) }
