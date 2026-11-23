@@ -849,10 +849,7 @@ struct EventFullPart: View {
         let url = d.eventURL(e)
         return VStack(alignment: .leading, spacing: 10) {
             PDHeader(text: "Address")
-            Text(url).font(.footnote.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
-                .padding(.horizontal, 16)
-            LinkButtons(url: url, subject: e.title, message: e.title)
-                .padding(.horizontal, 16)
+            EventAddressRow(url: url, title: e.title)
         }
     }
 
@@ -1085,5 +1082,50 @@ extension View {
         #else
         self
         #endif
+    }
+}
+
+/// An event's address (Xavier, 2026-11-22: "When showing the url, make it horizontally scrollable
+/// if necessary and below: Copy url, Share, QR"; board events/event-full-top): the URL on one
+/// line that scrolls sideways, then one row Copy · Share · QR.
+struct EventAddressRow: View {
+    let url: String
+    let title: String
+    @State private var qr = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(url).font(.footnote.monospaced()).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 16)
+            }
+            .frame(height: 20)
+            .accessibilityIdentifier("event-url")
+            HStack(spacing: 8) {
+                CopyRow(text: url, title: "Copy", wide: true).disabled(url.isEmpty)
+                if let u = URL(string: url), !url.isEmpty {
+                    ShareLink(item: u, subject: Text(title), message: Text(title)) {
+                        Label("Share", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity, minHeight: 34)
+                    }
+                }
+                Button { hideKeyboard(); qr = true } label: { Label("QR", systemImage: "qrcode").frame(maxWidth: .infinity, minHeight: 34) }
+                    .disabled(url.isEmpty)
+                    .accessibilityLabel("Show the QR code")
+                    .accessibilityIdentifier("event-qr")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .padding(.horizontal, 16)
+        }
+        .sheet(isPresented: $qr) {
+            NavigationStack {
+                List { QRRow(url: url).listRowBackground(Color.clear) }
+                    .navigationTitle(title)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { qr = false } } }
+            }
+            .presentationDetents([.medium])
+        }
     }
 }
