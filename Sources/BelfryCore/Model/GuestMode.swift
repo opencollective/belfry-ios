@@ -235,9 +235,11 @@ public enum GuestSignIn {
 
     /// The body of the verify call: e-mail and code trimmed, the name only when asked for, the
     /// NEW session key's public key and this app's id.
-    public static func body(email: String, code: String, name: String?, sessionKey: String, client: String = "belfry-ios") -> [String: Any] {
+    public static func body(email: String, code: String, name: String?, sessionKey: String, client: String = "belfry-ios", summary: String? = nil) -> [String: Any] {
         var b: [String: Any] = ["email": email.jsTrim(), "code": code.jsTrim(), "session_key": sessionKey.lowercased(), "client": client]
         if let name { b["name"] = GuestJoinForm.cleanName(name) }
+        // following a topic reached by a printed card: its summary by e-mail (weekly | monthly)
+        if let summary { b["summary"] = Cards.summary(summary) }
         return b
     }
 

@@ -103,6 +103,7 @@ struct JoinSheet: View {
     @State private var sentTo = ""
     @State private var resendAt = Date()
     @State private var launched = false
+    @State private var summary = "weekly"
     /// When the first code check whose answer was lost (no connection, a timeout, a 5xx) started:
     /// it may have used the code on the belfry, so a later "expired" may mean it worked.
     @State private var maybeReachedAt: Int?
@@ -172,6 +173,8 @@ struct JoinSheet: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
         }
+        // a topic reached by a printed card: its summary by e-mail (canvas cards/follow-channel-form)
+        if model.guestCardTopic != nil { SummaryPicker(choice: $summary) }
         if let error { Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.red).font(.callout) }
         BusyButton { _ = await send() } label: { Text("Continue").frame(maxWidth: .infinity).padding(.vertical, 6) }
             .buttonStyle(.brand)
@@ -271,7 +274,8 @@ struct JoinSheet: View {
         note = nil
         codeFocused = false
         let started = Int.now
-        let f = await model.verifyJoinCode(email: sentTo, code: digits, name: askName ? name : nil, since: maybeReachedAt)
+        let f = await model.verifyJoinCode(email: sentTo, code: digits, name: askName ? name : nil, since: maybeReachedAt,
+                                           summary: model.guestCardTopic != nil ? summary : nil)
         verifying = false
         if let f {
             // a wrong or expired code is cleared; a failed connection keeps the digits for Try again

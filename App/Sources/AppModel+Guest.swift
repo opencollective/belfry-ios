@@ -164,7 +164,7 @@ extension AppModel {
     /// an earlier attempt that may have reached the belfry started (its answer lost): then an
     /// expired / wrong code / not a guest may only mean that attempt worked, and the relay is
     /// asked first (#issues 2026-11-13, web guestjoin.ts savedOnRelay).
-    func verifyJoinCode(email: String, code: String, name: String?, since: Int? = nil) async -> GuestJoinFailure? {
+    func verifyJoinCode(email: String, code: String, name: String?, since: Int? = nil, summary: String? = nil) async -> GuestJoinFailure? {
         if isDemo {
             await pause(400)
             if email.jsTrim().lowercased() == "taken@example.org" { return GuestJoinFailure(.taken, moved: true, nip05: "taken@demo.belfry.sh") }
@@ -184,7 +184,7 @@ extension AppModel {
                 // belfry opens that account's session for it and nobody types a second code (SPEC 19.55)
                 let secret = Keys.generateSecret()
                 guard let key = try? Keys.publicKeyHex(secret: secret) else { return GuestJoinFailure(.failed) }
-                let got = try await api.guestVerify(email: email, code: code, name: name, sessionKey: key)
+                let got = try await api.guestVerify(email: email, code: code, name: name, sessionKey: key, summary: summary)
                 if let s = got.signedIn {
                     await signedInAs(s, secretHex: secret.hex, typed: email)
                     return nil

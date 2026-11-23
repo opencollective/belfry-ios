@@ -88,8 +88,10 @@ public struct CardForm: Equatable, Sendable, Codable {
     public var hashtag = ""
     public var name = ""
     public var email = ""
-    public init(title: String = "", about: String = "", hashtag: String = "", name: String = "", email: String = "") {
-        self.title = title; self.about = about; self.hashtag = hashtag; self.name = name; self.email = email
+    /// A topic: the summary by e-mail, "weekly" (the default) or "monthly" (canvas Cards v45).
+    public var summary: String? = nil
+    public init(title: String = "", about: String = "", hashtag: String = "", name: String = "", email: String = "", summary: String? = nil) {
+        self.title = title; self.about = about; self.hashtag = hashtag; self.name = name; self.email = email; self.summary = summary
     }
 
     /// May "Start the …" be tapped? TAG: the hashtag's live check (a topic). SIGNED_IN: no name, no e-mail.
@@ -244,10 +246,16 @@ public enum Cards {
         return String(slug.prefix(30 - tail.count)) + tail
     }
 
+    /// "weekly" unless it is "monthly".
+    public static func summary(_ s: String?) -> String { s == "monthly" ? "monthly" : "weekly" }
+
     /// The body of a claim.
     public static func claimBody(_ kind: CardKind, _ f: CardForm) -> [String: Any] {
         var b: [String: Any] = ["title": label(f.title, 80), "about": f.about.jsTrim().sliceUnits(500)]
-        if kind == .topic { b["hashtag"] = hashtagSlug(f.hashtag) }
+        if kind == .topic {
+            b["hashtag"] = hashtagSlug(f.hashtag)
+            b["summary"] = summary(f.summary)
+        }
         return b
     }
 

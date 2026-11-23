@@ -199,6 +199,18 @@ struct CardStartForm: View {
                     .lineLimit(3...6).font(.body)
                     .accessibilityIdentifier("card-about")
             }
+            if kind == .topic {
+                Section {
+                    Picker("Summary by e-mail", selection: Binding(get: { Cards.summary(f.summary) }, set: { f.summary = $0 })) {
+                        Text("Weekly").tag("weekly")
+                        Text("Monthly").tag("monthly")
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("card-summary")
+                } header: { Text("Summary by e-mail") } footer: {
+                    Text(Cards.summary(f.summary) == "monthly" ? "What was said, once a month. Change it any time." : "What was said, once a week. Change it any time.")
+                }
+            }
             if !signedIn {
                 Section {
                     TextField("Your name", text: Binding(get: { f.name }, set: { f.name = String($0.prefix(100)) }))
@@ -404,6 +416,24 @@ struct GuestTopicComposer: View {
             .background(.bar)
         }
         .onAppear { later = UserDefaults.standard.bool(forKey: laterKey) }
+    }
+}
+
+/// "Summary by e-mail: Weekly | Monthly" where a topic is followed.
+struct SummaryPicker: View {
+    @Binding var choice: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Summary by e-mail").font(.subheadline.weight(.semibold))
+            Picker("Summary by e-mail", selection: $choice) {
+                Text("Weekly").tag("weekly")
+                Text("Monthly").tag("monthly")
+            }
+            .pickerStyle(.segmented)
+            Text(choice == "monthly" ? "What was said, once a month. Change it any time." : "What was said, once a week. Change it any time.")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
     }
 }
 
