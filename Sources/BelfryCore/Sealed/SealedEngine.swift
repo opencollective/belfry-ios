@@ -1274,7 +1274,8 @@ public final class SealedEngine: @unchecked Sendable {
         return c.devices.compactMap { d -> (device: String, at: Int)? in
             // answered: for this adding roster (or, kept from builds before 2026-11-23, for the device)
             if done.contains(d) || done.contains(d + ":" + (AddedConfirm.addedBy(c, d)?.id ?? "")) { return nil }
-            guard d != devicePub, let j = c.joined(d), j.from != nil, j.at >= since, j.at > mine else { return nil }
+            // (added by a roster after the root: by another device, or by itself, 5.7)
+            guard d != devicePub, let j = c.joined(d), AddedConfirm.addedBy(c, d) != nil, j.at >= since, j.at > mine else { return nil }
             return (d, j.at)
         }.sorted { $0.at < $1.at }
     }

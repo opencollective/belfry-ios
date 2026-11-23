@@ -83,8 +83,15 @@ public struct RosterChain: Hashable, Sendable {
         }
         guard let root = byId[rootId], root.n == 1, root.prev == nil, root.devices.contains(root.signer) else { return nil }
         /// NEXT is a valid step after CUR, given the letterboxes the chain had so far.
-        func valid(_ next: Roster, after cur: Roster, _ lbs: Set<String>) -> Bool {
-            guard next.prev == cur.id, next.n == cur.n + 1, cur.devices.contains(next.signer) else { return false }
+        /// JOIN: on the anchored path a device may add ITSELF (sealed.md 5.7, 2026-11-23): its
+        /// signer is NOT in prev's devices; its devices are exactly prev's, same order, plus the
+        /// signer last; its letterbox is one the chain never had. Not anchored, it is nothing
+        /// (anyone can sign one): never past the anchor.
+        func valid(_ next: Roster, after cur: Roster, _ lbs: Set<String>, join: Bool = false) -> Bool {
+            guard next.prev == cur.id, next.n == cur.n + 1 else { return false }
+            guard cur.devices.contains(next.signer) else {
+                return join && next.devices == cur.devices + [next.signer] && !lbs.contains(next.lb)
+            }
             let missing = cur.devices.contains { !next.devices.contains($0) }
             return missing ? !lbs.contains(next.lb) : next.lb == cur.lb
         }
@@ -101,7 +108,7 @@ public struct RosterChain: Hashable, Sendable {
             var chain = [root]
             var lbs: Set<String> = [root.lb]
             for r in back.reversed() {
-                guard valid(r, after: chain[chain.count - 1], lbs) else { return nil }
+                guard valid(r, after: chain[chain.count - 1], lbs, join: true) else { return nil }
                 chain.append(r)
                 lbs.insert(r.lb)
             }

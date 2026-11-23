@@ -20,6 +20,34 @@ private func anchor(_ account: String, root: String, head: String? = nil, at: In
 final class RosterChainTests: XCTestCase {
     let A = pub("alice")
 
+    /// A device that signed in adds itself (sealed.md 5.7): its own roster counts only on the
+    /// anchored path, with prev's devices in order plus itself last and a letterbox never used.
+    func testADeviceAddsItself() {
+        let lb1 = pub("lb1"), lb2 = pub("lb2")
+        let r1 = roster(A, by: "phone", n: 1, prev: nil, lb: lb1, devices: ["phone"], at: 100)
+        let join = roster(A, by: "mac", n: 2, prev: r1.id, lb: lb2, devices: ["phone", "mac"], at: 200)
+        // not anchored: nothing (anyone can sign one)
+        let before = RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id), rosters: [r1, join])
+        XCTAssertEqual(before?.devices, [pub("phone")])
+        // anchored by the account: the head, with the new letterbox
+        let after = RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id, head: join.id, at: 201), rosters: [r1, join])
+        XCTAssertEqual(after?.devices, [pub("phone"), pub("mac")])
+        XCTAssertEqual(after?.lb, lb2)
+        XCTAssertEqual(after.flatMap { AddedConfirm.addedBy($0, pub("mac")) }?.id, join.id, "added by its own roster")
+        // the same letterbox, its own name not last, or someone left out: never
+        for bad in [roster(A, by: "mac", n: 2, prev: r1.id, lb: lb1, devices: ["phone", "mac"], at: 200),
+                    roster(A, by: "mac", n: 2, prev: r1.id, lb: lb2, devices: ["mac", "phone"], at: 200),
+                    roster(A, by: "mac", n: 2, prev: r1.id, lb: lb2, devices: ["mac"], at: 200),
+                    roster(A, by: "mac", n: 2, prev: r1.id, lb: lb2, devices: ["phone", "mac", "tablet"], at: 200)] {
+            let c = RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id, head: bad.id, at: 201), rosters: [r1, bad])
+            XCTAssertEqual(c?.devices, [pub("phone")], "an invalid join leaves the head where it was")
+        }
+        // the joiner then acts like any device of the chain
+        let r3 = roster(A, by: "mac", n: 3, prev: join.id, lb: lb2, devices: ["phone", "mac", "tablet"], at: 300)
+        let grown = RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id, head: r3.id, at: 301), rosters: [r1, join, r3])
+        XCTAssertEqual(grown?.devices.count, 3)
+    }
+
     func testChainGrowsAndForks() {
         let lb1 = pub("lb1"), lb2 = pub("lb2")
         let r1 = roster(A, by: "phone", n: 1, prev: nil, lb: lb1, devices: ["phone"], at: 100)
