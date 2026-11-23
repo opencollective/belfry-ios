@@ -82,6 +82,9 @@ public enum Sealed {
     /// is the account it is wrapped for (my copy of a message I send, a note to myself).
     public static let silentTag: Tag = ["silent", "1"]
 
+    /// Only the exact two-element tag counts (another value, a third element, another case: absent).
+    public static func isSilent(_ tags: [Tag]) -> Bool { tags.contains(silentTag) }
+
     public static func wrap(_ rumor: NostrEvent, device: Data, to account: String, lb: String, now: Int = .now, silent: Bool? = nil) throws -> NostrEvent {
         let json = Sealed.json(rumor)
         // a sealed rumor's JSON is at most 40 000 bytes: a sender never seals a larger one

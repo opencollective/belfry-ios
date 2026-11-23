@@ -2,8 +2,9 @@ import Foundation
 import XCTest
 @testable import BelfryCore
 
-// vectors/sealed.json = belfry-android main 921a6c1 (sha256 3942f031…0986), byte for byte: the
-// lead's docs/sealed-vectors.json (32f97764…b09a) plus the `confirm` section (kind 8563): the roster chain, opening and acceptance, the ceiling and the packing of a shared
+// vectors/sealed.json = belfry-android branch notes (sha256 e5e623a5…f96a), byte for byte: the
+// lead's docs/sealed-vectors.json (32f97764…b09a) plus the sections `confirm` (kind 8563),
+// `notes` (Notes to myself) and `silent` (silent wraps): the roster chain, opening and acceptance, the ceiling and the packing of a shared
 // history, the key hand-over, the link proof, shared history, `ready`. Not reproduced here:
 // making the same wrap byte for byte (it needs fixed one-time keys, nonces and Schnorr auxiliary).
 
@@ -82,6 +83,92 @@ final class SealedVectorTests: XCTestCase {
         XCTAssertEqual(AddedConfirm.verdict(rumor, sealPubkey: seal, chain: ch, account: account), .clears(rumor.tag("device") ?? ""))
         // an 8563 is never taken from a shared history
         XCTAssertFalse([14, 7, 5].contains(AddedConfirm.kind))
+    }
+
+    /// Notes to myself (belfry-android's `notes` section): what is a note, the one wrap on a
+    /// chain that is not ready, and what happens to a note written now.
+    func testNotes() throws {
+        let v = try vector("sealed")
+        let n = dict(v["notes"])
+        let me = try XCTUnwrap(n["account"] as? String)
+        XCTAssertEqual(dict(n["conversation"])["participants"] as? [String], [me])
+        XCTAssertEqual(Notes.conv(me), "n:" + me)
+        let rumors = list(n["rumors"])
+        XCTAssertEqual(rumors.count, 9)
+        for c in rumors {
+            let name = c["name"] as? String ?? ""
+            let r = dict(c["rumor"])
+            let conv = MailThreads.nostrConv(author: r["pubkey"] as? String ?? "", pTags: (r["tags"] as? [[String]] ?? []).filter { $0.first == "p" && $0.count > 1 }.map { $0[1] }, me: me)
+            let exp = dict(c["expected"])
+            // the file lists every participant, me included; the iPhone's id names the others
+            // (and me alone for Notes)
+            let others = (exp["participants"] as? [String] ?? []).filter { $0 != me }.sorted()
+            XCTAssertEqual(conv, "n:" + (others.isEmpty ? me : others.joined(separator: ",")), name)
+            XCTAssertEqual(Notes.isNotes(conv, me: me), exp["notes"] as? Bool ?? false, name)
+        }
+        // the single wrap: p = me, my head letterbox; accepted on a chain without `ready`. (This
+        // case was generated before silent wraps: it carries no tag. That a note written today
+        // does is in `silent.carries` and in SealedEngineTests.testNotesToMyself.)
+        let w = dict(n["wrap"])
+        let wrap = try event(w["wrap"])
+        XCTAssertEqual(wrap.tagValues("p"), [me])
+        let secret = try XCTUnwrap(Data(hex: w["letterbox_secret"] as? String ?? ""))
+        guard case .opened(let rumor, let seal) = Sealed.open(wrap, secret: secret) else { return XCTFail("the note's wrap does not open") }
+        let exp = dict(w["expected"])
+        XCTAssertEqual(seal, exp["seal_pubkey"] as? String)
+        XCTAssertEqual(rumor.id, dict(exp["rumor"])["id"] as? String)
+        let ch = try XCTUnwrap(try chain(events: dict(w["chain"]), account: me))
+        XCTAssertFalse(ch.ready)
+        XCTAssertTrue(Sealed.accepted(rumor, sealPubkey: seal, chain: ch, belfry: nil))
+        let plans = list(n["plans"])
+        XCTAssertEqual(plans.count, 6)
+        for p in plans {
+            let name = p["name"] as? String ?? ""
+            let c = (p["chain"] as? [String: Any]).flatMap { try? chain(events: $0, account: me) }
+            let device = p["device"] as? String ?? ""
+            let got = Notes.plan(canSeal: p["can_seal"] as? Bool ?? false, hasChain: c != nil, inHead: c?.devices.contains(device) ?? false,
+                                 answered: p["answer"] as? String == "complete")
+            XCTAssertEqual(got.rawValue, dict(p["expected"])["decision"] as? String, name)
+        }
+    }
+
+    /// Silent wraps (sealed.md 4; belfry-android's `silent` section): only the exact tag counts,
+    /// and a wrap with it, or with tags this reader does not know, opens exactly as before.
+    func testSilent() async throws {
+        let v = try vector("sealed")
+        let s = dict(v["silent"])
+        XCTAssertEqual(s["tag"] as? [String], Sealed.silentTag)
+        let tags = list(s["tags"])
+        XCTAssertEqual(tags.count, 12)
+        for c in tags {
+            let name = c["name"] as? String ?? ""
+            let t = c["tags"] as? [[String]] ?? []
+            XCTAssertEqual(Sealed.isSilent(t), dict(c["expected"])["silent"] as? Bool, name)
+            // a sealed wrap stays a sealed wrap whatever else it carries
+            if t.contains(where: { $0.first == "lb" }) {
+                XCTAssertNotNil(Sealed.lb(of: NostrEvent(pubkey: "", createdAt: 0, kind: 1059, tags: t, content: "")), name)
+            }
+        }
+        let secret = try XCTUnwrap(Data(hex: s["letterbox_secret"] as? String ?? ""))
+        let alice = try LocalSigner(secret: try XCTUnwrap(Data(hex: key(v, "alice").secret)))
+        let wraps = list(s["wraps"])
+        XCTAssertEqual(wraps.count, 4)
+        for c in wraps {
+            let name = c["name"] as? String ?? ""
+            let exp = dict(c["expected"])
+            let wrap = try event(c["wrap"])
+            XCTAssertEqual(Sealed.isSilent(wrap.tags), exp["silent"] as? Bool, name)
+            let want = dict(exp["rumor"])["id"] as? String
+            if c["sealed"] as? Bool == true {
+                guard case .opened(let rumor, let seal) = Sealed.open(wrap, secret: secret) else { XCTFail("does not open: " + name); continue }
+                XCTAssertEqual(rumor.id, want, name)
+                XCTAssertEqual(seal, exp["seal_pubkey"] as? String, name)
+            } else {
+                let o = try await GiftWrap.unwrap(wrap, signer: alice)
+                XCTAssertEqual(o?.rumor.id, want, name)
+            }
+        }
+        XCTAssertEqual(list(s["carries"]).count, 10)
     }
 
     func testWraps() throws {

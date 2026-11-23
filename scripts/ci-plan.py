@@ -45,7 +45,7 @@ MAP = [
     (r"App/Sources/(MailUI|AppModel\+MailReply)", "mail.*|fullmail", ""),
     (r"App/Sources/ProposalScreen", "proposal.*", ""),
     (r"App/Sources/PicturesUI", "mailpictures|feed|mailfeed|mailthread|thread|conversation", "testMessageMenu"),
-    (r"App/Sources/(MessagesView|MentionsView)", "messages|homemessages|conversation|dmthread|mentions|mail|mailpictures|enc.*|sendstill|sendnotyet|dmfiles|dmfilessending", "testPushedHasNoDrawer testDmMenu"),
+    (r"App/Sources/(MessagesView|MentionsView)", "messages|notesempty|notesunsealed|homemessages|conversation|dmthread|mentions|mail|mailpictures|enc.*|sendstill|sendnotyet|dmfiles|dmfilessending", "testPushedHasNoDrawer testDmMenu"),
     (r"App/Sources/SendLine", "sendstill|sendnotyet|diagnostics|feed|dmfilessending", ""),
     (r"App/Sources/DmFilesUI", "dmfiles|dmfilessending|conversation", ""),
     (r"App/Sources/TypingUI", "typing.*", ""),

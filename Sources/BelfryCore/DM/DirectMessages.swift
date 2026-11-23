@@ -337,14 +337,23 @@ public final class DirectMessages: @unchecked Sendable {
         // exist yet (the lead, 2026-11-23: the lock is there from the first note). The first-device
         // path runs now (the upkeep, with all its gates); the note keeps its sending state until
         // my chain is anchored, at most `notesWait` seconds; then it is refused and the text kept.
-        if let s = sealed, let conv, Notes.isNotes(conv, me: me), s.mayStart, !s.isSealed(conv) {
-            await s.maintain()
-            var waited = 0.0
-            while !s.isSealed(conv), waited < notesWait {
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                waited += 0.5
+        if let s = sealed, let conv, Notes.isNotes(conv, me: me) {
+            await s.refresh([me])
+            let c = s.chain(me)
+            switch Notes.plan(canSeal: s.mayStart, hasChain: c != nil, inHead: c?.devices.contains(s.devicePub) ?? false, answered: s.way(conv) != .unknown) {
+            case .makeChainThenSeal:
+                await s.maintain()
+                var waited = 0.0
+                while !s.isSealed(conv), waited < notesWait {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    waited += 0.5
+                }
+                if !s.isSealed(conv) { throw BelfryError.invalid(Notes.notYet) }
+            case .hold:
+                throw BelfryError.invalid(DirectMessages.cantCheck)
+            case .seal, .waitForDevice, .oldWay:
+                break
             }
-            if !s.isSealed(conv) { throw BelfryError.invalid(Notes.notYet) }
         }
         if let s = sealed, conv != nil || mail {
             await s.refresh(conv.map(MailThreads.peers) ?? [])
