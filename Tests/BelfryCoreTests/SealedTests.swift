@@ -42,10 +42,11 @@ final class RosterChainTests: XCTestCase {
             let c = RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id, head: bad.id, at: 201), rosters: [r1, bad])
             XCTAssertEqual(c?.devices, [pub("phone")], "an invalid join leaves the head where it was")
         }
-        // the joiner then acts like any device of the chain
+        XCTAssertEqual(after?.unendorsed, [pub("mac")], "limited until another device says \"It was me\"")
+        // until then the joiner can add nobody: its roster is no roster, and a path through it is no path
         let r3 = roster(A, by: "mac", n: 3, prev: join.id, lb: lb2, devices: ["phone", "mac", "tablet"], at: 300)
-        let grown = RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id, head: r3.id, at: 301), rosters: [r1, join, r3])
-        XCTAssertEqual(grown?.devices.count, 3)
+        let grown = RosterChain.resolve(account: A, anchor: anchor("alice", root: r1.id, head: join.id, at: 301), rosters: [r1, join, r3])
+        XCTAssertEqual(grown?.devices, [pub("phone"), pub("mac")], "the joiner's own roster is not taken, anchored or not")
     }
 
     func testChainGrowsAndForks() {
