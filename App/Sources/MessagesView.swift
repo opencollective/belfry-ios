@@ -47,13 +47,6 @@ struct MessagesView: View {
                     .frame(maxWidth: .infinity).padding(.vertical, 24)
                     .listRowSeparator(.hidden)
             }
-            // "Your address: sam@demo.belfry.sh" (board home/messages)
-            if let a = model.dms?.myAddress, !a.isEmpty {
-                Text("Your address: \(a)").font(.footnote).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .listRowSeparator(.hidden)
-                    .accessibilityIdentifier("messages-address")
-            }
             ForEach(threads) { t in
                 // a row opens its conversation; no chevron (the board has none)
                 Button { navigate(t.conv) } label: { ThreadRow(thread: t).contentShape(Rectangle()) }
@@ -67,6 +60,23 @@ struct MessagesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.refresh() }
         .toolbar {
+            // my address small under the title, a tap copies it (Xavier, 2026-11-23: "instead of
+            // the message Your address: xxx just put the address in the header"; Home canvas v4)
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 0) {
+                    Text("Messages").font(.headline)
+                    if let a = model.dms?.myAddress, !a.isEmpty {
+                        Button {
+                            UIPasteboard.general.string = a
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                            model.showToast("Address copied")
+                        } label: { Text(a).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Your address: \(a). Copy.")
+                            .accessibilityIdentifier("messages-address")
+                    }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { newOne = true } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("New message")
             }
