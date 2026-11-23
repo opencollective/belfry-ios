@@ -210,6 +210,8 @@ struct ComposerLinkPreview: View {
                 }
                 .padding(8)
                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.secondary.opacity(0.25)))
+            } else {
+                Color.clear.frame(height: 0) // a view, so the task below runs
             }
         }
         .task(id: link) {
