@@ -3,15 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
-    # a release with a new minor version: the full suite (every screenshot, every UI test)
-    tags: ['v*.*.0']
   pull_request:
   workflow_dispatch:
     inputs:
-      full:
-        description: The full suite (every screenshot, every UI test, light and dark)
-        type: boolean
-        default: false
       shots:
         description: Screens to capture (a regex on scripts/screenshots.sh's names, e.g. "invite.*|charter"); empty = from the changed files
         default: ''
@@ -30,9 +24,8 @@ env:
 # - plan: reads the changed files (scripts/ci-plan.py) and says what they can have touched.
 # - core: BelfryCore's tests, when the core, its tests or the vectors changed.
 # - sim: the app built for the simulator, then only the screenshots and UI tests of the screens the
-#   change touched (one job; up to three for many screens). The full suite (three screenshot jobs
-#   and the UI tests in light and in dark, side by side) only for a release with a new minor
-#   version: a tag vX.Y.0, a new major or minor MARKETING_VERSION, or the `full` input.
+#   change touched (one job; up to three for many screens). No full suite, for any trigger
+#   (Xavier, 2026-11-24: "Stop this full screenshot… It takes too long. Remove that from the process.").
 # - testflight: on main, after the core tests only. It does not wait for the simulator jobs: its
 #   own archive is the compile check.
 jobs:
@@ -54,7 +47,6 @@ jobs:
       - id: plan
         env:
           BEFORE: ${{ github.event.before }}
-          INPUT_FULL: ${{ inputs.full }}
           INPUT_SHOTS: ${{ inputs.shots }}
           INPUT_UITESTS: ${{ inputs.uitests }}
         run: python3 scripts/ci-plan.py

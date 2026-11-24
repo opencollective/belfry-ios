@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""What a CI run has to do (Xavier, 2026-11-18: "only test what could likely be impacted"; the full
-suite of screenshots and UI tests only for a release with a new minor version).
+"""What a CI run has to do (Xavier, 2026-11-18: "only test what could likely be impacted"; 2026-11-24:
+"Stop this full screenshot on iOS and android. It takes too long. Remove that from the process.").
 
 Reads the changed files (git diff BASE..HEAD) and prints GitHub outputs:
   core=true|false     run the core tests (BelfryCore, its tests, the vectors)
@@ -8,8 +8,8 @@ Reads the changed files (git diff BASE..HEAD) and prints GitHub outputs:
   parts=<JSON list>   simulator jobs: {name, shots, shard, uitests, uimodes}; [] = none
   why=<one line>
 
-Full suite: a tag vX.Y.0, a change of the major or minor of MARKETING_VERSION in project.yml, or
-the workflow's `full` input. Otherwise the screens and UI tests mapped from the changed files
+There is no full suite any more, for any trigger (no tag, version change or input asks for every
+screen). The screens and UI tests mapped from the changed files
 (MAP below: keep it current when a screen moves to another file), a small smoke set for shared code.
 """
 import json, math, os, re, subprocess, sys
@@ -65,11 +65,6 @@ def git(*a):
     return subprocess.run(["git", *a], capture_output=True, text=True).stdout.strip()
 
 
-def version(ref):
-    m = re.search(r'MARKETING_VERSION:\s*"?(\d+)\.(\d+)', git("show", f"{ref}:project.yml"))
-    return (m.group(1), m.group(2)) if m else None
-
-
 def screens():
     out = []
     for line in open("scripts/screenshots.sh", encoding="utf-8"):
@@ -79,14 +74,13 @@ def screens():
     return out
 
 
-def plan(changed, full=False, shots="", uitests=""):
+def plan(changed, shots="", uitests=""):
     code = [f for f in changed if not DOCS.search(f)]
     core = any(CORE.search(f) for f in code)
     app = any(APP.search(f) for f in code)
-    if full:
-        parts = [{"name": f"shots-{i}", "shots": "all", "shard": f"{i}/3", "uitests": "none", "uimodes": ""} for i in (1, 2, 3)]
-        parts += [{"name": f"ui-{m}", "shots": "none", "shard": "1/1", "uitests": "all", "uimodes": m} for m in ("light", "dark")]
-        return True, True, parts, "the full suite"
+    # every screen at once is never taken (Xavier, 2026-11-24): "all" asks for nothing
+    if shots.strip().lower() == "all":
+        shots = ""
     want, tests, why = [], [], []
     if shots or uitests:
         want, tests, why = [shots] if shots else [], uitests.split(), ["asked for"]
@@ -114,7 +108,6 @@ def plan(changed, full=False, shots="", uitests=""):
 
 def main():
     ref, event, before = os.environ.get("GITHUB_REF", ""), os.environ.get("GITHUB_EVENT_NAME", ""), os.environ.get("BEFORE", "")
-    full = os.environ.get("INPUT_FULL", "") == "true" or bool(re.fullmatch(r"refs/tags/v\d+\.\d+\.0", ref))
     base = ""
     if event == "push" and re.fullmatch(r"[0-9a-f]{40}", before) and set(before) != {"0"} and git("cat-file", "-t", before) == "commit":
         base = before
@@ -122,9 +115,7 @@ def main():
         mb = git("merge-base", "origin/main", "HEAD")
         base = mb if mb and mb != git("rev-parse", "HEAD") else git("rev-parse", "HEAD~1")
     changed = [f for f in git("diff", "--name-only", base, "HEAD").splitlines() if f]
-    if base and version(base) and version("HEAD") and version(base) != version("HEAD"):
-        full = True
-    core, app, parts, why = plan(changed, full, os.environ.get("INPUT_SHOTS", "").strip(), os.environ.get("INPUT_UITESTS", "").strip())
+    core, app, parts, why = plan(changed, os.environ.get("INPUT_SHOTS", "").strip(), os.environ.get("INPUT_UITESTS", "").strip())
     lines = [f"core={'true' if core else 'false'}", f"app={'true' if app else 'false'}", "parts=" + json.dumps(parts), f"why={why}"]
     print(f"base {base[:9]}: {len(changed)} files changed")
     print("\n".join(lines))

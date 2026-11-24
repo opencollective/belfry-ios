@@ -87,10 +87,12 @@ This Linux box has no Xcode. Push and let GitHub Actions build (`gh run watch`, 
   launching again, a fixed 6 s per launch (ending the wait on a still frame took unfinished screens). The UI tests (`App/UITests/MenuShots.swift`)
   tap what only a touch opens and write their own PNGs. Artifacts `screenshots-<part>`, merged into
   `screenshots`. A branch: `gh workflow run ci.yml --ref <branch>` (optionally `-f shots='invite.*'
-  -f uitests='testTodoAssign'`, or `-f full=true`).
-- **The full suite** (three screenshot jobs side by side + the UI tests in light and in dark) runs
-  only for a release with a new minor version: a tag `vX.Y.0`, a change of the major or minor of
-  `MARKETING_VERSION`, or `-f full=true`. Between releases a run holds only the screens it took.
+  -f uitests='testTodoAssign'`).
+- **No full suite** (Xavier, 2026-11-24: "Stop this full screenshot on iOS and android. It takes too
+  long. Remove that from the process."): no trigger takes every screen (no tag, no version change,
+  no input; `shots=all` asks for nothing). A run holds only the screens its change touched; take
+  others only when a reviewer or Xavier needs them (`-f shots='…'`). belfry.sh/ios/screenshots is no
+  longer kept up to date.
 - Keep expressions small: Xcode 26 gives up type-checking long `+` chains of optional strings (move
   them into functions).
 - `testflight`: on main, **after the core tests only** (it no longer waits for screenshots or UI
@@ -404,9 +406,7 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   `SendLineView` + `SendState`, `SendTrace` → About → Diagnostics); pictures, files and audio in
   DMs (SPEC 19.65, kind 15, AES-256-GCM, `DmFiles` + `DirectMessages+Files`, `DmFilesUI`,
   vectors/dm-files.json = Android's); the inbox switch per channel (`belfry:inbox:<group>`);
-  Copy link · Share… as `LinkButtons`. A full suite for a patch version: dispatch `-f full=true`
-  on a release branch at the same commit, then fast-forward main (a dispatch on main would upload
-  a second build). Screens `sendstill`, `sendnotyet`, `diagnostics`, `dmfiles`, `dmfilessending`,
+  Copy link · Share… as `LinkButtons`. Screens `sendstill`, `sendnotyet`, `diagnostics`, `dmfiles`, `dmfilessending`,
   `eventaddress`.
 
 - 2026-11-23 printed cards (SPEC 19.68; collective-belfry docs/cards.md; canvas "Belfry · Group
