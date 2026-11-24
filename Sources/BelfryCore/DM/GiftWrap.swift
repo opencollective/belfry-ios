@@ -67,6 +67,9 @@ public struct Dm: Codable, Hashable, Sendable, Identifiable {
     public var rumor: String?
     /// It arrived the old way (no lock) in a conversation this device had already seen sealed.
     public var unsealed: Bool?
+    /// Its link preview's tags, as the sender built them (SPEC 19.69): inside the rumor, so as
+    /// private as the message; the picture encrypted like a file of a direct message.
+    public var previewTags: [Tag]?
     /// Kind 15: the file it carries (nil with `unreadable`: a tag missing or malformed).
     public var file: DmFile?
     public var unreadable: Bool?
@@ -105,7 +108,11 @@ public enum DmReader {
             let conv = MailThreads.nostrConv(author: rumor.pubkey, pTags: rumor.tagValues("p"), me: me)
             var d = Dm(rid: rumor.id, conv: conv, from: rumor.pubkey, mine: mine, at: rumor.createdAt, kind: rumor.kind, text: rumor.content)
             d.group = DmFiles.hex(rumor.tag("group"), bytes: 8)
-            if rumor.kind == 14 { d.root = DmThreads.root(rumor.tags) }
+            if rumor.kind == 14 {
+                d.root = DmThreads.root(rumor.tags)
+                let pt = LinkPreviews.wireTags(rumor.tags)
+                if !pt.isEmpty { d.previewTags = pt }
+            }
             if rumor.kind == DmFiles.kind {
                 if let f = DmFiles.parse(tags: rumor.tags, content: rumor.content) { d.file = f; d.text = DmFiles.lastLine([f]) }
                 else { d.unreadable = true; d.text = DmFiles.unreadable }

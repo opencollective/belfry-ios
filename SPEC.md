@@ -2908,4 +2908,9 @@ lanes `OutboxPass.lane`; `SendState` / `SendTrace` in `Outbox/SendTrace.swift`; 
   downloaded without following a redirect, ≤ 1 MB, checked (`x`; decrypted and `ox` when it carries
   a key), kept on the device. Nothing else is ever fetched for a message: not the page, not the
   belfry's preview endpoint. A message without the tag shows a plain link.
+- **Direct messages** (Notes too; never an e-mail): the same build, the picture encrypted
+  AES-256-GCM like a direct message's file (`x` on the ciphertext, `ox`, key and nonce in the
+  `imeta`), the tags inside the rumor (`DirectMessages.send(preview:)`; `privatePreview` drops any
+  picture in the clear). Thread replies in a conversation send no preview yet. Private groups: a
+  plain link (no format 3 on iOS yet).
 - **Not an attachment.** The preview's `imeta` is never drawn as one of the message's pictures.

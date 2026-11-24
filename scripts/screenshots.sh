@@ -54,6 +54,7 @@ shot 143-member-invite join-member light
 shot 210-og-preview ogpreview light
 shot 210b-og-preview-dark ogpreview dark
 shot 211-og-composer ogcomposer light
+shot 212-og-dm ogdm light
 shot 200-card-start-group card-K7Q2MX light
 shot 200b-card-start-group-dark card-K7Q2MX dark
 shot 201-card-start-topic card-T9PC4H light

@@ -33,8 +33,10 @@ struct ImageIOEncoder: PictureEncoder {
 @MainActor
 final class LinkPreviewCenter: ObservableObject {
     enum Built: Equatable { case building, found(LinkPreview), none }
-    /// The composer's previews, by link.
+    /// The composer's previews, by link and mode (`key`).
     @Published private(set) var built = [String: Built]()
+    static func key(_ link: String, _ mode: PreviewMode) -> String { (mode == .encrypted ? "e|" : "p|") + link }
+    func state(_ link: String, _ mode: PreviewMode) -> Built? { built[LinkPreviewCenter.key(link, mode)] }
     @Published private(set) var pictures = [String: UIImage]()
     private var asking = Set<String>()
     weak var model: AppModel?
@@ -46,12 +48,13 @@ final class LinkPreviewCenter: ObservableObject {
     }
 
     /// The composer's link stood for a moment: read it (once per link).
-    func build(_ link: String) {
-        guard let m = model, built[link] == nil, let engine = m.engine, !m.guestReading else { return }
-        built[link] = .building
+    func build(_ link: String, mode: PreviewMode = .plain) {
+        let key = LinkPreviewCenter.key(link, mode)
+        guard let m = model, built[key] == nil, let engine = m.engine, !m.guestReading else { return }
+        built[key] = .building
         if m.isDemo {
             // the demo's world: a made-up page, nothing is asked
-            built[link] = LinkPreviews.hostOf(link) == "toolshare.example"
+            built[key] = LinkPreviews.hostOf(link) == "toolshare.example"
                 ? .found(LinkPreview(url: link, title: "How a street tool library lends 400 drills a year",
                                      description: "Neighbours started lending their tools from a garage.", site: "ToolShare Journal"))
                 : Built.none
@@ -67,8 +70,8 @@ final class LinkPreviewCenter: ObservableObject {
             blossom: blossom,
             keep: { x, plain in try? plain.write(to: keepDir.appendingPathComponent(x)) })
         Task {
-            let p = await builder.build(link, mode: .plain)
-            self.built[link] = p.map { .found($0) } ?? Built.none
+            let p = await builder.build(link, mode: mode)
+            self.built[key] = p.map { .found($0) } ?? Built.none
         }
     }
 
@@ -162,11 +165,13 @@ struct LinkPreviewCard: View {
 struct ComposerLinkPreview: View {
     @ObservedObject var center: LinkPreviewCenter
     let link: String
+    /// A direct message's preview: its picture encrypted.
+    var mode: PreviewMode = .plain
     let dismiss: () -> Void
 
     var body: some View {
         SwiftUI.Group {
-            switch center.built[link] {
+            switch center.state(link, mode) {
             case .found(let p):
                 HStack(spacing: 8) {
                     LinkPreviewCard(p: p, compact: true)
@@ -190,7 +195,7 @@ struct ComposerLinkPreview: View {
         // read once the link has stood for a moment, not at every key
         .task(id: link) {
             try? await Task.sleep(nanoseconds: 700_000_000)
-            if !Task.isCancelled { center.build(link) }
+            if !Task.isCancelled { center.build(link, mode: mode) }
         }
     }
 }
@@ -214,8 +219,27 @@ extension AppModel {
     func previewTags(_ text: String, group: String, off: String?) -> [Tag] {
         guard let link = composerPreviewLink(text, group: group) else { return [] }
         if off == link { return [LinkPreviews.noPreview] }
-        if case .found(let p) = linkPreviews.built[link] { return p.tags() }
+        if case .found(let p) = linkPreviews.state(link, .plain) { return p.tags() }
         return []
+    }
+
+    // ---- direct messages: inside the rumor, the picture encrypted (Notes too; never an e-mail) ----
+
+    func dmPreviewLink(_ text: String, conv: String) -> String? {
+        guard text.contains("https://"), !MailThreads.isMail(conv) else { return nil }
+        return LinkPreviews.outsideLink(text, tags: [], domain: config.domain, files: config.blossom)
+    }
+
+    func dmPreviewTags(_ text: String, conv: String, off: String?) -> [Tag] {
+        guard let link = dmPreviewLink(text, conv: conv) else { return [] }
+        if off == link { return [LinkPreviews.noPreview] }
+        if case .found(let p) = linkPreviews.state(link, .encrypted) { return p.tags() }
+        return []
+    }
+
+    func preview(of d: Dm) -> LinkPreview? {
+        guard d.kind == 14, let t = d.previewTags, !t.isEmpty else { return nil }
+        return LinkPreviews.read(d.text, tags: t, blossom: config.blossom)
     }
 
     /// What a message shows: from its tags alone.

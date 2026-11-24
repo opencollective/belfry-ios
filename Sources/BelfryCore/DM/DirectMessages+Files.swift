@@ -213,11 +213,12 @@ extension DirectMessages {
     }
 
     /// Demo mode: a caption of GROUP.
-    public func demoText(_ text: String, group: String?, in conv: String, from: String, at: Int, pending: Bool = false) {
+    public func demoText(_ text: String, group: String?, in conv: String, from: String, at: Int, pending: Bool = false, preview: [Tag]? = nil) {
         let rid = Crypto.sha256(Data((text + from + String(at)).utf8)).hex
         var d = Dm(rid: rid, conv: conv, from: from, mine: from == me, at: at, kind: 14, text: text)
         d.group = group
         d.pending = pending ? true : nil
+        d.previewTags = preview
         lock.lock(); items[rid] = d; lock.unlock()
         save()
     }

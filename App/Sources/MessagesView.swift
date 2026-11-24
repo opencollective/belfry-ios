@@ -90,7 +90,7 @@ struct MessagesView: View {
             guard !didLaunch else { return }
             didLaunch = true
             let screen = model.launch.screen ?? ""
-            if ["conversation", "mail", "encmail", "encmaildevices", "sendstill", "sendnotyet", "dmfiles", "dmfilessending", "typingdm"].contains(screen) {
+            if ["conversation", "mail", "encmail", "encmaildevices", "sendstill", "sendnotyet", "dmfiles", "dmfilessending", "typingdm", "ogdm"].contains(screen) {
                 // the demo's e-mail may still be on its way in: look a few times
                 Task { @MainActor in
                     for _ in 0..<6 {
@@ -266,6 +266,8 @@ struct ConversationView: View {
     @State private var subject = ""
     @State private var error: String?
     @State private var sending = 0
+    /// The link whose preview was closed with ✕ (sent with ["preview","none"]).
+    @State private var previewOff: String?
     /// The Encryption screen, pushed by the lock and by a device line.
     @State private var encryption = false
     /// The amber line's sheet: share history with someone's new device.
@@ -492,6 +494,10 @@ struct ConversationView: View {
                 if !mail, !notes, model.sealedConv(conv) == nil { TypingLine(center: model.typing, place: Typing.place(conv: conv)).padding(.horizontal, -12) }
                 // a refusal to send unlocked is a quiet grey line, the text stays in the box; a failure is red
                 if let error { Text(error).font(.caption).foregroundStyle([DirectMessages.cantCheck, Sealed.tooLong, Notes.notYet].contains(error) ? Color.secondary : Color.red).multilineTextAlignment(.center) }
+                // the link being typed: its preview, read from this phone, its picture encrypted
+                if let link = model.dmPreviewLink(text, conv: conv), link != previewOff {
+                    ComposerLinkPreview(center: model.linkPreviews, link: link, mode: .encrypted) { previewOff = link }
+                }
                 if MailThreads.isNewMail(conv) {
                     TextField("Subject", text: $subject).font(.body)
                         .padding(.horizontal, 14).frame(minHeight: 38)
@@ -544,12 +550,14 @@ struct ConversationView: View {
         model.typing.sent(place: Typing.place(conv: conv))
         sending += 1
         text = ""
+        let preview = model.dmPreviewTags(t, conv: conv, off: previewOff)
+        previewOff = nil
         Task {
             do {
                 if MailThreads.isMail(conv) {
                     try await dms.sendMail(t, in: conv, subject: subject, fromName: model.realName(model.me))
                 } else {
-                    try await dms.send(t, in: conv)
+                    try await dms.send(t, in: conv, preview: preview)
                 }
             } catch {
                 text = t
@@ -615,6 +623,8 @@ struct Bubble: View {
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
                     } label: { Label("Copy text", systemImage: "doc.on.doc") }
                 }
+            // the link's preview its sender built (canvas channels/og-dm): under the bubble
+            if let p = model.preview(of: dm) { LinkPreviewCard(p: p) }
             // reactions under the bubble, on its side: the same chips as in channels
             if canReact {
                 let chips = model.dms?.chips(dm.rid) ?? []

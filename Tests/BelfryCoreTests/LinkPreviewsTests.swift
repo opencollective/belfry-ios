@@ -149,3 +149,22 @@ final class LinkPreviewsTests: XCTestCase {
         XCTAssertNil(q?.picture)
     }
 }
+
+final class DmPreviewTests: XCTestCase {
+    /// A direct message carries the preview inside its rumor; a picture in the clear never goes.
+    func testPrivatePreview() {
+        let p: Tag = ["preview", "https://a.example/x", "T", "D", "S"]
+        let clear: Tag = ["imeta", "url https://blossom.b.example/1", "m image/jpeg", "x " + String(repeating: "a", count: 64), "purpose preview"]
+        let sealed: Tag = ["imeta", "url https://blossom.b.example/2", "m image/jpeg", "x " + String(repeating: "a", count: 64), "ox " + String(repeating: "b", count: 64),
+                           "encryption-algorithm aes-gcm", "decryption-key " + String(repeating: "c", count: 64), "decryption-nonce " + String(repeating: "d", count: 24), "purpose preview"]
+        XCTAssertEqual(DirectMessages.privatePreview([p, clear]), [p], "the picture in the clear is dropped")
+        XCTAssertEqual(DirectMessages.privatePreview([p, sealed]), [p, sealed])
+        XCTAssertEqual(DirectMessages.privatePreview([LinkPreviews.noPreview]), [LinkPreviews.noPreview])
+        XCTAssertEqual(DirectMessages.privatePreview([]), [])
+        // and read back from a rumor
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: String(repeating: "1", count: 64), tags: [["p", String(repeating: "2", count: 64)], p, sealed], content: "see https://a.example/x", createdAt: 1)
+        let d = DmReader.dm(from: rumor, me: String(repeating: "2", count: 64), bridge: nil, known: [])
+        XCTAssertEqual(d?.previewTags, [p, sealed])
+        XCTAssertEqual(LinkPreviews.read(d?.text ?? "", tags: d?.previewTags ?? [], blossom: "https://blossom.b.example")?.picture?.encrypted, true)
+    }
+}

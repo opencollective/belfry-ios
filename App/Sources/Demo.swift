@@ -472,6 +472,13 @@ enum Demo {
         dms.demoUnsealed(conv: "n:" + lina.pubkey, text: "Thanks! The key is under the blue pot.")
         // the screenshots of a send that is not out yet (SPEC 19.50): my last message to Ana waits
         let args = ProcessInfo.processInfo.arguments
+        // a direct message with its sender's preview (canvas channels/og-dm; SPEC 19.69): the newest conversation
+        if let i = args.firstIndex(of: "-screen"), i + 1 < args.count, args[i + 1] == "ogdm" {
+            let link = "https://toolshare.example/stories/street-library"
+            let p = LinkPreview(url: link, title: "How a street tool library lends 400 drills a year",
+                                description: "Neighbours started lending their tools from a garage.", site: "ToolShare Journal")
+            dms.demoText("Did you see this? " + link, group: nil, in: "n:" + lina.pubkey, from: lina.pubkey, at: now - 60, preview: p.tags())
+        }
         // pictures, files and a recording in the conversation with Ana (boards messages/attach-*)
         if let i = args.firstIndex(of: "-screen"), i + 1 < args.count, args[i + 1].hasPrefix("dmfiles") {
             let ana = "n:" + ps["ana"]!.pubkey

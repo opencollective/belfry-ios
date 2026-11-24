@@ -549,14 +549,19 @@ public final class DirectMessages: @unchecked Sendable {
 
     /// A NIP-17 message in a Nostr conversation. GROUP: the caption of files sent with it.
     /// ROOT: a reply in that message's thread (["e", root, "", "root"]), wrapped like any other.
-    public func send(_ text: String, in conv: String, group: String? = nil, root: String? = nil) async throws {
+    /// PREVIEW: the link preview's tags (SPEC 19.69), put inside the rumor; its picture is
+    /// encrypted (a direct message's files always are), so the wrap tells nobody the link.
+    public func send(_ text: String, in conv: String, group: String? = nil, root: String? = nil, preview: [Tag] = []) async throws {
         try engine.guestMode.check()
         onSend?()
         let to = MailThreads.peers(conv).filter { $0 != me }
         guard to.allSatisfy(isHex64) else { throw BelfryError.invalid("This is not a valid Nostr key.") }
-        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: tagged(conv).map { ["p", $0] } + (group.map { [["group", $0]] } ?? []) + (root.map { [DmThreads.rootTag($0)] } ?? []),
+        // a preview's picture in the clear never goes in a direct message
+        let pv = DirectMessages.privatePreview(preview)
+        let rumor = GiftWrap.rumor(kind: 14, pubkey: me, tags: tagged(conv).map { ["p", $0] } + (group.map { [["group", $0]] } ?? []) + (root.map { [DmThreads.rootTag($0)] } ?? []) + pv,
                                    content: text, createdAt: group == nil ? .now : engine.nextCreatedAt())
         var d = Dm(rid: rumor.id, conv: conv, from: me, mine: true, at: rumor.createdAt, kind: 14, text: text)
+        if !pv.isEmpty { d.previewTags = pv }
         d.group = group
         d.root = root
         d.pending = engine.localOnly ? nil : true
@@ -579,6 +584,16 @@ public final class DirectMessages: @unchecked Sendable {
     }
 
     static let heldNote = "hold: this device is not added yet"
+
+    /// The preview tags a direct message may carry: `["preview","none"]`, or the `preview` tag
+    /// with, at most, a picture that is encrypted (an `imeta` with a key); a picture in the clear
+    /// is dropped (the preview goes without it).
+    public static func privatePreview(_ tags: [Tag]) -> [Tag] {
+        if LinkPreviews.hasNoPreview(tags) { return [LinkPreviews.noPreview] }
+        guard let p = tags.first(where: { $0.count >= 5 && $0[0] == "preview" }) else { return [] }
+        let pic = tags.first { LinkPreviews.isPreviewImeta($0) && $0.contains { $0.hasPrefix("decryption-key ") } }
+        return [p] + (pic.map { [$0] } ?? [])
+    }
 
     /// The notes written while this device was not among my devices: once it is, each is dated
     /// now, sealed and sent (its text and its place in a thread kept). Called when the sealed
