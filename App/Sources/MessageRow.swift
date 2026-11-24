@@ -27,6 +27,18 @@ struct MessageRow: View {
     @Environment(\.messageMenu) private var menu
     @State private var tapped = 0
 
+    /// The line over a group's or a topic's card (canvas Cards onb-town-group / onb-town-topic):
+    /// "created the group Sourdough starters", "created the topic #tool-library".
+    private func createdLine(_ m: Message) -> String? {
+        switch m.special {
+        case .topicCard(let c): return "created the topic #" + c
+        case .podCard(let p):
+            guard let g = model.group(p), g.named else { return nil }
+            return "created the group " + g.name
+        default: return nil
+        }
+    }
+
     var body: some View {
         let _ = LoopWatch.tick("MessageRow")
         let d = model.derive
@@ -46,8 +58,8 @@ struct MessageRow: View {
                         if pinned { Image(systemName: "pin").font(.caption2).foregroundStyle(.secondary).accessibilityLabel("Pinned") }
                     }
                 }
-                if let created = m.created {
-                    Text("Created \(created)").font(.caption).foregroundStyle(.secondary)
+                if let created = createdLine(m) ?? m.created.map({ "Created " + $0 }) {
+                    Text(created).font(.caption).foregroundStyle(.secondary)
                 }
                 SpecialBody(m: m, group: group)
                 MessageButtonsView(m: m, group: group)

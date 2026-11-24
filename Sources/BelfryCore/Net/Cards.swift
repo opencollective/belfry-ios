@@ -94,8 +94,9 @@ public struct CardForm: Equatable, Sendable, Codable {
 
     /// May "Start the …" be tapped? TAG: the hashtag's live check (a topic). SIGNED_IN: no name, no e-mail.
     public func ready(_ kind: CardKind, tag: HashtagState?, signedIn: Bool) -> Bool {
-        guard !title.jsTrim().isEmpty else { return false }
-        if kind == .topic && tag != .free { return false }
+        // a group needs its name; a topic its hashtag, checked free (no title since Cards v87)
+        if kind == .group && title.jsTrim().isEmpty { return false }
+        if kind == .topic && (tag != .free || Cards.hashtagSlug(hashtag).count < 2) { return false }
         return signedIn || (!name.jsTrim().isEmpty && Cards.emailRx.test(email.jsTrim()))
     }
 }
@@ -275,7 +276,9 @@ public enum Cards {
 
     /// The body of a claim.
     public static func claimBody(_ kind: CardKind, _ f: CardForm) -> [String: Any] {
-        var b: [String: Any] = ["title": label(f.title, 80), "about": f.about.jsTrim().sliceUnits(500)]
+        var b: [String: Any] = ["about": f.about.jsTrim().sliceUnits(500)]
+        // a topic's name is its hashtag: no title (docs/cards.md §2.2, optional on a topic card)
+        if kind == .group || !f.title.jsTrim().isEmpty { b["title"] = label(f.title, 80) }
         // no `summary` when starting a topic (Xavier, Cards v80): the belfry defaults to weekly
         if kind == .topic { b["hashtag"] = hashtagSlug(f.hashtag) }
         return b

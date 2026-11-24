@@ -125,7 +125,6 @@ struct CardStartForm: View {
     @State private var verifying = false
     @State private var tag: HashtagState?
     @State private var checking = false
-    @State private var tagEdited = false
     @State private var recheck = 0
     @State private var taken: (group: String, invite: String)?
     @FocusState private var codeFocused: Bool
@@ -146,10 +145,7 @@ struct CardStartForm: View {
         .onAppear {
             guard !loaded else { return }
             loaded = true
-            if let k = model.keptCardForm(card) {
-                f = k
-                tagEdited = !k.hashtag.isEmpty && k.hashtag != Cards.hashtagSlug(k.title)
-            }
+            if let k = model.keptCardForm(card) { f = k }
             if model.launch.screen == "cardcode" { f = CardForm(title: "Sourdough starters", about: "", name: "Lou", email: "lou@example.org"); step = .code }
             if model.launch.screen == "cardtaken" { taken = (generalId, AppModel.demoCardInvite("CXAWMS")); step = .taken }
         }
@@ -158,72 +154,68 @@ struct CardStartForm: View {
 
     // ---- the form ---------------------------------------------------------------------------------
 
+    /// What is being created, in a sentence: "Sourdough starters", "#tool-library".
+    private var made: String { kind == .topic ? "#" + Cards.hashtagSlug(f.hashtag) : Cards.label(f.title, 80) }
+
+    // the approved flow (canvas Cards, onb-group-form, onb-topic-form, claim-signed-in,
+    // onb-topic-signed-in; Xavier, 24 Nov): a group asks its name and description, a topic its
+    // hashtag (the channel's name) and description; a visitor adds their name and e-mail
     private var form: some View {
         Form {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Start this \(word)").font(.title2.bold()).accessibilityIdentifier("card-start-title")
-                    Text(kind == .topic
-                         ? "Nobody has scanned this card yet. Write what’s on it, and the topic starts with you. No introductions needed: people come and go and share what they know."
-                         : "Nobody has scanned this card yet. Write what’s on it, and the group starts with you. Everyone who scans this card after you joins it.")
+                    Text("Start a \(word)").font(.title2.bold()).accessibilityIdentifier("card-start-title")
+                    Text("Nobody has scanned this card yet. The \(word) starts with you.")
                         .font(.subheadline).foregroundStyle(.secondary)
-                    if signedIn {
-                        HStack(spacing: 8) {
-                            Avatar(pubkey: model.me, size: 24)
-                            Text("Signed in as ").foregroundStyle(.secondary) + Text(model.myName).bold()
-                        }
-                        .font(.subheadline)
-                    }
                 }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
-            }
-            Section(kind == .topic ? "Topic" : "Title") {
-                TextField("What you wrote on the card", text: Binding(get: { f.title }, set: { setTitle($0) }))
-                    .font(.body)
-                    .accessibilityIdentifier("card-title")
             }
             if kind == .topic {
                 Section {
                     HStack(spacing: 4) {
                         Text("#").font(.body.weight(.semibold)).foregroundStyle(.secondary)
-                        TextField("gluten-free-baking", text: Binding(get: { f.hashtag }, set: { v in
+                        TextField("tool-library", text: Binding(get: { f.hashtag }, set: { v in
                             // cleaned as it is typed and pasted: spaces become dashes, nothing else gets in
-                            let clean = Cards.hashtagTyping(v)
-                            if clean != f.hashtag { tagEdited = true }
-                            f.hashtag = clean
+                            f.hashtag = Cards.hashtagTyping(v)
                         }))
                         .focused($tagFocused)
                         .onChange(of: tagFocused) { _, on in if !on { f.hashtag = Cards.hashtagSlug(f.hashtag) } }
-                            .font(.body)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .accessibilityIdentifier("card-hashtag")
+                        .font(.body)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("card-hashtag")
                     }
                 } header: { Text("Hashtag") } footer: { tagLine }
+            } else {
+                Section("Group name") {
+                    TextField("What you wrote on the card", text: Binding(get: { f.title }, set: { f.title = String($0.prefix(80)) }))
+                        .font(.body)
+                        .accessibilityIdentifier("card-title")
+                }
             }
-            Section("Description (optional)") {
+            Section("Description") {
                 TextField(kind == .topic ? "What people share here" : "What is it about?", text: Binding(get: { f.about }, set: { f.about = String($0.prefix(500)) }), axis: .vertical)
                     .lineLimit(3...6).font(.body)
                     .accessibilityIdentifier("card-about")
             }
-            // no Summary row when starting a topic (Xavier, Cards v80: "it's ok to keep it in the
-            // settings"): the belfry starts it weekly; the topic's Notifications change it
+            // no Summary row when starting a topic (Xavier, Cards v80): the belfry starts it
+            // weekly; the topic's Notifications change it
             if !signedIn {
-                Section {
+                Section("Your name") {
                     TextField("Your name", text: Binding(get: { f.name }, set: { f.name = String($0.prefix(100)) }))
                         .font(.body).textContentType(.name)
                         .accessibilityIdentifier("card-name")
-                    TextField("E-mail", text: $f.email, prompt: Text(verbatim: "you@example.org"))
+                }
+                Section("Your e-mail") {
+                    TextField("Your e-mail", text: $f.email, prompt: Text(verbatim: "you@example.org"))
                         .font(.body).textContentType(.emailAddress).keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .accessibilityIdentifier("card-email")
-                } header: { Text("You") } footer: {
-                    Text("We’ll send a 6-digit code to confirm your e-mail. Already have an account here? Use its e-mail address.")
                 }
             }
             Section {
-                BusyButton { await start() } label: { Text("Start the \(word)").frame(maxWidth: .infinity) }
+                BusyButton { await start() } label: { Text("Create the \(word)").frame(maxWidth: .infinity) }
                     .buttonStyle(.brand)
                     .disabled(!ready)
                     .listRowBackground(Color.clear)
@@ -232,17 +224,42 @@ struct CardStartForm: View {
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
                     if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier("card-error") }
-                    Text(kind == .topic ? "You’ll look after this topic." : "You’ll be the group’s steward.")
+                    if !signedIn { Text("You’ll look after this \(word). We’ll send a 6-digit code to confirm your e-mail.") }
+                }
+            }
+            if signedIn {
+                // who you are, under the button, with Log out to start it as someone else
+                Section {
+                    HStack(spacing: 10) {
+                        Avatar(pubkey: model.me, size: 32)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(model.myName).font(.subheadline.weight(.semibold))
+                            if let a = myAddress { Text(a).font(.footnote).foregroundStyle(.secondary) }
+                        }
+                        Spacer(minLength: 8)
+                        Button("Log out") { model.signOut() }
+                            .font(.subheadline)
+                            .accessibilityIdentifier("card-logout")
+                    }
+                } footer: {
+                    Text(kind == .topic ? "You’ll look after this topic."
+                         : "You’ll be the group’s first steward. People who scan the same QR code again will be invited to join this group so that you can remain connected after this event without having to share your email address publicly.")
                 }
             }
         }
         .task(id: Cards.hashtagSlug(f.hashtag) + "/\(recheck)") { await checkTag() }
     }
 
+    /// My address here (name@domain), when the profile says it.
+    private var myAddress: String? {
+        guard let n = model.profiles[model.me]?.nip05?.lowercased(), n.contains("@") else { return nil }
+        return n
+    }
+
     @ViewBuilder private var tagLine: some View {
         if checking { Text("Checking…") } else {
             switch tag {
-            case .free: Text(tagEdited ? "✓ Available" : "✓ Available · suggested from the topic, you can change it").foregroundStyle(.green)
+            case .free: Text("✓ Available · this is the channel’s name").foregroundStyle(.green)
             case .taken: Text("Taken: try another one").foregroundStyle(.red)
             case .invalid: Text("Letters, digits and dashes, 2 to 30")
             case .unknown:
@@ -255,33 +272,17 @@ struct CardStartForm: View {
         }
     }
 
-    /// A topic: the hashtag is suggested from the topic's words until it is edited by hand.
-    private func setTitle(_ v: String) {
-        f.title = String(v.prefix(80))
-        if kind == .topic, !tagEdited { f.hashtag = Cards.hashtagSlug(f.title) }
-    }
-
-    /// The hashtag's live check; a suggestion that is taken moves on to the next free one (-2, -3…).
+    /// The hashtag's live check, 350 ms after the last key.
     private func checkTag() async {
         guard kind == .topic else { return }
         let slug = Cards.hashtagSlug(f.hashtag)
-        guard slug.count >= 2 else { checking = false; tag = f.hashtag.jsTrim().isEmpty ? nil : .invalid; return }
+        guard slug.count >= 2 else { checking = false; tag = f.hashtag.isEmpty ? nil : .invalid; return }
         checking = true
         try? await Task.sleep(nanoseconds: 350_000_000)
         if Task.isCancelled { return }
-        var s = await model.hashtagState(card, slug)
+        let st = await model.hashtagState(card, slug)
         if Task.isCancelled { return }
-        if s == .taken, !tagEdited {
-            for n in 2...9 {
-                guard let next = Cards.nextHashtag(slug, n) else { break }
-                let st = await model.hashtagState(card, next)
-                if Task.isCancelled { return }
-                if st == .free { f.hashtag = next; return } // the task runs again for it
-                if st != .taken { break }
-            }
-            s = .taken
-        }
-        tag = s
+        tag = st
         checking = false
     }
 
@@ -311,10 +312,10 @@ struct CardStartForm: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Check your e-mail").font(.title2.bold())
-                Text("We sent a 6-digit code to ") + Text(f.email.jsTrim()).bold() + Text(". It can take a minute.")
+                Text("To create \(made), enter the 6-digit code we sent to ") + Text(f.email.jsTrim()).bold() + Text(".")
                 CodeBoxes(digits: $digits, enabled: !verifying, focused: $codeFocused, bad: error != nil) { Task { await verify() } }
                 SwiftUI.Group {
-                    if verifying { Text("Starting \(Cards.label(f.title, 80))…") }
+                    if verifying { Text("Creating \(made)…") }
                     else if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier("card-error") }
                     else if let note { Text(note) }
                     else { Text("Not there? Look in your spam folder.") }
@@ -446,9 +447,9 @@ struct CardWelcome: View {
         let topic = g?.followsIt ?? (BelfryCore.Group.typeOf(group) == .channel)
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Welcome to \(model.derive.label(group))!").font(.subheadline.weight(.semibold))
-                Text(topic ? "You started it. Share something to get it going: a link, a tip, a photo."
-                           : "You started it. Say hi and share something to get it going: a photo, a tip, a question.")
+                Text(topic ? "\(model.derive.label(group)) is open!" : "Welcome to \(model.derive.label(group))!").font(.subheadline.weight(.semibold))
+                Text(topic ? "You created it and you look after it. Share the first tip, link or question."
+                           : "You created it and you look after it. Say hi and share something to get it going.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
@@ -473,15 +474,18 @@ struct TopicCardView: View {
 
     var body: some View {
         let g = model.group(channel)
-        let w = CardTopicWords.parts(about: g?.about, post: text)
-        let tag = (g?.name).flatMap { $0.isEmpty || $0 == w.topic ? nil : $0 } ?? channel
+        // the topic's own description when it is known here; else what the post says
+        let about = g.map(\.about) ?? {
+            let w = CardTopicWords.parts(about: nil, post: text)
+            return [w.topic, w.about].filter { !$0.isEmpty }.joined(separator: " · ")
+        }()
+        // canvas Cards onb-town-topic: New topic · #tag · its description · Steward: … · N following · Open
         CardFrame {
             VStack(alignment: .leading, spacing: 4) {
                 Label("New topic", systemImage: "tag").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                Text("#" + tag).font(.subheadline.weight(.semibold))
-                if !w.topic.isEmpty { Text(w.topic).font(.subheadline) }
-                if !w.about.isEmpty { Text(w.about).font(.caption).foregroundStyle(.secondary).lineLimit(3) }
-                Text("Started by \(model.name(by))" + (g.map { " · \($0.members.count) following" } ?? "")).font(.caption).foregroundStyle(.secondary)
+                Text("#" + channel).font(.subheadline.weight(.semibold))
+                if !about.isEmpty { Text(about).font(.caption).foregroundStyle(.secondary).lineLimit(3) }
+                Text("Steward: \(model.name(by))" + (g.map { " · \($0.members.count) following" } ?? "")).font(.caption).foregroundStyle(.secondary)
                 Button("Open") { openChannel(channel, nil) }
                     .buttonStyle(.bordered).controlSize(.small)
                     .accessibilityIdentifier("topic-card-open")

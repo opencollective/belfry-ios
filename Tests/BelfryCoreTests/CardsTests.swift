@@ -104,6 +104,12 @@ final class CardsTests: XCTestCase {
         XCTAssertEqual(v["name"] as? String, "Dev Patel")
         XCTAssertEqual(v["client"] as? String, "belfry-ios")
         XCTAssertEqual(Set(v.keys), ["title", "about", "hashtag", "email", "code", "name", "client"], "no summary when starting a topic (Cards v80)")
+        // the form since Cards v87 asks a topic only its hashtag and description: no title sent
+        let topic = CardForm(about: "Borrow drills.", hashtag: "tool-library", name: "Dev", email: "dev@example.org")
+        XCTAssertNil(Cards.claimBody(.topic, topic)["title"])
+        XCTAssertEqual(Set(Cards.verifyBody(.topic, topic, code: "1").keys), ["about", "hashtag", "email", "code", "name", "client"])
+        XCTAssertTrue(topic.ready(.topic, tag: .free, signedIn: false), "a topic needs no title")
+        XCTAssertFalse(CardForm(hashtag: "x").ready(.topic, tag: .free, signedIn: true), "a hashtag of 2 at least")
         XCTAssertEqual(GuestSignIn.body(email: "a@b.c", code: "1", name: nil, sessionKey: String(repeating: "A", count: 64), summary: "monthly")["summary"] as? String, "monthly")
         XCTAssertNil(GuestSignIn.body(email: "a@b.c", code: "1", name: nil, sessionKey: String(repeating: "A", count: 64))["summary"])
         // what may be sent
