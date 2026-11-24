@@ -40,10 +40,25 @@ struct MessageRow: View {
     }
 
     var body: some View {
+        if case .cardLine(let id) = m.special { cardLine(id) } else { row }
+    }
+
+    /// "You created the group from card K7Q2MX · 9:41 AM" (canvas Cards onb-group-done / onb-topic-done).
+    private func cardLine(_ id: String?) -> some View {
+        let who = m.pubkey == model.me ? "You" : model.name(m.pubkey)
+        let what = BelfryCore.Group.typeOf(group) == .pod ? "group" : "topic"
+        return Text(who + " created the \(what)" + (id.map { " from card " + $0 } ?? " from a printed card") + " · " + Format.time(m.at))
+            .font(.footnote).foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .accessibilityIdentifier("card-line")
+    }
+
+    private var row: some View {
         let _ = LoopWatch.tick("MessageRow")
         let d = model.derive
         let pending = model.pending(m.id)
-        HStack(alignment: .top, spacing: 10) {
+        return HStack(alignment: .top, spacing: 10) {
             if first {
                 Avatar(pubkey: m.pubkey, size: 36).onTapGesture { model.openProfile = m.pubkey }
             } else { Color.clear.frame(width: 36, height: 1) }

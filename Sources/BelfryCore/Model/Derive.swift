@@ -207,6 +207,9 @@ public enum Special: Hashable, Sendable {
     /// A topic started from a printed card, announced in the Townsquare (`["t","new-topic"]`,
     /// `["channel", <hashtag>]`): the topic's card.
     case topicCard(channel: String)
+    /// The first line of a group or topic started from a printed card (the groups key's kind 9
+    /// with ["card","1"], Belfry 9b4482b): drawn as a line, "You created the group from card ‹ID›".
+    case cardLine(cardId: String?)
     /// A member's e-mail to `<channel>@domain`, posted as their message: "via e-mail".
     case memberMail(subject: String, original: MailOriginal?)
     /// Shared inbox: an e-mail from anyone, posted by the groups key as a card.
@@ -1024,6 +1027,9 @@ public final class Derive {
             mail = .memberMail(subject: mailSubject, original: original)
         }
         if let key = ctx.groupsKey, e.pubkey == key {
+            if e.hasTag("card", "1"), e.tag("client") == nil {
+                return .cardLine(cardId: e.tag("card_id").flatMap { CardLink.isId($0) ? $0 : nil })
+            }
             if let from = e.tag("mail-from"), !from.isEmpty, mail != nil {
                 return .inboxCard(from: from, name: e.tag("mail-name") ?? "", subject: mailSubject, messageId: e.tag("message-id"),
                                   verified: e.tag("belfry-auth") == "pass", original: original)

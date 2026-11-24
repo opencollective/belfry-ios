@@ -163,6 +163,11 @@ final class CardsTests: XCTestCase {
         XCTAssertEqual(town[1].pubkey, ME, "the claimer by the card's first line")
         XCTAssertEqual(town[2].pubkey, ANA, "`by` counts on the groups key's events only")
         XCTAssertEqual(d.messages(pod)[0].pubkey, ANA)
+        XCTAssertEqual(d.messages(pod)[0].special, .cardLine(cardId: nil), "the card's first line is a line, not a message")
+        let line = ev(GK, 9, 300, [["h", "pod-new-bbbb"], ["p", ANA], ["card", "1"], ["card_id", "K7Q2MX"]], "Ana created the group from card K7Q2MX")
+        let d2 = Derive(events: [line], context: WorldContext(me: ME, groupsKey: GK))
+        XCTAssertEqual(d2.messages("pod-new-bbbb")[0].special, .cardLine(cardId: "K7Q2MX"))
+        XCTAssertEqual(d2.messages("pod-new-bbbb")[0].pubkey, ANA)
         XCTAssertEqual(d.messages("pod-old-aaaa").map(\.pubkey), [ME, GK])
         XCTAssertFalse(d.canDelete(d.messages("pod-old-aaaa")[0]), "signed by the groups key: not mine to delete")
         // without the groups key nothing is re-attributed
