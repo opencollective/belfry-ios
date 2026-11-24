@@ -10,7 +10,19 @@ import Foundation
 struct PendingCard: Codable, Equatable {
     let domain: String
     let id: String?
+    /// The e-mail's Confirm button (`?confirm=<token>`): in memory only, never stored.
+    var confirm: String? = nil
     var key: String { domain + "/" + (id ?? "") }
+    private enum CodingKeys: String, CodingKey { case domain, id }
+}
+
+/// What the e-mail's Confirm button did here.
+enum CardConfirmOutcome: Equatable {
+    /// This phone started the claim: it is signed in, the group opens.
+    case signedIn
+    /// Another device started it: "Confirmed", go back there (cards/onb-confirmed-elsewhere).
+    case elsewhere
+    case failed(CardFailure)
 }
 
 extension AppModel {
@@ -149,15 +161,16 @@ extension AppModel {
         return s
     }
 
-    /// Not signed in: the 6-digit code goes to the e-mail.
-    func cardStart(_ card: PendingCard, email: String) async -> CardFailure? {
+    /// Not signed in: the 6-digit code and the Confirm button go to the e-mail; the belfry keeps
+    /// the form (signed by this card's key, which becomes the session's).
+    func cardStart(_ card: PendingCard, kind: CardKind, form: CardForm) async -> CardFailure? {
         guard let id = card.id else { return CardFailure(.unknown) }
         if isDemoCard(card) {
             try? await Task.sleep(nanoseconds: 400_000_000)
             if case .claimed(_, let g, _, let i) = demoInfo(id) { return CardFailure(.claimed, group: g, invite: i) }
             return nil
         }
-        do { try await cardAPI(card).claimStart(id, email: email, secretHex: cardSecret(card)); return nil }
+        do { try await cardAPI(card).claimStart(id, kind: kind, form: form, secretHex: cardSecret(card)); return nil }
         catch let f as CardFailure {
             if f.code == .keyTaken { _ = cardSecret(card, fresh: true) }
             return f
@@ -183,20 +196,53 @@ extension AppModel {
         do {
             let api = await cardAPI(card)
             let r = try await api.claimVerify(id, kind: kind, form: form, code: code, secretHex: secret)
-            Keychain.removeString("card-" + card.key)
-            cardDone()
-            pendingInvite = nil
-            inviteSignInFirst = false
-            let st = StoredSession(domain: card.domain, bunkerURL: r.session.bunkerURL, clientSecret: secret, pubkey: r.session.pubkey)
-            store(st)
-            UserDefaults.standard.set(r.group, forKey: AppModel.openAfterSignInKey)
-            cardWelcome = r.group
-            open(st, config: api.config)
+            signedInFromCard(card, r, secret: secret, config: api.config)
             return nil
         } catch let f as CardFailure {
             if f.code == .keyTaken { _ = cardSecret(card, fresh: true) }
             return f
         } catch { return CardFailure(.failed) }
+    }
+
+    /// The claim is made and the session is this card's key's: stored like any sign-in, the
+    /// group opens with its welcome.
+    private func signedInFromCard(_ card: PendingCard, _ r: CardSignedIn, secret: String, config cfg: BelfryConfig) {
+        Keychain.removeString("card-" + card.key)
+        cardDone()
+        pendingInvite = nil
+        inviteSignInFirst = false
+        let st = StoredSession(domain: card.domain, bunkerURL: r.session.bunkerURL, clientSecret: secret, pubkey: r.session.pubkey)
+        store(st)
+        UserDefaults.standard.set(r.group, forKey: AppModel.openAfterSignInKey)
+        cardWelcome = r.group
+        open(st, config: cfg)
+    }
+
+    /// The waiting code screen asks whether the e-mail's button was clicked on another device.
+    func cardPoll(_ card: PendingCard) async -> CardPoll {
+        guard let id = card.id, !isDemoCard(card), let secret = Keychain.string("card-" + card.key) else { return .pending }
+        let api = await cardAPI(card)
+        let p = await api.claimPoll(id, secretHex: secret)
+        if case .signedIn(let r) = p { signedInFromCard(card, r, secret: secret, config: api.config) }
+        return p
+    }
+
+    /// The e-mail's Confirm button opened this card. Signed with this phone's key for the card
+    /// when it started the claim (then the session comes back), else with a fresh key.
+    func cardConfirm(_ card: PendingCard, token: String) async -> CardConfirmOutcome {
+        guard let id = card.id else { return .failed(CardFailure(.unknown)) }
+        if isDemoCard(card) { try? await Task.sleep(nanoseconds: 400_000_000); return .elsewhere }
+        let mine = Keychain.string("card-" + card.key)
+        let secret = mine ?? Keys.generateSecret().hex
+        do {
+            let api = await cardAPI(card)
+            let c = try await api.claimConfirm(id, token: token, secretHex: secret)
+            if let r = c.signedIn, mine != nil {
+                signedInFromCard(card, r, secret: secret, config: api.config)
+                return .signedIn
+            }
+            return .elsewhere
+        } catch let f as CardFailure { return .failed(f) } catch { return .failed(CardFailure(.failed)) }
     }
 
     // ---- for the group's stewards (Settings → The card) ---------------------------------------------

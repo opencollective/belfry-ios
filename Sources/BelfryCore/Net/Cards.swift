@@ -28,6 +28,16 @@ public enum CardLink {
     public static let idRx = Rx("^[A-HJKMNP-Z2-9]{6}$")
     public static func isId(_ s: String) -> Bool { idRx.test(s) }
 
+    static let tokenRx = Rx("^[A-Za-z0-9_-]{8,200}$")
+
+    /// The e-mail's Confirm button: `?confirm=<token>` on a card's address (docs/cards.md §2.3).
+    /// The token is kept in memory only, never shown or stored.
+    public static func confirmToken(_ url: URL) -> String? {
+        guard let t = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "confirm" })?.value,
+              tokenRx.test(t) else { return nil }
+        return t
+    }
+
     /// https://chat.<domain>/g/<id> (or …/#/g/<id>). Lower case reads as upper case. `id` nil: the
     /// address is a card's but what follows is not an id ("This card isn't known here").
     public static func parse(_ url: URL) -> (domain: String, id: String?)? {
@@ -189,6 +199,24 @@ public struct CardSignedIn: Equatable, Sendable {
     public let group: String
 }
 
+/// What the waiting screen hears.
+public enum CardPoll: Equatable, Sendable {
+    /// Not clicked yet.
+    case pending
+    /// Clicked on another device: the session, once.
+    case signedIn(CardSignedIn)
+    /// 410 / 404: nothing to wait for (ran out, handed out, confirmed here, or the code did it).
+    case gone
+    /// No answer just now (offline, 429, 5xx): ask again.
+    case later
+}
+
+/// The Confirm button's answer: the session only on the device that started the claim.
+public struct CardConfirmed: Equatable, Sendable {
+    public let group: String
+    public let signedIn: CardSignedIn?
+}
+
 /// The card a group was started from, for its stewards.
 public struct CardOfGroup: Equatable, Sendable {
     public let id: String
@@ -274,6 +302,16 @@ public enum Cards {
     /// "weekly" unless it is "monthly".
     public static func summary(_ s: String?) -> String { s == "monthly" ? "monthly" : "weekly" }
 
+    /// claim-start's body (docs/cards.md §2.3): the whole form, kept by the belfry with the
+    /// pending claim, so the e-mail's Confirm button can create it.
+    public static func startBody(_ kind: CardKind, _ f: CardForm, client: String = "belfry-ios") -> [String: Any] {
+        var b = claimBody(kind, f)
+        b["email"] = f.email.jsTrim()
+        b["name"] = label(f.name, 100)
+        b["client"] = client
+        return b
+    }
+
     /// The body of a claim.
     public static func claimBody(_ kind: CardKind, _ f: CardForm) -> [String: Any] {
         var b: [String: Any] = ["about": f.about.jsTrim().sliceUnits(500)]
@@ -352,9 +390,39 @@ extension BelfryAPI {
         return a.body ?? [:]
     }
 
-    /// Not signed in: the code goes to EMAIL (nothing is kept on the belfry yet).
-    public func claimStart(_ id: String, email: String, secretHex: String) async throws {
-        _ = try await cardPost("/\(id)/claim-start", ["email": email.jsTrim()], secretHex: secretHex)
+    /// Not signed in: the code and the Confirm button go to the e-mail; the belfry keeps the form
+    /// for 15 minutes (nothing is created yet).
+    public func claimStart(_ id: String, kind: CardKind, form: CardForm, secretHex: String) async throws {
+        _ = try await cardPost("/\(id)/claim-start", Cards.startBody(kind, form), secretHex: secretHex)
+    }
+
+    /// The waiting screen asks whether the e-mail's button was clicked (on another device). Signed
+    /// by the claim-start key.
+    public func claimPoll(_ id: String, secretHex: String) async -> CardPoll {
+        do {
+            let d = try await cardPost("/\(id)/claim-poll", [:], secretHex: secretHex)
+            if d["pending"] as? Bool == true { return .pending }
+            guard let g = d["group"] as? String, CardInfo.groupRx.test(g), let s = GuestSignIn.signedIn(d, domain: config.domain) else { return .later }
+            return .signedIn(CardSignedIn(session: s, group: g))
+        } catch let f as CardFailure {
+            switch f.code {
+            case .expired: return .gone
+            case .unknown: return .gone
+            default: return .later
+            }
+        } catch { return .later }
+    }
+
+    /// The e-mail's Confirm button opened here. SECRET: this phone's claim-start key for the card
+    /// when it has one (then the session comes with the answer), else any fresh key.
+    public func claimConfirm(_ id: String, token: String, secretHex: String) async throws -> CardConfirmed {
+        let d = try await cardPost("/\(id)/claim-confirm", ["token": token], secretHex: secretHex)
+        guard d["confirmed"] as? Bool == true, let g = d["group"] as? String, CardInfo.groupRx.test(g) else { throw CardFailure(.failed) }
+        if d["same_device"] as? Bool == true, d["signed_in"] as? Bool == true {
+            guard let s = GuestSignIn.signedIn(d, domain: config.domain) else { throw CardFailure(.failed) }
+            return CardConfirmed(group: g, signedIn: CardSignedIn(session: s, group: g))
+        }
+        return CardConfirmed(group: g, signedIn: nil)
     }
 
     /// The code: the group or topic is made now, and the key is a session (of the account the

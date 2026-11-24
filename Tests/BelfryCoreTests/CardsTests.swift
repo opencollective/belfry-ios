@@ -32,6 +32,12 @@ final class CardsTests: XCTestCase {
         XCTAssertNil(p("https://belfry.brussels/g/K7Q2MX"), "the chat's host only")
         XCTAssertNil(p("http://chat.belfry.brussels/g/K7Q2MX"))
         XCTAssertEqual(CardLink.url(domain: "belfry.sh", id: "K7Q2MX"), "https://chat.belfry.sh/g/K7Q2MX")
+        // the e-mail's Confirm button
+        let t = String(repeating: "Ab3_-", count: 8) + "xyz"
+        XCTAssertEqual(CardLink.confirmToken(URL(string: "https://chat.belfry.sh/g/K7Q2MX?confirm=" + t)!), t)
+        XCTAssertEqual(p("https://chat.belfry.sh/g/K7Q2MX?confirm=" + t)?.1, "K7Q2MX", "the query is no part of the id")
+        XCTAssertNil(CardLink.confirmToken(URL(string: "https://chat.belfry.sh/g/K7Q2MX?confirm=a%20b")!))
+        XCTAssertNil(CardLink.confirmToken(URL(string: "https://chat.belfry.sh/g/K7Q2MX")!))
     }
 
     func testInfo() {
@@ -104,6 +110,10 @@ final class CardsTests: XCTestCase {
         XCTAssertEqual(v["name"] as? String, "Dev Patel")
         XCTAssertEqual(v["client"] as? String, "belfry-ios")
         XCTAssertEqual(Set(v.keys), ["title", "about", "hashtag", "email", "code", "name", "client"], "no summary when starting a topic (Cards v80)")
+        // claim-start carries the whole form (the Confirm button creates it from there)
+        let st = Cards.startBody(.group, f)
+        XCTAssertEqual(Set(st.keys), ["title", "about", "email", "name", "client"])
+        XCTAssertEqual(st["name"] as? String, "Dev Patel")
         // the form since Cards v87 asks a topic only its hashtag and description: no title sent
         let topic = CardForm(about: "Borrow drills.", hashtag: "tool-library", name: "Dev", email: "dev@example.org")
         XCTAssertNil(Cards.claimBody(.topic, topic)["title"])

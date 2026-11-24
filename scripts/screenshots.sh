@@ -56,6 +56,7 @@ shot 200b-card-start-group-dark card-K7Q2MX dark
 shot 201-card-start-topic card-T9PC4H light
 shot 202-card-code card-code light
 shot 203-card-taken card-taken light
+shot 203b-card-confirmed card-confirmed light
 shot 204-card-retired card-RETRDX light
 shot 205-card-archived card-ARCH9V light
 shot 206-card-unknown card-XXXXXX light

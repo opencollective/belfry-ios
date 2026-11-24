@@ -16,6 +16,9 @@ struct CardScreen: View {
     @State private var tries = 0
     /// The card was retired while its form was open.
     @State private var retired = false
+    /// The e-mail's Confirm button: asking, done on another device, or refused.
+    @State private var confirmed: CardConfirmOutcome?
+    @State private var confirming = false
 
     var body: some View {
         NavigationStack {
@@ -31,6 +34,14 @@ struct CardScreen: View {
     }
 
     private func load() async {
+        // the e-mail's Confirm button opened the card: that, and nothing else
+        if let token = card.confirm {
+            guard confirmed == nil, !confirming else { return }
+            confirming = true
+            confirmed = await model.cardConfirm(card, token: token)
+            confirming = false
+            return
+        }
         guard model.cardIsHere(card) else { return }
         offline = false
         switch await model.cardInfo(card) {
@@ -43,7 +54,23 @@ struct CardScreen: View {
     }
 
     @ViewBuilder private var content: some View {
-        if !model.cardIsHere(card) {
+        if card.confirm != nil {
+            switch confirmed {
+            case .elsewhere:
+                // cards/onb-confirmed-elsewhere
+                CardDead(title: "Confirmed", text: "It’s created. Go back to the page where you scanned the card: it opens there by itself.", domain: nil)
+            case .failed(let f):
+                CardDead(title: "Not confirmed", text: f.code == .expired ? "This link has expired or was used already. On the page where you scanned the card, send a new code." : f.text(),
+                         domain: nil, again: f.code == .offline || f.code == .signer ? { confirmed = nil; tries += 1 } : nil)
+            case .signedIn, nil:
+                VStack(spacing: 18) {
+                    ProgressView().controlSize(.large)
+                    Text("Confirming…").font(.title3)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityElement(children: .combine)
+            }
+        } else if !model.cardIsHere(card) {
             CardDead(title: "This card is from another belfry", text: "Open it with your account there, or sign out here, and scan the card again.", domain: nil)
         } else if offline {
             CardDead(title: "No connection", text: "The card needs the internet to open. What you typed stays here.", domain: nil) { tries += 1 }
@@ -303,7 +330,7 @@ struct CardStartForm: View {
             if let x = await model.claimCard(card, kind: kind, form: f) { fail(x) }
             return
         }
-        if let x = await model.cardStart(card, email: f.email) { fail(x) } else { digits = ""; note = nil; step = .code; codeFocused = true }
+        if let x = await model.cardStart(card, kind: kind, form: f) { fail(x) } else { digits = ""; note = nil; step = .code; codeFocused = true }
     }
 
     // ---- the code ---------------------------------------------------------------------------------
@@ -318,25 +345,42 @@ struct CardStartForm: View {
                     if verifying { Text("Creating \(made)…") }
                     else if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier("card-error") }
                     else if let note { Text(note) }
-                    else { Text("Not there? Look in your spam folder.") }
+                    else { Text("or click Confirm in the e-mail. This page moves on by itself once you have.") }
                 }
                 .font(.subheadline).foregroundStyle(.secondary)
                 HStack {
                     BusyButton {
                         error = nil
-                        if let x = await model.cardStart(card, email: f.email) { fail(x) } else { note = "A new code is on its way to your e-mail." }
+                        if let x = await model.cardStart(card, kind: kind, form: f) { fail(x) } else { note = "A new code is on its way to your e-mail." }
                     } label: { Text("Send a new code") }
                     Spacer()
                     Button("Use another address") { step = .form; error = nil; note = nil; digits = "" }
                 }
                 .font(.subheadline)
                 .disabled(verifying)
+                Text("Not there? Look in your spam folder.").font(.footnote).foregroundStyle(.secondary)
             }
             .padding(24)
             .frame(maxWidth: 520)
             .frame(maxWidth: .infinity)
         }
         .onAppear { codeFocused = true }
+        // the e-mail's Confirm button clicked on another device: this screen moves on by itself
+        .task(id: step) {
+            guard step == .code else { return }
+            while !Task.isCancelled, step == .code {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                if Task.isCancelled || step != .code || verifying { continue }
+                switch await model.cardPoll(card) {
+                case .signedIn: return
+                case .gone:
+                    // ran out (or confirmed on this phone already, which has left this screen)
+                    if step == .code, model.pendingCard == card { error = CardFailure(.expired).text(kind) }
+                    return
+                case .pending, .later: continue
+                }
+            }
+        }
     }
 
     private func verify() async {

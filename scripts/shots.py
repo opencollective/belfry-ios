@@ -31,6 +31,7 @@ def args(screen):
     # printed cards: card-<ID> scanned signed out, card-in-<ID> signed in, card-code / card-taken (steps)
     if screen == "card-code": return ["-card", "K7Q2MX", "-screen", "cardcode"]
     if screen == "card-taken": return ["-card", "K7Q2MX", "-screen", "cardtaken"]
+    if screen == "card-confirmed": return ["-card", "K7Q2MX", "-screen", "cardconfirmed"]
     if screen.startswith("card-in-"): return ["-demo", "-card", screen[8:]]
     if screen.startswith("card-"): return ["-card", screen[5:]]
     if screen == "join": return ["-join"]

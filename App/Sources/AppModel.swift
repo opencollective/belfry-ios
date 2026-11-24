@@ -313,7 +313,7 @@ final class AppModel: ObservableObject {
         } else if let c = launch.card, !launch.demo {
             // a printed card scanned signed out (screenshots: `-card K7Q2MX`, `-card T9PC4H`, …)
             pendingInvite = nil
-            pendingCard = PendingCard(domain: "demo.belfry.sh", id: c)
+            pendingCard = PendingCard(domain: "demo.belfry.sh", id: c, confirm: launch.screen == "cardconfirmed" ? "demo-confirm-token" : nil)
         } else if ProcessInfo.processInfo.arguments.contains("-join") {
             pendingInvite = PendingInvite(domain: "demo.belfry.sh", token: "demoinvite0123456789abcd")
         } else if launch.demo {

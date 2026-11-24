@@ -2853,6 +2853,16 @@ lanes `OutboxPass.lane`; `SendState` / `SendTrace` in `Outbox/SendTrace.swift`; 
   (Xavier, 2026-11-24): lower case, accents folded, a space / dash / underscore → one `-`, nothing
   else gets in, no `-` first, never `--`, 30 at most; a `-` at the end goes when leaving the field or sending; a suggestion that is taken moves to `-2` … `-9`.
   Refusals are the app's own words per `error` code; `409 claimed` + `group`, `invite` offers theirs.
+- **Confirm in the e-mail** (docs/cards.md §2.3, live since Belfry 3ef7ff5). claim-start carries
+  the whole form (`email`, `name`, `title`?, `about`, `hashtag`?, `client`): the belfry keeps it 15
+  minutes and mails the code and a Confirm button, `https://chat.<domain>/g/<id>?confirm=<token>`.
+  The waiting code screen asks `POST /cards/<id>/claim-poll {}` (signed by the claim-start key)
+  every 3 s: `202` pending, `200` the claim-verify body once (stored as the session, as after the
+  code), `410` / `404` nothing to wait for. The link opened in the app: `POST
+  /cards/<id>/claim-confirm {token}` signed by this device's claim-start key for that card when it
+  has one, else by a fresh key; `same_device` + the signed-in body: signed in, the group opens;
+  otherwise "Confirmed · It's created. Go back to the page where you scanned the card: it opens
+  there by itself." The token is kept in memory only, never stored or shown.
 - **Who made it.** On an event signed by the belfry's groups key, `["by", <pubkey>]` names its
   author (a card's 9007, 9002, the "New group" post, its first line). Without `by`: the `p` of that
   group's kind 9 tagged `["card","1"]` by the groups key (never for an event with a `client` tag).

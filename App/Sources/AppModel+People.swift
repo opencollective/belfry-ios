@@ -17,7 +17,7 @@ extension AppModel {
     /// A guest link opened (https://chat.<domain>/join/<token>): only its domain and token are kept.
     func handle(url: URL) {
         if handleTicketURL(url) { return }
-        if let c = CardLink.parse(url) { openCard(PendingCard(domain: c.domain, id: c.id)); return }
+        if let c = CardLink.parse(url) { openCard(PendingCard(domain: c.domain, id: c.id, confirm: CardLink.confirmToken(url))); return }
         if let a = LoginLink.parse(url) { pendingLinkSecret = LoginLink.linkSecret(url); Task { await logIn(with: a) }; return }
         guard let (domain, token) = InviteLink.parse(url) else { return }
         pendingInvite = PendingInvite(domain: domain, token: token)
