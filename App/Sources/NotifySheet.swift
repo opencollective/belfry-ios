@@ -42,7 +42,7 @@ struct NotifySheet: View {
                 Toggle(isOn: Binding(get: { follow != nil }, set: { setFollow($0) })) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Also e-mail me its announcements")
-                        Text(follow == "monthly" ? "What admins mark as an announcement · once a month" : "What admins mark as an announcement")
+                        Text(follow == "monthly" ? "What admins mark as an announcement · once a month" : follow == "weekly" ? "What admins mark as an announcement · once a week" : "What admins mark as an announcement")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }

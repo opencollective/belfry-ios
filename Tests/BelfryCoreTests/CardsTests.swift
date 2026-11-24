@@ -92,12 +92,7 @@ final class CardsTests: XCTestCase {
         XCTAssertEqual(v["code"] as? String, "123456")
         XCTAssertEqual(v["name"] as? String, "Dev Patel")
         XCTAssertEqual(v["client"] as? String, "belfry-ios")
-        XCTAssertEqual(Set(v.keys), ["title", "about", "hashtag", "summary", "email", "code", "name", "client"])
-        XCTAssertEqual(v["summary"] as? String, "weekly", "weekly unless monthly is picked")
-        var monthly = f
-        monthly.summary = "monthly"
-        XCTAssertEqual(Cards.claimBody(.topic, monthly)["summary"] as? String, "monthly")
-        XCTAssertNil(Cards.claimBody(.group, monthly)["summary"], "a group card has no summary")
+        XCTAssertEqual(Set(v.keys), ["title", "about", "hashtag", "email", "code", "name", "client"], "no summary when starting a topic (Cards v80)")
         XCTAssertEqual(GuestSignIn.body(email: "a@b.c", code: "1", name: nil, sessionKey: String(repeating: "A", count: 64), summary: "monthly")["summary"] as? String, "monthly")
         XCTAssertNil(GuestSignIn.body(email: "a@b.c", code: "1", name: nil, sessionKey: String(repeating: "A", count: 64))["summary"])
         // what may be sent

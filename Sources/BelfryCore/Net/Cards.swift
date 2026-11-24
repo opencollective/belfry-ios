@@ -88,10 +88,8 @@ public struct CardForm: Equatable, Sendable, Codable {
     public var hashtag = ""
     public var name = ""
     public var email = ""
-    /// A topic: the summary by e-mail, "weekly" (the default) or "monthly" (canvas Cards v45).
-    public var summary: String? = nil
-    public init(title: String = "", about: String = "", hashtag: String = "", name: String = "", email: String = "", summary: String? = nil) {
-        self.title = title; self.about = about; self.hashtag = hashtag; self.name = name; self.email = email; self.summary = summary
+    public init(title: String = "", about: String = "", hashtag: String = "", name: String = "", email: String = "") {
+        self.title = title; self.about = about; self.hashtag = hashtag; self.name = name; self.email = email
     }
 
     /// May "Start the …" be tapped? TAG: the hashtag's live check (a topic). SIGNED_IN: no name, no e-mail.
@@ -252,10 +250,8 @@ public enum Cards {
     /// The body of a claim.
     public static func claimBody(_ kind: CardKind, _ f: CardForm) -> [String: Any] {
         var b: [String: Any] = ["title": label(f.title, 80), "about": f.about.jsTrim().sliceUnits(500)]
-        if kind == .topic {
-            b["hashtag"] = hashtagSlug(f.hashtag)
-            b["summary"] = summary(f.summary)
-        }
+        // no `summary` when starting a topic (Xavier, Cards v80): the belfry defaults to weekly
+        if kind == .topic { b["hashtag"] = hashtagSlug(f.hashtag) }
         return b
     }
 

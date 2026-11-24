@@ -2865,5 +2865,10 @@ lanes `OutboxPass.lane`; `SendState` / `SendTrace` in `Outbox/SendTrace.swift`; 
 - **Stewards.** `GET /groups/<group>/card` (NIP-98; 403 / 404 = nothing to show) → Settings →
   "The card": its number, who started it, how many joined by scanning, its QR again, Retire
   (`POST /cards/<id>/retire`, asked first).
+- **Summary by e-mail** (Cards v45, v80). Starting a topic asks nothing about it and sends no
+  `summary` (the belfry starts the claimer's follow weekly). Following a topic reached by a card
+  (`/guest/save/verify` while in its guest mode) offers Weekly | Monthly, sent as `summary`. A
+  channel's announcements by e-mail (`/api/me/follows` `frequency`): Off / As they happen / Once a
+  week / Once a month (`stop` | `asap` | `weekly` | `monthly`).
 - **Followers.** A channel's people are its followers ("N followers", Followers, Follow, Ask to
   follow); groups, events and proposals keep members; the belfry's members stay members.

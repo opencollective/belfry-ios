@@ -199,18 +199,8 @@ struct CardStartForm: View {
                     .lineLimit(3...6).font(.body)
                     .accessibilityIdentifier("card-about")
             }
-            if kind == .topic {
-                Section {
-                    Picker("Summary by e-mail", selection: Binding(get: { Cards.summary(f.summary) }, set: { f.summary = $0 })) {
-                        Text("Weekly").tag("weekly")
-                        Text("Monthly").tag("monthly")
-                    }
-                    .pickerStyle(.segmented)
-                    .accessibilityIdentifier("card-summary")
-                } header: { Text("Summary by e-mail") } footer: {
-                    Text(Cards.summary(f.summary) == "monthly" ? "What was said, once a month. Change it any time." : "What was said, once a week. Change it any time.")
-                }
-            }
+            // no Summary row when starting a topic (Xavier, Cards v80: "it's ok to keep it in the
+            // settings"): the belfry starts it weekly; the topic's Notifications change it
             if !signedIn {
                 Section {
                     TextField("Your name", text: Binding(get: { f.name }, set: { f.name = String($0.prefix(100)) }))

@@ -51,7 +51,7 @@ struct LogTab: View {
     }
 }
 
-/// E-mails of this channel's announcements: off / as they happen / monthly.
+/// E-mails of this channel's announcements: off / as they happen / weekly / monthly.
 struct FollowBell: View {
     @EnvironmentObject var model: AppModel
     let id: String
@@ -65,6 +65,7 @@ struct FollowBell: View {
             Picker(selection: Binding(get: { state ?? "stop" }, set: { set($0) })) {
                 Text("Off").tag("stop")
                 Text("As they happen").tag("asap")
+                Text("Once a week").tag("weekly")
                 Text("Once a month").tag("monthly")
             } label: {
                 HStack { Label("E-mail me its announcements", systemImage: state == nil ? "bell" : "bell.fill"); if busy { ProgressView().controlSize(.small) } }

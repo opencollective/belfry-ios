@@ -330,7 +330,7 @@ extension AppModel {
         return (try? await api.follows())?.byChannel[channel]
     }
 
-    /// CHOICE: asap | monthly | stop. Returns the frequency now in force (nil: not following) or an error.
+    /// CHOICE: asap | weekly | monthly | stop. Returns the frequency now in force (nil: not following) or an error.
     func setFollow(_ channel: String, _ choice: String) async -> Result<String?, ApiError> {
         if engine?.localOnly != false {
             demoFollows[channel] = choice == "stop" ? nil : choice

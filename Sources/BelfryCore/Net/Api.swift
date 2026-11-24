@@ -128,8 +128,12 @@ public struct JoinedAccount: Hashable, Sendable {
     public init(channel: String, already: Bool, guest: Bool, member: Bool = false) { self.channel = channel; self.already = already; self.guest = guest; self.member = member }
 }
 public struct Places: Hashable, Sendable { public let places: [Place]; public let attribution: String? }
-/// E-mail follows of channels' announcements: channel id → `asap` | `monthly`.
-public struct Follows: Hashable, Sendable { public let email: String; public let byChannel: [String: String] }
+/// E-mail follows of channels' announcements: channel id → `asap` | `weekly` | `monthly`.
+public struct Follows: Hashable, Sendable {
+    public let email: String; public let byChannel: [String: String]
+    /// What /me/follows answers and takes (the summary of a topic is `weekly` by default since Cards v45).
+    public static let frequencies: Set<String> = ["asap", "weekly", "monthly"]
+}
 
 public struct SessionInfo: Hashable, Sendable, Identifiable {
     public let applicationName: String
@@ -470,17 +474,17 @@ public struct BelfryAPI: Sendable {
         var map = [String: String]()
         for o in b["follows"] as? [[String: Any]] ?? [] {
             guard let f = o["frequency"] as? String, let c = o["channel"] as? String else { continue }
-            if o["state"] as? String == "active", f == "asap" || f == "monthly" { map[c] = f }
+            if o["state"] as? String == "active", Follows.frequencies.contains(f) { map[c] = f }
         }
         return Follows(email: b["email"] as? String ?? "", byChannel: map)
     }
 
-    /// CHOICE: `asap`, `monthly` or `stop`. Returns the frequency now in force, nil when not following.
+    /// CHOICE: `asap`, `weekly`, `monthly` or `stop`. Returns the frequency now in force, nil when not following.
     public func setFollow(channel: String, choice: String) async throws -> String? {
         let a = try await signed(followsURL, method: "POST", json: ["channel": channel, "frequency": choice])
         if !a.ok { throw BelfryAPI.fail(a, [:], "Not saved. Try again.") }
         guard let b = a.body, let f = b["frequency"] as? String else { return nil }
-        return b["state"] as? String == "active" && (f == "asap" || f == "monthly") ? f : nil
+        return b["state"] as? String == "active" && Follows.frequencies.contains(f) ? f : nil
     }
 
     /// Change my address here. Returns the full address.
