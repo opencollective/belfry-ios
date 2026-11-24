@@ -51,6 +51,9 @@ shot 141d-todo-pulled-dark todo-pulled dark
 shot 141e-todo-done todo-done light
 shot 141f-todo-folded todo-folded light
 shot 143-member-invite join-member light
+shot 210-og-preview ogpreview light
+shot 210b-og-preview-dark ogpreview dark
+shot 211-og-composer ogcomposer light
 shot 200-card-start-group card-K7Q2MX light
 shot 200b-card-start-group-dark card-K7Q2MX dark
 shot 201-card-start-topic card-T9PC4H light

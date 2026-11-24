@@ -238,10 +238,13 @@ public struct Message: Identifiable, Hashable, Sendable {
     public var eventRefs: [EventRef] = []
     /// The person the groups key signed this for (a printed card's group, docs/cards.md): `by`.
     public var by: String?
+    /// Its link preview's tags, of its latest version (SPEC 19.69): `preview` and the preview's `imeta`.
+    public var previewTags: [Tag] = []
 
     public init(ev: NostrEvent, text: String, media: [Media], topics: [String], edited: Int? = nil, special: Special = .none,
-                viaDropBox: Bool = false, eventRefs: [EventRef] = [], by: String? = nil) {
+                viaDropBox: Bool = false, eventRefs: [EventRef] = [], by: String? = nil, previewTags: [Tag] = []) {
         self.by = by
+        self.previewTags = previewTags
         self.ev = ev
         self.text = text
         self.media = media
@@ -960,7 +963,7 @@ public final class Derive {
         }
         return Message(ev: e, text: shown, media: media, topics: Derive.topicsOf(src), edited: x?.createdAt,
                        special: specialOf(e, legacy: legacy), viaDropBox: e.hasTag("client", "belfry-drop"), eventRefs: Array(refs.prefix(3)),
-                       by: signedFor(e))
+                       by: signedFor(e), previewTags: LinkPreviews.wireTags(src.tags))
     }
 
     /// Calendar hooks (filled in by the calendar views; plain lookups here).

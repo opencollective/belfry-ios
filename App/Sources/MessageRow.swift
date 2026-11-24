@@ -186,7 +186,10 @@ struct SpecialBody: View {
         case .inboxCard, .sentAsChannel:
             InboxCardView(m: m, group: group)
         case .none:
-            if !m.text.isEmpty { MessageText(text: m.text, shownEvents: m.eventRefs) }
+            if !m.text.isEmpty {
+                MessageText(text: m.text, shownEvents: m.eventRefs)
+                if let p = model.preview(of: m) { LinkPreviewCard(p: p) }
+            }
         }
     }
 }
@@ -410,7 +413,10 @@ struct ReplyRow: View {
                         else { SendLineView(id: p.localId, tries: p.tries, font: .caption2, icon: false) }
                     }
                 }
-                if !r.text.isEmpty { MessageText(text: r.text, shownEvents: r.eventRefs) }
+                if !r.text.isEmpty {
+                    MessageText(text: r.text, shownEvents: r.eventRefs)
+                    if let p = model.preview(of: r) { LinkPreviewCard(p: p) }
+                }
                 MessageButtonsView(m: r, group: group.isEmpty ? (r.ev.tag("h") ?? "") : group)
                 MediaBlock(media: r.media)
                 // reactions on a reply (Xavier 2026-11-18), as on a message

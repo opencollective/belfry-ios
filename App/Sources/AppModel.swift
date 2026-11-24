@@ -41,6 +41,10 @@ final class AppModel: ObservableObject {
     @Published var openTodo: TodoKey?
     /// The channel a guest link just brought me into (opened once).
     @Published var joinedChannel: String?
+    /// Link previews built by the sender (SPEC 19.69).
+    lazy var linkPreviews: LinkPreviewCenter = { let c = LinkPreviewCenter(); c.model = self; return c }()
+    /// The preview tags of the message the composer is sending now (set just before its send).
+    var outgoingPreview: (group: String, tags: [Tag])?
     /// A printed card scanned (https://chat.<domain>/g/<id>): only its domain and id are kept.
     @Published var pendingCard: PendingCard? = (UserDefaults.standard.data(forKey: "belfry-card")).flatMap { try? JSONDecoder().decode(PendingCard.self, from: $0) } {
         didSet { UserDefaults.standard.set(pendingCard.flatMap { try? JSONEncoder().encode($0) }, forKey: "belfry-card") }
@@ -778,7 +782,16 @@ final class AppModel: ObservableObject {
 
     func post(_ text: String, in group: String, attachments: [Attachment] = [], announce: Bool = false, topic: String? = nil) {
         let tags = derive.eventTagsFor(text, mainRelay: config.mainRelay)
-        engine?.enqueue(Actions.postMessage(group, text: text, topic: topic, announce: announce, eventTags: tags), attachments: attachments)
+        var d = Actions.postMessage(group, text: text, topic: topic, announce: announce, eventTags: tags)
+        d.tags += takePreview(group)
+        engine?.enqueue(d, attachments: attachments)
+    }
+
+    /// The composer's preview tags for GROUP, once.
+    func takePreview(_ group: String) -> [Tag] {
+        defer { outgoingPreview = nil }
+        guard let o = outgoingPreview, o.group == group else { return [] }
+        return o.tags
     }
 
     /// The admins' order of the channel list.
@@ -1059,7 +1072,9 @@ final class AppModel: ObservableObject {
     }
 
     func reply(_ text: String, in group: String, to root: Message) {
-        engine?.enqueue(Actions.postThreadReply(group, rootId: root.ev.id, rootPubkey: root.ev.pubkey, rootKind: root.ev.kind, text: text))
+        var d = Actions.postThreadReply(group, rootId: root.ev.id, rootPubkey: root.ev.pubkey, rootKind: root.ev.kind, text: text)
+        d.tags += takePreview(group)
+        engine?.enqueue(d)
     }
 
     func toggleReaction(_ emoji: String, on m: Message, in group: String) {

@@ -113,6 +113,18 @@ enum Demo {
             evs.append(e)
             return e
         }
+        // the screenshots of a link's preview (SPEC 19.69): the tool library gets two messages, the
+        // second with the preview its sender's phone built (no picture in the demo: nothing is fetched)
+        if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-screen"), i + 1 < ProcessInfo.processInfo.arguments.count,
+           ProcessInfo.processInfo.arguments[i + 1].hasPrefix("og") {
+            msg(ps["ben"]!, "tools-2b8e", now - 3000, "Who has the long ladder this week?")
+            let link = "https://toolshare.example/stories/street-library"
+            let text = "This is what we could become: " + link
+            let p = LinkPreview(url: link, title: "How a street tool library lends 400 drills a year",
+                                description: "Neighbours started lending their tools from a garage. Two years later they share drills, ladders and saws with half the town.",
+                                site: "ToolShare Journal")
+            evs.append(ev(ps["emma"]!, 9, now - 2800, Actions.postMessage("tools-2b8e", text: text).tags + p.tags(), text))
+        }
         let y = now - day
         let welcome = msg(ps["ana"]!, "general", y - 7200, "Welcome to our belfry! Everything we say here stays on **our own server**.")
         msg(ps["ben"]!, "general", y - 7000, "Finally 🎉 No more group chat in someone else's app.")

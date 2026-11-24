@@ -2885,3 +2885,27 @@ lanes `OutboxPass.lane`; `SendState` / `SendTrace` in `Outbox/SendTrace.swift`; 
   week / Once a month (`stop` | `asap` | `weekly` | `monthly`).
 - **Followers.** A channel's people are its followers ("N followers", Followers, Follow, Ask to
   follow); groups, events and proposals keep members; the belfry's members stay members.
+
+### 19.69 Link previews built by the sender (iOS, 2026-11-24; Xavier via the lead; contract collective-belfry docs/link-previews-v2.md; requirements MSG-5x; canvas Channels, boards channels/og-*; `vectors/link-previews.json` = belfry-android's, sha256 bc719210…fa39b, copied byte for byte)
+
+- **Which link.** `LinkPreviews.outsideLink`: the first `https://` link of the text that is not the
+  belfry's own (its domain and every name under it), not a file (the message's `imeta` urls, the
+  Blossom host, an address ending like a picture, a recording or a PDF), no credentials. One per
+  message; none with `["preview","none"]`.
+- **Writing** (channels, threads, open groups; not yet direct messages nor private groups): once the
+  composer's link has stood 0.7 s, THIS PHONE reads the page: `FetchRules.url` (https, port 443, a
+  dotted name, no IP literal or number, no local suffix), the name resolved once and every address
+  public (`FetchRules.allowed`), then a TLS connection to exactly those addresses for the name
+  (`PinnedNet`, Network.framework), at most 3 redirects each checked the same way, 5 s, `text/html`,
+  512 kB. `PageMeta`: og, then twitter, then `<title>` / description; plain text cut at 200 / 300 /
+  100 code points. Its picture: the same fetch, ≤ 5 MB, PNG / JPEG / WebP / GIF by its bytes,
+  re-encoded to JPEG ≤ 1200 px and ≤ 300 kB, uploaded to the belfry's Blossom (kept only when the
+  URL is there). Above the field: the preview with ✕. The message carries `["preview", url, title,
+  description, site]` and the picture's `imeta` (`url`, `m`, `dim`, `x`, `purpose preview`); after
+  ✕, `["preview","none"]`.
+- **Reading.** From the tags alone (`LinkPreviews.read`): the first `preview` tag whose https link the
+  text holds, with a title or a description; its picture only from the belfry's Blossom origin,
+  downloaded without following a redirect, ≤ 1 MB, checked (`x`; decrypted and `ox` when it carries
+  a key), kept on the device. Nothing else is ever fetched for a message: not the page, not the
+  belfry's preview endpoint. A message without the tag shows a plain link.
+- **Not an attachment.** The preview's `imeta` is never drawn as one of the message's pictures.
