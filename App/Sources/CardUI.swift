@@ -129,6 +129,7 @@ struct CardStartForm: View {
     @State private var recheck = 0
     @State private var taken: (group: String, invite: String)?
     @FocusState private var codeFocused: Bool
+    @FocusState private var tagFocused: Bool
 
     private var signedIn: Bool { model.phase == .ready }
     private var word: String { kind.word }
@@ -186,7 +187,14 @@ struct CardStartForm: View {
                 Section {
                     HStack(spacing: 4) {
                         Text("#").font(.body.weight(.semibold)).foregroundStyle(.secondary)
-                        TextField("gluten-free-baking", text: Binding(get: { f.hashtag }, set: { tagEdited = true; f.hashtag = String($0.prefix(31)) }))
+                        TextField("gluten-free-baking", text: Binding(get: { f.hashtag }, set: { v in
+                            // cleaned as it is typed and pasted: spaces become dashes, nothing else gets in
+                            let clean = Cards.hashtagTyping(v)
+                            if clean != f.hashtag { tagEdited = true }
+                            f.hashtag = clean
+                        }))
+                        .focused($tagFocused)
+                        .onChange(of: tagFocused) { _, on in if !on { f.hashtag = Cards.hashtagSlug(f.hashtag) } }
                             .font(.body)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
@@ -287,6 +295,7 @@ struct CardStartForm: View {
 
     private func start() async {
         error = nil
+        if kind == .topic { f.hashtag = Cards.hashtagSlug(f.hashtag) }
         guard ready else { return }
         hideKeyboard()
         if signedIn {

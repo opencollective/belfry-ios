@@ -220,13 +220,39 @@ public enum Cards {
         s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").sliceUnits(n)
     }
 
+    /// Accents folded ("é" → "e", "ß" → "ss"), lower case.
+    static func folded(_ s: String) -> String {
+        var t = s.folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: Locale(identifier: "en_US_POSIX")).lowercased()
+        // letters that no accent folding takes apart
+        for (k, v) in letters where t.contains(k) { t = t.replacingOccurrences(of: k, with: v) }
+        return t
+    }
+    static let letters: [(String, String)] = [("ß", "ss"), ("æ", "ae"), ("œ", "oe"), ("ø", "o"), ("ł", "l"), ("đ", "d"), ("ð", "d"), ("þ", "th"), ("ı", "i")]
+
+    /// The hashtag field as it is typed or pasted (Xavier, 2026-11-24: "automatically turn white
+    /// spaces into dashes and prevent special chars like punctuation and co."): lower case, accents
+    /// folded, a space (or a dash, or an underscore) → one "-", anything else not taken; no "-" first,
+    /// never "--"; a "-" at the end stays while typing (`hashtagSlug` trims it when leaving or
+    /// sending); 30 at most.
+    public static func hashtagTyping(_ s: String) -> String {
+        var out = ""
+        for ch in folded(s).unicodeScalars {
+            if out.count >= 30 { break }
+            if (ch.value >= 97 && ch.value <= 122) || (ch.value >= 48 && ch.value <= 57) { out.unicodeScalars.append(ch) }
+            else if ch == "-" || ch == "_" || CharacterSet.whitespacesAndNewlines.contains(ch) {
+                if !out.isEmpty && !out.hasSuffix("-") { out.append("-") }
+            }
+        }
+        return out
+    }
+
     /// The hashtag as a channel id: lower case, letters, digits and dashes (30 at most).
     public static func hashtagSlug(_ s: String) -> String {
         var t = s.jsTrim()
         while t.hasPrefix("#") { t.removeFirst() }
         var out = ""
         var gap = false
-        for ch in t.lowercased().unicodeScalars {
+        for ch in folded(t).unicodeScalars {
             let ok = (ch.value >= 97 && ch.value <= 122) || (ch.value >= 48 && ch.value <= 57) || ch == "-"
             if ok { if gap { out.append("-") }; gap = false; out.unicodeScalars.append(ch) } else { gap = true }
         }

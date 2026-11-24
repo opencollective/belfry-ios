@@ -2848,7 +2848,9 @@ lanes `OutboxPass.lane`; `SendState` / `SendTrace` in `Outbox/SendTrace.swift`; 
   the answer `{signed_in, bunker_url, pubkey, nip05?, group}` is a session whose client key is that
   key. A topic: the hashtag is suggested from the topic's words (lower case, runs of anything but
   `a–z 0–9 -` → one dash, dashes cut at both ends, 30) until edited; `GET /cards/hashtag/<name>`
-  checks it live (350 ms after the last key); a suggestion that is taken moves to `-2` … `-9`.
+  checks it live (350 ms after the last key); the field cleans what is typed or pasted
+  (Xavier, 2026-11-24): lower case, accents folded, a space / dash / underscore → one `-`, nothing
+  else gets in, no `-` first, never `--`, 30 at most; a `-` at the end goes when leaving the field or sending; a suggestion that is taken moves to `-2` … `-9`.
   Refusals are the app's own words per `error` code; `409 claimed` + `group`, `invite` offers theirs.
 - **Who made it.** On an event signed by the belfry's groups key, `["by", <pubkey>]` names its
   author (a card's 9007, 9002, the "New group" post, its first line). Without `by`: the `p` of that
