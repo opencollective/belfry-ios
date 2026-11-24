@@ -900,7 +900,8 @@ public final class Derive {
 
     static func mediaOf(_ e: NostrEvent) -> [Media] {
         var media = [Media]()
-        for t in e.tags where t.first == "imeta" {
+        // a link preview's picture is the preview's, not an attachment (SPEC 19.69)
+        for t in e.tags where t.first == "imeta" && !LinkPreviews.isPreviewImeta(t) {
             var f = [String: String]()
             for p in t.dropFirst() {
                 guard let sp = p.firstIndex(of: " ") else { continue }
