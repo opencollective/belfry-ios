@@ -216,6 +216,7 @@ struct EventFormSheet: View {
     @State private var hasEnd = true
     @State private var location = ""
     @State private var online = ""
+    @State private var website = ""
     @State private var visibility: BelfryCore.Visibility = .members
     @State private var byApplication = false
     @State private var prompt = ""
@@ -249,6 +250,12 @@ struct EventFormSheet: View {
                     Toggle("Ends", isOn: $hasEnd).tint(Theme.toggle)
                     if hasEnd { DatePicker("Ends", selection: $end, in: start..., displayedComponents: allDay ? [.date] : [.date, .hourAndMinute]) }
                 }
+                // the event's own site first (canvas Event form, evform-new)
+                Section {
+                    TextField("Event website (https://…)", text: $website).font(.body).keyboardType(.URL)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .accessibilityIdentifier("event-website-field")
+                } header: { Text("Event website") } footer: { Text("Optional: the event's own page elsewhere.") }
                 Section("Where") {
                     TextField("A place", text: $location).font(.body)
                     ForEach(Array(places), id: \.self) { p in Button(p) { location = p } }
@@ -321,6 +328,7 @@ struct EventFormSheet: View {
         if let x = e.end { end = Date(timeIntervalSince1970: TimeInterval(x)) } else { hasEnd = false }
         location = e.location ?? ""
         online = e.links.first ?? ""
+        website = e.website ?? ""
         visibility = e.visibility
         slug = e.slug ?? ""
         slugEdited = true
@@ -346,6 +354,7 @@ struct EventFormSheet: View {
         f.tz = TimeZone.current.identifier
         f.location = location
         f.online = online
+        f.website = website
         f.visibility = visibility
         f.slug = slug
         f.cover = cover

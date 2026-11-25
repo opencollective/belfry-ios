@@ -55,6 +55,8 @@ public struct CalEvent: Hashable, Sendable, Identifiable {
     /// The creator and the admins of its group.
     public var hosts: Set<String>
     public var cover: String?
+    /// The event's own site ("Event website"), https only.
+    public var website: String?
     public var visibility: Visibility = .members
     public var slug: String?
     public var status: EventStatus = .scheduled
@@ -354,6 +356,7 @@ extension Derive {
                 visibility: Visibility.of(e.tag("visibility")), slug: (e.tag("slug") ?? "").isEmpty ? nil : e.tag("slug"),
                 status: status, statusReason: reason, versions: hostVersions)
             base.meeting = e.hasTag("t", "meeting")
+            base.website = e.tag("website").flatMap { $0.hasPrefix("https://") && $0.count <= 2000 ? $0 : nil }
             // invited people: on ANY event that carries `p … invited`, not only a meeting (the
             // lead's ruling, 2026-11-22; Android SPEC 19.65)
             var inv = [String]()

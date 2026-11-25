@@ -211,6 +211,7 @@ enum Demo {
         form.tz = TimeZone.current.identifier
         form.location = "Community hall"
         form.slug = "repair-cafe"
+        form.website = "https://repaircafe.example/riverside"
         for (i, dr) in EventActions.create(form, d: dd, me: ps["dev"]!.pubkey, groupsRelay: "wss://groups-relay.demo.belfry.sh", mainRelay: "wss://relay.demo.belfry.sh").enumerated() {
             evs.append(ev(ps["dev"]!, dr.kind, now - 3 * day + i, dr.tags, dr.content))
         }

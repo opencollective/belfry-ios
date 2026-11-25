@@ -291,7 +291,7 @@ struct EventScreenBody: View {
             .onChange(of: level) { _, l in
                 if l != .full { withAnimation(.snappy) { proxy.scrollTo("event-top", anchor: .top) } }
                 // screenshots: the address and its buttons, at the bottom of the full level
-                else if model.launch.screen == "eventaddress" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { proxy.scrollTo("event-address", anchor: .bottom) } }
+                else if ["eventaddress", "eventqr"].contains(model.launch.screen ?? "") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { proxy.scrollTo("event-address", anchor: .bottom) } }
             }
         }
         .opacity(access ? min(1, max(0, (h - hs.up) / 60)) : 1)
@@ -507,7 +507,7 @@ struct EventScreenBody: View {
             case "eventup": withAnimation { level = .up }
             // no animation: the picture is taken at a fixed time after launch
             case "eventtiny": level = .up
-            case "eventfull", "eventaddress": withAnimation { level = .full }
+            case "eventfull", "eventaddress", "eventqr": withAnimation { level = .full }
             case "eventinvite": DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { invitingPeople = true }
             case "eventphotos": sub = .photos
             case "eventpeople", "meetingpeople": sub = .people
@@ -870,11 +870,14 @@ struct EventFullPart: View {
         }
     }
 
+    /// The event's links (canvas Event form, evview-mid / -full): Event website (↗, opens outside
+    /// the app) and Our page (the address, Copy, QR). Join online stays the join row above.
     private func address(_ d: Derive) -> some View {
         let url = d.eventURL(e)
-        return VStack(alignment: .leading, spacing: 10) {
-            PDHeader(text: "Address")
-            EventAddressRow(url: url, title: e.title)
+        return VStack(alignment: .leading, spacing: 0) {
+            PDHeader(text: "Links")
+            if let site = e.website { EventLinkRow(title: "Event website", url: site, kind: .outside) }
+            EventLinkRow(title: "Our page", url: url, kind: .ours(e.title))
         }
     }
 
@@ -1119,6 +1122,91 @@ extension View {
 /// An event's address (Xavier, 2026-11-22: "When showing the url, make it horizontally scrollable
 /// if necessary and below: Copy url, Share, QR"; board events/event-full-top): the URL on one
 /// line that scrolls sideways, then one row Copy · Share · QR.
+/// One link of an event: its name, the address on one line, then its buttons.
+struct EventLinkRow: View {
+    enum Kind { case outside, ours(String) }
+    let title: String
+    let url: String
+    let kind: Kind
+    @State private var qr = false
+    @State private var copied = false
+    @Environment(\.openURL) private var openURL
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(url.replacingOccurrences(of: "https://", with: "")).font(.footnote).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            }
+            Spacer(minLength: 8)
+            switch kind {
+            case .outside:
+                Button { if let u = URL(string: url) { openURL(u) } } label: { Image(systemName: "arrow.up.right.square").font(.body) }
+                    .buttonStyle(.bordered).accessibilityLabel("Open the event website").accessibilityIdentifier("event-website")
+            case .ours(let name):
+                Button {
+                    UIPasteboard.general.string = url
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+                } label: { Image(systemName: copied ? "checkmark" : "doc.on.doc").contentTransition(.symbolEffect(.replace)) }
+                    .buttonStyle(.bordered).disabled(url.isEmpty)
+                    .sensoryFeedback(.success, trigger: copied) { _, new in new }
+                    .accessibilityLabel(copied ? "Copied" : "Copy the address")
+                Button { hideKeyboard(); qr = true } label: { Image(systemName: "qrcode") }
+                    .buttonStyle(.bordered).disabled(url.isEmpty)
+                    .accessibilityLabel("Show the QR code").accessibilityIdentifier("event-qr")
+                    .sheet(isPresented: $qr) { EventQRSheet(url: url, title: name) }
+                    .task { if model.launch.screen == "eventqr" { try? await Task.sleep(nanoseconds: 1_500_000_000); qr = true } }
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 8)
+    }
+}
+
+/// The page as a big QR code; under it the address on one line (scrolls sideways, never wraps)
+/// with a copy icon (canvas Event form, evview-qr; Xavier, 25 Nov).
+struct EventQRSheet: View {
+    let url: String
+    let title: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var copied = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                if let img = QR.image(url) {
+                    Image(uiImage: img).interpolation(.none).resizable().scaledToFit()
+                        .frame(width: 240, height: 240).padding(12)
+                        .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .accessibilityLabel("QR code of the event's page")
+                }
+                HStack(spacing: 8) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        Text(url).font(.footnote.monospaced()).foregroundStyle(.secondary).lineLimit(1).fixedSize().textSelection(.enabled)
+                    }
+                    Button {
+                        UIPasteboard.general.string = url
+                        copied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+                    } label: { Image(systemName: copied ? "checkmark" : "doc.on.doc").contentTransition(.symbolEffect(.replace)) }
+                        .buttonStyle(.borderless)
+                        .sensoryFeedback(.success, trigger: copied) { _, new in new }
+                        .accessibilityLabel(copied ? "Copied" : "Copy the address")
+                }
+                .padding(.horizontal, 24)
+                Text("Show it to someone: their camera opens the page.").font(.footnote).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 20)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
 struct EventAddressRow: View {
     let url: String
     let title: String

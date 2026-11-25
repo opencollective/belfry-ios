@@ -47,6 +47,8 @@ public struct EventForm: Hashable, Sendable {
     public var tz = "UTC"
     public var location = ""
     public var online = ""
+    /// The event's own outside site ("Event website", ["website", url]; canvas Event form), https.
+    public var website = ""
     public var visibility: Visibility = .members
     public var slug = ""
     public var cover: String?
@@ -385,6 +387,8 @@ public enum EventActions {
         if !place.isEmpty { tags.append(["location", place]) }
         let online = n.online.jsTrim()
         if online.hasPrefix("https://") { tags.append(["r", online]) }
+        let site = n.website.jsTrim()
+        if site.hasPrefix("https://") { tags.append(["website", site]) }
         if let c = n.cover, !c.isEmpty { tags.append(["image", c]) }
         if !n.slug.isEmpty { tags.append(["slug", n.slug]) }
         return (n.allDay ? 31922 : 31923, tags + extra)
