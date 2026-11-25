@@ -191,6 +191,8 @@ struct SpecialBody: View {
             }.buttonStyle(.plain)
         case .topicCard(let channel):
             TopicCardView(channel: channel, by: m.pubkey, text: m.text)
+        case .cardLine:
+            EmptyView() // drawn by MessageRow as a line
         case .eventCard(let coord):
             EventCardView(ref: EventRef(coord: coord))
         case .memberMail(let subject, _):
