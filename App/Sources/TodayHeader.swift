@@ -36,7 +36,7 @@ struct TodayBelfryHeader: View {
         } label: {
             VStack(spacing: 1) {
                 HStack(spacing: 6) {
-                    BelfryCrest(logo: model.config.branding.logo).frame(width: 20, height: 22)
+                    BelfryCrest(logo: model.config.branding?.logo ?? "").frame(width: 20, height: 22)
                     Text(model.config.name).font(.headline).lineLimit(1)
                     if switching != nil { ProgressView().controlSize(.mini) } else {
                         Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
