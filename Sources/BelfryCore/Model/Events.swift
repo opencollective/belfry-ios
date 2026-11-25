@@ -290,7 +290,8 @@ extension Derive {
         let gs = Dictionary(groups().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let del = deleted()
         var creators = [String: String]()
-        for e in ofKind(9007).sorted(by: Derive.byTime) { if let h = e.tag("h"), creators[h] == nil { creators[h] = e.pubkey } }
+        // its creator: the person behind a 9007 the groups key wrote for them (`by`), as for groups
+        for e in ofKind(9007).sorted(by: Derive.byTime) { if let h = e.tag("h"), creators[h] == nil { creators[h] = authorOf(e) } }
         var byKey = [String: [NostrEvent]](), keyOrder = [String]()
         for e in events where e.kind == 31922 || e.kind == 31923 {
             guard let d = e.tag("d"), !d.isEmpty else { continue }
