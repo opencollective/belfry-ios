@@ -182,7 +182,8 @@ extension View {
         navigationTitle("Today")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1).accessibilityHidden(true) }
+                // which belfry, and who you are there (canvas Home, home/today-belfry): tap for the accounts menu
+                ToolbarItem(placement: .principal) { TodayBelfryHeader() }
                 ToolbarItem(placement: .topBarLeading) { DrawerButton() }
             }
     }

@@ -277,11 +277,13 @@ struct PlaceGlyph: View {
 struct HomeDateTitle: View {
     var body: some View {
         Text(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-            .font(.largeTitle.bold())
+            .font(.title.bold())
+            .frame(maxWidth: .infinity)
+            .multilineTextAlignment(.center)
             .lineLimit(1).minimumScaleFactor(0.6)
             .accessibilityAddTraits(.isHeader)
             .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+            .listRowInsets(EdgeInsets(top: 32, leading: 20, bottom: 20, trailing: 20))
             .listRowSeparator(.hidden)
             .accessibilityIdentifier("home-date")
     }
