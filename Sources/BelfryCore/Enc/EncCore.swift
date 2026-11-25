@@ -44,7 +44,7 @@ public enum Enc {
     static let nRx = Rx("^[1-9][0-9]{0,8}$")
     static func values(_ tags: [Tag], _ name: String) -> [String] { tags.filter { $0.count > 1 && $0[0] == name }.map { $0[1] } }
     static func one(_ tags: [Tag], _ name: String) -> String? { let v = values(tags, name); return v.count == 1 ? v[0] : nil }
-    static func now0() -> Int { Int(Date().timeIntervalSince1970) }
+    public static func now0() -> Int { Int(Date().timeIntervalSince1970) }
     static func utf8(_ s: String) -> Int { s.utf8.count }
 
     public static func pub(_ secret: Data) -> String { (try? Keys.publicKeyHex(secret: secret)) ?? "" }
