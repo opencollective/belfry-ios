@@ -28,12 +28,15 @@ public enum Keys {
     public static func publicKeyHex(secret: Data) throws -> String { try publicKey(secret: secret).hex }
 
     /// BIP-340 signature of a 32-byte message (an event id), with fresh auxiliary randomness.
-    public static func sign(message: Data, secret: Data) throws -> Data {
+    public static func sign(message: Data, secret: Data) throws -> Data { try sign(message: message, secret: secret, aux: Crypto.random(32)) }
+
+    /// The same with given auxiliary randomness (the shared vectors fix it to 32 zero bytes).
+    public static func sign(message: Data, secret: Data, aux auxData: Data) throws -> Data {
         guard message.count == 32 else { throw BelfryError.crypto("message must be 32 bytes") }
         let key: P256K.Schnorr.PrivateKey
         do { key = try P256K.Schnorr.PrivateKey(dataRepresentation: secret) } catch { throw BelfryError.crypto("invalid secret key") }
         var msg = [UInt8](message)
-        var aux = [UInt8](Crypto.random(32))
+        var aux = [UInt8](auxData)
         let sig = try key.signature(message: &msg, auxiliaryRand: &aux, strict: true)
         return sig.dataRepresentation
     }
