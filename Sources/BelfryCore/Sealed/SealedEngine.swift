@@ -1008,7 +1008,12 @@ public final class SealedEngine: @unchecked Sendable {
     /// The upkeep of my account's chain. Call when the main relay answered on this connection (an
     /// EOSE after AUTH: never while catching up, never from what the device had stored), when my
     /// rosters, anchor or requests arrive, and every 6 hours.
+    /// Format 3 (docs/encrypted.md §12): after the switch nothing of version 1 is written (no roster,
+    /// anchor, request or hand-over); what was sealed stays readable.
+    public var writesStopped: (() -> Bool)?
+
     public func maintain(now: Int = .now) async {
+        if writesStopped?() == true { return }
         if (engine.localOnly && !runsLocally) || engine.guestMode.reading { return }
         // the head must be known from this connection: nothing is decided mid catch-up
         guard runsLocally || engine.answeredAfterAuth(.main) else {

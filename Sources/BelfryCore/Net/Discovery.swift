@@ -37,6 +37,8 @@ public struct BelfryConfig: Codable, Hashable, Sendable {
     /// belfry.json `groups_key.pubkey`: the groups key (it posts e-mail cards, guest joins and the
     /// answers to `belfry:` buttons). Nil = an older belfry: `_groups@domain` in nostr.json instead.
     public var groupsKeyHex: String?
+    /// belfry.json `encrypted.format` (docs/encrypted.md §12): 3 = write format 3; 1 (or absent) = today's.
+    public var encryptedFormat: Int?
 
     public var agents: [String: String] { agentsMap ?? [:] }
 
@@ -89,6 +91,7 @@ public struct BelfryConfig: Codable, Hashable, Sendable {
         c.charter = doc["charter"] as? Bool
         if let k = (doc["nostr"] as? [String: Any])?["pubkey"] as? String, isHex64(k) { c.belfryKey = k }
         if let k = (doc["groups_key"] as? [String: Any])?["pubkey"] as? String, isHex64(k) { c.groupsKeyHex = k }
+        if let f = ((doc["encrypted"] as? [String: Any])?["format"] as? NSNumber)?.intValue, f == 1 || f == 3 { c.encryptedFormat = f }
         if let b = doc["branding"] as? [String: Any] {
             let clean = Branding.clean(b)
             c.branding = clean.isEmpty ? nil : clean

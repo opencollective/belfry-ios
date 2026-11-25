@@ -26,6 +26,9 @@ public final class DirectMessages: @unchecked Sendable {
     public var myAddress: String?
     /// Sealed conversations (docs/sealed.md): set by the app for a member's session. From that
     /// moment every queued wrap is checked before it leaves (also the ones a restart found queued).
+    /// Format 3 (docs/encrypted.md): the encryption engine of this device, when it runs.
+    public var enc: EncEngine?
+
     public var sealed: SealedEngine? {
         didSet { sealed?.holdRumor = { [weak self] r in self?.hold(r) } }
     }
@@ -140,13 +143,26 @@ public final class DirectMessages: @unchecked Sendable {
         defer { lock.lock(); busy = false; lock.unlock() }
         let todo = engine.snapshot().filter { e in
             engine.pending(e.id) == nil && !seen.contains(e.id) &&
-                ((e.kind == 1059 && e.tags.contains { $0.first == "p" && $0.count > 1 && $0[1] == me }) || e.kind == 4)
+                ((e.kind == 1059 && e.tags.contains { $0.first == "p" && $0.count > 1 && $0[1] == me }) || e.kind == 4 || (e.kind == Enc.msg && e.hasTag("p", me)))
         }.sorted { $0.createdAt > $1.createdAt }
         var changed = false
         var done = 0
         var locked = 0
         var unknown = 0
         for e in todo {
+            // format 3: opened on this device with the conversation key; kept while its key or the
+            // author's lists aren't here (never marked seen on that, §6)
+            if e.kind == Enc.msg {
+                guard let enc else { continue }
+                switch await enc.open(e) {
+                case .keep(let unreadable): if unreadable { locked += 1 }; continue
+                case .drop: break
+                case .rumor(let r, _): take(r, sharedBy: nil)
+                }
+                lock.lock(); seen.insert(e.id); lock.unlock()
+                changed = true
+                continue
+            }
             // a sealed wrap opens on this device, never through the signer; one that can't be
             // opened yet (no key here, its author's chain not loaded) is kept and tried again
             if e.kind == 1059, Sealed.lb(of: e) != nil {
@@ -328,6 +344,22 @@ public final class DirectMessages: @unchecked Sendable {
     /// CONV: the Nostr conversation it belongs to; MAIL: it goes to the belfry's bridge.
     func deliver(_ rumor: NostrEvent, to: [String], selfCopy: Bool = true, conv: String? = nil, mail: Bool = false) async throws {
         try engine.guestMode.check()
+        // format 3 (docs/encrypted.md §5, §6): on a belfry that writes it, a people conversation goes
+        // as 8572s under its conversation key; e-mail out addresses the belfry key as one more person
+        // (§10). Held when it can't be encrypted now: the text stays in the box, never sent clear.
+        if let enc, enc.writes3, conv != nil || mail {
+            let people = mail ? (engine.config.belfryKey.map { [$0] } ?? to) : to
+            do {
+                if let r = try await enc.encrypt(rumor, people: people) {
+                    hold(rumor)
+                    for e in r.events { engine.enqueueSigned(e, target: .main, dm: rumor.id) }
+                    return
+                }
+                // nil: a conversation that starts over 100 devices: no lock (the old way below)
+            } catch let h as EncEngine.Held {
+                throw BelfryError.invalid(h.text { _ in "This person" })
+            }
+        }
         // the first moments of a launch: the sealed engine is not attached yet, so nobody can tell
         // whether this conversation is sealed. Never the old way on silence (sealed.md 6): refused,
         // the text stays in the box, a file stays queued and is tried again.
@@ -512,6 +544,8 @@ public final class DirectMessages: @unchecked Sendable {
         // never in a sealed conversation (the lead, 2026-11-21: docs/typing.md, not sealed yet)
         if sealed?.isSealed(conv) == true { return }
         let others = MailThreads.peers(conv).filter { $0 != me }
+        // nor in a format-3 conversation (docs/encrypted.md §6: no typing indicators in this version)
+        if let enc, enc.isEncrypted(others + [me]) { return }
         guard !others.isEmpty, others.allSatisfy(isHex64) else { return }
         let now = Int.now
         let rumor = GiftWrap.rumor(kind: Typing.kind, pubkey: me, tags: Typing.dmTags(others: others, stop: stop), content: "", createdAt: now)
@@ -647,7 +681,9 @@ public final class DirectMessages: @unchecked Sendable {
                                           inReplyTo: before?.messageId, references: before?.references, domain: engine.config.domain)
         let target = fresh ? MailThreads.thread(address: to, subject: subj) : conv
         let emailId = UUID().uuidString.lowercased()
-        let rumor = GiftWrap.rumor(kind: 1301, pubkey: me, tags: [["email-id", emailId], ["mail-from", from], ["rcpt-to", to], ["subject", subj]], content: raw)
+        // format 3: the belfry key is one more person of this message (docs/encrypted.md §10)
+        let encP: [Tag] = enc?.writes3 == true ? (engine.config.belfryKey.map { [["p", $0]] } ?? []) : []
+        let rumor = GiftWrap.rumor(kind: 1301, pubkey: me, tags: [["email-id", emailId], ["mail-from", from], ["rcpt-to", to], ["subject", subj]] + encP, content: raw)
         var d = Dm(rid: rumor.id, conv: target, from: me, mine: true, at: rumor.createdAt, kind: 1301, text: text)
         d.subject = subj
         d.emailId = emailId
@@ -697,6 +733,8 @@ public final class DirectMessages: @unchecked Sendable {
         var tags: [Tag] = [["email-id", emailId], ["mail-from", from]] + ([to] + cc).map { ["rcpt-to", $0] }
         tags += [["subject", subject], ["e", cardId]]
         if let draft, !draft.isEmpty { tags.append(["draft", draft]) }
+        // format 3: the belfry key is one more person of this message (docs/encrypted.md §10)
+        if enc?.writes3 == true, let b = engine.config.belfryKey { tags.append(["p", b]) }
         let rumor = GiftWrap.rumor(kind: 1301, pubkey: me, tags: tags, content: raw)
         if engine.localOnly {
             lock.lock(); reports[emailId] = DeliveryReport(status: "failed", details: "Demo mode sends no e-mail."); lock.unlock()

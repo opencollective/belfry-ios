@@ -271,6 +271,8 @@ final class AppModel: ObservableObject {
     /// Sealed conversations (docs/sealed.md): this device's keys and its account's roster. Only
     /// for a member's own session (never the demo, never a guest reading).
     private(set) var sealedEngine: SealedEngine?
+    /// Format 3 (docs/encrypted.md): this device's encryption engine, once the session's key is known.
+    var encEngine: EncEngine?
     /// The secret of the login link being used to sign in (`#l=`), until the session opens.
     var pendingLinkSecret: String?
     var sealedTimer: Timer?
@@ -502,10 +504,12 @@ final class AppModel: ObservableObject {
                 if list.contains(where: { $0.kind == 1059 || $0.kind == 4 }) { Task { await d?.process() } }
                 rs?.offer(list)
                 if list.contains(where: { SealedEngine.concerns($0) || ($0.kind == 1059 && $0.hasTag("p", dev)) }) { Task { @MainActor in self?.sealedNews(list) } }
+                // format 3: lists, keys, messages, packs, asks and answers
+                if list.contains(where: { (Enc.list...Enc.answer).contains($0.kind) }) { Task { @MainActor in self?.encNews() } }
             }
             e.onEOSE = { [weak rs, weak self] t in
                 if t == .main { rs?.relayAnswered(); Task { @MainActor in self?.sealedNews([]) } }
-                if t == .groups { Task { @MainActor in self?.releaseWayInKey(); await self?.checkGroups() } }
+                if t == .groups { Task { @MainActor in self?.releaseWayInKey(); await self?.checkGroups(); self?.encNews() } }
             }
         }
         e.onSent = { [weak d] item, _ in d?.outboxSent(item) }
@@ -686,6 +690,7 @@ final class AppModel: ObservableObject {
         // an account switched away from: whatever its engine had under way saves and publishes nothing more
         sealedEngine?.close()
         sealedEngine = nil
+        encEngine = nil
         sealedStore = nil
         sealedSaveToldOnce = false
         sealedTimer?.invalidate()

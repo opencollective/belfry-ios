@@ -233,6 +233,7 @@ extension AppModel {
     /// The sealed engine, once this account's key is known (a signer may learn it after the session
     /// opened: nothing is read from or written to the Keychain before).
     func ensureSealed() {
+        ensureEnc()
         guard sealedEngine == nil, !isDemo, let s = session, s.reading != true, let e = engine, let d = dms, isHex64(e.me),
               let secret = Data(hex: s.clientSecret) else { return }
         Keychain.moveSessionToPrivateGroup()

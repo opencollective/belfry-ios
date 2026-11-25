@@ -113,7 +113,9 @@ public final class SyncEngine: @unchecked Sendable {
         let fresh = list.filter { events[$0.id] == nil }
         lock.unlock()
         guard !fresh.isEmpty else { return [] }
-        let ok = verify ? fresh.filter(\.isValid) : fresh
+        var ok = verify ? fresh.filter(\.isValid) : fresh
+        // §17.2: a clear event of a private group after its first key never counts
+        if let refuse = encRefuse { ok = ok.filter { !refuse($0) } }
         lock.lock()
         let unseen = ok.filter { events[$0.id] == nil }
         for e in unseen { events[e.id] = e }
@@ -358,6 +360,7 @@ public final class SyncEngine: @unchecked Sendable {
                 return signed
             }
             try await publish(item.target, signed, step: step)
+            onPublished?(signed)
             return signed
         }
         var content = item.content
@@ -370,6 +373,20 @@ public final class SyncEngine: @unchecked Sendable {
                 url = file.absoluteString
             } else {
                 guard let data = try? Data(contentsOf: file) else { continue }
+                // §23: a private group's file is encrypted on the device before upload
+                if let h = tags.first(where: { $0.count > 1 && $0[0] == "h" })?[1], groupEncryptsFiles?(h, item.kind) == true {
+                    let (cipher, f) = try DmFiles.prepare(data, mime: a.mime, name: a.name)
+                    let cx = Crypto.sha256(cipher).hex
+                    step(SendState.uploading(0, Int64(cipher.count)))
+                    let u = try await upload(cipher, name: "file", mime: "application/octet-stream", sha: cx) { sent, total in step(SendState.uploading(sent, total)) }
+                    var imeta: Tag = ["imeta", "url \(u)", "m \(a.mime)", "size \(a.size)", "x \(cx)", "ox \(f.ox)",
+                                      "encryption-algorithm aes-gcm", "decryption-key \(f.key)", "decryption-nonce \(f.nonce)"]
+                    if let w = a.width, let hh = a.height { imeta.append("dim \(w)x\(hh)") }
+                    imeta.append("alt \(a.name)")
+                    tags.append(imeta)
+                    content = content.isEmpty ? u : content + "\n" + u
+                    continue
+                }
                 x = Crypto.sha256(data).hex
                 step(SendState.uploading(0, Int64(data.count)))
                 url = try await upload(data, name: a.name, mime: a.mime, sha: x!) { sent, total in step(SendState.uploading(sent, total)) }
@@ -382,7 +399,19 @@ public final class SyncEngine: @unchecked Sendable {
             content = content.isEmpty ? url : content + "\n" + url
         }
         step(SendState.sign)
-        let ev = try await signer.sign(EventTemplate(kind: item.kind, content: content, tags: tags, createdAt: item.createdAt))
+        let template = EventTemplate(kind: item.kind, content: content, tags: tags, createdAt: item.createdAt)
+        // format 3 in a private group: the key's envelopes first, then the write as an 8572; what this
+        // device keeps and shows is the write itself (the rumor), as the group's members will open it
+        if item.target == .groups, !localOnly, let wrap = groupWrap, let w = try await wrap(template) {
+            for b in w.before { try await publish(.groups, try await signer.sign(b), step: step) }
+            if !w.before.isEmpty, let K = w.event.tags.first(where: { $0.count > 1 && $0[0] == "d" })?[1] { groupBeforeOut?(K) }
+            try await publish(.groups, try await signer.sign(w.event), step: step)
+            var shown = NostrEvent(pubkey: me, createdAt: template.createdAt, kind: template.kind, tags: template.tags, content: template.content)
+            shown.id = shown.computedId
+            add([shown], verify: false)
+            return shown
+        }
+        let ev = try await signer.sign(template)
         if localOnly {
             synthesizeRelayEvents(ev)
             return ev
@@ -646,8 +675,27 @@ public final class SyncEngine: @unchecked Sendable {
         ]
     }
 
+    /// Format 3 (docs/encrypted.md): the encryption engine's own filters, added to the live subscription.
+    public var encFilters: ((Target) -> [[String: Any]])?
+    /// A clear event the encryption engine refuses (§17.2: a private group's, after its first key).
+    public var encRefuse: ((NostrEvent) -> Bool)?
+    /// Format 3 in a private group: the write as its 8572, and the key's envelopes to send first.
+    public var groupWrap: ((EventTemplate) async throws -> (before: [EventTemplate], event: EventTemplate)?)?
+    /// Format 3 in a private group: its files are encrypted before upload (§23).
+    public var groupEncryptsFiles: ((String, Int) -> Bool)?
+    /// After a group wrap's envelopes went out.
+    public var groupBeforeOut: ((String) -> Void)?
+    /// An event of mine went out (the encryption engine confirms its envelopes).
+    public var onPublished: ((NostrEvent) -> Void)?
+
+    /// The live subscriptions asked again with today's filters (new people to follow lists of).
+    public func refreshFilters() {
+        lock.lock(); let rs = relays; lock.unlock()
+        for (t, r) in rs where r.isUp { subscribe(t, r) }
+    }
+
     func subscribe(_ t: Target, _ r: Relay) {
-        r.subscribe("live-" + t.rawValue, filters: filters(t))
+        r.subscribe("live-" + t.rawValue, filters: filters(t) + (encFilters?(t) ?? []))
         // typing in my direct conversations: ephemeral wraps to me, from a few seconds ago on
         if t == .main { r.subscribe("typing-dm", filters: [["kinds": [Typing.wrapKind], "#p": [me], "since": Int.now - 5]]) }
         lock.lock(); let g = typingGroup; lock.unlock()
