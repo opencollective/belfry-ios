@@ -419,3 +419,17 @@ show the sign-in's code screen / the older-belfry state with made-up values (not
   `GuestModeGate.cardTopic` lets exactly `Cards.guestTopicPost` through while reading.
   `Group.followsIt / peopleTitle / peopleCount`: followers in a channel, members elsewhere.
   `-card <id>` (with or without `-demo`); screens `card-<ID>`, `card-in-<ID>`, `card-code`, `card-taken`.
+
+- 2026-11-26 encryption format 3 (branch `ios-enc3`; collective-belfry docs/encrypted.md §1–§28, SPEC
+  19.70; web enc/core.ts + runtime.ts at chat c8703b4; Encrypted canvas JrubHFFVtgRHFCGp1ePTqq):
+  `Enc/EncCore.swift` (the pure rules, `vectors/encrypted.json` = the web's, sha256 16efbbc8…42fe,
+  `EncVectorTests` rebuilds envelopes / messages / packs byte for byte) and `Enc/EncEngine.swift`
+  (keys held in kv `enc-keys`, lists only from belfry.json's belfry key, reads after AUTH,
+  `encrypt` throws `Held` = never sent clear, private groups wrapped in `SyncEngine.send` through
+  `groupWrap`, files encrypted before upload, packs / asks / answers, removed check). Writes format 3
+  only when belfry.json `encrypted.format` is 3 (or this device once saw it: one way); version 1
+  stays readable and writes nothing after the switch (`SealedEngine.writesStopped`). Screens:
+  `Enc3UI.swift` + `AppModel+Enc.swift` (`refreshEnc3` fills `model.sealed` with `format3`):
+  Notes' subline, Who can read this, the card (Share / Remove), Earlier messages · Ask, held
+  messages with Try again · Delete, the not-before line. Demo screens `e3notes`, `e3noteswho`,
+  `e3who`, `e3card`, `e3cardremove`, `e3earlier`, `e3earlierthread`, `e3asked`.
