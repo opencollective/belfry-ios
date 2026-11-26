@@ -312,6 +312,22 @@ public final class SealedEngine: @unchecked Sendable {
 
     public func setLink(_ secret: String?) { lock.lock(); link = secret; lock.unlock() }
 
+    /// Format 3 (docs/encrypted.md §7.5): the version-1 letterbox secrets this device holds, handed
+    /// on in key packs; and those a pack brought (each checked against its public key).
+    public func v1Secrets() -> [(lb: String, secret: String)] {
+        lock.lock(); defer { lock.unlock() }
+        return keys.keys.sorted { $0.key < $1.key }.map { (lb: $0.key, secret: $0.value) }
+    }
+    public func takeV1Secrets(_ list: [(lb: String, secret: String)]) {
+        lock.lock()
+        var k = keys
+        var added = false
+        for x in list where k.secret(x.lb) == nil { if k.add(lb: x.lb, secret: x.secret) { added = true } }
+        if added { keys = k }
+        lock.unlock()
+        if added { saveKeys(k); onKeys?() }
+    }
+
     /// The key chain changed: kept in the store, unless this device signed out meanwhile.
     private func saveKeys(_ k: KeyChain) {
         lock.lock(); let gone = closed; lock.unlock()

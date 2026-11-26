@@ -24,6 +24,9 @@ extension AppModel {
         e.onPublished = { [weak enc] ev in enc?.confirmed(ev.id) }
         // after the switch no version-1 roster, anchor, request or hand-over is written (§12)
         sealedEngine?.writesStopped = { [weak enc] in enc?.writes3 ?? false }
+        // version-1 secrets go in the key packs this device shares, and are taken from those it gets
+        enc.v1Provider = { [weak self] in self?.sealedEngine?.v1Secrets() ?? [] }
+        enc.onV1Secrets = { [weak self] list in Task { @MainActor in self?.sealedEngine?.takeV1Secrets(list) } }
         enc.onKeys = { [weak d, weak self] in
             Task { await d?.process() }
             Task { @MainActor in self?.version += 1 }

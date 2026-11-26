@@ -240,6 +240,8 @@ extension AppModel {
         let store = OwnedKeyStore(raw: KeychainSecret(slot: Keychain.slot), owner: { [weak e] in e?.me ?? "" })
         guard let se = SealedEngine(engine: e, deviceSecret: secret, store: store) else { return }
         sealedStore = store
+        // format 3: after the switch nothing of version 1 is written (ensureEnc ran first)
+        if let enc = encEngine { se.writesStopped = { [weak enc] in enc?.writes3 ?? false } }
         wireSealed(se, dms: d)
         adoptSealed(se)
         startSealedUpkeep()
