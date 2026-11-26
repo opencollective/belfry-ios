@@ -130,6 +130,10 @@ struct SealedState: Equatable {
     /// when this device asked my other devices (0: not yet), and their names
     var enc3Asked = 0
     var otherDevices: [String] = []
+    /// §17.7 warnings that don't go away; §17.4: twenty devices and this one not on the list
+    var enc3Fork = false
+    var enc3Strange = false
+    var enc3Full = false
 }
 
 /// Format 3 (Encrypted canvas, encrypted/card): a device of mine added since this one, waiting for
@@ -496,6 +500,9 @@ extension Demo {
             case "e3card", "e3cardremove": s.enc3Added = [Enc3Added(id: "android", name: "Chrome on Android", kind: .phone, at: now - 300)]
             case "e3earlier", "e3earlierthread": s.earlier = 12
             case "e3asked": s.earlier = 12; s.enc3Asked = now - 60
+            case "e3fork": s.enc3Fork = true
+            case "e3strange": s.enc3Strange = true
+            case "e3full": s.enc3Full = true
             default: break
             }
             return s

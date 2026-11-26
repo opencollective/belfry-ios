@@ -205,6 +205,8 @@ extension AppModel {
     /// whose pictures would have to be encrypted: not yet).
     func previewsIn(_ group: String) -> Bool {
         guard !group.isEmpty, let g = self.group(group) else { return false }
+        // format 3: no preview where writes are encrypted or wait (its picture would go clear, §23)
+        if encEngine?.previewEncrypted(group) == true || engine?.encExpected == true && encEngine == nil { return false }
         return !g.isPrivate
     }
 

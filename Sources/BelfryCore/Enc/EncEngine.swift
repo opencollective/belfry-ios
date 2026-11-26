@@ -35,7 +35,7 @@ public final class EncEngine: @unchecked Sendable {
     /// Why a message could not be encrypted now: held on the device with its text kept (§9, §17).
     public enum Held: Error, Equatable, LocalizedError {
         public var errorDescription: String? { text { _ in "This person" } }
-        case noList(String?), notListed, noDevice(String), tooMany, full, fork(String), guest, cantCheckGroup
+        case noList(String?), notListed, noDevice(String), tooMany, full, fork(String), guest, cantCheckGroup, mail, format
         public func text(_ name: (String) -> String) -> String {
             switch self {
             case .noDevice(let who): return "\(name(who)) isn’t signed in on any device · It will be sent when they are"
@@ -44,6 +44,7 @@ public final class EncEngine: @unchecked Sendable {
             case .tooMany: return "Too many devices to encrypt for everyone here"
             case .guest: return "Not sent: this encrypted conversation now includes a guest, and guests can’t read encrypted messages yet"
             case .cantCheckGroup: return "Not sent: couldn’t check who can read this group"
+            case .mail: return "E-mail from the chat waits for this belfry’s update"
             default: return "Not sent: couldn’t check who can read this conversation"
             }
         }
@@ -80,8 +81,12 @@ public final class EncEngine: @unchecked Sendable {
         public var privateIds: Set<String> = []
         public var members: [String: Set<String>] = [:]
         public var guests: Set<String> = []
-        public init(privateIds: Set<String> = [], members: [String: Set<String>] = [:], guests: Set<String> = []) {
-            self.privateIds = privateIds; self.members = members; self.guests = guests
+        /// groups whose metadata this device has (a group not known yet: its writes wait)
+        public var known: Set<String> = []
+        /// the register's answer about guests is here (unknown: an encrypted send waits)
+        public var guestsKnown = true
+        public init(privateIds: Set<String> = [], members: [String: Set<String>] = [:], guests: Set<String> = [], known: Set<String> = [], guestsKnown: Bool = true) {
+            self.privateIds = privateIds; self.members = members; self.guests = guests; self.known = known; self.guestsKnown = guestsKnown
         }
     }
     private var world = World()
@@ -90,6 +95,21 @@ public final class EncEngine: @unchecked Sendable {
         if changed { engine.refreshFilters() }
     }
     public func isPrivate(_ h: String) -> Bool { lock.withLock { world.privateIds.contains(h) } }
+    /// §26: private now, or ever encrypted on this device (a key of the group seen here).
+    public func encryptedGroup(_ h: String) -> Bool { lock.withLock { world.privateIds.contains(h) || convs["g:" + h] != nil } }
+
+    /// How a write of T in its group goes (the web's groupWriteMode): a group with a key seen here is
+    /// always encrypted; on format 3 a private one is encrypted and one not known yet waits; with the
+    /// format unknown on a device that saw it, private or unknown groups wait. §16.9's kinds go plain.
+    public func groupMode(_ t: EventTemplate) -> SyncEngine.GroupMode {
+        guard let h = t.tags.first(where: { $0.count > 1 && $0[0] == "h" })?[1], !h.isEmpty else { return .plain }
+        if t.kind == Enc.key || t.kind == Enc.msg || clearInGroup(kind: t.kind, pubkey: me, tags: t.tags) { return .plain }
+        let (here, priv, known) = lock.withLock { (convs["g:" + h] != nil, world.privateIds.contains(h), world.known.contains(h)) }
+        if here { return .enc }
+        if formatNow == 3 { return priv ? .enc : known ? .plain : .hold }
+        if formatNow == nil && seenEncrypted { return priv || !known ? .hold : .plain }
+        return .plain
+    }
     func isGuest(_ a: String) -> Bool { lock.withLock { world.guests.contains(a) } }
     func membersOf(_ h: String) -> Set<String>? { lock.withLock { world.members[h] } }
     func privateGroups() -> [String] { lock.withLock { world.privateIds.filter { world.members[$0]?.contains(me) == true }.sorted() } }
@@ -114,14 +134,49 @@ public final class EncEngine: @unchecked Sendable {
     var groupsKey: String? { engine.config.groupsKeyHex }
 
     /// §12 + §17.13: format 3 is what this belfry writes (belfry.json, or this device once saw it).
-    public var writes3: Bool { engine.config.encryptedFormat == 3 || engine.db.get("enc-format3", as: Bool.self) == true }
+    public var writes3: Bool {
+        if engine.db.get("enc-format3", as: Bool.self) == true { return true }
+        if engine.config.encryptedFormat == 3 || configFormat() == 3 { engine.db.set("enc-format3", true); return true }
+        return false
+    }
+    /// The app's belfry.json as it has it now (it may be newer than the engine's copy).
+    private var cfgFormat: Int?
+    public func setConfigFormat(_ f: Int?) {
+        lock.withLock { cfgFormat = f }
+        if f != nil { engine.db.set("enc-seen", true) }
+        if f == 3 { engine.db.set("enc-format3", true) }
+    }
+    func configFormat() -> Int? { lock.withLock { cfgFormat } }
+    /// The format to write now (the web's freshFormat): 3 for good, or a 1 read in the last 5 minutes
+    /// (read again first when older); nil: unknown or a stale 1 (the caller holds).
+    public var freshFormat: (() async -> Int?)?
+    /// 3 when this device writes format 3; 1 when belfry.json says 1; nil when it says nothing.
+    var formatNow: Int? { writes3 ? 3 : (configFormat() ?? engine.config.encryptedFormat) }
+    /// This device saw an "encrypted" object in belfry.json once (then an unknown format holds).
+    public var seenEncrypted: Bool { EncEngine.expected(db: engine.db, config: engine.config) }
+    /// Format 3 is, or was, seen for this account (DirectMessages and the outbox hold without an engine).
+    public static func expected(db: Database, config: BelfryConfig) -> Bool {
+        if config.encryptedFormat != nil { db.set("enc-seen", true) }
+        return config.encryptedFormat == 3 || db.get("enc-format3", as: Bool.self) == true || db.get("enc-seen", as: Bool.self) == true
+    }
+    /// The format a send uses now, awaited when this device ever saw format 3 or "encrypted".
+    public func sendFormat() async -> Int? {
+        if writes3 { return 3 }
+        if !seenEncrypted { return 1 }
+        return await freshFormat?() ?? nil
+    }
 
     private func save() {
         lock.lock(); let ks = Array(keys.values); let cs = convs; lock.unlock()
         engine.db.set("enc-keys", ks)
         engine.db.set("enc-convs", cs)
     }
-    private func noteConv(_ c: String, _ at: Int) { if let was = convs[c], was <= at { return }; convs[c] = at }
+    private func noteConv(_ c: String, _ at: Int) {
+        if let was = convs[c], was <= at { return }
+        convs[c] = at
+        // a group's first key: clear events after it go (§17.2)
+        if c.hasPrefix("g:") { let e = engine; DispatchQueue.global().async { e.recheckRefused() } }
+    }
     /// §17.12: the first valid declaration of a K stays; only "unconfirmed" may clear.
     @discardableResult
     private func holdKey(_ r: KeyRec) -> Bool {
@@ -164,6 +219,27 @@ public final class EncEngine: @unchecked Sendable {
             ["kinds": [Enc.ask, Enc.answer], "#p": [me], "limit": 200],
         ]
     }
+    /// Once per connection to the community relay (after AUTH): everything of mine the live
+    /// subscription's limit may have cut, paged (the relay answers 300 at most), since the last
+    /// complete catch-up less an hour.
+    private var caughtUpOn: Int?
+    public func catchUp() async {
+        guard let b = belfry, let conn = engine.connection(.main), lock.withLock({ caughtUpOn != conn }) else { return }
+        lock.withLock { caughtUpOn = conn }
+        let since = max(0, (engine.db.get("enc-caught-up", as: Int.self) ?? 0) - 3600)
+        let started = Int(Date().timeIntervalSince1970)
+        let ps = lock.withLock { Array(Set([me] + partners + wanted)) }
+        guard let got = await engine.queryPaged(.main, [
+            ["kinds": [Enc.list], "authors": [b], "#p": ps],
+            ["kinds": [Enc.key, Enc.msg, Enc.pack, Enc.ask, Enc.answer], "#p": [me], "since": since],
+        ], timeout: 8, maxPages: 1000, total: 60) else { lock.withLock { caughtUpOn = nil }; return }
+        _ = engine.add(got)
+        lock.withLock { for a in ps { listsRead[a] = conn } }
+        engine.db.set("enc-caught-up", started)
+        takeEnvelopes()
+        onKeys?()
+    }
+
     /// Per private group: its 8571 and 8572 on the groups relay.
     public func groupFilters() -> [[String: Any]] {
         let ids = privateGroups()
@@ -181,7 +257,7 @@ public final class EncEngine: @unchecked Sendable {
     /// Read ACCOUNTS' lists whole on this connection; true when the read completed (after AUTH only).
     func readLists(_ accounts: [String], timeout: TimeInterval) async -> Bool {
         guard let b = belfry, !accounts.isEmpty, let conn = engine.connection(.main) else { return false }
-        guard let got = await engine.queryAuthed(.main, [["kinds": [Enc.list], "authors": [b], "#p": accounts, "limit": 2000]], timeout: timeout) else { return false }
+        guard let got = await engine.queryPaged(.main, [["kinds": [Enc.list], "authors": [b], "#p": accounts]], timeout: timeout, maxPages: 20, total: timeout) else { return false }
         _ = engine.add(got)
         lock.lock(); for a in accounts { listsRead[a] = conn }; lock.unlock()
         return true
@@ -252,7 +328,7 @@ public final class EncEngine: @unchecked Sendable {
             if r == nil || Date().timeIntervalSince(r!.at) > 60 {
                 lock.withLock { dRead[d] = (Date(), r?.found ?? false) }
                 Task {
-                    guard let got = await engine.queryAuthed(.main, [["kinds": [Enc.key], "#p": [me], "#d": [d]]], timeout: 5) else { return }
+                    guard let got = await engine.queryPaged(.main, [["kinds": [Enc.key], "#p": [me], "#d": [d]]], timeout: 5) else { return }
                     _ = engine.add(got)
                     let mineIn = got.contains { env in ((try? Enc.openPeopleEnvelope(device: device, env)) ?? nil) != nil }
                     lock.withLock { dRead[d] = (Date(), !got.isEmpty && !mineIn) }
@@ -283,7 +359,7 @@ public final class EncEngine: @unchecked Sendable {
     /// encrypted, known from a complete read of every envelope and message for me on this connection.
     private func neverEncrypted(_ conv: String) async -> Bool {
         if lock.withLock({ convs[conv] != nil }) { return false }
-        guard let got = await engine.queryAuthed(.main, [["kinds": [Enc.key, Enc.msg], "#p": [me], "limit": 2000]], timeout: 15) else { return false }
+        guard let got = await engine.queryPaged(.main, [["kinds": [Enc.key, Enc.msg], "#p": [me]]], timeout: 8, maxPages: 100, total: 15) else { return false }
         _ = engine.add(got)
         takeEnvelopes()
         if got.contains(where: { e in Enc.named(e).map { d in lock.withLock { byAlias[d] == nil } } ?? false }) { return false }
@@ -297,6 +373,7 @@ public final class EncEngine: @unchecked Sendable {
     public func encrypt(_ rumor: NostrEvent, people: [String]) async throws -> (events: [NostrEvent], missing: [String])? {
         let m = me
         let all = Array(Set([m] + people)).sorted()
+        if !lock.withLock({ world.guestsKnown }) { throw Held.noList(nil) }
         if all.contains(where: { isGuest($0) }) { if await neverEncrypted(Enc.peopleId(all)) { return nil }; throw Held.guest }
         guard Enc.peopleOf(rumor) == Enc.peopleId(all) else { throw Enc.Failure.notAMessage }
         guard Enc.rumorJSON(Enc.withId(rumor)).utf8.count <= Enc.maxRumor else { throw Enc.Failure.tooLong }
@@ -367,6 +444,8 @@ public final class EncEngine: @unchecked Sendable {
     // ---- private groups ------------------------------------------------------------------------
 
     public func groupEncrypts(_ h: String) -> Bool { lock.withLock { convs["g:" + h] != nil } || (writes3 && isPrivate(h)) }
+    /// A link preview's picture in this group is encrypted (§23).
+    public func previewEncrypted(_ h: String) -> Bool { groupMode(EventTemplate(kind: 9, content: "", tags: [["h", h]], createdAt: 0)) != .plain }
     public func clearInGroup(kind: Int, pubkey: String, tags: [Tag]) -> Bool { Enc.clearInGroup(kind: kind, pubkey: pubkey, tags: tags, groupsKey: groupsKey ?? "") }
     public func groupFirstAt(_ h: String) -> Int? { lock.withLock { convs["g:" + h] } }
     public func groupCantCheck(_ h: String) -> Bool { lock.withLock { cantCheck.contains(h) } }
@@ -383,12 +462,15 @@ public final class EncEngine: @unchecked Sendable {
     /// The group key named by an 8572: held, or opened from the group's envelopes.
     private func groupKey(_ h: String, _ K: String) -> KeyRec? {
         if let held = lock.withLock({ keys[K] }) { return held.held.conv == "g:" + h ? held : nil }
+        // every envelope that opens is judged: a decoy with the same d never hides the real key (§17.12)
         var got: Enc.GroupKey?
-        for env in envelopes(h, K) { if let g = try? Enc.openGroupEnvelope(device: device, env, group: h) { got = g; break } }
+        for env in envelopes(h, K) {
+            guard let g = try? Enc.openGroupEnvelope(device: device, env, group: h) else { continue }
+            let v = Enc.acceptGroupKey(g, devices: devices(g.account))
+            if v == .wait { want([g.account]); continue }
+            if v == .ok { got = g; break }
+        }
         guard let g = got else { return nil }
-        let v = Enc.acceptGroupKey(g, devices: devices(g.account))
-        if v == .wait { want([g.account]); return nil }
-        guard v == .ok else { return nil }
         let mine = chain(me)?.lists.contains { $0.devices.contains(g.maker) } ?? false
         var rec = KeyRec(held: Enc.HeldKey(K: K, k: g.k, conv: "g:" + h, mine: mine, service: g.account == groupsKey || g.account == belfry, lists: "", group: true, at: g.at), claimed: g.set)
         judgeSet(h, &rec, envelopes(h, K))
@@ -403,7 +485,7 @@ public final class EncEngine: @unchecked Sendable {
         var add = [NostrEvent]()
         for e in engine.snapshot() where e.kind == Enc.msg && !e.sig.isEmpty {
             if lock.withLock({ opened.contains(e.id) }) { continue }
-            guard let h = e.tag("h"), let K = Enc.named(e), isPrivate(h), let key = groupKey(h, K) else { continue }
+            guard let h = e.tag("h"), let K = Enc.named(e), encryptedGroup(h), let key = groupKey(h, K) else { continue }
             guard let o = try? Enc.openGroupMessage(k: key.held.k, e) else { lock.withLock { _ = opened.insert(e.id) }; continue }
             let v = Enc.acceptGroupMessage(outer: e, seal: o.seal, rumor: o.rumor, group: h, devices: devices(o.rumor.pubkey))
             if v == .wait { want([o.rumor.pubkey]); continue }
@@ -427,7 +509,7 @@ public final class EncEngine: @unchecked Sendable {
     }
     /// §17.2: a clear event in a private group after its first key, outside §16.9's list: never counts.
     public func refuseClear(_ e: NostrEvent) -> Bool {
-        guard writes3, e.kind != Enc.key, e.kind != Enc.msg, !e.sig.isEmpty, let h = e.tag("h"), isPrivate(h),
+        guard e.kind != Enc.key, e.kind != Enc.msg, !e.sig.isEmpty, let h = e.tag("h"), encryptedGroup(h),
               !clearInGroup(kind: e.kind, pubkey: e.pubkey, tags: e.tags), let f = groupFirstAt(h) else { return false }
         return e.createdAt >= f
     }
@@ -440,7 +522,12 @@ public final class EncEngine: @unchecked Sendable {
               !clearInGroup(kind: t.kind, pubkey: me, tags: t.tags), t.kind != Enc.key, t.kind != Enc.msg else { return nil }
         guard let got = await engine.queryAuthed(.groups, [["kinds": [39002], "#d": [h]]], timeout: 5) else { throw Held.cantCheckGroup }
         _ = engine.add(got)
-        guard let members = membersOf(h), members.contains(me) else { throw Held.cantCheckGroup }
+        // the members from the 39002 just read (the groups key's newest), never an older copy (§8)
+        let gk = groupsKey ?? ""
+        guard let newest = got.filter({ $0.kind == 39002 && $0.tag("d") == h && (gk.isEmpty || $0.pubkey == gk) && $0.isValid }).max(by: { $0.createdAt < $1.createdAt })
+        else { throw Held.cantCheckGroup }
+        let members = Set(Enc.values(newest.tags, "p").filter(Enc.isKey))
+        guard members.contains(me) else { throw Held.cantCheckGroup }
         let people = Array(members.union([me])).sorted()
         let toRead = people.filter { a in devices(a) != .service && (!readOnThisConnection(a) || devices(a) == .unknown) }
         if !toRead.isEmpty, !(await readLists(toRead, timeout: 5)) { throw Held.cantCheckGroup }
@@ -520,7 +607,8 @@ public final class EncEngine: @unchecked Sendable {
     /// §7.5: packs to this device from an older device of mine: keys kept to read with, never adopted for sending.
     private func takePacks() -> Bool {
         let m = me
-        guard let c = chain(m), !c.gaps else { return false }
+        // a pack that arrives before this device is on my list waits (never marked seen before)
+        guard let c = chain(m), !c.gaps, c.current.devices.contains(devicePub) else { return false }
         var changed = false
         var v1 = [(lb: String, secret: String)]()
         for e in engine.snapshot() where e.kind == Enc.pack && e.hasTag("d", devicePub) {
@@ -570,7 +658,11 @@ public final class EncEngine: @unchecked Sendable {
 
     /// §7.5 Share: every key this device can open and its version-1 secrets, in packs; then the answer.
     public func share(with to: AddedDevice) async throws {
-        if let got = await engine.queryAuthed(.main, [["kinds": [Enc.key], "#p": [me], "limit": 2000]], timeout: 15) { _ = engine.add(got); takeEnvelopes() }
+        // §17.9: only to a device still on my current list, and never to a reader
+        guard await readLists([me], timeout: 5), let c = chain(me), c.current.devices.contains(to.device), !to.reader, !c.current.readers.contains(to.device) else {
+            throw Held.noList(me)
+        }
+        if let got = await engine.queryPaged(.main, [["kinds": [Enc.key], "#p": [me]]], timeout: 8, maxPages: 100, total: 30) { _ = engine.add(got); takeEnvelopes() }
         var list = [Enc.PackKey]()
         for k in lock.withLock({ Array(keys.values) }) {
             if k.held.group { list.append(.group(k: k.held.k, K: k.held.K, group: String(k.held.conv.dropFirst(2)))) }
@@ -637,7 +729,7 @@ public final class EncEngine: @unchecked Sendable {
         guard let (data, resp) = try? await URLSession.shared.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200,
               let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], d["removed"] as? Bool == true else { return nil }
         guard await readLists([me], timeout: 5), let c = chain(me), !c.current.devices.contains(devicePub) else { return nil }
-        let at = (d["at"] as? NSNumber)?.intValue ?? 0
+        let at = (d["at"] as? NSNumber)?.intValue ?? (d["at"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }.map { Int($0.timeIntervalSince1970) } ?? 0
         return (at, (d["by_name"] as? String).map { String($0.prefix(80)) })
     }
 }

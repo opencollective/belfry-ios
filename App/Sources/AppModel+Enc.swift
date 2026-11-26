@@ -8,19 +8,28 @@ import UIKit
 
 extension AppModel {
     func ensureEnc() {
-        guard encEngine == nil, !isDemo, let s = session, s.reading != true, let e = engine, let d = dms, isHex64(e.me),
-              let secret = Data(hex: s.clientSecret), secret.count == 32 else { return }
+        guard encEngine == nil, !isDemo, let e = engine else { return }
+        // with format 3 seen and no engine (yet), a group write waits: never clear (the review's P1-2)
+        e.encExpected = EncEngine.expected(db: e.db, config: config)
+        // no engine for any guest (§25); a guest never posts in a private group
+        if derive.amGuest || guestReading || session?.reading == true {
+            let priv = Set(derive.allGroups().filter { $0.isPod && $0.isPrivate }.map(\.id))
+            e.groupMode = { t in
+                guard let h = t.tags.first(where: { $0.count > 1 && $0[0] == "h" })?[1] else { return .plain }
+                return priv.contains(h) ? .hold : .plain
+            }
+            return
+        }
+        guard let s = session, let d = dms, isHex64(e.me), let secret = Data(hex: s.clientSecret), secret.count == 32 else { return }
         let enc = EncEngine(engine: e, deviceSecret: secret)
         encEngine = enc
         d.enc = enc
-        let me = e.me
+        enc.setConfigFormat(config.encryptedFormat)
+        enc.freshFormat = { [weak self] in await self?.freshEncFormat() }
+        e.groupMode = { [weak enc] t in enc?.groupMode(t) ?? .hold }
         e.encFilters = { [weak enc] t in t == .main ? (enc?.mainFilters() ?? []) : (enc?.groupFilters() ?? []) }
         e.encRefuse = { [weak enc] ev in enc?.refuseClear(ev) ?? false }
         e.groupWrap = { [weak enc] t in try await enc?.wrapForGroup(t) }
-        e.groupEncryptsFiles = { [weak enc] h, kind in
-            guard let enc else { return false }
-            return enc.groupEncrypts(h) && !enc.clearInGroup(kind: kind, pubkey: me, tags: [])
-        }
         e.groupBeforeOut = { [weak enc] K in enc?.groupBeforeOut(K) }
         e.onPublished = { [weak enc] ev in enc?.confirmed(ev.id) }
         // after the switch no version-1 roster, anchor, request or hand-over is written (§12)
@@ -32,19 +41,61 @@ extension AppModel {
             Task { await d?.process() }
             Task { @MainActor in self?.version += 1; self?.refreshSealed() }
         }
-        updateEncWorld()
+        updateEncWorld(derive)
         e.refreshFilters()
         encNews()
+        // the sessions (names, how many chat devices: §17.4) and the removed check (§16.6)
+        Task { @MainActor in
+            if case .success(let list) = await sessions() {
+                enc.chatSessions = list.filter(\.chat).count
+                for s in list { if let pk = s.clientPubkey, let n = s.device ?? (s.applicationName.isEmpty ? nil : s.applicationName) { freshDeviceNames[pk] = String(n.prefix(60)) } }
+                refreshSealed()
+            }
+            await checkEncRemoved()
+        }
     }
 
-    /// The private groups, their members and the guests, as the engine needs them (on every change).
-    func updateEncWorld() {
+    /// §16.6: removed by another of my devices: signed out here (its messages deleted with the
+    /// account's database), and said once on the sign-in screen (encrypted/removed-device).
+    func checkEncRemoved() async {
+        guard let enc = encEngine, Date().timeIntervalSince(encRemovedCheckedAt) > 600 else { return }
+        encRemovedCheckedAt = Date()
+        guard let r = await enc.checkRemoved() else { return }
+        let by = r.by.map { "\($0) removed it" } ?? "Another of your devices removed it"
+        let when = r.at > 0 ? " " + (Calendar.current.isDateInToday(Date(timeIntervalSince1970: TimeInterval(r.at))) ? "today at " + Format.time(r.at) : "on " + Format.day(r.at)) : ""
+        removedNotice = "\(by)\(when). Your messages were deleted from this device. They're still on your other devices.\n\nIf that was a mistake, sign in again. Your other devices will be asked to share earlier messages."
+        signOut()
+    }
+
+    /// The format to write now (the web's freshFormat): a belfry.json read in the last 5 minutes, or
+    /// read again first (at most 3 s); nil when unknown or stale.
+    func freshEncFormat() async -> Int? {
+        if encEngine?.writes3 == true { return 3 }
+        if Date().timeIntervalSince(configReadAt) < 300 { return config.encryptedFormat ?? 1 }
+        await withTaskGroup(of: Void.self) { g in
+            g.addTask { await self.revalidateConfig(force: true) }
+            g.addTask { try? await Task.sleep(nanoseconds: 3_000_000_000) }
+            await g.next(); g.cancelAll()
+        }
+        if encEngine?.writes3 == true { return 3 }
+        return Date().timeIntervalSince(configReadAt) < 300 ? (config.encryptedFormat ?? 1) : nil
+    }
+
+    /// The private groups, their members, the groups known and the guests, as the engine needs them:
+    /// on every new snapshot (the review's P1-2: a group turning private is encrypted at once).
+    func updateEncWorld(_ d: Derive) {
         guard let enc = encEngine else { return }
-        let d = derive
-        var privateIds = Set<String>(), members = [String: Set<String>]()
-        for g in d.allGroups() where g.isPod && g.isPrivate { privateIds.insert(g.id); members[g.id] = g.members }
+        var privateIds = Set<String>(), members = [String: Set<String>](), known = Set<String>()
+        for g in d.allGroups() {
+            if g.named || !g.metaExtra.isEmpty { known.insert(g.id) }
+            if g.isPod && g.isPrivate { privateIds.insert(g.id); members[g.id] = g.members }
+        }
         let guests = Set(kinds.filter { $0.value == "guest" }.map(\.key))
-        enc.setWorld(EncEngine.World(privateIds: privateIds, members: members, guests: guests))
+        // the register's answer about guests: here once asked for the keys that came by links
+        let answered = whoisAnswered
+        let guestsKnown = d.guestJoinKeys.allSatisfy { kinds[$0] != nil || answered.contains($0) }
+        enc.setWorld(EncEngine.World(privateIds: privateIds, members: members, guests: guests, known: known, guestsKnown: guestsKnown))
+        enc.setConfigFormat(config.encryptedFormat)
         enc.setPartners(dms?.threads().flatMap { MailThreads.peers($0.conv) }.filter { $0 != me && isHex64($0) } ?? [])
     }
 
@@ -52,13 +103,16 @@ extension AppModel {
     /// the store, direct messages processed.
     func encNews() {
         guard let enc = encEngine, let e = engine else { ensureEnc(); return }
-        updateEncWorld()
+        updateEncWorld(derive)
         let d = dms
         Task.detached { [weak self] in
+            await enc.catchUp()
             enc.takeEnvelopes()
+            await self?.checkEncRemoved()
             let add = enc.openGroupMessages()
             if !add.isEmpty { e.add(add, verify: false) }
             await d?.process()
+            d?.retryHeld()
             await MainActor.run { self?.refreshSealed() }
         }
     }
@@ -94,6 +148,7 @@ extension AppModel {
             for d in unnamed { freshNameAsked.insert(d) }
             Task { @MainActor in
                 guard case .success(let list) = await sessions() else { return }
+                enc.chatSessions = list.filter(\.chat).count
                 for s in list {
                     guard let pk = s.clientPubkey else { continue }
                     let n = s.device ?? (s.applicationName.isEmpty ? nil : s.applicationName)
@@ -106,6 +161,10 @@ extension AppModel {
             Enc3Added(id: a.device, name: name(a.device) ?? (a.reader ? "Your agent" : "A new device"), kind: kind(name(a.device)), at: a.at, reader: a.reader, ask: a.ask)
         }
         st.earlier = st.otherDevices.isEmpty ? 0 : enc.unresolvedCount()
+        let w = enc.listWarnings()
+        st.enc3Fork = w.fork
+        st.enc3Strange = w.strange > 0
+        st.enc3Full = enc.listedHere() == .full
         st.enc3Asked = enc.askedAt ?? 0
         let notes = Notes.conv(me)
         st.convs[notes] = SealedConv(others: [])

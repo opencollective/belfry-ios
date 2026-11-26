@@ -102,6 +102,7 @@ public final class Database: @unchecked Sendable {
         run("INSERT OR REPLACE INTO outbox (local_id, created_at, json) VALUES (?, ?, ?)", [item.localId, item.createdAt, String(decoding: data, as: UTF8.self)])
     }
 
+    public func deleteEvent(_ id: String) { run("DELETE FROM events WHERE id = ?", [id]) }
     public func dropOutbox(_ localId: String) { run("DELETE FROM outbox WHERE local_id = ?", [localId]) }
 
     public func outbox() -> [OutboxItem] {

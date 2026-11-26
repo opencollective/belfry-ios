@@ -317,6 +317,9 @@ struct RootView: View {
         .onChange(of: model.openProfile) { _, v in if v != nil { hideKeyboard() } }
         .onChange(of: model.openEvent) { _, v in if v != nil { hideKeyboard() } }
         .onChange(of: model.joinAsked) { _, v in if v { hideKeyboard() } }
+        .alert("This device was removed", isPresented: Binding(get: { model.removedNotice != nil }, set: { if !$0 { model.removedNotice = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(model.removedNotice ?? "") }
         .alert(model.website ?? "", isPresented: Binding(get: { model.website != nil }, set: { if !$0 { model.website = nil } })) {
             Button("OK") { model.website = nil }
         }
@@ -691,7 +694,7 @@ struct RootView: View {
         case "membersinvite": selection = .members
         case "messages", "notesempty", "notesunsealed", "conversation", "ogdm", "mail", "mailpictures", "sendstill", "sendnotyet", "dmfiles", "dmfilessending", "typingdm", "typinglist", "dmthread": selection = .messages
         // boards messages/encryption-*: MessagesView and ConversationView open the rest
-        case "e3notes", "e3noteswho", "e3who", "e3card", "e3cardremove", "e3earlier", "e3earlierthread", "e3asked": selection = .messages
+        case "e3notes", "e3noteswho", "e3who", "e3card", "e3cardremove", "e3earlier", "e3earlierthread", "e3asked", "e3fork", "e3strange", "e3full": selection = .messages
         case "encthread", "encdevices", "encgroup", "encmail", "encmaildevices", "encnewdevice", "encdeviceadded", "encdeviceswaiting", "encwaitinglist", "encchecking", "enchow", "encfresh", "encfreshconfirm", "encallow", "encallowfull", "encallowwaiting", "encwaiting", "encheld", "encshare", "enclocked", "encshared", "encsharedwhy": selection = .messages
         case "encremove", "encdevicesnotallowed", "encdevicesadded":
             selection = .channel(generalId)

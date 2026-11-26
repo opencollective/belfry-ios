@@ -144,3 +144,35 @@ struct Enc3NotesHeader: View {
         .accessibilityIdentifier("enc3-notes-header")
     }
 }
+
+/// The warnings that don't go away (encrypted/edge-two-lists, edge-strange-device) and the line for a
+/// 21st device (encrypted/edge-21st): on top of Messages, with the way to my devices.
+struct Enc3Warning: View {
+    @EnvironmentObject var model: AppModel
+    @State private var devices = false
+
+    var body: some View {
+        let st = model.sealed
+        let (title, line): (String, String) =
+            st.enc3Fork ? ("Your belfry gave out two different lists of your devices",
+                           "This should never happen. It can mean someone is trying to add a device that reads your messages. Until a steward has looked, check Your devices.")
+            : st.enc3Strange ? ("A device that was never on your list got your messages",
+                                "Someone may be reading what is sent to you. Tell the belfry’s admins; check Me › Devices.")
+            : ("You have 20 devices signed in", "Remove one to read encrypted messages here.")
+        let warn = st.enc3Fork || st.enc3Strange
+        VStack(alignment: .leading, spacing: 6) {
+            Label(title, systemImage: warn ? "exclamationmark.triangle.fill" : "iphone.slash")
+                .font(.subheadline.weight(.semibold)).foregroundStyle(warn ? Color.red : Color.primary)
+            Text(line).font(.subheadline).foregroundStyle(.secondary)
+            Button("Your devices ›") { devices = true }
+                .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
+                .accessibilityIdentifier("enc3-warning-devices")
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background((warn ? Color.red : Color.secondary).opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .navigationDestination(isPresented: $devices) { DevicesView() }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("enc3-warning")
+    }
+}

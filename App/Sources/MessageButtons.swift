@@ -135,8 +135,27 @@ extension AppModel {
     func pressButton(_ m: Message, in group: String, _ b: MessageButton) async -> Bool {
         guard let engine else { return false }
         let d = Buttons.press(messageId: m.ev.id, author: m.ev.pubkey, group: group, button: b.id)
+        let encrypted = engine.writeMode(EventTemplate(kind: d.kind, content: d.content, tags: d.tags, createdAt: 0)) == .enc
         guard let press = try? await engine.publishNow(d) else { return false }
+        // §24 (format 3): a belfry: action pressed in a private group also goes to the groups key,
+        // as a people conversation it can read (the belfry acts on it)
+        if encrypted, b.isBelfry, !((try? await pressToGroupsKey(press, m.ev, b)) ?? false) { return false }
         if isDemo { demoAnswer(m, group: group, b, press: press) }
+        return true
+    }
+
+    /// §24: the press as a people message to the groups key: the message it is on (its files'
+    /// decryption keys left out), the press's id, the button and the message's kind.
+    private func pressToGroupsKey(_ press: NostrEvent, _ e: NostrEvent, _ b: MessageButton) async throws -> Bool {
+        guard let enc = encEngine, let engine, let gk = config.groupsKeyHex ?? groupsKey, isHex64(gk) else { return false }
+        let tags = e.tags.map { t in t.first == "imeta" ? t.enumerated().filter { $0.offset == 0 || !($0.element.hasPrefix("decryption-key ") || $0.element.hasPrefix("decryption-nonce ")) }.map(\.element) : t }
+        let body: [String: Any] = ["id": e.id, "pubkey": e.pubkey, "created_at": e.createdAt, "kind": e.kind, "content": e.content, "tags": tags]
+        guard let data = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys, .withoutEscapingSlashes]), let content = String(data: data, encoding: .utf8) else { return false }
+        let bt = e.tags.first { $0.count > 1 && $0[0] == "button" && $0[1] == b.id } ?? ["button", b.id]
+        let rTags = press.tags.filter { $0.first != "p" } + [["p", gk], ["e", press.id, "", "press"], bt, ["k", String(e.kind)]]
+        let rumor = Enc.withId(NostrEvent(pubkey: me, createdAt: press.createdAt, kind: press.kind, tags: rTags, content: content))
+        guard let out = try await enc.encrypt(rumor, people: [gk]) else { return false }
+        for ev in out.events { try await engine.publishSigned(ev, .main) }
         return true
     }
 

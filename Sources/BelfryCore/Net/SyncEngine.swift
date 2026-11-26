@@ -193,7 +193,27 @@ public final class SyncEngine: @unchecked Sendable {
     @discardableResult
     public func publishNow(_ d: Draft) async throws -> NostrEvent {
         try guestMode.check()
-        let ev = try await signer.sign(EventTemplate(kind: d.kind, content: d.content, tags: d.tags + [SyncEngine.clientTag], createdAt: nextCreatedAt()))
+        let template = EventTemplate(kind: d.kind, content: d.content, tags: d.tags + [SyncEngine.clientTag], createdAt: nextCreatedAt())
+        // format 3 (§24a): a press in a private group is encrypted into the group like any group
+        // event, or refused while encryption can't tell; never clear
+        if d.target == .groups {
+            switch writeMode(template) {
+            case .hold: throw BelfryError.relay("timeout: encryption isn’t ready on this device yet")
+            case .enc:
+                guard online else { throw BelfryError.relay("timeout: offline") }
+                guard let wrap = groupWrap, let w = try await wrap(template) else { throw BelfryError.relay("timeout: encryption isn’t ready on this device yet") }
+                for b in w.before { try await publish(.groups, try await signer.sign(b)) }
+                if !w.before.isEmpty, let K = w.event.tags.first(where: { $0.count > 1 && $0[0] == "d" })?[1] { groupBeforeOut?(K) }
+                try await publish(.groups, try await signer.sign(w.event))
+                var shown = NostrEvent(pubkey: me, createdAt: template.createdAt, kind: template.kind, tags: template.tags, content: template.content)
+                shown.id = shown.computedId
+                lock.lock(); outboxVersion += 1; lock.unlock()
+                add([shown], verify: false)
+                return shown
+            case .plain: break
+            }
+        }
+        let ev = try await signer.sign(template)
         if !localOnly {
             guard online else { throw BelfryError.relay("timeout: offline") }
             try await publish(d.target, ev)
@@ -201,6 +221,13 @@ public final class SyncEngine: @unchecked Sendable {
         lock.lock(); outboxVersion += 1; lock.unlock() // my own action: shown at once
         add([ev], verify: false)
         return ev
+    }
+
+    /// A signed event published at once (not through the outbox): throws when it can't be.
+    public func publishSigned(_ ev: NostrEvent, _ t: Target) async throws {
+        guard !localOnly else { return }
+        guard online else { throw BelfryError.relay("timeout: offline") }
+        try await publish(t, ev)
     }
 
     @discardableResult
@@ -365,6 +392,9 @@ public final class SyncEngine: @unchecked Sendable {
         }
         var content = item.content
         var tags = item.tags
+        // format 3: a write in a private group is encrypted, or waits; decided BEFORE any upload
+        let mode = item.target == .groups ? writeMode(EventTemplate(kind: item.kind, content: content, tags: tags, createdAt: item.createdAt)) : .plain
+        if mode == .hold { throw BelfryError.relay(SyncEngine.encHold) }
         for a in item.attachments {
             let file = attachmentsDir.appendingPathComponent(a.file)
             let url: String
@@ -374,7 +404,7 @@ public final class SyncEngine: @unchecked Sendable {
             } else {
                 guard let data = try? Data(contentsOf: file) else { continue }
                 // §23: a private group's file is encrypted on the device before upload
-                if let h = tags.first(where: { $0.count > 1 && $0[0] == "h" })?[1], groupEncryptsFiles?(h, item.kind) == true {
+                if mode == .enc {
                     let (cipher, f) = try DmFiles.prepare(data, mime: a.mime, name: a.name)
                     let cx = Crypto.sha256(cipher).hex
                     step(SendState.uploading(0, Int64(cipher.count)))
@@ -402,7 +432,8 @@ public final class SyncEngine: @unchecked Sendable {
         let template = EventTemplate(kind: item.kind, content: content, tags: tags, createdAt: item.createdAt)
         // format 3 in a private group: the key's envelopes first, then the write as an 8572; what this
         // device keeps and shows is the write itself (the rumor), as the group's members will open it
-        if item.target == .groups, !localOnly, let wrap = groupWrap, let w = try await wrap(template) {
+        if mode == .enc {
+            guard let wrap = groupWrap, let w = try await wrap(template) else { throw BelfryError.relay(SyncEngine.encHold) }
             for b in w.before { try await publish(.groups, try await signer.sign(b), step: step) }
             if !w.before.isEmpty, let K = w.event.tags.first(where: { $0.count > 1 && $0[0] == "d" })?[1] { groupBeforeOut?(K) }
             try await publish(.groups, try await signer.sign(w.event), step: step)
@@ -681,12 +712,68 @@ public final class SyncEngine: @unchecked Sendable {
     public var encRefuse: ((NostrEvent) -> Bool)?
     /// Format 3 in a private group: the write as its 8572, and the key's envelopes to send first.
     public var groupWrap: ((EventTemplate) async throws -> (before: [EventTemplate], event: EventTemplate)?)?
-    /// Format 3 in a private group: its files are encrypted before upload (§23).
-    public var groupEncryptsFiles: ((String, Int) -> Bool)?
+    /// Format 3: how a write in a group goes (docs/encrypted.md §4, §17.2; the web's groupWriteMode):
+    /// encrypted, held (the engine can't tell yet), or plain. Nil closure: `encExpected` decides.
+    public enum GroupMode: Sendable { case enc, hold, plain }
+    public var groupMode: ((EventTemplate) -> GroupMode)?
+    /// This device has seen format 3 or an "encrypted" object in belfry.json: with no engine attached,
+    /// a group write waits (never clear).
+    public var encExpected = false
+    static let encHold = "hold: encryption isn’t ready on this device yet"
+    /// The mode of a write of TEMPLATE in a group (nil for a write outside groups).
+    public func writeMode(_ t: EventTemplate) -> GroupMode {
+        guard !localOnly, t.tags.contains(where: { $0.count > 1 && $0[0] == "h" }) else { return .plain }
+        return groupMode?(t) ?? (encExpected ? .hold : .plain)
+    }
     /// After a group wrap's envelopes went out.
     public var groupBeforeOut: ((String) -> Void)?
     /// An event of mine went out (the encryption engine confirms its envelopes).
     public var onPublished: ((NostrEvent) -> Void)?
+
+    /// §17.2: events already stored that the encryption engine now refuses (a private group's first
+    /// key just became known) go too: out of memory and out of the database.
+    public func recheckRefused() {
+        guard let refuse = encRefuse else { return }
+        lock.lock()
+        let out = events.values.filter { refuse($0) }.map(\.id)
+        for id in out { events[id] = nil }
+        lock.unlock()
+        guard !out.isEmpty else { return }
+        for id in out { db.deleteEvent(id) }
+        lock.lock(); outboxVersion += 1; lock.unlock()
+        onNewEvents?([])
+    }
+
+    /// A read paged past the relay's cap (300 per answer; the web's queryPaged): each filter from the
+    /// newest back, on an authenticated socket. Nil: any page failed, or past MAXPAGES / TOTAL.
+    public func queryPaged(_ t: Target, _ filters: [[String: Any]], timeout: TimeInterval = 8, maxPages: Int = 100, total: TimeInterval? = nil) async -> [NostrEvent]? {
+        let page = 300
+        let deadline = total.map { Date().addingTimeInterval($0) }
+        var out = [String: NostrEvent]()
+        for f in filters {
+            var until: Int?
+            var complete = false
+            for _ in 0..<maxPages {
+                let left = deadline.map { $0.timeIntervalSinceNow } ?? timeout
+                if left <= 0 { return nil }
+                var q = f
+                q["limit"] = page
+                if let until { q["until"] = until }
+                guard let got = await queryAuthed(t, [q], timeout: min(timeout, left)) else { return nil }
+                let fresh = got.filter { out[$0.id] == nil }
+                for e in fresh { out[e.id] = e }
+                let oldest = got.map(\.createdAt).min() ?? 0
+                if fresh.isEmpty {
+                    if got.count >= page, oldest > 0, got.allSatisfy({ $0.createdAt == oldest }) { until = oldest - 1; continue }
+                    complete = true
+                    break
+                }
+                until = oldest
+            }
+            if !complete { return nil }
+        }
+        return Array(out.values)
+    }
 
     /// The live subscriptions asked again with today's filters (new people to follow lists of).
     public func refreshFilters() {

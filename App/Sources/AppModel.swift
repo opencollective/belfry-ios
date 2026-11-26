@@ -299,7 +299,18 @@ final class AppModel: ObservableObject {
     /// Guests' tags, as the belfry's register gave them with /whois (a guest edits them on the website).
     @Published var guestTags = [String: [String]]()
     private var whoisAsked = Set<String>()
+    /// Keys the register has answered for (kept per account): an encrypted send to a guest is never
+    /// decided before (format 3, §25).
+    var whoisAnswered: Set<String> {
+        get { engine?.db.get("whois-answered", as: Set<String>.self) ?? [] }
+        set { engine?.db.set("whois-answered", newValue) }
+    }
     private var configCheckedAt = Date.distantPast
+    /// When belfry.json was last read successfully (a 304 counts): the format is fresh for 5 minutes.
+    var configReadAt = Date.distantPast
+    /// Format 3: when the removed check last ran, and what to say after a removal (encrypted/removed-device)
+    var encRemovedCheckedAt = Date.distantPast
+    @Published var removedNotice: String?
     private var bump: DispatchWorkItem?
     let launch = LaunchOptions()
 
@@ -372,6 +383,8 @@ final class AppModel: ObservableObject {
             if fresh.count == cur.count - prev.events.count { d.carry(from: prev, newEvents: fresh) }
         }
         cachedDerive = (version, ev, d)
+        // format 3: the engine's view of the groups follows every snapshot
+        if encEngine != nil { updateEncWorld(d) }
         // nothing is queued for an archived or deleted group (SPEC 19.30)
         engine?.setLocked(d.lockedGroups)
         return d
@@ -582,7 +595,9 @@ final class AppModel: ObservableObject {
                 engine.db.set("config", fresh)
                 config = fresh
                 version += 1
+                encEngine?.setConfigFormat(fresh.encryptedFormat)
             }
+            configReadAt = Date()
         } catch {}
     }
 
@@ -593,7 +608,9 @@ final class AppModel: ObservableObject {
         let list = (keys ?? derive.guestJoinKeys).filter { keys != nil || !whoisAsked.contains($0) }
         guard !list.isEmpty else { return }
         whoisAsked.formUnion(list)
-        if let full = try? await api.whoisFull(list) {
+        guard let full = try? await api.whoisFull(list) else { whoisAsked.subtract(list); return }
+        do {
+            whoisAnswered = whoisAnswered.union(list)
             let got = full.kinds
             // the answer is the whole truth for the keys asked: tags taken off go here too
             var t = guestTags

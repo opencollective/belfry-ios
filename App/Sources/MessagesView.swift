@@ -25,6 +25,10 @@ struct MessagesView: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
             }
+            // format 3: the warnings that don't go away (§17.7) and twenty devices (§17.4)
+            if model.sealed.enc3Fork || model.sealed.enc3Strange || model.sealed.enc3Full {
+                Enc3Warning().listRowSeparator(.hidden).listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+            }
             // format 3: a device of mine added since this one: Share or Remove (encrypted/card)
             ForEach(model.sealed.enc3Added) { a in
                 Enc3DeviceCard(added: a)
@@ -675,6 +679,12 @@ struct Bubble: View {
                     Label("You can write here once this device is added.", systemImage: "lock.fill").font(.caption2).foregroundStyle(.secondary)
                 } else if dm.pending == true {
                     SendLineView(id: dm.rid, tries: model.dmTries(dm.rid), font: .caption2, icon: false)
+                } else if dm.clear == true {
+                    // §17.2: came clear into a conversation encrypted before it (format 3)
+                    Text("Not encrypted").font(.caption2).foregroundStyle(.secondary).accessibilityIdentifier("dm-clear")
+                } else if let missing = dm.missing, !missing.isEmpty {
+                    // §17.5: someone with no device here won't get it
+                    Text("\(missing.map { model.firstName($0) }.joined(separator: ", ")) won’t get this").font(.caption2).foregroundStyle(.secondary)
                 } else if dm.unsealed == true {
                     // it came the old way after the conversation was sealed (board messages/encryption-thread)
                     Button { notSealed = true } label: {

@@ -65,6 +65,10 @@ public struct Dm: Codable, Hashable, Sendable, Identifiable {
     public var sharedBy: String?
     /// A sealed message's rumor as it travelled (so its history can be shared with its own id).
     public var rumor: String?
+    /// Format 3: the people of the conversation who have no device and won't get it (§17.5)
+    public var missing: [String]?
+    /// §17.2: a clear message in a conversation known encrypted, dated after its first key
+    public var clear: Bool?
     /// It arrived the old way (no lock) in a conversation this device had already seen sealed.
     public var unsealed: Bool?
     /// Its link preview's tags, as the sender built them (SPEC 19.69): inside the rumor, so as

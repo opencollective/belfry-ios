@@ -268,6 +268,8 @@ shot 204-e3-card-remove e3cardremove light
 shot 205-e3-earlier e3earlier light
 shot 206-e3-earlier-thread e3earlierthread light
 shot 207-e3-asked e3asked light
+shot 208-e3-fork e3fork light
+shot 209-e3-full e3full light
 shot 180-enc-thread encthread light
 shot 180b-enc-thread-dark encthread dark
 shot 181-enc-devices encdevices light

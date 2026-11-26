@@ -140,6 +140,7 @@ public final class DirectMessages: @unchecked Sendable {
         if busy { lock.unlock(); return }
         busy = true
         lock.unlock()
+        rejudgeClear()
         defer { lock.lock(); busy = false; lock.unlock() }
         let todo = engine.snapshot().filter { e in
             engine.pending(e.id) == nil && !seen.contains(e.id) &&
@@ -189,7 +190,9 @@ public final class DirectMessages: @unchecked Sendable {
                         lock.lock()
                         // a reaction or its taking back: under the bubble, never a message. One that
                         // comes the old way into a conversation already sealed here is ignored.
-                        if opened.rumor.kind == 7 || opened.rumor.kind == 5 {
+                        if (opened.rumor.kind == 7 || opened.rumor.kind == 5), clearAfterKey(targetConv(opened.rumor), opened.rumor.createdAt) {
+                            // §17.2: a clear reaction or take-back in a conversation encrypted since before it never acts
+                        } else if opened.rumor.kind == 7 || opened.rumor.kind == 5 {
                             // decided by the conversation of the message it points at, as this
                             // device holds it; while that message is not here yet, the opened
                             // rumor waits (never a second call to the signer)
@@ -206,11 +209,14 @@ public final class DirectMessages: @unchecked Sendable {
                         // (by its date against the time this device first saw the conversation
                         // sealed, never by when it arrived: history read later is history)
                         if let x = d, x.kind == 14 || x.kind == DmFiles.kind, let since = sealed?.sealedSince(x.conv), x.at >= since { d?.unsealed = true }
+                        // §17.2 (format 3): clear, in a conversation encrypted before it: "Not encrypted"
+                        if let x = d, clearAfterKey(x.conv, x.at) { d?.clear = true }
                     }
                 } else if e.pubkey == me || e.hasTag("p", me), let bunker = engine.signer as? BunkerSigner {
                     let peer = e.pubkey == me ? (e.tag("p") ?? me) : e.pubkey
                     let text = (try? await bunker.nip04Decrypt(peer: peer, payload: e.content)) ?? "(an old-style message this app cannot read)"
                     d = Dm(rid: e.id, conv: "n:" + peer, from: e.pubkey, mine: e.pubkey == me, at: e.createdAt, kind: 4, text: text)
+                    if clearAfterKey("n:" + peer, e.createdAt) { d?.clear = true }
                 }
                 lock.lock()
                 if let d {
@@ -258,6 +264,28 @@ public final class DirectMessages: @unchecked Sendable {
 
     /// A sealed rumor, opened: a message, a reaction, or (SHAREDBY) a piece of shared history,
     /// which never replaces a message this device already has.
+    /// §17.2 (docs/encrypted.md; core clearAfterKey): a clear message dated after its people
+    /// conversation's first key (as this device knows it) never counts as encrypted.
+    func clearAfterKey(_ conv: String?, _ at: Int) -> Bool {
+        guard let conv, conv.hasPrefix("n:"), let enc else { return false }
+        let people = Array(Set(MailThreads.peers(conv) + [me]))
+        return Enc.clearAfterKey(enc.firstKeyAt(people), at)
+    }
+
+    /// Keys arrived: clear messages already here, in a conversation now known encrypted and dated
+    /// after its first key, are marked "Not encrypted".
+    func rejudgeClear() {
+        guard enc != nil else { return }
+        lock.lock()
+        var changed = false
+        for (id, d) in items where d.rumor == nil && d.clear != true && d.kind != 1301 && d.pending != true && clearAfterKey(d.conv, d.at) {
+            items[id]?.clear = true
+            changed = true
+        }
+        lock.unlock()
+        if changed { save() }
+    }
+
     private func take(_ rumor: NostrEvent, sharedBy: String?) {
         lock.lock()
         defer { lock.unlock() }
@@ -344,17 +372,32 @@ public final class DirectMessages: @unchecked Sendable {
     /// CONV: the Nostr conversation it belongs to; MAIL: it goes to the belfry's bridge.
     func deliver(_ rumor: NostrEvent, to: [String], selfCopy: Bool = true, conv: String? = nil, mail: Bool = false) async throws {
         try engine.guestMode.check()
-        // format 3 (docs/encrypted.md §5, §6): on a belfry that writes it, a people conversation goes
-        // as 8572s under its conversation key; e-mail out addresses the belfry key as one more person
-        // (§10). Held when it can't be encrypted now: the text stays in the box, never sent clear.
-        if let enc, enc.writes3, conv != nil || mail {
-            let people = mail ? (engine.config.belfryKey.map { [$0] } ?? to) : to
-            if let r = try await enc.encrypt(rumor, people: people) {
-                hold(rumor)
-                for e in r.events { engine.enqueueSigned(e, target: .main, dm: rumor.id) }
-                return
+        // format 3 (docs/encrypted.md §5, §6, §17.2, §17.13; the web's dm.ts deliver): on a belfry that
+        // writes it, or once seen here, the format is read fresh first; a people conversation goes as
+        // 8572s under its conversation key; one this device has seen encrypted stays encrypted whatever
+        // the cache says; unknown format or no engine: held (EncEngine.Held), never the old way. E-mail
+        // from the chat waits for the belfry's update. Format-1 belfries: as before.
+        if !engine.localOnly, conv != nil || mail {
+            let isMail = mail || conv.map(MailThreads.isMail) == true
+            let people = Array(Set(to + [me]))
+            let encConv = !isMail && enc?.isEncrypted(people) == true
+            if EncEngine.expected(db: engine.db, config: engine.config) || encConv {
+                let f: Int? = enc == nil ? nil : await enc!.sendFormat()
+                if isMail {
+                    if f != 1 { throw EncEngine.Held.mail }
+                } else if f == 3 || encConv {
+                    guard let enc else { throw EncEngine.Held.format }
+                    if let r = try await enc.encrypt(rumor, people: to) {
+                        hold(rumor)
+                        for e in r.events { engine.enqueueSigned(e, target: .main, dm: rumor.id) }
+                        if !r.missing.isEmpty { lock.lock(); items[rumor.id]?.missing = r.missing; lock.unlock(); save() }
+                        return
+                    }
+                    // nil: a conversation that starts over 100 devices and was never encrypted: the old way
+                } else if f == nil {
+                    throw EncEngine.Held.format
+                }
             }
-            // nil: a conversation that starts over 100 devices: no lock (the old way below)
         }
         // the first moments of a launch: the sealed engine is not attached yet, so nobody can tell
         // whether this conversation is sealed. Never the old way on silence (sealed.md 6): refused,
@@ -683,9 +726,7 @@ public final class DirectMessages: @unchecked Sendable {
                                           inReplyTo: before?.messageId, references: before?.references, domain: engine.config.domain)
         let target = fresh ? MailThreads.thread(address: to, subject: subj) : conv
         let emailId = UUID().uuidString.lowercased()
-        // format 3: the belfry key is one more person of this message (docs/encrypted.md §10)
-        let encP: [Tag] = enc?.writes3 == true ? (engine.config.belfryKey.map { [["p", $0]] } ?? []) : []
-        let rumor = GiftWrap.rumor(kind: 1301, pubkey: me, tags: [["email-id", emailId], ["mail-from", from], ["rcpt-to", to], ["subject", subj]] + encP, content: raw)
+        let rumor = GiftWrap.rumor(kind: 1301, pubkey: me, tags: [["email-id", emailId], ["mail-from", from], ["rcpt-to", to], ["subject", subj]], content: raw)
         var d = Dm(rid: rumor.id, conv: target, from: me, mine: true, at: rumor.createdAt, kind: 1301, text: text)
         d.subject = subj
         d.emailId = emailId
@@ -702,7 +743,7 @@ public final class DirectMessages: @unchecked Sendable {
             try await deliver(rumor, to: [b], mail: true)
         } catch {
             lock.lock()
-            reports[emailId] = DeliveryReport(status: "failed", details: "It could not be prepared. Try again.")
+            reports[emailId] = DeliveryReport(status: "failed", details: (error as? EncEngine.Held)?.errorDescription ?? "It could not be prepared. Try again.")
             items[rumor.id]?.pending = false
             items[rumor.id]?.failed = "not sent"
             lock.unlock()
@@ -735,8 +776,6 @@ public final class DirectMessages: @unchecked Sendable {
         var tags: [Tag] = [["email-id", emailId], ["mail-from", from]] + ([to] + cc).map { ["rcpt-to", $0] }
         tags += [["subject", subject], ["e", cardId]]
         if let draft, !draft.isEmpty { tags.append(["draft", draft]) }
-        // format 3: the belfry key is one more person of this message (docs/encrypted.md §10)
-        if enc?.writes3 == true, let b = engine.config.belfryKey { tags.append(["p", b]) }
         let rumor = GiftWrap.rumor(kind: 1301, pubkey: me, tags: tags, content: raw)
         if engine.localOnly {
             lock.lock(); reports[emailId] = DeliveryReport(status: "failed", details: "Demo mode sends no e-mail."); lock.unlock()
@@ -748,7 +787,7 @@ public final class DirectMessages: @unchecked Sendable {
         do {
             try await deliver(rumor, to: [b], selfCopy: false, mail: true)
         } catch {
-            lock.lock(); reports[emailId] = DeliveryReport(status: "failed", details: "It could not be prepared. Try again."); lock.unlock()
+            lock.lock(); reports[emailId] = DeliveryReport(status: "failed", details: (error as? EncEngine.Held)?.errorDescription ?? "It could not be prepared. Try again."); lock.unlock()
             save()
             throw BelfryError.invalid("The e-mail could not be prepared. Try again.")
         }
@@ -796,6 +835,12 @@ public final class DirectMessages: @unchecked Sendable {
     public func heldByEncryption(_ d: Dm) -> Bool {
         guard d.failed != nil, d.kind == 14, d.rumor != nil else { return false }
         return !engine.outboxItems().contains { $0.dm == d.rid }
+    }
+
+    /// Held format-3 messages tried again (lists or keys changed: "It will be sent when they are", §17.5).
+    public func retryHeld() {
+        lock.lock(); let held = items.values.filter { $0.mine && $0.failed != nil && $0.kind == 14 && $0.rumor != nil }; lock.unlock()
+        for d in held where heldByEncryption(d) { retry(d) }
     }
 
     /// Delete on a message that was never sent: gone from this device.
