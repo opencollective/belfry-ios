@@ -291,7 +291,7 @@ struct EventScreenBody: View {
             .onChange(of: level) { _, l in
                 if l != .full { withAnimation(.snappy) { proxy.scrollTo("event-top", anchor: .top) } }
                 // screenshots: the address and its buttons, at the bottom of the full level
-                else if ["eventaddress", "eventqr"].contains(model.launch.screen ?? "") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { proxy.scrollTo("event-address", anchor: .bottom) } }
+                else if ["eventaddress", "eventqr"].contains(model.launch.screen ?? "") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { proxy.scrollTo("event-address", anchor: .bottom) } }
             }
         }
         .opacity(access ? min(1, max(0, (h - hs.up) / 60)) : 1)
@@ -507,7 +507,9 @@ struct EventScreenBody: View {
             case "eventup": withAnimation { level = .up }
             // no animation: the picture is taken at a fixed time after launch
             case "eventtiny": level = .up
-            case "eventfull", "eventaddress", "eventqr": withAnimation { level = .full }
+            case "eventfull": withAnimation { level = .full }
+            // no animation: the scroll to the links follows at once (the picture is at a fixed time)
+            case "eventaddress", "eventqr": level = .full
             case "eventinvite": DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { invitingPeople = true }
             case "eventphotos": sub = .photos
             case "eventpeople", "meetingpeople": sub = .people
@@ -1157,7 +1159,8 @@ struct EventLinkRow: View {
                     .buttonStyle(.bordered).disabled(url.isEmpty)
                     .accessibilityLabel("Show the QR code").accessibilityIdentifier("event-qr")
                     .sheet(isPresented: $qr) { EventQRSheet(url: url, title: name) }
-                    .task { if model.launch.screen == "eventqr" { try? await Task.sleep(nanoseconds: 1_500_000_000); qr = true } }
+                    // screenshots: after the level and the scroll (a sheet asked mid-push is lost)
+                    .task { if model.launch.screen == "eventqr" { try? await Task.sleep(nanoseconds: 2_200_000_000); qr = true } }
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 8)

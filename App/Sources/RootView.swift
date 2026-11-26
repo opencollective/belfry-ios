@@ -678,7 +678,8 @@ struct RootView: View {
         case "event", "eventup", "eventtiny", "eventfull", "eventaddress", "eventqr", "eventinvite", "eventphotos", "eventpeople", "ticket", "checkin", "eventrole", "eventonline":
             selection = .channel(generalId)
             // eventonline: the demo's online event (0.8.0, one-shape/event-default-online)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { model.openEvent = model.launch.screen == "eventonline" ? "garden-planning" : "repair-cafe" }
+            let soon = ["eventaddress", "eventqr"].contains(model.launch.screen ?? "") ? 1.0 : 2.0
+            DispatchQueue.main.asyncAfter(deadline: .now() + soon) { model.openEvent = model.launch.screen == "eventonline" ? "garden-planning" : "repair-cafe" }
         case "checkincard":
             // a ticket link opened by Sam (the café's steward): the check-in card for Chloé's ticket
             selection = .channel(generalId)
