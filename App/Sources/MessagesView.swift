@@ -378,6 +378,11 @@ struct ConversationView: View {
                             .frame(maxWidth: .infinity, alignment: .center)
                             .accessibilityIdentifier("notes-hint")
                     }
+                } else if notes, list.isEmpty {
+                    // format 3: the header says who can read them (encrypted/notes-self)
+                    Text(Notes.emptyHint).font(.footnote).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .accessibilityIdentifier("notes-hint")
                 } else if list.isEmpty, !locked {
                     Text(mail ? "A new e-mail to \(MailThreads.address(conv)): its subject names the thread. It goes out from \(model.dms?.myAddress ?? "your address here"); answers land in the thread."
                          : "No messages yet. Only you two can read them.")
