@@ -197,7 +197,7 @@ extension AppModel {
     func enc3Remove(_ a: Enc3Added) async -> String? {
         if isDemo { sealed.enc3Added.removeAll { $0.id == a.id }; showToast("\(a.name) was removed"); return nil }
         guard let enc = encEngine, let d = enc.addedDevices().first(where: { $0.device == a.id }) else { return "It could not be removed. Try again." }
-        guard case .success(let list) = await sessions(), let api else { return "It could not be removed. Try again." }
+        guard case .success(let list) = await sessions() else { return "It could not be removed. Try again." }
         if let s = list.first(where: { $0.clientPubkey == a.id }) {
             do { try await api.revokeSession(s.bunkerPubkey) } catch { return "It could not be removed. Try again." }
         }
