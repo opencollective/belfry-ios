@@ -103,4 +103,30 @@ final class EncEngineTests: XCTestCase {
         XCTAssertEqual(enc.devices(K["sam"]!), .unknown)
         XCTAssertEqual(enc.devices(v.str("belfry")!), .service, "the belfry key is its own device")
     }
+
+    /// The review's P1-2 (the web's groupWriteMode): private → encrypted; known open → plain; not
+    /// known yet → waits; §16.9's kinds plain; no engine with format 3 seen → waits.
+    func testGroupWriteMode() throws {
+        let (e, enc) = try samOn()
+        enc.setWorld(EncEngine.World(privateIds: ["priv-1"], known: ["priv-1", "open-1"]))
+        func t(_ h: String, _ kind: Int = 9) -> EventTemplate { EventTemplate(kind: kind, content: "x", tags: [["h", h]], createdAt: 0) }
+        XCTAssertEqual(enc.groupMode(t("priv-1")), .enc)
+        XCTAssertEqual(enc.groupMode(t("open-1")), .plain)
+        XCTAssertEqual(enc.groupMode(t("new-1")), .hold, "a group not known yet waits")
+        XCTAssertEqual(enc.groupMode(t("priv-1", 9021)), .plain, "joining stays clear (§16.9)")
+        XCTAssertEqual(enc.groupMode(EventTemplate(kind: 1, content: "", tags: [], createdAt: 0)), .plain)
+        // the outbox with no engine attached, on a device that saw format 3: waits, never clear
+        let e2 = SyncEngine(config: e.config, db: try Database.memory(), signer: try LocalSigner(secret: sk("sam")), localOnly: false,
+                            attachmentsDir: URL(fileURLWithPath: NSTemporaryDirectory()))
+        e2.encExpected = EncEngine.expected(db: e2.db, config: e2.config)
+        XCTAssertTrue(e2.encExpected)
+        XCTAssertEqual(e2.writeMode(t("open-1")), .hold)
+    }
+
+    /// §17.2: a clear message after a conversation's first key is never taken for encrypted.
+    func testClearAfterKey() {
+        XCTAssertTrue(Enc.clearAfterKey(100, 101))
+        XCTAssertFalse(Enc.clearAfterKey(100, 100))
+        XCTAssertFalse(Enc.clearAfterKey(nil, 101))
+    }
 }
