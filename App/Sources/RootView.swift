@@ -537,7 +537,7 @@ struct RootView: View {
         case nil: break
         }
         switch model.launch.screen {
-        case "home", "homecalm": model.tab = .home
+        case "home", "homecalm", "todaysheet", "todaypopover", "todaymenu2": model.tab = .home
         case "calendar": model.tab = .calendar
         case "groups": model.tab = .groups
         // boards groups/new, groups/new-pick (canvas v183)

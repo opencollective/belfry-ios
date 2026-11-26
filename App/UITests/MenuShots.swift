@@ -189,6 +189,17 @@ final class MenuShots: XCTestCase {
         shot("56-today-menu")
     }
 
+    /// The system menu, tidied (tiles, one short line, a Picker's checkmark): Xavier's third option.
+    func testTodayMenu2() {
+        let app = launch("todaymenu2")
+        let header = app.buttons["today-belfry"].firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 10), "Today has no belfry header")
+        header.tap()
+        XCTAssertTrue(app.buttons["Add an account"].firstMatch.waitForExistence(timeout: 5), "the menu has no Add an account")
+        sleep(1)
+        shot("56e-today-menu2")
+    }
+
     /// A screen pushed on a place shows only ‹, never ☰ too (Xavier, 2026-11-22): Messages from Home.
     func testPushedHasNoDrawer() {
         let app = launch("homemessages")
