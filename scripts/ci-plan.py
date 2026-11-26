@@ -33,6 +33,7 @@ MAP = [
     (r"App/Sources/(TownDrawer|Tabs)", ".*drawer|home|town|calendar|groups|messagestab", "testDrawerSwipe testMenuRows testHomeDrawer testCalendarAndGroupsDrawer"),
     (r"App/Sources/(Nav2UI|AppModel\+Nav)", "addchannel.*|channelpreview|channelpin|member-channelpin|.*drawer|messagestab|feed", "testDrawerSwipe"),
     (r"App/Sources/(HomeView|AppModel\+Home)", "home|homedrawer|guest-home|guest-applied|mytodos", "testHomeDrawer"),
+    (r"App/Sources/TodayHeader", "home|today.*", "testTodayMenu testTodayMenu2"),
     (r"App/Sources/CalendarView", "calendar.*|guest-calendar", ""),
     (r"App/Sources/(GroupsView|GroupPage|NewGroupUI|ArchiveUI|AppModel\+Archive)", "groups.*|group.*|pod|archivedlist", ""),
     (r"App/Sources/(EventScreen|EventInviteUI|EventsUI|Tickets|AppModel\+Events|AppModel\+Checkin|GroupRoles)", "event.*|events|ticket|checkin.*|calendar", "testEventHeaderDrag testEventChatTyping"),

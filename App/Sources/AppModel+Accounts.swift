@@ -89,6 +89,8 @@ extension AppModel {
         accounts.current = slot
         Keychain.slot = slot
         saveAccounts()
+        // every switch lands on that belfry's Today (canvas Home, switch-3), not the screen that was open
+        tab = .home
         open(s)
     }
 

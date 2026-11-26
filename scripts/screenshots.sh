@@ -166,6 +166,11 @@ shot 124d-welcome-charter-dark welcomecharter dark
 shot 125-guest-applied guest-applied light
 shot 125b-guest-applied-dark guest-applied dark
 shot 100-home home light
+# the accounts switcher, three native ways (Xavier, 26 Nov)
+shot 56a-today-sheet todaysheet light
+shot 56b-today-sheet-dark todaysheet dark
+shot 56c-today-popover todaypopover light
+shot 56d-today-popover-dark todaypopover dark
 shot 100b-home-dark home dark
 shot 101-calendar calendar light
 shot 101b-calendar-dark calendar dark
@@ -239,6 +244,7 @@ shot 64e-event-online-dark eventonline dark
 shot 65-event-full eventfull light
 shot 65b-event-full-dark eventfull dark
 shot 65c-event-address eventaddress light
+shot 65d-event-qr eventqr light
 shot 65d-event-invite eventinvite light
 shot 66-event-photos eventphotos light
 shot 67-event-people eventpeople light

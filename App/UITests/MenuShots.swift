@@ -176,6 +176,30 @@ final class MenuShots: XCTestCase {
         shot("55-home-drawer-tap")
     }
 
+    /// Today's header opens the accounts menu (Home canvas, home/today-belfry-tap): one row per
+    /// account with "address · role", the open one checked, then Add an account and Accounts.
+    func testTodayMenu() {
+        let app = launch("home")
+        let header = app.buttons["today-belfry"].firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 10), "Today has no belfry header")
+        header.tap()
+        XCTAssertTrue(app.buttons["Add an account"].firstMatch.waitForExistence(timeout: 5), "the menu has no Add an account")
+        XCTAssertTrue(app.buttons["Accounts"].firstMatch.exists, "the card has no Accounts")
+        sleep(1)
+        shot("56-today-menu")
+    }
+
+    /// The system menu, tidied (tiles, one short line, a Picker's checkmark): Xavier's third option.
+    func testTodayMenu2() {
+        let app = launch("todaymenu2")
+        let header = app.buttons["today-belfry"].firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 10), "Today has no belfry header")
+        header.tap()
+        XCTAssertTrue(app.buttons["Add an account"].firstMatch.waitForExistence(timeout: 5), "the menu has no Add an account")
+        sleep(1)
+        shot("56e-today-menu2")
+    }
+
     /// A screen pushed on a place shows only ‹, never ☰ too (Xavier, 2026-11-22): Messages from Home.
     func testPushedHasNoDrawer() {
         let app = launch("homemessages")
