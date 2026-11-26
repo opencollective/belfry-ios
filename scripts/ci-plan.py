@@ -52,7 +52,7 @@ MAP = [
     (r"App/Sources/DmFilesUI", "dmfiles|dmfilessending|conversation", ""),
     (r"App/Sources/TypingUI", "typing.*", ""),
     (r"App/Sources/(AccountsSheet|AppModel\+Accounts|AboutScreen)", "accounts|about|diagnostics|enclinked", ""),
-    (r"App/Sources/(Sealed|EncryptionUI)", "enc.*|messages|conversation", ""),
+    (r"App/Sources/(Sealed|EncryptionUI|Enc3UI|AppModel\+Enc)", "enc.*|e3.*|messages|conversation", ""),
     (r"App/Sources/CreateMenu", "create|add", "testAddMenu"),
     (r"App/Sources/AppModel\+Push", "notifications", ""),
 ]

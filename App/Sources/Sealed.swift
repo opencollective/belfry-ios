@@ -122,6 +122,25 @@ struct SealedState: Equatable {
     var freshElsewhere: FreshElsewhere?
     /// After "Sign out every other device" went through: the names signed out (the done card).
     var signedOutOthers: [String]?
+    /// Format 3 (docs/encrypted.md; Encrypted canvas): this belfry writes it; then the lines below.
+    var format3 = false
+    var enc3Added: [Enc3Added] = []
+    /// messages for me this device has no key for while another of my devices may have it
+    var earlier = 0
+    /// when this device asked my other devices (0: not yet), and their names
+    var enc3Asked = 0
+    var otherDevices: [String] = []
+}
+
+/// Format 3 (Encrypted canvas, encrypted/card): a device of mine added since this one, waiting for
+/// Share or Remove (a reader, such as my agent: OK or Remove).
+struct Enc3Added: Identifiable, Hashable {
+    let id: String
+    var name: String
+    var kind: DeviceKind
+    var at: Int
+    var reader = false
+    var ask: String?
 }
 
 struct FreshElsewhere: Equatable {
@@ -278,6 +297,8 @@ extension AppModel {
     /// What the screens show, from the chains as they are now.
     func refreshSealed() {
         ensureSealed()
+        // format 3: what the screens show comes from the encryption engine (version 1 stays readable)
+        if !isDemo, let enc = encEngine, enc.writes3 { refreshEnc3(enc); return }
         guard let se = sealedEngine, let dms, !isDemo else { return }
         // the Keychain refused to keep the keys: said once (they live in memory until a write works)
         if sealedStore?.failed == true, !sealedSaveToldOnce {
@@ -463,6 +484,21 @@ extension Demo {
         ])
         if let mail = dms.threads().first(where: { MailThreads.isMail($0.conv) })?.conv {
             s.convs[mail] = SealedConv(others: [SealedPerson(id: mail, mailName: "Town Hall")])
+        }
+        if screen?.hasPrefix("e3") == true {
+            // format 3 (Encrypted canvas): the same people, the lines of the new format
+            s.format3 = true
+            s.myDevices = [MyDevice(id: "this", name: "iPhone", kind: .phone, added: now - 100 * day, this: true),
+                           MyDevice(id: "mac", name: "Safari on Mac", kind: .computer, added: now - 49 * day)]
+            s.convs[lina] = SealedConv(others: [SealedPerson(id: pk("lina"), devices: 2)])
+            s.otherDevices = ["Safari on Mac"]
+            switch screen {
+            case "e3card", "e3cardremove": s.enc3Added = [Enc3Added(id: "android", name: "Chrome on Android", kind: .phone, at: now - 300)]
+            case "e3earlier", "e3earlierthread": s.earlier = 12
+            case "e3asked": s.earlier = 12; s.enc3Asked = now - 60
+            default: break
+            }
+            return s
         }
         switch screen {
         case "encwaiting":

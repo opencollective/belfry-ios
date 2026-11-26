@@ -25,6 +25,12 @@ struct MessagesView: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
             }
+            // format 3: a device of mine added since this one: Share or Remove (encrypted/card)
+            ForEach(model.sealed.enc3Added) { a in
+                Enc3DeviceCard(added: a)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            }
             // this device is not allowed yet (whether or not anything arrived), or holds messages
             // it has no key for: the banner says how many wait. My devices not read yet and
             // messages kept meanwhile: "Checking your devices…". Never "No messages" under it.
@@ -51,6 +57,10 @@ struct MessagesView: View {
                 // a row opens its conversation; no chevron (the board has none)
                 Button { navigate(t.conv) } label: { ThreadRow(thread: t).contentShape(Rectangle()) }
                     .buttonStyle(.plain)
+            }
+            // format 3: where the earlier messages are, at the bottom with the oldest (encrypted/new-list)
+            if model.sealed.format3, model.sealed.earlier > 0 {
+                Enc3EarlierLine(list: true).listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
@@ -119,6 +129,9 @@ struct MessagesView: View {
             // boards one-shape/notes-empty, notes-unsealed
             if ["notesempty", "notesunsealed"].contains(screen) { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { navigate(Notes.conv(model.me)) } }
             if screen == "enclocked" { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { navigate("n:" + Demo.signer("ana").pubkey) } }
+            // format 3 (Encrypted canvas): Notes to myself, Lina's conversation
+            if ["e3notes", "e3noteswho"].contains(screen) { DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate(Notes.conv(model.me)) } }
+            if ["e3who", "e3earlierthread", "e3asked"].contains(screen) { DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate("n:" + Demo.signer("lina").pubkey) } }
             if ["encthread", "encdevices", "encdeviceswaiting", "encshare", "encwaiting", "encheld"].contains(screen) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { navigate("n:" + Demo.signer("lina").pubkey) }
             }
@@ -340,7 +353,10 @@ struct ConversationView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
                 // Notes: one fixed first line, sealed or not (boards one-shape/notes-empty, notes-unsealed)
-                if notes, !locked {
+                // format 3: the first line is the header's subline (encrypted/notes-self); the line
+                // for earlier messages tops the history (encrypted/new-thread)
+                if model.sealed.format3, model.sealed.earlier > 0 { Enc3EarlierLine() }
+                if notes, !locked, !model.sealed.format3 {
                     Label(model.notesLocked ? Notes.sealedLine : Notes.plainLine, systemImage: model.notesLocked ? "lock.fill" : "person.crop.circle")
                         .font(.footnote).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -427,6 +443,9 @@ struct ConversationView: View {
                         }
                     }
                 }
+            } else if notes, model.sealed.format3 {
+                // format 3: "Encrypted for your N devices" under the name; a tap: Who can read this
+                ToolbarItem(placement: .principal) { Enc3NotesHeader { hideKeyboard(); encryption = true } }
             } else if sealed != nil || model.sealed.notAllowed || (notes && model.notesLocked) {
                 // a group, an e-mail thread: its title with the lock (always while this device is not allowed)
                 ToolbarItem(placement: .principal) {
@@ -453,7 +472,7 @@ struct ConversationView: View {
                 if let r = DmThreads.split(model.dms?.thread(conv) ?? []).replies.keys.sorted().first { threadOf = DmThreadRoute(conv: conv, root: r) }
                 return
             }
-            guard ["encdevices", "encdeviceswaiting", "encgroup", "encmaildevices", "encshare"].contains(screen) else { return }
+            guard ["encdevices", "encdeviceswaiting", "encgroup", "encmaildevices", "encshare", "e3noteswho", "e3who"].contains(screen) else { return }
             try? await Task.sleep(nanoseconds: 700_000_000) // after the push: the picture is taken 6 s after launch
             if screen == "encshare" { sharing = sealed?.notices.first { $0.what == .locked } } else { encryption = true }
         }

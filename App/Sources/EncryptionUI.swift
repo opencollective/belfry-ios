@@ -105,6 +105,7 @@ struct EncryptionScreen: View {
         let group = s.others.count > 1
         let counted = s.others.contains { $0.mailName == nil }
         let mail = s.others.contains { $0.mailName != nil }
+        let f3 = model.sealed.format3
         List {
             ForEach(model.sealed.added) { n in
                 DeviceAddedCard(notice: n).listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)).listRowBackground(Color.clear)
@@ -129,9 +130,15 @@ struct EncryptionScreen: View {
                         .frame(width: 56, height: 56)
                         .background(Color.secondary.opacity(0.15), in: Circle())
                         .accessibilityHidden(true)
-                    Text("Only these devices can read this conversation")
-                        .font(.title3.weight(.bold)).multilineTextAlignment(.center)
-                    if group {
+                    if f3 {
+                        // format 3 (encrypted/who-can-read, notes-self-who, group-who)
+                        Text(Enc3Words.whoHeadline(notes: Notes.isNotes(conv, me: model.me), others: s.others.filter { $0.mailName == nil }.map { model.firstName($0.id) }, group: nil))
+                            .font(.headline).multilineTextAlignment(.center)
+                    } else {
+                        Text("Only these devices can read this conversation")
+                            .font(.title3.weight(.bold)).multilineTextAlignment(.center)
+                    }
+                    if group && !f3 {
                         Text(SealedWords.summary(people: s.others.count + 1, devices: mine.count + s.others.reduce(0) { $0 + $1.devices }))
                             .font(.subheadline).foregroundStyle(.secondary)
                     }
@@ -171,11 +178,23 @@ struct EncryptionScreen: View {
                     .textCase(nil)
                 }
             }
-            Section {
-                ForEach(s.others) { p in person(p) }
-            } header: { Text("Others") } footer: {
-                if counted { Text("You see only how many devices others have, not which.") }
+            if !s.others.isEmpty {
+                Section {
+                    ForEach(s.others) { p in person(p) }
+                } header: { Text("Others") } footer: {
+                    if counted { Text(f3 ? "You see how many devices others have, never which." : "You see only how many devices others have, not which.") }
+                }
             }
+            if f3 {
+                Section("How it works") {
+                    fact("lock", "Each message is encrypted on the device that sends it. Only the devices above can read it.")
+                    fact("eye.slash", "The belfry stores and delivers your messages but can't read them, and neither can its admins. It does see who writes to whom, and when.")
+                    fact("key", "Each device has its own key, made when it signs in, that never leaves it. When a device is added or removed, the next message uses a new lock, so a removed device can't read anything new.")
+                    if mail {
+                        fact("envelope", "E-mail reaches the belfry's mail server unencrypted and is encrypted as soon as it arrives. Replies leave the same way. The other side's mail provider keeps its own copy.")
+                    }
+                }
+            } else {
             Section {
                 fact("eye.slash", "The server and the belfry's admins can't read it.")
                 fact("arrow.triangle.2.circlepath", group ? "When a device is removed or someone leaves, the lock changes: they can't read anything new."
@@ -184,9 +203,10 @@ struct EncryptionScreen: View {
                     fact("envelope", "E-mails are locked as soon as they arrive. They pass through the belfry's mail server, and the other side's mail provider keeps its own copy.")
                 }
             }
+            }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("Encryption")
+        .navigationTitle(f3 ? "Who can read this" : "Encryption")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $how) { UnlockHowScreen() }
         .accessibilityIdentifier("encryption-screen")

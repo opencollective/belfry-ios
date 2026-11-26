@@ -579,6 +579,12 @@ public final class EncEngine: @unchecked Sendable {
         for p in try Enc.packs(sharer: device, account: me, to: to.device, keys: list) { engine.enqueueSigned(p, target: .main, dm: nil) }
         try answer(to, "shared")
     }
+    /// A reader's card seen (OK): gone on this device; no answer is sent.
+    public func dismiss(_ device: String) {
+        answeredHere[device] = "seen"
+        engine.db.set("enc-answered", answeredHere)
+    }
+
     /// §7.7 the answer, for every device of mine at once.
     public func answer(_ to: AddedDevice, _ what: String) throws {
         let ev = try Enc.answerEvent(device: device, account: me, to: to.ask.map { .ask($0) } ?? .device(to.device), what: what)

@@ -256,6 +256,18 @@ shot 178b-link-boxes-dark linkboxes dark
 shot 179-notes-empty notesempty light
 shot 179b-notes-empty-dark notesempty dark
 shot 179c-notes-unsealed notesunsealed light
+# format 3 (Encrypted canvas JrubHFFVtgRHFCGp1ePTqq, approved boards)
+shot 200-e3-notes e3notes light
+shot 200b-e3-notes-dark e3notes dark
+shot 201-e3-notes-who e3noteswho light
+shot 202-e3-who e3who light
+shot 202b-e3-who-dark e3who dark
+shot 203-e3-card e3card light
+shot 203b-e3-card-dark e3card dark
+shot 204-e3-card-remove e3cardremove light
+shot 205-e3-earlier e3earlier light
+shot 206-e3-earlier-thread e3earlierthread light
+shot 207-e3-asked e3asked light
 shot 180-enc-thread encthread light
 shot 180b-enc-thread-dark encthread dark
 shot 181-enc-devices encdevices light
