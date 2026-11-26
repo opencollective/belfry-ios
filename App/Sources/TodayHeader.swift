@@ -17,7 +17,7 @@ struct TodayBelfryHeader: View {
         let address = model.isDemo ? "sam@demo.belfry.sh" : (model.derive.myAddress ?? "")
         Menu {
             Section {
-                ForEach(rows) { a in
+                ForEach(rows, id: \.slot) { a in
                     Button {
                         guard a.slot != currentSlot else { return }
                         switching = a.slot
