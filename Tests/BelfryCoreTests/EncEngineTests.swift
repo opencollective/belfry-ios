@@ -142,5 +142,11 @@ final class EncEngineTests: XCTestCase {
         XCTAssertEqual(EncEngine.membersFrom(got, group: "priv-1", relayKey: relay.pubkey), [K["sam"]!, K["lina"]!], "the relay's newest; a removed member is out")
         XCTAssertNil(EncEngine.membersFrom(got, group: "priv-1", relayKey: try LocalSigner(secret: sk("nobody")).pubkey))
         XCTAssertNil(EncEngine.membersFrom(got, group: "other-2", relayKey: relay.pubkey))
+        // NIP-11: the key is `self`, never `pubkey` (the operator: on belfry.sh, the groups key)
+        let doc: [String: Any] = ["pubkey": groupsKey.pubkey, "self": relay.pubkey]
+        let k = try XCTUnwrap(EncEngine.relaySelf(doc))
+        XCTAssertEqual(EncEngine.membersFrom(got, group: "priv-1", relayKey: k), [K["sam"]!, K["lina"]!], "the self-signed list is taken")
+        XCTAssertNotEqual(EncEngine.membersFrom(got, group: "priv-1", relayKey: k), [K["sam"]!, K["other"]!], "the operator-signed list is ignored")
+        XCTAssertNil(EncEngine.relaySelf(["pubkey": groupsKey.pubkey]), "no self: nothing (writes wait)")
     }
 }

@@ -582,7 +582,8 @@ public final class EncEngine: @unchecked Sendable {
         return Set(Enc.values(newest.tags, "p").filter(Enc.isKey))
     }
 
-    /// The groups relay's own key (NIP-11 `pubkey`), read once per relay address.
+    /// The groups relay's own key, read once per relay address: NIP-11 `self` (zooid signs 39000–39002
+    /// with it; `pubkey` is the relay's operator). No `self`: nil (group writes wait).
     private var relayKeys = [String: String]()
     public func setGroupsRelayKey(_ k: String) { lock.withLock { relayKeys[engine.config.groupsRelay] = k } }
     func groupsRelayKey() async -> String? {
@@ -593,11 +594,14 @@ public final class EncEngine: @unchecked Sendable {
         var req = URLRequest(url: u, timeoutInterval: 5)
         req.setValue("application/nostr+json", forHTTPHeaderField: "Accept")
         guard let (data, resp) = try? await URLSession.shared.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200,
-              let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let k = d["pubkey"] as? String, Enc.isKey(k) else { return nil }
-        lock.withLock { relayKeys[url] = k }
+              let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        return EncEngine.relaySelf(d).map { k in lock.withLock { relayKeys[url] = k }; return k }
+    }
+    /// The key in a NIP-11 document that signs the groups' metadata: `self`, never `pubkey`.
+    public static func relaySelf(_ nip11: [String: Any]) -> String? {
+        guard let k = nip11["self"] as? String, Enc.isKey(k) else { return nil }
         return k
     }
-
     /// The group key's envelopes went out: no longer sent again.
     public func groupBeforeOut(_ K: String) { lock.withLock { keys[K]?.unconfirmedGroup = nil }; save() }
 
