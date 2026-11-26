@@ -33,7 +33,8 @@ public final class EncEngine: @unchecked Sendable {
     }
 
     /// Why a message could not be encrypted now: held on the device with its text kept (§9, §17).
-    public enum Held: Error, Equatable {
+    public enum Held: Error, Equatable, LocalizedError {
+        public var errorDescription: String? { text { _ in "This person" } }
         case noList(String?), notListed, noDevice(String), tooMany, full, fork(String), guest, cantCheckGroup
         public func text(_ name: (String) -> String) -> String {
             switch self {

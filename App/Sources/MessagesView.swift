@@ -654,7 +654,12 @@ struct Bubble: View {
             }
             HStack(spacing: 6) {
                 Text(Format.time(dm.at)).font(.caption2).foregroundStyle(.secondary)
-                if let f = dm.failed {
+                if let f = dm.failed, model.dms?.heldByEncryption(dm) == true {
+                    // format 3: held here, never sent unencrypted (encrypted/state-held)
+                    Text(f).font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+                    Button("Try again") { model.dms?.retry(dm) }.font(.caption2.weight(.semibold))
+                    Button("Delete", role: .destructive) { model.dms?.dropUnsent(dm); model.version += 1 }.font(.caption2.weight(.semibold))
+                } else if let f = dm.failed {
                     Label("Not sent", systemImage: "exclamationmark.circle").font(.caption2).foregroundStyle(.red).help(f)
                     Button("Retry") { model.dms?.retry(dm) }.font(.caption2.weight(.semibold))
                 } else if dm.pending == true, model.lockedHere(dm.conv) {

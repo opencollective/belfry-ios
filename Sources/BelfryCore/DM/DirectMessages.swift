@@ -349,16 +349,12 @@ public final class DirectMessages: @unchecked Sendable {
         // (§10). Held when it can't be encrypted now: the text stays in the box, never sent clear.
         if let enc, enc.writes3, conv != nil || mail {
             let people = mail ? (engine.config.belfryKey.map { [$0] } ?? to) : to
-            do {
-                if let r = try await enc.encrypt(rumor, people: people) {
-                    hold(rumor)
-                    for e in r.events { engine.enqueueSigned(e, target: .main, dm: rumor.id) }
-                    return
-                }
-                // nil: a conversation that starts over 100 devices: no lock (the old way below)
-            } catch let h as EncEngine.Held {
-                throw BelfryError.invalid(h.text { _ in "This person" })
+            if let r = try await enc.encrypt(rumor, people: people) {
+                hold(rumor)
+                for e in r.events { engine.enqueueSigned(e, target: .main, dm: rumor.id) }
+                return
             }
+            // nil: a conversation that starts over 100 devices: no lock (the old way below)
         }
         // the first moments of a launch: the sealed engine is not attached yet, so nobody can tell
         // whether this conversation is sealed. Never the old way on silence (sealed.md 6): refused,
@@ -604,6 +600,12 @@ public final class DirectMessages: @unchecked Sendable {
         save()
         do {
             try await deliver(rumor, to: to, conv: conv)
+        } catch let h as EncEngine.Held {
+            // format 3: never sent unencrypted; kept in the conversation with its text, faded, with
+            // Try again · Delete (Encrypted canvas, encrypted/state-held)
+            lock.lock(); items[rumor.id]?.failed = h.errorDescription; items[rumor.id]?.pending = false; items[rumor.id]?.rumor = Sealed.json(rumor); lock.unlock()
+            save()
+            return
         } catch {
             // a note on a device that is not added yet: kept as it is, shown as waiting
             if (error as? BelfryError)?.relayMessage == DirectMessages.heldNote {
@@ -790,7 +792,31 @@ public final class DirectMessages: @unchecked Sendable {
         save()
     }
 
+    /// A format-3 message held here (nothing of it queued): encrypted again now, or held again.
+    public func heldByEncryption(_ d: Dm) -> Bool {
+        guard d.failed != nil, d.kind == 14, d.rumor != nil else { return false }
+        return !engine.outboxItems().contains { $0.dm == d.rid }
+    }
+
+    /// Delete on a message that was never sent: gone from this device.
+    public func dropUnsent(_ d: Dm) {
+        guard heldByEncryption(d) else { return }
+        lock.lock(); items[d.rid] = nil; lock.unlock()
+        save()
+    }
+
     public func retry(_ d: Dm) {
+        if heldByEncryption(d), let rj = d.rumor, let rumor = NostrEvent.from(json: rj) {
+            lock.lock(); items[d.rid]?.failed = nil; items[d.rid]?.pending = true; lock.unlock()
+            save()
+            Task {
+                do { try await deliver(rumor, to: MailThreads.peers(d.conv).filter { $0 != me }, conv: d.conv) } catch {
+                    lock.lock(); items[d.rid]?.failed = (error as? LocalizedError)?.errorDescription ?? "Not sent"; items[d.rid]?.pending = false; lock.unlock()
+                    save()
+                }
+            }
+            return
+        }
         if d.kind == DmFiles.kind { retryFile(d) }
         for o in engine.outboxItems() where o.dm == d.rid { engine.retry(o.localId) }
         lock.lock()
