@@ -184,7 +184,7 @@ final class MenuShots: XCTestCase {
         XCTAssertTrue(header.waitForExistence(timeout: 10), "Today has no belfry header")
         header.tap()
         XCTAssertTrue(app.buttons["Add an account"].firstMatch.waitForExistence(timeout: 5), "the menu has no Add an account")
-        XCTAssertTrue(app.buttons["Accounts"].firstMatch.exists, "the menu has no Accounts")
+        XCTAssertTrue(app.buttons["Accounts"].firstMatch.exists, "the card has no Accounts")
         sleep(1)
         shot("56-today-menu")
     }

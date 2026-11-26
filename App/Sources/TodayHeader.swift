@@ -23,7 +23,9 @@ struct TodayBelfryHeader: View {
         case "todaysheet": return .sheet
         case "todaypopover": return .popover
         case "todaymenu2": return .menu2
-        default: return .menu
+        case "todaymenu": return .menu
+        // Xavier, 26 Nov: "Go for two" (the card under the header)
+        default: return .popover
         }
     }
 
@@ -52,7 +54,7 @@ struct TodayBelfryHeader: View {
         .onChange(of: model.version) { _, _ in if switching == currentSlot { switching = nil } }
         .task {
             // screenshots: the switcher open (a sheet or a popover opens without a touch)
-            if style == .sheet || style == .popover { try? await Task.sleep(nanoseconds: 1_200_000_000); open = true }
+            if ["todaysheet", "todaypopover"].contains(model.launch.screen ?? "") { try? await Task.sleep(nanoseconds: 1_200_000_000); open = true }
         }
     }
 
