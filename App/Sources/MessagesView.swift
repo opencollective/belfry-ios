@@ -379,9 +379,17 @@ struct ConversationView: View {
                          : "No messages yet. Only you two can read them.")
                         .font(.callout).foregroundStyle(.secondary).padding()
                 }
+                // format 3: where the messages from before encryption end (encrypted/not-before)
+                let firstEnc: String? = model.sealed.format3 ? since.flatMap { s in split.main.contains { $0.at < s } ? split.main.first { $0.at >= s }?.rid : nil } : nil
                 ForEach(rows(split.main, locked ? nil : sealed)) { r in
                     switch r {
                     case .dm(let d):
+                        if d.rid == firstEnc {
+                            Label("Messages after this are encrypted. Earlier ones are not.", systemImage: "lock.fill")
+                                .font(.footnote).foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 6)
+                                .accessibilityIdentifier("enc3-not-before")
+                        }
                         if let by = d.sharedBy {
                             // shared history: one line per block, the block marked by a rule on its left
                             if firstShared.contains(d.rid) { SharedByLine(by: by) }
