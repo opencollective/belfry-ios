@@ -11,15 +11,9 @@ extension AppModel {
         guard encEngine == nil, !isDemo, let e = engine else { return }
         // with format 3 seen and no engine (yet), a group write waits: never clear (the review's P1-2)
         e.encExpected = EncEngine.expected(db: e.db, config: config)
-        // no engine for any guest (§25); a guest never posts in a private group
-        if derive.amGuest || guestReading || session?.reading == true {
-            let priv = Set(derive.allGroups().filter { $0.isPod && $0.isPrivate }.map(\.id))
-            e.groupMode = { t in
-                guard let h = t.tags.first(where: { $0.count > 1 && $0[0] == "h" })?[1] else { return .plain }
-                return priv.contains(h) ? .hold : .plain
-            }
-            return
-        }
+        // no engine for any guest (§25); the guest rule itself is decided per call (updateGuestSession)
+        updateGuestSession(derive)
+        if e.isGuestSession { return }
         guard let s = session, let d = dms, isHex64(e.me), let secret = Data(hex: s.clientSecret), secret.count == 32 else { return }
         let enc = EncEngine(engine: e, deviceSecret: secret)
         encEngine = enc
@@ -83,6 +77,20 @@ extension AppModel {
 
     /// The private groups, their members, the groups known and the guests, as the engine needs them:
     /// on every new snapshot (the review's P1-2: a group turning private is encrypted at once).
+    /// Guest or not, as the app knows it now (the register may answer after launch): the outbox and
+    /// the DM path ask per call; an engine started before a guest status arrived is stopped.
+    func updateGuestSession(_ d: Derive) {
+        guard let e = engine else { return }
+        let guest = d.amGuest || guestReading || session?.reading == true
+        e.setGuestSession(guest, privateGroups: guest ? Set(d.allGroups().filter { $0.isPod && $0.isPrivate }.map(\.id)) : [])
+        if guest, encEngine != nil {
+            encEngine = nil
+            dms?.enc = nil
+            e.encFilters = nil; e.encRefuse = nil; e.groupWrap = nil; e.groupMode = nil; e.onPublished = nil
+            e.refreshFilters()
+        }
+    }
+
     func updateEncWorld(_ d: Derive) {
         guard let enc = encEngine else { return }
         var privateIds = Set<String>(), members = [String: Set<String>](), known = Set<String>()
@@ -93,8 +101,8 @@ extension AppModel {
         let guests = Set(kinds.filter { $0.value == "guest" }.map(\.key))
         // the register's answer about guests: here once asked for the keys that came by links
         let answered = whoisAnswered
-        let guestsKnown = d.guestJoinKeys.allSatisfy { kinds[$0] != nil || answered.contains($0) }
-        enc.setWorld(EncEngine.World(privateIds: privateIds, members: members, guests: guests, known: known, guestsKnown: guestsKnown))
+        let unanswered = Set(d.guestJoinKeys.filter { kinds[$0] == nil && !answered.contains($0) && $0 != me })
+        enc.setWorld(EncEngine.World(privateIds: privateIds, members: members, guests: guests, known: known, unanswered: unanswered))
         enc.setConfigFormat(config.encryptedFormat)
         enc.setPartners(dms?.threads().flatMap { MailThreads.peers($0.conv) }.filter { $0 != me && isHex64($0) } ?? [])
     }
@@ -197,8 +205,14 @@ extension AppModel {
     func enc3Remove(_ a: Enc3Added) async -> String? {
         if isDemo { sealed.enc3Added.removeAll { $0.id == a.id }; showToast("\(a.name) was removed"); return nil }
         guard let enc = encEngine, let d = enc.addedDevices().first(where: { $0.device == a.id }) else { return "It could not be removed. Try again." }
-        guard case .success(let list) = await sessions() else { return "It could not be removed. Try again." }
-        if let s = list.first(where: { $0.clientPubkey == a.id }) {
+        if a.reader {
+            // a reader is my agent (§11): its access is taken back, it has no session to end
+            do { _ = try await api.setAgentReads(a.id, reads: false) } catch { return "It could not be removed. Try again." }
+        } else {
+            // removed only when its session really ended: no session found is a failure, said so
+            guard case .success(let list) = await sessions(), let s = list.first(where: { $0.clientPubkey == a.id }) else {
+                return "It could not be removed: its session wasn’t found. Try again, or remove it in Me › Devices."
+            }
             do { try await api.revokeSession(s.bunkerPubkey) } catch { return "It could not be removed. Try again." }
         }
         do { try enc.answer(d, "removed") } catch { return "It could not be removed. Try again." }

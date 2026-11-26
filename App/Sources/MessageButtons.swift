@@ -155,7 +155,7 @@ extension AppModel {
         let rTags = press.tags.filter { $0.first != "p" } + [["p", gk], ["e", press.id, "", "press"], bt, ["k", String(e.kind)]]
         let rumor = Enc.withId(NostrEvent(pubkey: me, createdAt: press.createdAt, kind: press.kind, tags: rTags, content: content))
         guard let out = try await enc.encrypt(rumor, people: [gk]) else { return false }
-        for ev in out.events { try await engine.publishSigned(ev, .main) }
+        for ev in out.events { try await engine.publishSigned(ev, .main); enc.confirmed(ev.id) }
         return true
     }
 

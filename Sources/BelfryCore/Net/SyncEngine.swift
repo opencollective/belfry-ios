@@ -720,9 +720,18 @@ public final class SyncEngine: @unchecked Sendable {
     /// a group write waits (never clear).
     public var encExpected = false
     static let encHold = "hold: encryption isn’t ready on this device yet"
+    /// A guest's session (§25: out of encryption): decided per call from what the app knows now.
+    private var guestNow = false
+    private var guestPrivate = Set<String>()
+    public func setGuestSession(_ guest: Bool, privateGroups: Set<String>) { lock.lock(); guestNow = guest; guestPrivate = privateGroups; lock.unlock() }
+    public var isGuestSession: Bool { lock.lock(); defer { lock.unlock() }; return guestNow }
+
     /// The mode of a write of TEMPLATE in a group (nil for a write outside groups).
     public func writeMode(_ t: EventTemplate) -> GroupMode {
-        guard !localOnly, t.tags.contains(where: { $0.count > 1 && $0[0] == "h" }) else { return .plain }
+        guard !localOnly, let h = t.tags.first(where: { $0.count > 1 && $0[0] == "h" })?[1] else { return .plain }
+        // a guest never posts in a private group, and everywhere else writes plain
+        lock.lock(); let guest = guestNow, priv = guestPrivate.contains(h); lock.unlock()
+        if guest { return priv ? .hold : .plain }
         return groupMode?(t) ?? (encExpected ? .hold : .plain)
     }
     /// After a group wrap's envelopes went out.

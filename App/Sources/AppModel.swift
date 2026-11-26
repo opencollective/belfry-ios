@@ -384,6 +384,7 @@ final class AppModel: ObservableObject {
         }
         cachedDerive = (version, ev, d)
         // format 3: the engine's view of the groups follows every snapshot
+        updateGuestSession(d)
         if encEngine != nil { updateEncWorld(d) }
         // nothing is queued for an archived or deleted group (SPEC 19.30)
         engine?.setLocked(d.lockedGroups)

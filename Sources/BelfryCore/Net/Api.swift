@@ -330,6 +330,8 @@ public struct BelfryAPI: Sendable {
 
     public func myAgents() async throws -> MyAgents { try await agentsCall([:]) }
     public func setMyAgent(_ pubkey: String, mine: Bool) async throws -> MyAgents { try await agentsCall(["pubkey": pubkey, "mine": mine]) }
+    /// Format 3 (§11): my agent reads my private messages, or no longer.
+    public func setAgentReads(_ pubkey: String, reads: Bool) async throws -> MyAgents { try await agentsCall(["pubkey": pubkey, "reads": reads]) }
 
     // ---- joining by a guest link ----------------------------------------------------------------
 

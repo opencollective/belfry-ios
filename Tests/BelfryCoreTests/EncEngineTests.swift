@@ -129,4 +129,18 @@ final class EncEngineTests: XCTestCase {
         XCTAssertFalse(Enc.clearAfterKey(100, 100))
         XCTAssertFalse(Enc.clearAfterKey(nil, 101))
     }
+
+    /// Review 2's blocker: a private group's members come from the 39002 signed by the GROUPS RELAY's
+    /// own key (its NIP-11 pubkey), not the groups key; the newest one counts; another signer's never.
+    func testMembersFromTheRelaysList() throws {
+        let relay = try LocalSigner(secret: sk("groups-relay")), groupsKey = try LocalSigner(secret: sk("groups-key"))
+        func list(_ by: LocalSigner, _ at: Int, _ people: [String]) throws -> NostrEvent {
+            try by.signNow(EventTemplate(kind: 39002, content: "", tags: [["d", "priv-1"]] + people.map { ["p", $0] }, createdAt: at))
+        }
+        let got = [try list(relay, 100, [K["sam"]!, K["lina"]!, K["other"]!]), try list(relay, 200, [K["sam"]!, K["lina"]!]),
+                   try list(groupsKey, 300, [K["sam"]!, K["other"]!])]
+        XCTAssertEqual(EncEngine.membersFrom(got, group: "priv-1", relayKey: relay.pubkey), [K["sam"]!, K["lina"]!], "the relay's newest; a removed member is out")
+        XCTAssertNil(EncEngine.membersFrom(got, group: "priv-1", relayKey: try LocalSigner(secret: sk("nobody")).pubkey))
+        XCTAssertNil(EncEngine.membersFrom(got, group: "other-2", relayKey: relay.pubkey))
+    }
 }

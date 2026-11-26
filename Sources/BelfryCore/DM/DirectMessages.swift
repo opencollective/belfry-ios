@@ -377,7 +377,8 @@ public final class DirectMessages: @unchecked Sendable {
         // 8572s under its conversation key; one this device has seen encrypted stays encrypted whatever
         // the cache says; unknown format or no engine: held (EncEngine.Held), never the old way. E-mail
         // from the chat waits for the belfry's update. Format-1 belfries: as before.
-        if !engine.localOnly, conv != nil || mail {
+        // a guest's session is out of encryption (§25): the old way, never held
+        if !engine.localOnly, !engine.isGuestSession, conv != nil || mail {
             let isMail = mail || conv.map(MailThreads.isMail) == true
             let people = Array(Set(to + [me]))
             let encConv = !isMail && enc?.isEncrypted(people) == true
@@ -390,7 +391,9 @@ public final class DirectMessages: @unchecked Sendable {
                     if let r = try await enc.encrypt(rumor, people: to) {
                         hold(rumor)
                         for e in r.events { engine.enqueueSigned(e, target: .main, dm: rumor.id) }
-                        if !r.missing.isEmpty { lock.lock(); items[rumor.id]?.missing = r.missing; lock.unlock(); save() }
+                        // the rumor kept with my message: never judged "Not encrypted" while its copy comes back
+                        lock.lock(); items[rumor.id]?.rumor = Sealed.json(rumor); if !r.missing.isEmpty { items[rumor.id]?.missing = r.missing }; lock.unlock()
+                        save()
                         return
                     }
                     // nil: a conversation that starts over 100 devices and was never encrypted: the old way
@@ -838,8 +841,17 @@ public final class DirectMessages: @unchecked Sendable {
     }
 
     /// Held format-3 messages tried again (lists or keys changed: "It will be sent when they are", §17.5).
+    /// Backing off: each held message at most every 2, 4, 8… minutes (up to an hour).
+    private var heldTries = [String: (at: Date, n: Int)]()
     public func retryHeld() {
-        lock.lock(); let held = items.values.filter { $0.mine && $0.failed != nil && $0.kind == 14 && $0.rumor != nil }; lock.unlock()
+        lock.lock()
+        let now = Date()
+        let held = items.values.filter { $0.mine && $0.failed != nil && $0.kind == 14 && $0.rumor != nil }.filter { d in
+            guard let t = heldTries[d.rid] else { return true }
+            return now.timeIntervalSince(t.at) >= min(3600, 120 * pow(2, Double(t.n)))
+        }
+        for d in held { heldTries[d.rid] = (now, (heldTries[d.rid]?.n ?? -1) + 1) }
+        lock.unlock()
         for d in held where heldByEncryption(d) { retry(d) }
     }
 

@@ -83,10 +83,11 @@ public final class EncEngine: @unchecked Sendable {
         public var guests: Set<String> = []
         /// groups whose metadata this device has (a group not known yet: its writes wait)
         public var known: Set<String> = []
-        /// the register's answer about guests is here (unknown: an encrypted send waits)
-        public var guestsKnown = true
-        public init(privateIds: Set<String> = [], members: [String: Set<String>] = [:], guests: Set<String> = [], known: Set<String> = [], guestsKnown: Bool = true) {
-            self.privateIds = privateIds; self.members = members; self.guests = guests; self.known = known; self.guestsKnown = guestsKnown
+        /// keys that came by a link whose guest status the register hasn't answered yet: a send to a
+        /// conversation with one of them waits (never Notes, never anyone else)
+        public var unanswered: Set<String> = []
+        public init(privateIds: Set<String> = [], members: [String: Set<String>] = [:], guests: Set<String> = [], known: Set<String> = [], unanswered: Set<String> = []) {
+            self.privateIds = privateIds; self.members = members; self.guests = guests; self.known = known; self.unanswered = unanswered
         }
     }
     private var world = World()
@@ -373,7 +374,7 @@ public final class EncEngine: @unchecked Sendable {
     public func encrypt(_ rumor: NostrEvent, people: [String]) async throws -> (events: [NostrEvent], missing: [String])? {
         let m = me
         let all = Array(Set([m] + people)).sorted()
-        if !lock.withLock({ world.guestsKnown }) { throw Held.noList(nil) }
+        if lock.withLock({ all.contains(where: world.unanswered.contains) }) { throw Held.noList(nil) }
         if all.contains(where: { isGuest($0) }) { if await neverEncrypted(Enc.peopleId(all)) { return nil }; throw Held.guest }
         guard Enc.peopleOf(rumor) == Enc.peopleId(all) else { throw Enc.Failure.notAMessage }
         guard Enc.rumorJSON(Enc.withId(rumor)).utf8.count <= Enc.maxRumor else { throw Enc.Failure.tooLong }
@@ -522,12 +523,10 @@ public final class EncEngine: @unchecked Sendable {
               !clearInGroup(kind: t.kind, pubkey: me, tags: t.tags), t.kind != Enc.key, t.kind != Enc.msg else { return nil }
         guard let got = await engine.queryAuthed(.groups, [["kinds": [39002], "#d": [h]]], timeout: 5) else { throw Held.cantCheckGroup }
         _ = engine.add(got)
-        // the members from the 39002 just read (the groups key's newest), never an older copy (§8)
-        let gk = groupsKey ?? ""
-        guard let newest = got.filter({ $0.kind == 39002 && $0.tag("d") == h && (gk.isEmpty || $0.pubkey == gk) && $0.isValid }).max(by: { $0.createdAt < $1.createdAt })
+        // the members from the 39002 just read, signed by the groups relay's own key (its NIP-11
+        // pubkey: 39000–39002 are the relay's, not the groups key's), never an older copy (§8)
+        guard let rk = await groupsRelayKey(), let members = EncEngine.membersFrom(got, group: h, relayKey: rk), members.contains(me)
         else { throw Held.cantCheckGroup }
-        let members = Set(Enc.values(newest.tags, "p").filter(Enc.isKey))
-        guard members.contains(me) else { throw Held.cantCheckGroup }
         let people = Array(members.union([me])).sorted()
         let toRead = people.filter { a in devices(a) != .service && (!readOnThisConnection(a) || devices(a) == .unknown) }
         if !toRead.isEmpty, !(await readLists(toRead, timeout: 5)) { throw Held.cantCheckGroup }
@@ -574,6 +573,29 @@ public final class EncEngine: @unchecked Sendable {
         var out = [String]()
         for m in npubRx.matches(text) { if let n = m[1], let h = Bech32.pubkey(npub: n), !out.contains(h) { out.append(h) } }
         return out
+    }
+
+    /// The members of group H from a read of 39002s: the newest valid one signed by RELAYKEY.
+    public static func membersFrom(_ got: [NostrEvent], group h: String, relayKey: String) -> Set<String>? {
+        guard let newest = got.filter({ $0.kind == 39002 && $0.tag("d") == h && $0.pubkey == relayKey && $0.isValid })
+            .max(by: { $0.createdAt < $1.createdAt }) else { return nil }
+        return Set(Enc.values(newest.tags, "p").filter(Enc.isKey))
+    }
+
+    /// The groups relay's own key (NIP-11 `pubkey`), read once per relay address.
+    private var relayKeys = [String: String]()
+    public func setGroupsRelayKey(_ k: String) { lock.withLock { relayKeys[engine.config.groupsRelay] = k } }
+    func groupsRelayKey() async -> String? {
+        let url = engine.config.groupsRelay
+        if let k = lock.withLock({ relayKeys[url] }) { return k }
+        let http = url.replacingOccurrences(of: "wss://", with: "https://").replacingOccurrences(of: "ws://", with: "http://")
+        guard let u = URL(string: http) else { return nil }
+        var req = URLRequest(url: u, timeoutInterval: 5)
+        req.setValue("application/nostr+json", forHTTPHeaderField: "Accept")
+        guard let (data, resp) = try? await URLSession.shared.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200,
+              let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let k = d["pubkey"] as? String, Enc.isKey(k) else { return nil }
+        lock.withLock { relayKeys[url] = k }
+        return k
     }
 
     /// The group key's envelopes went out: no longer sent again.
